@@ -1,0 +1,453 @@
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  FlatList,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { getCircles, getCircleDetail, type BackendCircleDetail } from '@/lib/api';
+import { useAuthSession } from '@/lib/authContext';
+import { circleWorkspaceHref, createCircleHref } from '@/lib/navigation';
+import { isOrganizer } from '@/lib/permissions';
+import { colors, spacing } from '@/lib/theme';
+import type { BackendCircleSummary } from '@/lib/types';
+
+export default function CirclesScreen() {
+  const { session } = useAuthSession();
+  const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [circleDetails, setCircleDetails] = useState<Record<string, BackendCircleDetail>>({});
+  const token = session?.session.token;
+  const userId = session?.user?.id;
+
+  const activeCircles = circles.filter((circle) => circle.status === 'active');
+
+  const loadCircles = useCallback(async () => {
+    if (!token) {
+      setError('Your session is missing an access token. Sign in again.');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const summaries = await getCircles(token);
+      setCircles(summaries);
+      
+      const active = summaries.filter(c => c.status === 'active');
+      const details = await Promise.all(
+        active.map(c => getCircleDetail(token, c.id).catch(() => null))
+      );
+      
+      const detailsMap: Record<string, BackendCircleDetail> = {};
+      active.forEach((circle, index) => {
+        const detail = details[index];
+        if (detail) {
+          detailsMap[circle.id] = detail;
+        }
+      });
+      setCircleDetails(detailsMap);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Unable to load your circles.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadCircles();
+    }, [loadCircles]),
+  );
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      <FlatList
+        data={activeCircles}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <>
+            <View style={styles.header}>
+              <Text style={styles.title}>My Circles</Text>
+              <Text style={styles.subtitle}>
+                Your active savings groups.
+              </Text>
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Active Circles</Text>
+              <Text style={styles.sectionCount}>{activeCircles.length}</Text>
+            </View>
+          </>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.centerCard}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.centerText}>Loading circles…</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.centerCard}>
+              <FontAwesome name="warning" size={32} color={colors.warning} />
+              <Text style={styles.emptyTitle}>Unable to load circles</Text>
+              <Text style={styles.emptySubtitle}>{error}</Text>
+              <Pressable
+                style={styles.retryButton}
+                onPress={() => void loadCircles()}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading circles"
+              >
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <EmptyState />
+          )
+        }
+        renderItem={({ item }) => (
+          <CircleCard 
+            circle={item} 
+            detail={circleDetails[item.id]} 
+            userId={userId} 
+          />
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+      />
+
+      <Pressable
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        onPress={() => router.push(createCircleHref)}
+        accessibilityRole="button"
+        accessibilityLabel="Create circle"
+      >
+        <FontAwesome name="plus" size={28} color="#ffffff" />
+      </Pressable>
+    </SafeAreaView>
+  );
+}
+
+function CircleCard({
+  circle,
+  detail,
+  userId,
+}: {
+  circle: BackendCircleSummary;
+  detail?: BackendCircleDetail;
+  userId?: string;
+}) {
+  const userIsOrganizer = isOrganizer(circle.userRole);
+  const progress = circle.currentRoundProgress?.percentConfirmed ?? 0;
+  
+  const totalRounds = detail?.members?.length ?? circle.memberCount;
+  const viewerPosition = detail && userId ? getViewerPosition(detail, userId) : null;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={() => router.push(circleWorkspaceHref(circle.id))}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${circle.name}`}
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.circleInfo}>
+          <View style={styles.circleTitleRow}>
+            <Text style={styles.circleName}>{circle.name}</Text>
+            {userIsOrganizer ? (
+              <View style={styles.organizerTag}>
+                <Text style={styles.organizerTagText}>Organizer</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.circleMeta}>
+            {capitalize(circle.frequency)} • Round {circle.currentRound} of {totalRounds}
+          </Text>
+          {viewerPosition ? (
+            <Text style={{ color: colors.success, fontSize: 13, fontWeight: '800', marginTop: 4 }}>
+              Your position: #{viewerPosition}
+            </Text>
+          ) : null}
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <View style={styles.progressRing}>
+            <Text style={styles.progressText}>{progress}%</Text>
+          </View>
+          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800', marginTop: 6 }}>
+            {circle.currentRoundProgress?.confirmedCount ?? 0} of {totalRounds} confirmed
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.detailsRow}>
+        <View style={styles.detail}>
+          <Text style={styles.detailLabel}>Contribution</Text>
+          <Text style={styles.detailValue}>
+            {formatMoney(circle.contributionAmount)}
+          </Text>
+        </View>
+        <View style={styles.detail}>
+          <Text style={styles.detailLabel}>Members</Text>
+          <Text style={styles.detailValue}>{circle.memberCount}</Text>
+        </View>
+      </View>
+
+      <View style={styles.openButton}>
+        <Text style={styles.openButtonText}>Open Circle</Text>
+        <FontAwesome name="arrow-right" size={18} color="#ffffff" />
+      </View>
+    </Pressable>
+  );
+}
+
+function EmptyState() {
+  return (
+    <View style={styles.emptyState}>
+      <FontAwesome name="users" size={80} color={colors.muted} />
+      <Text style={styles.emptyTitle}>No active circles yet</Text>
+      <Text style={styles.emptySubtitle}>
+        Create a savings group to begin.
+      </Text>
+    </View>
+  );
+}
+
+function getViewerPosition(detail: BackendCircleDetail, userId: string) {
+  const ordered = [...detail.members].sort((a, b) => {
+    const posA = detail.turnOrder.indexOf(a.id);
+    const posB = detail.turnOrder.indexOf(b.id);
+    const nA = posA === -1 ? 9999 : posA;
+    const nB = posB === -1 ? 9999 : posB;
+    return nA - nB;
+  });
+  const viewer = ordered.find(m => m.userId === userId);
+  return viewer ? ordered.indexOf(viewer) + 1 : null;
+}
+
+function formatMoney(amount: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function capitalize(value: string) {
+  if (value === 'biweekly') return 'Bi-weekly';
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    paddingBottom: 120,
+    paddingHorizontal: spacing.screenX,
+    paddingTop: 20,
+  },
+  header: {
+    marginBottom: 32,
+  },
+  title: {
+    color: colors.textStrong,
+    fontSize: 34,
+    fontWeight: '900',
+  },
+  subtitle: {
+    color: colors.muted,
+    fontSize: 16,
+    lineHeight: 22,
+    marginTop: 4,
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  sectionCount: {
+    color: colors.primary,
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  cardStack: {
+    gap: 20,
+  },
+  card: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 22,
+  },
+  cardPressed: {
+    opacity: 0.95,
+    transform: [{ scale: 0.985 }],
+  },
+  cardHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  circleInfo: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  circleTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  circleName: {
+    color: colors.text,
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  organizerTag: {
+    backgroundColor: colors.success,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  organizerTagText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  circleMeta: {
+    color: colors.muted,
+    fontSize: 15,
+    marginTop: 4,
+  },
+  progressRing: {
+    alignItems: 'center',
+    borderColor: colors.primary,
+    borderRadius: 39,
+    borderWidth: 7,
+    height: 78,
+    justifyContent: 'center',
+    width: 78,
+  },
+  progressText: {
+    color: colors.primary,
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    gap: 40,
+    marginTop: 28,
+  },
+  detail: {
+    flex: 1,
+  },
+  detailLabel: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  detailValue: {
+    color: colors.text,
+    fontSize: 21,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  openButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    marginTop: 28,
+    minHeight: 58,
+  },
+  openButtonText: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  centerCard: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 28,
+  },
+  centerText: {
+    color: colors.muted,
+    fontSize: 14,
+    marginTop: 12,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    marginTop: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontWeight: '900',
+  },
+  fab: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 34,
+    bottom: 24,
+    elevation: 8,
+    height: 68,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    width: 68,
+  },
+  fabPressed: {
+    transform: [{ scale: 0.95 }],
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 100,
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 32,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    color: colors.muted,
+    fontSize: 17,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+});
+

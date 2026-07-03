@@ -1,0 +1,495 @@
+// app/(tabs)/profile.tsx
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useFinancialConnectionsSheet } from '@stripe/stripe-react-native';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useAuthSession } from '@/lib/authContext';
+import { createFinancialConnectionsSession } from '@/lib/api';
+import { scheduleTestNotification } from '@/lib/notifications';
+import { useMarket, type MarketType } from '@/lib/market';
+import { myCirclesHref } from '@/lib/navigation';
+import { colors, radii, spacing } from '@/lib/theme';
+
+const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
+
+function NativeStripeButton({ session }: { session: any }) {
+  const [isLinkingBank, setIsLinkingBank] = useState(false);
+  const { collectFinancialConnectionsAccounts } = useFinancialConnectionsSheet();
+
+  const handleConnectBank = async () => {
+    if (!session?.session.token) return;
+    try {
+      setIsLinkingBank(true);
+      const { clientSecret } = await createFinancialConnectionsSession(session.session.token);
+      
+      const { error, session: stripeSession } = await collectFinancialConnectionsAccounts(clientSecret);
+      
+      if (error) {
+        Alert.alert('Connection Failed', error.message || 'Unknown error');
+      } else {
+        Alert.alert('Success', 'Your bank account has been securely linked!');
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Unable to initiate bank connection.');
+    } finally {
+      setIsLinkingBank(false);
+    }
+  };
+
+  return (
+    <Pressable 
+      style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
+      onPress={handleConnectBank}
+      disabled={isLinkingBank}
+      accessibilityRole="button"
+    >
+      {isLinkingBank ? (
+        <ActivityIndicator size="small" color="#fff" />
+      ) : (
+        <FontAwesome name="lock" size={16} color="#fff" />
+      )}
+      <Text style={styles.connectButtonText}>
+        {isLinkingBank ? 'Connecting...' : 'Connect with Stripe'}
+      </Text>
+    </Pressable>
+  );
+}
+
+export default function ProfileScreen() {
+  const { session, signOut } = useAuthSession();
+  const { market, setMarket } = useMarket();
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const displayName = session?.user.name ?? 'Profile';
+  const email = session?.user.email ?? 'Connected to backend session';
+  const initials = getInitials(displayName);
+  const reliabilityScore = session?.user.reliabilityScore !== undefined 
+    ? `${session.user.reliabilityScore}%` 
+    : '--%';
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Profile Header */}
+        <View style={styles.profileHeader}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{email}</Text>
+          
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleText}>
+              BACKEND CONNECTED
+            </Text>
+          </View>
+        </View>
+
+        {/* Reliability Score Card */}
+        <View style={styles.scoreCard}>
+          <View style={styles.scoreHeader}>
+            <View style={styles.scoreIconContainer}>
+              <FontAwesome name="shield" size={24} color={colors.success} />
+            </View>
+            <View style={styles.scoreTextContainer}>
+              <Text style={styles.scoreTitle}>Reliability Score</Text>
+              <Text style={styles.scoreSubtitle}>Based on past circles</Text>
+            </View>
+            <View style={styles.scoreValueContainer}>
+              <Text style={styles.scoreValue}>{reliabilityScore}</Text>
+              <Text style={styles.scoreLabel}>On-Time</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Linked Bank Accounts */}
+        <View style={styles.bankCard}>
+          <View style={styles.bankHeaderRow}>
+            <View style={styles.bankIconContainer}>
+              <FontAwesome name="bank" size={20} color={colors.primary} />
+            </View>
+            <Text style={styles.bankTitle}>Automated Payments</Text>
+          </View>
+          <Text style={styles.bankDescription}>
+            Connect your bank account to automate contributions and receive payouts instantly.
+          </Text>
+          
+          {isStripeSupported ? (
+            <NativeStripeButton session={session} />
+          ) : (
+            <Pressable 
+              style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
+              onPress={() => Alert.alert('Build Required', 'The Stripe SDK requires a native development build (eas build). It cannot run in Expo Go or Web.')}
+              accessibilityRole="button"
+            >
+              <FontAwesome name="lock" size={16} color="#fff" />
+              <Text style={styles.connectButtonText}>Connect with Stripe</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {/* Menu */}
+        <View style={styles.menu}>
+          <MenuItem
+            icon="check-circle-o"
+            title="Completed Circles"
+            subtitle="View your past savings groups"
+            onPress={() => router.push('/completed-circles')}
+          />
+
+          <MenuItem
+            icon="bell-o"
+            title="Test Notification"
+            subtitle="Schedule a local contribution confirmation"
+            onPress={async () => {
+              const result = await scheduleTestNotification('test');
+              if (result.ok) {
+                Alert.alert('Scheduled', 'Test notification will appear in 2 seconds.');
+              } else {
+                Alert.alert(
+                  'Notifications unavailable',
+                  result.reason,
+                );
+              }
+            }}
+          />
+
+          <MenuItem
+            icon="shield"
+            title="Security"
+            subtitle="Password, recovery, and device access"
+            onPress={() => router.push('/security')}
+          />
+
+          <MenuItem
+            icon="globe"
+            title="Cultural Terminology"
+            subtitle={`Currently using terms for: ${market.toUpperCase()}`}
+            onPress={() => setModalVisible(true)}
+          />
+
+          <MenuItem
+            icon="star-o"
+            title="Subscription"
+            subtitle="View plans and upgrade options"
+            onPress={() => router.push('/subscription')}
+          />
+
+          <MenuItem
+            icon="question-circle-o"
+            title="Support"
+            subtitle="Help with circles, contributions, and payouts"
+            onPress={() => router.push('/support')}
+          />
+        </View>
+
+        {/* Sign Out */}
+        <Pressable
+          style={styles.signOutButton}
+          onPress={async () => {
+            try {
+              await signOut();
+            } catch (e) {}
+            router.replace('/login');
+          }}
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </Pressable>
+
+        {/* Version */}
+        <Text style={styles.version}>CircuSave v1.0.0 • Build 2026.06</Text>
+
+        {/* Cultural Terminology Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={modalVisible}
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Terminology</Text>
+                <Pressable onPress={() => setModalVisible(false)} hitSlop={20}>
+                  <FontAwesome name="times" size={24} color={colors.textStrong} />
+                </Pressable>
+              </View>
+              <Text style={styles.modalDescription}>
+                Choose your cultural terminology. This will change what we call savings groups, organizers, and payouts across the app.
+              </Text>
+              
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {(['default', 'susu', 'tanda', 'sol', 'hagbad', 'pardner'] as MarketType[]).map((m) => (
+                  <Pressable
+                    key={m}
+                    style={[styles.marketOption, market === m && styles.marketOptionSelected]}
+                    onPress={() => {
+                      setMarket(m);
+                      setModalVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.marketOptionText, market === m && styles.marketOptionTextSelected]}>
+                      {m.toUpperCase()}
+                    </Text>
+                    {market === m && (
+                      <FontAwesome name="check" size={16} color={colors.primary} />
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function MenuItem({ icon, title, subtitle, onPress }: {
+  icon: React.ComponentProps<typeof FontAwesome>['name'];
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.menuItem} onPress={onPress}>
+      <View style={styles.menuIcon}>
+        <FontAwesome name={icon} size={22} color={colors.primary} />
+      </View>
+      <View style={styles.menuText}>
+        <Text style={styles.menuTitle}>{title}</Text>
+        <Text style={styles.menuSubtitle}>{subtitle}</Text>
+      </View>
+      <FontAwesome name="chevron-right" size={18} color={colors.muted} />
+    </Pressable>
+  );
+}
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase())
+    .join('');
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  content: { paddingBottom: 100, paddingHorizontal: spacing.screenX },
+
+  profileHeader: { alignItems: 'center', marginVertical: 32 },
+  avatar: {
+    backgroundColor: colors.primary,
+    borderRadius: 50,
+    height: 100,
+    justifyContent: 'center',
+    width: 100,
+    marginBottom: 16,
+  },
+  avatarText: { color: '#fff', fontSize: 36, fontWeight: '900' },
+  name: { fontSize: 26, fontWeight: '900', color: colors.textStrong },
+  email: { color: colors.muted, marginTop: 4 },
+  roleBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 999,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  roleText: { color: colors.primaryDark, fontWeight: '900', fontSize: 13 },
+
+  scoreCard: {
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 20,
+    marginBottom: 24,
+  },
+  scoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  scoreIconContainer: {
+    backgroundColor: `${colors.success}20`,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  scoreTextContainer: {
+    flex: 1,
+  },
+  scoreTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  scoreSubtitle: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  scoreValueContainer: {
+    alignItems: 'flex-end',
+  },
+  scoreValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.success,
+  },
+  scoreLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.success,
+    textTransform: 'uppercase',
+  },
+
+  menu: { gap: 12 },
+  menuItem: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+  },
+  menuIcon: { width: 40 },
+  menuText: { flex: 1 },
+  menuTitle: { fontSize: 17, fontWeight: '900', color: colors.textStrong },
+  menuSubtitle: { color: colors.muted, marginTop: 2, fontSize: 13 },
+
+  signOutButton: {
+    backgroundColor: '#EF4444',
+    borderRadius: 999,
+    marginTop: 40,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginHorizontal: 16,
+  },
+  signOutText: { color: '#fff', fontWeight: '900', fontSize: 17 },
+
+  version: {
+    textAlign: 'center',
+    color: colors.muted,
+    marginTop: 40,
+    fontSize: 12,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radii.card,
+    borderTopRightRadius: radii.card,
+    maxHeight: '80%',
+    padding: spacing.screenX,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  modalDescription: {
+    fontSize: 15,
+    color: colors.muted,
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  marketOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  marketOptionSelected: {
+    backgroundColor: 'rgba(64, 21, 163, 0.05)',
+  },
+  marketOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textStrong,
+  },
+  marketOptionTextSelected: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  bankCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  bankHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  bankIconContainer: {
+    backgroundColor: colors.primarySoft,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  bankTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  bankDescription: {
+    fontSize: 14,
+    color: colors.muted,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
+  },
+  connectButtonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+  connectButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+});
