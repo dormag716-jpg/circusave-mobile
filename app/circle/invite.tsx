@@ -19,6 +19,7 @@ import {
   addCircleMember,
   getCircleDetail,
   removeCircleMember,
+  claimMemberSpot,
   type BackendCircleDetail,
   type BackendCircleMember,
 } from '@/lib/api';
@@ -28,10 +29,13 @@ import { colors, radii, spacing } from '@/lib/theme';
 
 export default function InviteMemberScreen() {
   const { session } = useAuthSession();
-  const params = useLocalSearchParams<{ circleId?: string | string[] }>();
+  const params = useLocalSearchParams<{ circleId?: string | string[]; claimToken?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
     : params.circleId;
+  const claimToken = Array.isArray(params.claimToken)
+    ? params.claimToken[0]
+    : params.claimToken;
   const token = session?.session.token;
 
   const [circle, setCircle] = useState<BackendCircleDetail | null>(null);
@@ -152,6 +156,36 @@ export default function InviteMemberScreen() {
     }
   }
 
+  async function handleClaimSpot() {
+    if (!token || !circle || !claimToken) return;
+    
+    setSubmitting(true);
+    try {
+      // The memberId is encoded in the token, but we need to pass a memberId to the URL.
+      // Since the backend token validator extracts the memberId, we can just pass 'claim' as memberId placeholder
+      // Wait, no, we need the actual memberId. Or we can just modify the backend claim endpoint to not require memberId in the URL,
+      // or we can decode it, OR we can just pass a placeholder since the backend uses the token.
+      // Let's pass 'claim' and make sure the backend accepts it. Wait, the backend expects member_id in the URL.
+      // We can just parse the memberId from the token? No, the backend `getMemberAccessToken` generated the token.
+      // Let's change the frontend to pass 'claim' as memberId and backend ignores it, OR change backend to not need it.
+      // Let's just use the first member in the waitlist? No, we don't know the memberId.
+      // Actually, my backend code `claim_member_spot(circle_id: str, claim_token: str, user_id: str)`
+      // is bound to `POST /<circle_id>/members/<member_id>/claim`.
+      // I can pass `claim` as the member_id and backend `claim_member_spot` will just ignore it because it extracts `token_member_id` from the token!
+      await claimMemberSpot(circle.id, 'claim', claimToken, token);
+      
+      Alert.alert('Spot Claimed', 'You have successfully claimed your spot in the circle!');
+      router.replace(circleWorkspaceHref(circle.id));
+    } catch (claimError) {
+      Alert.alert(
+        'Unable to claim spot',
+        claimError instanceof Error ? claimError.message : 'The backend rejected the claim request.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleRemove(member: BackendCircleMember) {
     if (!token || !circle) {
       return;
@@ -200,6 +234,44 @@ export default function InviteMemberScreen() {
             accessibilityLabel="Retry invite details"
           >
             <Text style={styles.primaryButtonText}>Retry</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (claimToken) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => router.replace(circleWorkspaceHref(circle.id))}
+            accessibilityRole="button"
+          >
+            <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
+          </Pressable>
+          <View style={styles.headerCopy}>
+            <Text style={styles.kicker}>Claim Your Spot</Text>
+            <Text style={styles.title}>{circle.name}</Text>
+          </View>
+        </View>
+
+        <View style={styles.statusCard}>
+          <FontAwesome name="check-circle" size={48} color={colors.success} />
+          <Text style={styles.statusTitle}>You've been invited!</Text>
+          <Text style={styles.statusText}>
+            The organizer has invited you to claim a spot in this savings circle.
+          </Text>
+          <Pressable
+            style={[styles.primaryButton, submitting && styles.disabledButton, { marginTop: 24 }]}
+            onPress={() => void handleClaimSpot()}
+            disabled={submitting}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryButtonText}>
+              {submitting ? 'Claiming...' : 'Claim My Spot'}
+            </Text>
           </Pressable>
         </View>
       </SafeAreaView>

@@ -6,7 +6,7 @@ export type UserIdentity = {
 
 export type MembershipStatus = 'invited' | 'waitlist' | 'active' | 'removed';
 
-export type MembershipRole = 'organizer' | 'member';
+export type MembershipRole = 'organizer' | 'participant';
 export type CircleRole = MembershipRole | 'admin';
 
 export type CirclePermissions = {

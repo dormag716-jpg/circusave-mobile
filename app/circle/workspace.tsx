@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -31,10 +32,10 @@ import {
   type BackendScheduleRound,
   type BackendWalletSnapshot,
   requestPositionSwap,
+  getMemberAccessToken,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { circleInviteHref, circlePaymentSetupHref, contributionHref, myCirclesHref } from '@/lib/navigation';
-import { getLocalPaymentInstructions } from '@/lib/paymentInstructions';
 import { colors, radii, spacing } from '@/lib/theme';
 import ChatFeed from '@/components/ChatFeed';
 import ChatInput from '@/components/ChatInput';
@@ -199,15 +200,6 @@ function WorkspaceContent({
     circle.paymentInstructions ?? null,
   );
 
-  // Load local fallback if backend didn't return instructions
-  useEffect(() => {
-    if (!circle.paymentInstructions) {
-      void getLocalPaymentInstructions(circle.id).then((local) => {
-        if (local) setPaymentInstructions(local);
-      });
-    }
-  }, [circle.id, circle.paymentInstructions]);
-
   const loadBackendSections = async () => {
     setSecondaryLoading(true);
     try {
@@ -255,8 +247,8 @@ function WorkspaceContent({
   };
   const activeParticipant =
     circle.userRole === 'organizer' ||
-    circle.userRole === 'member' ||
-    viewerRole === 'steward' ||
+    circle.userRole === 'participant' ||
+    viewerRole === 'organizer' ||
     viewerRole === 'participant';
   const viewerState = viewerRole || circle.userRole || 'none';
   const currentRoundNumber =
@@ -601,6 +593,7 @@ function WorkspaceContent({
               viewerPayoutPosition={viewerPayoutPosition}
               processingMemberId={actionMemberId}
               paymentInstructions={paymentInstructions}
+              token={token}
             />
           </>
         )
@@ -622,6 +615,7 @@ function WorkspaceContent({
           recipientId={recipientId}
           userId={userId}
           onRequestSwap={handleRequestSwap}
+          token={token}
         />
       ) : null}
 
@@ -657,6 +651,7 @@ function RoundTab({
   viewerMember,
   viewerPayoutPosition,
   paymentInstructions,
+  token,
 }: {
   canReleasePayout: boolean;
   canRemindMembers: boolean;
@@ -688,6 +683,7 @@ function RoundTab({
   viewerMember?: BackendCircleMember;
   viewerPayoutPosition?: number | null;
   paymentInstructions?: string | null;
+  token: string;
 }) {
   // All display values arrive pre-normalized from WorkspaceContent.
   // totalMembers here is already the visibleTotalCount.
@@ -993,6 +989,7 @@ function PeopleTab({
   recipientId,
   userId,
   onRequestSwap,
+  token,
 }: {
   circle: BackendCircleDetail;
   hasSchedule: boolean;
@@ -1001,6 +998,7 @@ function PeopleTab({
   recipientId?: string | null;
   userId: string;
   onRequestSwap: (targetMemberId: string) => void;
+  token: string;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [swapModalVisible, setSwapModalVisible] = useState(false);
@@ -1106,6 +1104,27 @@ function PeopleTab({
                   <Text style={styles.swapButtonText}>Request Swap</Text>
                 </Pressable>
               )}
+
+              {!member.userId && isOrganizer && (
+                <Pressable
+                  style={styles.swapButton}
+                  onPress={async () => {
+                    try {
+                      if (!token) throw new Error('Not authenticated');
+                      const { claimToken } = await getMemberAccessToken(circle.id, member.id, token);
+                      await Share.share({
+                        message: `Claim your spot in '${circle.name}': https://app.circusave.com/invite/${circle.id}?claimToken=${claimToken}`,
+                      });
+                    } catch (error) {
+                      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to generate link');
+                    }
+                  }}
+                  accessibilityRole="button"
+                >
+                  <FontAwesome name="link" size={14} color={colors.primary} />
+                  <Text style={styles.swapButtonText}>Share Spot Link</Text>
+                </Pressable>
+              )}
             </View>
           );
         })}
@@ -1125,15 +1144,35 @@ function PeopleTab({
       </View>
 
       {isOrganizer ? (
-        <Pressable
-          style={styles.memberActionButton}
-          onPress={() => router.push(circleInviteHref(circle.id))}
-          accessibilityRole="button"
-          accessibilityLabel="Invite members"
-        >
-          <FontAwesome name="user-plus" size={18} color={colors.primary} />
-          <Text style={styles.memberActionText}>Invite Members</Text>
-        </Pressable>
+        circle.status === 'setup' ? (
+          <Pressable
+            style={styles.memberActionButton}
+            onPress={() => router.push(circleInviteHref(circle.id))}
+            accessibilityRole="button"
+            accessibilityLabel="Invite members"
+          >
+            <FontAwesome name="user-plus" size={18} color={colors.primary} />
+            <Text style={styles.memberActionText}>Invite Members</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={styles.memberActionButton}
+            onPress={async () => {
+              try {
+                await Share.share({
+                  message: `Access our savings circle '${circle.name}' on CircuSave: https://app.circusave.com/workspace/${circle.id}`,
+                });
+              } catch (error) {
+                // Ignore share cancellation
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Share Access Link"
+          >
+            <FontAwesome name="link" size={18} color={colors.primary} />
+            <Text style={styles.memberActionText}>Share Access Link</Text>
+          </Pressable>
+        )
       ) : null}
     </View>
   );
@@ -1948,12 +1987,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   personCard: {
-    alignItems: 'center',
+    alignItems: 'stretch',
+    justifyContent: 'center',
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
     borderRadius: 20,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     minHeight: 80,
     padding: 16,
   },

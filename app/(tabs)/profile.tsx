@@ -1,68 +1,27 @@
 // app/(tabs)/profile.tsx
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useFinancialConnectionsSheet } from '@stripe/stripe-react-native';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthSession } from '@/lib/authContext';
-import { createFinancialConnectionsSession } from '@/lib/api';
+import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
 import { scheduleTestNotification } from '@/lib/notifications';
 import { useMarket, type MarketType } from '@/lib/market';
 import { myCirclesHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
-
-const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
-
-function NativeStripeButton({ session }: { session: any }) {
-  const [isLinkingBank, setIsLinkingBank] = useState(false);
-  const { collectFinancialConnectionsAccounts } = useFinancialConnectionsSheet();
-
-  const handleConnectBank = async () => {
-    if (!session?.session.token) return;
-    try {
-      setIsLinkingBank(true);
-      const { clientSecret } = await createFinancialConnectionsSession(session.session.token);
-      
-      const { error, session: stripeSession } = await collectFinancialConnectionsAccounts(clientSecret);
-      
-      if (error) {
-        Alert.alert('Connection Failed', error.message || 'Unknown error');
-      } else {
-        Alert.alert('Success', 'Your bank account has been securely linked!');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Unable to initiate bank connection.');
-    } finally {
-      setIsLinkingBank(false);
-    }
-  };
-
-  return (
-    <Pressable 
-      style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
-      onPress={handleConnectBank}
-      disabled={isLinkingBank}
-      accessibilityRole="button"
-    >
-      {isLinkingBank ? (
-        <ActivityIndicator size="small" color="#fff" />
-      ) : (
-        <FontAwesome name="lock" size={16} color="#fff" />
-      )}
-      <Text style={styles.connectButtonText}>
-        {isLinkingBank ? 'Connecting...' : 'Connect with Stripe'}
-      </Text>
-    </Pressable>
-  );
-}
-
 export default function ProfileScreen() {
   const { session, signOut } = useAuthSession();
   const { market, setMarket } = useMarket();
   const [modalVisible, setModalVisible] = useState(false);
+  const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
+
+  useEffect(() => {
+    if (!session?.session.token) return;
+    getLinkedAccounts(session.session.token).then(setAccounts).catch(console.error);
+  }, [session?.session.token]);
 
   const displayName = session?.user.name ?? 'Profile';
   const email = session?.user.email ?? 'Connected to backend session';
@@ -106,34 +65,17 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Linked Bank Accounts */}
-        <View style={styles.bankCard}>
-          <View style={styles.bankHeaderRow}>
-            <View style={styles.bankIconContainer}>
-              <FontAwesome name="bank" size={20} color={colors.primary} />
-            </View>
-            <Text style={styles.bankTitle}>Automated Payments</Text>
-          </View>
-          <Text style={styles.bankDescription}>
-            Connect your bank account to automate contributions and receive payouts instantly.
-          </Text>
-          
-          {isStripeSupported ? (
-            <NativeStripeButton session={session} />
-          ) : (
-            <Pressable 
-              style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
-              onPress={() => Alert.alert('Build Required', 'The Stripe SDK requires a native development build (eas build). It cannot run in Expo Go or Web.')}
-              accessibilityRole="button"
-            >
-              <FontAwesome name="lock" size={16} color="#fff" />
-              <Text style={styles.connectButtonText}>Connect with Stripe</Text>
-            </Pressable>
-          )}
-        </View>
 
         {/* Menu */}
         <View style={styles.menu}>
+          <MenuItem
+            icon="bank"
+            title="Automated Payments"
+            subtitle={accounts.length > 0 ? "Bank account linked" : "Connect your bank account"}
+            badge={accounts.length > 0 ? "CONNECTED" : undefined}
+            onPress={() => router.push('/automated-payments')}
+          />
+          
           <MenuItem
             icon="check-circle-o"
             title="Completed Circles"
@@ -250,10 +192,11 @@ export default function ProfileScreen() {
   );
 }
 
-function MenuItem({ icon, title, subtitle, onPress }: {
+function MenuItem({ icon, title, subtitle, badge, onPress }: {
   icon: React.ComponentProps<typeof FontAwesome>['name'];
   title: string;
   subtitle: string;
+  badge?: string;
   onPress: () => void;
 }) {
   return (
@@ -265,6 +208,11 @@ function MenuItem({ icon, title, subtitle, onPress }: {
         <Text style={styles.menuTitle}>{title}</Text>
         <Text style={styles.menuSubtitle}>{subtitle}</Text>
       </View>
+      {badge && (
+        <View style={styles.menuBadge}>
+          <Text style={styles.menuBadgeText}>{badge}</Text>
+        </View>
+      )}
       <FontAwesome name="chevron-right" size={18} color={colors.muted} />
     </Pressable>
   );
@@ -368,6 +316,19 @@ const styles = StyleSheet.create({
   menuText: { flex: 1 },
   menuTitle: { fontSize: 17, fontWeight: '900', color: colors.textStrong },
   menuSubtitle: { color: colors.muted, marginTop: 2, fontSize: 13 },
+  menuBadge: {
+    backgroundColor: colors.successSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    marginRight: 12,
+  },
+  menuBadgeText: {
+    color: colors.success,
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
 
   signOutButton: {
     backgroundColor: '#EF4444',
@@ -435,61 +396,5 @@ const styles = StyleSheet.create({
   marketOptionTextSelected: {
     color: colors.primary,
     fontWeight: '800',
-  },
-  bankCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  bankHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  bankIconContainer: {
-    backgroundColor: colors.primarySoft,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  bankTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: colors.textStrong,
-  },
-  bankDescription: {
-    fontSize: 14,
-    color: colors.muted,
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  connectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 8,
-  },
-  connectButtonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
-  connectButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+  }
 });

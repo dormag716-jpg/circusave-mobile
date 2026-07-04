@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,8 +12,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
+import { useStripe } from '@stripe/stripe-react-native';
+
+const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
 
 import {
+  createPaymentIntent,
   getCircleDetail,
   getCircleSchedule,
   submitContribution,
@@ -39,6 +45,8 @@ export default function ContributionPaymentScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [payingStripe, setPayingStripe] = useState(false);
+  const stripe = useStripe();
 
   async function loadContribution() {
     if (!token || !circleId) {
@@ -118,6 +126,47 @@ export default function ContributionPaymentScreen() {
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleStripePayment() {
+    if (!token || !circle || !viewerMember || currentRound == null) return;
+    setPayingStripe(true);
+    try {
+      const { clientSecret } = await createPaymentIntent(
+        token,
+        circle.id,
+        currentRound,
+        circle.contributionAmount
+      );
+      
+      const { error: initError } = await stripe.initPaymentSheet({
+        paymentIntentClientSecret: clientSecret,
+        merchantDisplayName: 'CircuSave',
+        returnURL: 'circusave://stripe-redirect',
+      });
+      
+      if (initError) throw initError;
+      
+      const { error: presentError } = await stripe.presentPaymentSheet();
+      if (presentError) {
+        if (presentError.code === 'Canceled') {
+          return; // Just cancel
+        }
+        throw presentError;
+      }
+      
+      Alert.alert(
+        'Payment successful',
+        'Your payment has been successfully processed and is awaiting server confirmation.',
+        [
+          { text: 'OK', onPress: () => router.replace(circleWorkspaceHref(circle.id)) }
+        ]
+      );
+    } catch (err: any) {
+      Alert.alert('Payment Failed', err.message || 'Unable to complete Stripe payment.');
+    } finally {
+      setPayingStripe(false);
     }
   }
 
@@ -209,18 +258,34 @@ export default function ContributionPaymentScreen() {
           </Text>
         ) : null}
 
+        {isStripeSupported ? (
+          <Pressable
+            style={[
+              styles.primaryButton,
+              (!canSubmit || payingStripe || submitting) && styles.disabledButton,
+            ]}
+            disabled={!canSubmit || payingStripe || submitting}
+            onPress={() => void handleStripePayment()}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryButtonText}>
+              {payingStripe ? 'Processing...' : 'Pay with Stripe'}
+            </Text>
+          </Pressable>
+        ) : null}
+
         <Pressable
           style={[
-            styles.primaryButton,
-            (!canSubmit || submitting) && styles.disabledButton,
+            isStripeSupported ? styles.secondaryButton : styles.primaryButton,
+            (!canSubmit || payingStripe || submitting) && styles.disabledButton,
           ]}
-          disabled={!canSubmit || submitting}
+          disabled={!canSubmit || payingStripe || submitting}
           onPress={() => void handleSubmitContribution()}
           accessibilityRole="button"
           accessibilityLabel="Submit contribution"
         >
-          <Text style={styles.primaryButtonText}>
-            {submitting ? 'Submitting...' : canSubmit ? 'Submit Contribution' : statusLabel}
+          <Text style={isStripeSupported ? styles.secondaryButtonText : styles.primaryButtonText}>
+            {submitting ? 'Submitting...' : isStripeSupported ? 'Confirm Manual Payment' : (canSubmit ? 'Submit Contribution' : statusLabel)}
           </Text>
         </Pressable>
       </ScrollView>
@@ -423,13 +488,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.control,
     justifyContent: 'center',
-    marginTop: 18,
-    minHeight: 54,
+    marginTop: 32,
+    width: '100%',
   },
   primaryButtonText: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderColor: colors.primary,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    height: 56,
+    justifyContent: 'center',
+    marginTop: 16,
+    width: '100%',
+  },
+  secondaryButtonText: {
+    color: colors.primary,
+    fontSize: 17,
+    fontWeight: '800',
   },
   disabledButton: {
     opacity: 0.55,

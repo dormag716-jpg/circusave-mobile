@@ -109,7 +109,7 @@ export type BackendCircleDetail = {
   status: string;
   waitlist?: BackendCircleMember[];
   turnOrder: string[];
-  userRole?: 'organizer' | 'member' | null;
+  userRole?: 'organizer' | 'participant' | null;
 };
 
 export type BackendInvitePreview = {
@@ -204,7 +204,7 @@ export type BackendRoundSnapshot = {
       canRemindMembers?: boolean;
       canSubmitOwnContribution?: boolean;
     };
-    viewerRole?: 'steward' | 'participant' | 'waitlist' | 'none' | string;
+    viewerRole?: 'organizer' | 'participant' | 'waitlist' | 'none' | string;
   } | null;
   schedule: BackendScheduleRound[];
   wallet?: BackendWalletSnapshot;
@@ -612,6 +612,18 @@ export function getPublicInvitePreview(
   return requestJson<BackendInvitePreview>(`/groups/${circleId}/invite`);
 }
 
+export function requestJoin(
+  token: string,
+  circleId: string,
+  claimToken?: string,
+): Promise<any> {
+  return requestJson(`/groups/${circleId}/join`, {
+    method: 'POST',
+    token,
+    body: claimToken ? JSON.stringify({ claimToken }) : undefined,
+  });
+}
+
 export function approveJoinRequest(
   token: string,
   circleId: string,
@@ -692,13 +704,30 @@ export function releasePayoutFromPot(
 }
 
 export async function createFinancialConnectionsSession(token: string): Promise<{ clientSecret: string }> {
-  // In a real app, this would be a POST to /api/stripe/financial_connections
-  // Since we are mocking it without a backend, we simulate network delay and return a dummy secret.
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ clientSecret: 'fcs_mock_dummy_secret_12345' });
-    }, 1500);
+  return requestJson<{ clientSecret: string }>('/wallet/stripe/financial-connections', {
+    method: 'POST',
+    token,
   });
+}
+
+export async function createPaymentIntent(
+  token: string, 
+  circleId: string, 
+  roundNumber: number, 
+  amount: number
+): Promise<{ clientSecret: string, paymentIntentId: string }> {
+  return requestJson<{ clientSecret: string; paymentIntentId: string }>('/wallet/stripe/payment-intent', {
+    method: 'POST',
+    body: JSON.stringify({ circleId, roundNumber, amount }),
+    token,
+  });
+}
+
+export async function getLinkedAccounts(token: string): Promise<BackendLinkedAccount[]> {
+  const res = await requestJson<{ accounts: BackendLinkedAccount[] }>('/wallet/stripe/accounts', {
+    token,
+  });
+  return res.accounts;
 }
 
 export type BackendChatMessage = {
@@ -710,43 +739,45 @@ export type BackendChatMessage = {
   isSystem?: boolean;
 };
 
-// Global mock state
-const MOCK_CHAT_DB: Record<string, BackendChatMessage[]> = {
-  'default': [
-    { id: '1', senderName: 'Alice', senderId: 'u1', text: 'Hey everyone! Super excited to start this circle.', timestamp: '10:00 AM' },
-    { id: '2', senderName: 'Bob', senderId: 'u2', text: 'Same here! The rules look great.', timestamp: '10:05 AM' },
-    { id: '4', senderName: 'System', senderId: 'system', text: 'Round 1 has been fully funded. Payout is ready for Alice!', timestamp: '11:00 AM', isSystem: true },
-  ]
-};
+export interface BackendLinkedAccount {
+  id: string;
+  bankName: string;
+  last4: string;
+}
 
 export async function getChatMessages(circleId: string, token: string): Promise<BackendChatMessage[]> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(MOCK_CHAT_DB[circleId] || MOCK_CHAT_DB['default']);
-    }, 300);
+  return requestJson<BackendChatMessage[]>(`/groups/${circleId}/chat`, {
+    token,
   });
 }
 
 export async function sendChatMessage(circleId: string, token: string, text: string, senderName: string, senderId: string): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      if (!MOCK_CHAT_DB[circleId]) {
-        MOCK_CHAT_DB[circleId] = [...MOCK_CHAT_DB['default']];
-      }
-      MOCK_CHAT_DB[circleId].push({
-        id: Math.random().toString(),
-        senderName,
-        senderId,
-        text,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      });
-      resolve();
-    }, 300);
+  return requestJson<void>(`/groups/${circleId}/chat`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ text }),
   });
 }
 
 export async function requestPositionSwap(circleId: string, token: string, targetMemberId: string): Promise<void> {
-  // In a real app, this would POST to /groups/:id/swaps
-  // Mock endpoint:
-  return new Promise((resolve) => setTimeout(resolve, 800));
+  return requestJson<void>(`/groups/${circleId}/swaps`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ targetMemberId }),
+  });
+}
+
+export async function getMemberAccessToken(circleId: string, memberId: string, token: string): Promise<{ claimToken: string }> {
+  return requestJson<{ claimToken: string }>(`/groups/${circleId}/members/${memberId}/access-token`, {
+    method: 'GET',
+    token,
+  });
+}
+
+export async function claimMemberSpot(circleId: string, memberId: string, claimToken: string, token: string): Promise<BackendCircleDetail> {
+  return requestJson<BackendCircleDetail>(`/groups/${circleId}/members/${memberId}/claim`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ claimToken }),
+  });
 }

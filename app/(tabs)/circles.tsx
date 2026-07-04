@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,6 +24,7 @@ export default function CirclesScreen() {
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [inviteLink, setInviteLink] = useState('');
   const [circleDetails, setCircleDetails] = useState<Record<string, BackendCircleDetail>>({});
   const token = session?.session.token;
   const userId = session?.user?.id;
@@ -72,6 +74,28 @@ export default function CirclesScreen() {
       void loadCircles();
     }, [loadCircles]),
   );
+
+  const handleJoinCircle = () => {
+    if (!inviteLink) return;
+    let id = inviteLink.trim();
+    let isWorkspace = false;
+    
+    if (id.includes('/workspace/')) {
+       id = id.split('/workspace/').pop() || id;
+       isWorkspace = true;
+    } else if (id.includes('/invite/')) {
+       id = id.split('/invite/').pop() || id;
+    }
+
+    if (id) {
+       if (isWorkspace) {
+         router.push(`/circle/workspace?circleId=${id}`);
+       } else {
+         router.push(`/invite/${id}`);
+       }
+       setInviteLink('');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -127,6 +151,69 @@ export default function CirclesScreen() {
           />
         )}
         ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+        ListFooterComponent={
+          <View>
+            <View style={styles.joinContainer}>
+              <Text style={styles.joinTitle}>Join a Circle</Text>
+              <Text style={styles.joinSubtitle}>
+                Savings circles are private. To join, paste your invite link or code below.
+              </Text>
+              <View style={styles.joinInputRow}>
+                <TextInput
+                  style={styles.joinInput}
+                  placeholder="https://app.circusave.com/invite/..."
+                  placeholderTextColor={colors.subtle}
+                  value={inviteLink}
+                  onChangeText={setInviteLink}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Pressable 
+                  style={({ pressed }) => [styles.joinButton, pressed && styles.joinButtonPressed]}
+                  onPress={handleJoinCircle}
+                >
+                  <Text style={styles.joinButtonText}>Join</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.howItWorksContainer}>
+              <Text style={styles.howItWorksTitle}>How joining works</Text>
+              
+              <View style={styles.stepRow}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>1</Text></View>
+                <View style={styles.stepContent}>
+                  <Text style={styles.stepTitle}>Get the invite link from your steward</Text>
+                  <Text style={styles.stepDescription}>The steward shares a unique link for their circle — by text, email, or messaging app.</Text>
+                </View>
+              </View>
+
+              <View style={styles.stepRow}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>2</Text></View>
+                <View style={styles.stepContent}>
+                  <Text style={styles.stepTitle}>Open the link and submit your details</Text>
+                  <Text style={styles.stepDescription}>Enter your name, phone number, and email so the steward can confirm your identity.</Text>
+                </View>
+              </View>
+
+              <View style={styles.stepRow}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View>
+                <View style={styles.stepContent}>
+                  <Text style={styles.stepTitle}>Wait for steward approval</Text>
+                  <Text style={styles.stepDescription}>The steward reviews your request and adds you to the active roster or queues you for the next cycle.</Text>
+                </View>
+              </View>
+
+              <View style={styles.stepRow}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>4</Text></View>
+                <View style={styles.stepContent}>
+                  <Text style={styles.stepTitle}>Access your circle workspace</Text>
+                  <Text style={styles.stepDescription}>Once approved, your circle appears on My Circles where you can track contributions, payouts, and your turn.</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        }
       />
 
       <Pressable
@@ -448,6 +535,105 @@ const styles = StyleSheet.create({
     fontSize: 17,
     marginTop: 12,
     textAlign: 'center',
+  },
+  joinContainer: {
+    marginTop: 40,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  joinTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  joinSubtitle: {
+    fontSize: 14,
+    color: colors.muted,
+    marginTop: 6,
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  joinInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  joinInput: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 54,
+    fontSize: 15,
+    color: colors.textStrong,
+  },
+  joinButton: {
+    backgroundColor: colors.primary,
+    height: 54,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  joinButtonPressed: {
+    opacity: 0.85,
+  },
+  joinButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  howItWorksContainer: {
+    marginTop: 24,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  howItWorksTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.textStrong,
+    marginBottom: 20,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  stepNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  stepNumberText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  stepContent: {
+    flex: 1,
+  },
+  stepTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  stepDescription: {
+    fontSize: 14,
+    color: colors.muted,
+    marginTop: 4,
+    lineHeight: 20,
   },
 });
 

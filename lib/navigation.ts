@@ -61,8 +61,17 @@ export function postAuthHrefFromUrl(url: string | null): Href {
   const path = normalizeParsedPath(parsed);
   const circleId = readQueryString(parsed.queryParams?.circleId);
 
+  if (path.startsWith('workspace/')) {
+    const id = path.split('/')[1];
+    if (id) return circleWorkspaceHref(id);
+  }
   if (path === 'circle/workspace' && circleId) {
     return circleWorkspaceHref(circleId);
+  }
+
+  if (path.startsWith('invite/')) {
+    const id = path.split('/')[1];
+    if (id) return circleInviteHref(id);
   }
   if (path === 'circle/invite' && circleId) {
     return circleInviteHref(circleId);

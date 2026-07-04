@@ -18,10 +18,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircleDetail, updateCircleSettings } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import {
-  getLocalPaymentInstructions,
-  setLocalPaymentInstructions,
-} from '@/lib/paymentInstructions';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
@@ -55,15 +51,9 @@ export default function PaymentSetupScreen() {
         setCircleName(circle.name);
         if (circle.paymentInstructions) {
           setInstructions(circle.paymentInstructions);
-        } else {
-          // Fall back to local store
-          const local = await getLocalPaymentInstructions(circleId);
-          if (local) setInstructions(local);
         }
       } catch {
-        // If backend fails, still try local
-        const local = await getLocalPaymentInstructions(circleId ?? '');
-        if (local) setInstructions(local);
+        // Fallback or error handled upstream
       } finally {
         setLoading(false);
       }
@@ -86,21 +76,17 @@ export default function PaymentSetupScreen() {
     if (token) {
       try {
         await updateCircleSettings(token, circleId, { paymentInstructions: trimmed });
-        backendSaved = true;
-      } catch {
-        // Backend doesn't support it yet — fall through to local store
+      } catch (err) {
+        Alert.alert('Error', 'Failed to save payment instructions to the circle.');
+        setSaving(false);
+        return;
       }
     }
-
-    // Always save locally as a reliable fallback
-    await setLocalPaymentInstructions(circleId, trimmed);
 
     setSaving(false);
     Alert.alert(
       'Saved!',
-      backendSaved
-        ? 'Payment instructions saved to your circle.'
-        : 'Payment instructions saved locally on this device.',
+      'Payment instructions saved to your circle.',
       [{ text: 'Done', onPress: () => router.replace(circleWorkspaceHref(circleId)) }],
     );
   }

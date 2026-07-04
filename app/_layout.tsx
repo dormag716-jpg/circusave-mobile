@@ -78,7 +78,7 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       {isStripeSupported ? (
-        <StripeProvider publishableKey="pk_test_TYooMQauvdEDq54NiTphI7jx" merchantIdentifier="merchant.com.circusave">
+        <StripeProvider publishableKey="pk_test_51Toz5oGYTxAEnaSfXEezxF5hmboh2RBPXxe1lrHfOTlkFg5PjgfC4nyCwuwJXBh96XtqzCMvUUBnWGiRj7EBr2KH00OjkeVaHG" merchantIdentifier="merchant.com.circusave">
           <AuthSessionProvider>
             <MarketProvider>
               <DeviceLockProvider>
@@ -124,15 +124,16 @@ function AuthenticatedStack() {
         <Stack.Screen name="create-circle/setup" options={{ headerShown: false }} />
         <Stack.Screen name="circle/workspace" options={{ headerShown: false }} />
         <Stack.Screen name="circle/invite" options={{ headerShown: false }} />
+        <Stack.Screen name="invite/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="circle/payment-setup" options={{ headerShown: false }} />
         {/* circle/history is intentionally not registered until the backend
             history endpoint is connected. The screen file is kept as a shell.
             Re-add the Stack.Screen line below when ready:
             <Stack.Screen name="circle/history" options={{ headerShown: false }} /> */}
         <Stack.Screen name="payment/contribution" options={{ headerShown: false }} />
+        <Stack.Screen name="automated-payments" options={{ headerShown: false }} />
         <Stack.Screen name="subscription" options={{ headerShown: false }} />
         <Stack.Screen name="security" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>
   );
