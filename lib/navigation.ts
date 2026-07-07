@@ -71,7 +71,13 @@ export function postAuthHrefFromUrl(url: string | null): Href {
 
   if (path.startsWith('invite/')) {
     const id = path.split('/')[1];
-    if (id) return circleInviteHref(id);
+    const claimToken = readQueryString(parsed.queryParams?.claimToken);
+    if (id) {
+      return {
+        pathname: '/invite/[id]',
+        params: claimToken ? { id, claimToken } : { id },
+      } as Href;
+    }
   }
   if (path === 'circle/invite' && circleId) {
     return circleInviteHref(circleId);

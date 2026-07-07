@@ -53,6 +53,25 @@ export default function DashboardScreen() {
   const viewerMember = firstCircleDetail?.members.find((m) => m.userId === session?.user.id);
   const isViewerRecipient = viewerMember && firstCircleDetail?.currentRoundSummary?.recipientMemberId === viewerMember.id;
 
+  const dueDateStr = firstCircleDetail?.currentRoundSummary?.dueDate;
+  let formattedDueDate = '';
+  if (dueDateStr) {
+    // Try to parse YYYY-MM-DD
+    const parts = dueDateStr.split('-');
+    if (parts.length >= 3) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      if (m >= 1 && m <= 12 && !isNaN(d)) {
+        formattedDueDate = `${months[m - 1]} ${d}`;
+      } else {
+        formattedDueDate = dueDateStr;
+      }
+    } else {
+      formattedDueDate = dueDateStr; // Fallback to raw API string
+    }
+  }
+
   async function loadDashboard() {
     if (!token) {
       setError('Your session is missing an access token. Sign in again.');
@@ -230,15 +249,29 @@ export default function DashboardScreen() {
                 {capitalize(firstCircle.frequency)} • Round{' '}
                 {formatRound(currentRoundNumber)}{totalRounds ? ` of ${totalRounds}` : ''}
               </Text>
-              {isViewerRecipient ? (
-                <Text style={[styles.recipient, { color: colors.success, fontWeight: '900' }]}>
-                  🎉 It's your turn this round
-                </Text>
-              ) : (
-                <Text style={styles.recipient}>
-                  Next: {recipientName ?? 'Unavailable'}
-                </Text>
-              )}
+                {isViewerRecipient ? (
+                  <View style={{ alignItems: 'flex-start' }}>
+                    <Text style={[styles.recipient, { color: colors.success, fontWeight: '900' }]}>
+                      ✨ It's your turn this round
+                    </Text>
+                    {formattedDueDate ? (
+                      <Text style={[styles.circleMeta, { marginTop: 2, color: colors.success }]}>
+                        Payout: {formattedDueDate}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={{ alignItems: 'flex-start' }}>
+                    <Text style={styles.recipient}>
+                      Next: {recipientName ?? 'Unavailable'}
+                    </Text>
+                    {formattedDueDate ? (
+                      <Text style={[styles.circleMeta, { marginTop: 2 }]}>
+                        Payout: {formattedDueDate}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
               {userIsOrganizer ? (
                 <Text style={styles.manageLabel}>Manage as Organizer</Text>
               ) : null}

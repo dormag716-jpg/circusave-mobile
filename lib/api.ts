@@ -12,6 +12,9 @@ export type AuthUser = {
   created_at: string;
   last_login_at?: string | null;
   preferredMarket?: string;
+  cashtag?: string | null;
+  venmoHandle?: string | null;
+  paypalEmail?: string | null;
   reliabilityScore?: number;
 };
 
@@ -76,6 +79,9 @@ export type BackendCircleMember = {
   name?: string;
   phone?: string | null;
   userId?: string | null;
+  cashtag?: string | null;
+  venmoHandle?: string | null;
+  paypalEmail?: string | null;
   reliabilityScore?: number;
 };
 
@@ -198,6 +204,7 @@ export type BackendRoundSnapshot = {
     payoutReleasedAt?: string | null;
     readyForPayout?: boolean;
     totalMemberCount?: number;
+    viewerMemberId?: string | null;
     viewerPermissions?: {
       canApproveContributions?: boolean;
       canReleasePayout?: boolean;
@@ -616,8 +623,8 @@ export function requestJoin(
   token: string,
   circleId: string,
   claimToken?: string,
-): Promise<any> {
-  return requestJson(`/groups/${circleId}/join`, {
+): Promise<BackendCircleDetail> {
+  return requestJson<BackendCircleDetail>(`/groups/${circleId}/join`, {
     method: 'POST',
     token,
     body: claimToken ? JSON.stringify({ claimToken }) : undefined,
@@ -718,7 +725,7 @@ export async function createPaymentIntent(
 ): Promise<{ clientSecret: string, paymentIntentId: string }> {
   return requestJson<{ clientSecret: string; paymentIntentId: string }>('/wallet/stripe/payment-intent', {
     method: 'POST',
-    body: JSON.stringify({ circleId, roundNumber, amount }),
+    body: JSON.stringify({ circleId, roundNumber, amount: Math.round(amount * 100) }),
     token,
   });
 }
@@ -728,6 +735,23 @@ export async function getLinkedAccounts(token: string): Promise<BackendLinkedAcc
     token,
   });
   return res.accounts;
+}
+
+export function updateUserProfile(
+  token: string,
+  payload: { name?: string; cashtag?: string; venmoHandle?: string; paypalEmail?: string }
+): Promise<{ user: AuthUser; session: AuthSession }> {
+  return fetchJson<{ user: AuthUser; session: AuthSession }>(
+    `${getApiUrl()}/auth/me`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 export type BackendChatMessage = {
@@ -774,10 +798,4 @@ export async function getMemberAccessToken(circleId: string, memberId: string, t
   });
 }
 
-export async function claimMemberSpot(circleId: string, memberId: string, claimToken: string, token: string): Promise<BackendCircleDetail> {
-  return requestJson<BackendCircleDetail>(`/groups/${circleId}/members/${memberId}/claim`, {
-    method: 'POST',
-    token,
-    body: JSON.stringify({ claimToken }),
-  });
-}
+

@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useState, useRef, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   Share,
 } from 'react-native';
@@ -68,6 +69,7 @@ export default function CircleWorkspaceScreen() {
   const tabParam = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const initialTab = (tabParam as ActiveTab) || 'round';
   const token = session?.session.token;
+  const isPremium = session?.user?.role?.toLowerCase() === 'premium';
 
   const [circle, setCircle] = useState<BackendCircleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +165,7 @@ export default function CircleWorkspaceScreen() {
             userId={session.user.id}
             initialTab={initialTab}
             onReload={() => loadWorkspace()}
+            isPremium={isPremium}
           />
         ) : (
           <StatusCard
@@ -182,12 +185,14 @@ function WorkspaceContent({
   userId,
   initialTab,
   onReload,
+  isPremium,
 }: {
   circle: BackendCircleDetail;
   token: string;
   userId: string;
   initialTab: ActiveTab;
   onReload: () => Promise<void>;
+  isPremium: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
@@ -195,6 +200,7 @@ function WorkspaceContent({
   );
   const [ledgerEntries, setLedgerEntries] = useState<BackendLedgerEntry[]>([]);
   const [secondaryLoading, setSecondaryLoading] = useState(true);
+  const cacheHealRetries = useRef(0);
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
   const [paymentInstructions, setPaymentInstructions] = useState<string | null>(
     circle.paymentInstructions ?? null,
@@ -245,11 +251,20 @@ function WorkspaceContent({
       Alert.alert('Swap Failed', 'Could not send swap request.');
     }
   };
+  const circleUserRole = String(circle.userRole ?? 'none');
+  const workspaceViewerRole = String(viewerRole ?? 'none');
+  
+  const isValidViewerRole = ['organizer', 'steward', 'participant', 'member'].includes(workspaceViewerRole);
+  const hasBackendWorkspaceAccess = Boolean(roundWorkspace && isValidViewerRole);
+
   const activeParticipant =
-    circle.userRole === 'organizer' ||
-    circle.userRole === 'participant' ||
-    viewerRole === 'organizer' ||
-    viewerRole === 'participant';
+    hasBackendWorkspaceAccess ||
+    circleUserRole === 'organizer' ||
+    circleUserRole === 'participant' ||
+    circleUserRole === 'member' ||
+    workspaceViewerRole === 'organizer' ||
+    workspaceViewerRole === 'participant' ||
+    workspaceViewerRole === 'member';
   const viewerState = viewerRole || circle.userRole || 'none';
   const currentRoundNumber =
     summary?.roundNumber ?? roundWorkspace?.currentRoundNumber ?? circle.currentRound;
@@ -284,7 +299,20 @@ function WorkspaceContent({
       }),
     [currentRoundNumber, orderedMembers, roundWallet, scheduleData?.contributions],
   );
-  const viewerMember = orderedMembers.find((member) => member.userId === userId);
+  const viewerMemberId = roundWorkspace?.viewerMemberId ?? null;
+
+  const viewerMember =
+    orderedMembers.find((member) => member.id === viewerMemberId) ??
+    orderedMembers.find((member) => member.userId === userId);
+
+  useEffect(() => {
+    // If the backend confirms we have access, but we couldn't find our member object,
+    // our circle.members cache is likely stale. Heal it automatically once.
+    if (hasBackendWorkspaceAccess && !viewerMember && cacheHealRetries.current < 1) {
+      cacheHealRetries.current += 1;
+      onReload(); // This calls loadWorkspace(), triggering a fresh fetch
+    }
+  }, [hasBackendWorkspaceAccess, viewerMember, onReload]);
   const viewerContribution = viewerMember
     ? findContribution(
         scheduleData?.contributions,
@@ -425,7 +453,7 @@ function WorkspaceContent({
     }
   }
 
-  async function handleReleasePayout() {
+  async function handleReleasePayout(isManual = false) {
     if (!recipientId || typeof payoutAmount !== 'number') {
       Alert.alert(
         'Payout unavailable',
@@ -434,20 +462,100 @@ function WorkspaceContent({
       return;
     }
 
-    try {
-      await releasePayoutFromPot(token, circle.id, {
-        amount: payoutAmount,
-        memberId: recipientId,
-      });
-      await Promise.all([onReload(), loadBackendSections()]);
-    } catch (releaseError) {
-      Alert.alert(
-        'Unable to release payout',
-        releaseError instanceof Error
-          ? releaseError.message
-          : 'The backend rejected the payout release.',
-      );
+    const recipient = orderedMembers.find(m => m.id === recipientId);
+    if (!recipient) {
+      Alert.alert('Error', 'Recipient not found in members list.');
+      return;
     }
+
+    const executeBackendRelease = async () => {
+      try {
+        await releasePayoutFromPot(token, circle.id, {
+          amount: payoutAmount,
+          memberId: recipientId,
+        });
+        await Promise.all([onReload(), loadBackendSections()]);
+      } catch (releaseError) {
+        Alert.alert(
+          'Unable to release payout',
+          releaseError instanceof Error
+            ? releaseError.message
+            : 'The backend rejected the payout release.',
+        );
+      }
+    };
+
+    const promptConfirmRelease = () => {
+      Alert.alert(
+        'Confirm Payout',
+        'Did you successfully send the payment?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Yes, Mark Paid', onPress: executeBackendRelease }
+        ]
+      );
+    };
+
+    if (isManual) {
+      promptConfirmRelease();
+      return;
+    }
+
+    const buttons: any[] = [];
+    
+    if (recipient.cashtag) {
+      const cleanCashtag = recipient.cashtag.startsWith('$') ? recipient.cashtag : `$${recipient.cashtag}`;
+      buttons.push({
+        text: `CashApp (${cleanCashtag})`,
+        onPress: () => {
+          Linking.openURL(`https://cash.app/${cleanCashtag}/${payoutAmount}`);
+          setTimeout(promptConfirmRelease, 1000);
+        }
+      });
+    }
+    
+    if (recipient.venmoHandle) {
+      const cleanVenmo = recipient.venmoHandle.startsWith('@') ? recipient.venmoHandle.substring(1) : recipient.venmoHandle;
+      buttons.push({
+        text: `Venmo (@${cleanVenmo})`,
+        onPress: () => {
+          Linking.openURL(`venmo://paycharge?txn=pay&recipients=${cleanVenmo}&amount=${payoutAmount}&note=CircuSave%20Payout`);
+          setTimeout(promptConfirmRelease, 1000);
+        }
+      });
+    }
+    
+    if (recipient.paypalEmail) {
+      buttons.push({
+        text: `PayPal (${recipient.paypalEmail})`,
+        onPress: () => {
+          // If it's a paypal.me link or an email
+          const link = recipient.paypalEmail.includes('paypal.me') 
+            ? `https://${recipient.paypalEmail}/${payoutAmount}` 
+            : `https://paypal.com/myaccount/transfer/homepage?amount=${payoutAmount}&to=${recipient.paypalEmail}`;
+          Linking.openURL(link);
+          setTimeout(promptConfirmRelease, 1000);
+        }
+      });
+    }
+
+    buttons.push({
+      text: 'Mark as Paid Manually',
+      onPress: promptConfirmRelease
+    });
+
+    buttons.push({
+      text: 'Cancel',
+      style: 'cancel'
+    });
+
+    const recipientName = recipient.full_name || recipient.name || 'the recipient';
+
+    Alert.alert(
+      'Release Payout',
+      `How would you like to send the $${payoutAmount} payout to ${recipientName}?`,
+      buttons
+    );
   }
 
   async function runMemberAction(
@@ -594,6 +702,7 @@ function WorkspaceContent({
               processingMemberId={actionMemberId}
               paymentInstructions={paymentInstructions}
               token={token}
+              isPremium={isPremium}
             />
           </>
         )
@@ -652,6 +761,7 @@ function RoundTab({
   viewerPayoutPosition,
   paymentInstructions,
   token,
+  isPremium,
 }: {
   canReleasePayout: boolean;
   canRemindMembers: boolean;
@@ -672,7 +782,7 @@ function RoundTab({
   onMarkPaid: (member: BackendCircleMember) => void;
   onReject: (member: BackendCircleMember) => void;
   onRemind: (member: BackendCircleMember) => void;
-  onReleasePayout: () => void;
+  onReleasePayout: (isManual?: boolean) => void;
   payoutAmount?: number;
   payoutReleased: boolean;
   recipient?: BackendCircleMember;
@@ -684,7 +794,11 @@ function RoundTab({
   viewerPayoutPosition?: number | null;
   paymentInstructions?: string | null;
   token: string;
+  isPremium: boolean;
 }) {
+  const [visibleActionCount, setVisibleActionCount] = useState(5);
+  const [actionSearch, setActionSearch] = useState('');
+
   // All display values arrive pre-normalized from WorkspaceContent.
   // totalMembers here is already the visibleTotalCount.
   const visibleTotalCount = totalMembers;
@@ -700,6 +814,15 @@ function RoundTab({
           </Text>
           <Text style={styles.sectionSubtitle}>
             When all contributions are confirmed, the organizer can release the payout to you.
+          </Text>
+        </View>
+      ) : recipient ? (
+        <View style={[styles.sectionCard, { marginTop: 0, marginBottom: 16, borderColor: '#6366f1', backgroundColor: '#6366f110' }]}>
+          <Text style={[styles.sectionTitle, { color: '#6366f1' }]}>
+            🎁 {memberName(recipient)} receives the payout
+          </Text>
+          <Text style={styles.sectionSubtitle}>
+            {memberName(recipient)} will receive {formatOptionalMoney(payoutAmount)} once all contributions are collected.
           </Text>
         </View>
       ) : null}
@@ -875,11 +998,58 @@ function RoundTab({
               );
             }
 
-            const visibleMembers = actionableMembers.slice(0, 5);
-            const remainingCount = actionableMembers.length - 5;
+            const filteredMembers = actionableMembers.filter(m => 
+              memberName(m.member).toLowerCase().includes(actionSearch.toLowerCase())
+            );
+
+            const visibleMembers = filteredMembers.slice(0, visibleActionCount);
+            const remainingCount = filteredMembers.length - visibleMembers.length;
 
             return (
               <View style={styles.actionList}>
+                {actionableMembers.length > 5 || actionSearch.trim() !== '' ? (
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: colors.cardBorder,
+                    borderRadius: radii.base,
+                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                    marginBottom: 12,
+                    marginTop: 8,
+                    paddingHorizontal: 12,
+                  }}>
+                    <FontAwesome name="search" size={14} color={colors.subtle} style={{ marginRight: 8 }} />
+                    <TextInput
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        fontSize: 15,
+                        color: colors.text,
+                      }}
+                      placeholder="Search by member name..."
+                      placeholderTextColor={colors.subtle}
+                      value={actionSearch}
+                      onChangeText={setActionSearch}
+                      autoCorrect={false}
+                      returnKeyType="search"
+                    />
+                    {actionSearch.length > 0 ? (
+                      <Pressable 
+                        onPress={() => setActionSearch('')} 
+                        accessibilityRole="button"
+                        style={{ padding: 4, marginLeft: 4 }}
+                      >
+                        <FontAwesome name="times-circle" size={16} color={colors.subtle} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+                {actionSearch.trim() !== '' && filteredMembers.length === 0 ? (
+                  <Text style={[styles.helperText, { marginTop: 4, marginBottom: 8 }]}>
+                    No members match "{actionSearch}".
+                  </Text>
+                ) : null}
                 {visibleMembers.map(({ member, status }) => {
                   const isProcessing = processingMemberId === member.id;
                   const canMarkPaid = ['due', 'missed', 'rejected'].includes(status.raw);
@@ -950,9 +1120,15 @@ function RoundTab({
                   );
                 })}
                 {remainingCount > 0 ? (
-                  <Text style={[styles.helperText, { marginTop: 8, textAlign: 'center' }]}>
-                    And {remainingCount} more action{remainingCount === 1 ? '' : 's'}...
-                  </Text>
+                  <Pressable
+                    style={{ marginTop: 8, paddingVertical: 12, alignItems: 'center' }}
+                    onPress={() => setVisibleActionCount(c => c + 5)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ color: colors.primary, fontWeight: '600' }}>
+                      Show {Math.min(5, remainingCount)} more action{Math.min(5, remainingCount) === 1 ? '' : 's'} ({remainingCount} left)
+                    </Text>
+                  </Pressable>
                 ) : null}
               </View>
             );
@@ -962,16 +1138,36 @@ function RoundTab({
 
       {/* Release Payout is gated on backend permission only — display state
           (displayPayoutReady / displayAllConfirmed) must never unlock this. */}
-      {canReleasePayout ? (
+      {canReleasePayout && isPremium ? (
         <Pressable
           style={styles.payoutButton}
-          onPress={onReleasePayout}
+          onPress={() => onReleasePayout(false)}
           accessibilityRole="button"
           accessibilityLabel="Release payout"
         >
           <FontAwesome name="money" size={18} color="#fff" />
           <Text style={styles.payoutButtonText}>Release Payout</Text>
         </Pressable>
+      ) : canReleasePayout && !isPremium ? (
+        <View style={{ width: '100%' }}>
+          <Pressable
+            style={[styles.payoutButton, { backgroundColor: '#6366f1' }]}
+            onPress={() => router.push('/subscription')}
+            accessibilityRole="button"
+            accessibilityLabel="Upgrade to Premium"
+          >
+            <FontAwesome name="star" size={18} color="#fff" />
+            <Text style={styles.payoutButtonText}>Premium: 1-Tap Payout</Text>
+          </Pressable>
+          <Pressable
+            style={{ marginTop: 16, paddingVertical: 12, alignItems: 'center' }}
+            onPress={() => onReleasePayout(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Mark Paid Manually"
+          >
+            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>Mark as Paid Manually</Text>
+          </Pressable>
+        </View>
       ) : displayPayoutReady && !payoutReleased ? (
         <Text style={[styles.helperText, { marginTop: 8, textAlign: 'center' }]}>
           The round appears fully confirmed. Waiting for backend payout permission.
@@ -1241,19 +1437,16 @@ function BlockedAccessCard({
   viewerRole: string;
 }) {
   const label =
-    viewerRole === 'waitlist'
-      ? 'Waitlist'
-      : viewerRole === 'none'
-        ? 'No active membership'
-        : 'Access unavailable';
+    viewerRole === 'none'
+      ? 'No active membership'
+      : 'Access unavailable';
 
   return (
     <View style={styles.blockedCard}>
       <FontAwesome name="lock" size={34} color={colors.warning} />
       <Text style={styles.blockedTitle}>{label}</Text>
       <Text style={styles.blockedText}>
-        {circleName} is not available as an active member workspace for this account.
-        Round, payment, and ledger details stay hidden until the backend grants active membership.
+        You do not have access to {circleName} with this account.
       </Text>
       <Pressable
         style={styles.retryButton}

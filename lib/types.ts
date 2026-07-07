@@ -4,7 +4,7 @@ export type UserIdentity = {
   email: string;
 };
 
-export type MembershipStatus = 'invited' | 'waitlist' | 'active' | 'removed';
+export type MembershipStatus = 'invited' | 'active' | 'removed';
 
 export type MembershipRole = 'organizer' | 'participant';
 export type CircleRole = MembershipRole | 'admin';
@@ -47,7 +47,7 @@ export type CircleMembershipContext = {
 export type UserRole = MembershipRole;
 export type CircleMembershipStatus = MembershipStatus;
 export type CirclePermission = CirclePermissionKey;
-export type CircleExperience = MembershipRole | 'invited' | 'waitlist';
+export type CircleExperience = MembershipRole | 'invited';
 
 export type CircleMembership = {
   id: string;
@@ -135,7 +135,6 @@ export type BackendCircleSummary = {
   startDate: string;
   currentRound: number;
   memberCount: number;
-  waitlistCount: number;
   organizerId: string;
   userRole: MembershipRole | null;
   nextPayout: {

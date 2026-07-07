@@ -1,9 +1,12 @@
-// app/subscription.tsx
+﻿import React from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View, Pressable, Alert } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Pressable, Alert, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, radii, spacing } from '@/lib/theme';
+import { colors, radii, spacing, shadows } from '@/lib/theme';
+import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+
+const { width } = Dimensions.get('window');
 
 const plans = [
   {
@@ -17,11 +20,10 @@ const plans = [
       "Track current round",
       "View payment progress",
       "Basic payout order",
-      "Contribution reminders",
-      "Basic records",
     ],
     buttonText: "Continue Free",
     popular: false,
+    theme: 'light',
   },
   {
     name: "Premium Organizer",
@@ -35,10 +37,10 @@ const plans = [
       "Advanced records & exports",
       "Better reminders",
       "Priority support",
-      "Organizer insights",
     ],
     buttonText: "Upgrade — $4.99/mo",
     popular: true,
+    theme: 'primary',
   },
   {
     name: "Circle Pro",
@@ -47,136 +49,246 @@ const plans = [
     tagline: "For community leaders & larger groups",
     features: [
       "Everything in Premium",
-      "Larger groups",
       "Multiple organizers",
       "Advanced member roles",
       "Full ledger exports",
       "Circle archive",
-      "Early access to new features",
     ],
     buttonText: "Start Circle Pro",
     popular: false,
+    theme: 'dark',
   },
 ];
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function PlanButton({ plan, onPress }: { plan: typeof plans[0], onPress: () => void }) {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const isLight = plan.theme === 'light';
+  
+  return (
+    <AnimatedPressable
+      onPressIn={() => { scale.value = withSpring(0.95, { damping: 12, stiffness: 200 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
+      onPress={onPress}
+      style={[
+        styles.button,
+        isLight ? styles.buttonLight : styles.buttonDark,
+        plan.theme === 'primary' && { backgroundColor: '#fff' },
+        animatedStyle
+      ]}
+    >
+      <Text style={[
+        styles.buttonText,
+        isLight ? styles.buttonTextLight : styles.buttonTextDark,
+        plan.theme === 'primary' && { color: colors.primaryDark }
+      ]}>
+        {plan.buttonText}
+      </Text>
+    </AnimatedPressable>
+  );
+}
+
 export default function SubscriptionScreen() {
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Choose your plan</Text>
-          <Text style={styles.subtitle}>
-            Start free with one circle. Upgrade when you need more tools.
-          </Text>
-        </View>
-
-        <View style={styles.plans}>
-          {plans.map((plan, index) => (
-            <View key={index} style={[styles.planCard, plan.popular && styles.popularCard]}>
-              {plan.popular && (
-                <View style={styles.popularBadge}>
-                  <Text style={styles.popularText}>Most Popular</Text>
-                </View>
-              )}
-
-              <Text style={styles.planName}>{plan.name}</Text>
-              <View style={styles.priceContainer}>
-                <Text style={styles.price}>${plan.price}</Text>
-                <Text style={styles.period}>/{plan.period}</Text>
-              </View>
-              <Text style={styles.tagline}>{plan.tagline}</Text>
-
-              <View style={styles.features}>
-                {plan.features.map((feature, i) => (
-                  <View key={i} style={styles.featureRow}>
-                    <FontAwesome name="check-circle" size={18} color={colors.success} />
-                    <Text style={styles.featureText}>{feature}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <Pressable
-                style={[styles.button, plan.popular && styles.popularButton]}
-                onPress={() => {
-                  if (plan.price === 0) {
-                    router.back();
-                  } else {
-                    Alert.alert("Coming Soon", "Premium subscriptions will be available soon.");
-                  }
-                }}
-              >
-                <Text style={[styles.buttonText, plan.popular && styles.popularButtonText]}>
-                  {plan.buttonText}
-                </Text>
-              </Pressable>
+    <View style={styles.container}>
+      <View style={styles.backgroundAccent} />
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          
+          <Animated.View entering={FadeInDown.springify().damping(14)} style={styles.header}>
+            <View style={styles.badgeContainer}>
+              <Text style={styles.badgeText}>PLANS & PRICING</Text>
             </View>
-          ))}
-        </View>
+            <Text style={styles.title}>Unlock More Power</Text>
+            <Text style={styles.subtitle}>
+              Start free. Upgrade when you need more tools to manage your circles.
+            </Text>
+          </Animated.View>
 
-        <Text style={styles.note}>
-          Cancel anytime. Your circles and ledger stay safe in the backend.
-        </Text>
-      </ScrollView>
-    </SafeAreaView>
+          <View style={styles.plans}>
+            {plans.map((plan, index) => {
+              const isDark = plan.theme === 'dark';
+              const isPrimary = plan.theme === 'primary';
+              const textColor = isDark || isPrimary ? '#fff' : colors.textStrong;
+              const mutedColor = isDark || isPrimary ? 'rgba(255,255,255,0.75)' : colors.muted;
+              
+              return (
+                <Animated.View 
+                  key={index} 
+                  entering={FadeInDown.delay(100 + index * 100).springify().damping(14)}
+                  style={[
+                    styles.planCard,
+                    isDark && styles.darkCard,
+                    isPrimary && styles.primaryCard,
+                    plan.popular && shadows.medium
+                  ]}
+                >
+                  {plan.popular && (
+                    <View style={styles.popularBadge}>
+                      <Text style={styles.popularText}>MOST POPULAR</Text>
+                    </View>
+                  )}
+
+                  <Text style={[styles.planName, { color: textColor }]}>{plan.name}</Text>
+                  
+                  <View style={styles.priceContainer}>
+                    <Text style={[styles.price, { color: textColor }]}>${plan.price}</Text>
+                    <Text style={[styles.period, { color: mutedColor }]}>/{plan.period}</Text>
+                  </View>
+                  
+                  <Text style={[styles.tagline, { color: mutedColor }]}>{plan.tagline}</Text>
+
+                  <View style={[styles.divider, isDark || isPrimary ? { backgroundColor: 'rgba(255,255,255,0.15)' } : {}]} />
+
+                  <View style={styles.features}>
+                    {plan.features.map((feature, i) => (
+                      <View key={i} style={styles.featureRow}>
+                        <View style={[styles.iconWrapper, isDark || isPrimary ? { backgroundColor: 'rgba(255,255,255,0.2)' } : { backgroundColor: colors.successSoft }]}>
+                          <FontAwesome 
+                            name="check" 
+                            size={10} 
+                            color={isDark || isPrimary ? '#fff' : colors.success} 
+                          />
+                        </View>
+                        <Text style={[styles.featureText, { color: textColor }]}>{feature}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <PlanButton 
+                    plan={plan} 
+                    onPress={() => {
+                      if (plan.price === 0) {
+                        router.back();
+                      } else {
+                        Alert.alert("Coming Soon", "Premium subscriptions will be available soon.");
+                      }
+                    }} 
+                  />
+                </Animated.View>
+              );
+            })}
+          </View>
+
+          <Animated.Text entering={FadeInDown.delay(500).springify()} style={styles.note}>
+            Cancel anytime. Your circles and ledger stay safe in the backend.
+          </Animated.Text>
+          
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: spacing.screenX, paddingBottom: 100 },
-  header: { alignItems: 'center', marginBottom: 40, marginTop: 20 },
-  title: { fontSize: 32, fontWeight: '900', color: colors.textStrong },
-  subtitle: { textAlign: 'center', color: colors.muted, fontSize: 16, marginTop: 12 },
+  container: { flex: 1, backgroundColor: colors.background },
+  backgroundAccent: {
+    position: 'absolute',
+    top: -width * 0.5,
+    left: -width * 0.2,
+    width: width * 1.4,
+    height: width * 1.4,
+    borderRadius: width * 0.7,
+    backgroundColor: colors.primarySoft,
+    opacity: 0.7,
+  },
+  safeArea: { flex: 1 },
+  content: { padding: spacing.screenX, paddingBottom: 60, paddingTop: 10 },
+  
+  header: { alignItems: 'center', marginBottom: 40 },
+  badgeContainer: {
+    backgroundColor: 'rgba(107, 70, 193, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginBottom: 16,
+  },
+  badgeText: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  title: { fontSize: 36, fontWeight: '900', color: colors.textStrong, marginBottom: 12, letterSpacing: -0.5 },
+  subtitle: { textAlign: 'center', color: colors.muted, fontSize: 16, lineHeight: 24, paddingHorizontal: 10 },
 
   plans: { gap: 24 },
   planCard: {
     backgroundColor: '#fff',
-    borderRadius: 24,
+    borderRadius: 32,
+    padding: 28,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    padding: 24,
-    position: 'relative',
+    borderColor: 'rgba(0,0,0,0.05)',
+    ...shadows.small,
   },
-  popularCard: {
-    borderColor: colors.primary,
-    borderWidth: 2.5,
+  darkCard: {
+    backgroundColor: '#0F172A',
+    borderColor: '#1E293B',
+  },
+  primaryCard: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryDark,
   },
   popularBadge: {
     position: 'absolute',
-    top: -12,
+    top: -14,
     alignSelf: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: colors.warning,
     borderRadius: 999,
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    ...shadows.small,
   },
-  popularText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  popularText: { color: '#fff', fontWeight: '900', fontSize: 11, letterSpacing: 1 },
 
-  planName: { fontSize: 24, fontWeight: '900' },
-  priceContainer: { flexDirection: 'row', alignItems: 'baseline', marginVertical: 12 },
-  price: { fontSize: 48, fontWeight: '900' },
-  period: { fontSize: 16, color: colors.muted, marginLeft: 4, flexShrink: 1 },
+  planName: { fontSize: 24, fontWeight: '900', marginBottom: 8, letterSpacing: -0.3 },
+  priceContainer: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 8 },
+  price: { fontSize: 48, fontWeight: '900', letterSpacing: -1.5 },
+  period: { fontSize: 16, marginLeft: 4, fontWeight: '600' },
+  tagline: { fontSize: 15, lineHeight: 22, marginBottom: 24 },
+  
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    marginBottom: 24,
+  },
 
-  tagline: { color: colors.muted, marginBottom: 20, fontSize: 15, flexWrap: 'wrap' },
-
-  features: { gap: 12, marginBottom: 32 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  featureText: { fontSize: 15, color: colors.text, flex: 1, flexWrap: 'wrap' },
+  features: { gap: 16, marginBottom: 36 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  iconWrapper: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featureText: { fontSize: 15, flex: 1, fontWeight: '500' },
 
   button: {
-    backgroundColor: colors.primary,
-    borderRadius: 999,
-    paddingVertical: 16,
+    borderRadius: radii.pill,
+    paddingVertical: 18,
     alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.small,
   },
-  popularButton: { backgroundColor: colors.primary },
-  buttonText: { color: '#fff', fontWeight: '900', fontSize: 17 },
-  popularButtonText: { color: '#fff' },
+  buttonLight: { backgroundColor: colors.primarySoft, elevation: 0 },
+  buttonDark: { backgroundColor: colors.primary },
+  
+  buttonText: { fontWeight: '800', fontSize: 16 },
+  buttonTextLight: { color: colors.primaryDark },
+  buttonTextDark: { color: '#fff' },
 
   note: {
     textAlign: 'center',
     color: colors.muted,
     marginTop: 40,
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

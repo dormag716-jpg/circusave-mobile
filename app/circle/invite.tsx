@@ -15,11 +15,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  approveJoinRequest,
   addCircleMember,
   getCircleDetail,
-  removeCircleMember,
-  claimMemberSpot,
   type BackendCircleDetail,
   type BackendCircleMember,
 } from '@/lib/api';
@@ -29,20 +26,16 @@ import { colors, radii, spacing } from '@/lib/theme';
 
 export default function InviteMemberScreen() {
   const { session } = useAuthSession();
-  const params = useLocalSearchParams<{ circleId?: string | string[]; claimToken?: string | string[] }>();
+  const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
     : params.circleId;
-  const claimToken = Array.isArray(params.claimToken)
-    ? params.claimToken[0]
-    : params.claimToken;
   const token = session?.session.token;
 
   const [circle, setCircle] = useState<BackendCircleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [actionMemberId, setActionMemberId] = useState<string | null>(null);
   const [fullName, setFullName] = useState('');
   const [contact, setContact] = useState('');
 
@@ -108,9 +101,7 @@ export default function InviteMemberScreen() {
       setContact('');
       Alert.alert(
         'Invite updated',
-        circle.startedAt
-          ? 'The person was added to the waitlist and can be reviewed below.'
-          : 'The person was added to the active roster.',
+        'The person was added to the active roster.'
       );
     } catch (inviteError) {
       Alert.alert(
@@ -135,77 +126,6 @@ export default function InviteMemberScreen() {
     }
   }
 
-  async function handleApprove(member: BackendCircleMember) {
-    if (!token || !circle) {
-      return;
-    }
-
-    setActionMemberId(member.id);
-    try {
-      await approveJoinRequest(token, circle.id, member.id);
-      await loadInviteData();
-    } catch (actionError) {
-      Alert.alert(
-        'Unable to approve request',
-        actionError instanceof Error
-          ? actionError.message
-          : 'The backend rejected the approval request.',
-      );
-    } finally {
-      setActionMemberId(null);
-    }
-  }
-
-  async function handleClaimSpot() {
-    if (!token || !circle || !claimToken) return;
-    
-    setSubmitting(true);
-    try {
-      // The memberId is encoded in the token, but we need to pass a memberId to the URL.
-      // Since the backend token validator extracts the memberId, we can just pass 'claim' as memberId placeholder
-      // Wait, no, we need the actual memberId. Or we can just modify the backend claim endpoint to not require memberId in the URL,
-      // or we can decode it, OR we can just pass a placeholder since the backend uses the token.
-      // Let's pass 'claim' and make sure the backend accepts it. Wait, the backend expects member_id in the URL.
-      // We can just parse the memberId from the token? No, the backend `getMemberAccessToken` generated the token.
-      // Let's change the frontend to pass 'claim' as memberId and backend ignores it, OR change backend to not need it.
-      // Let's just use the first member in the waitlist? No, we don't know the memberId.
-      // Actually, my backend code `claim_member_spot(circle_id: str, claim_token: str, user_id: str)`
-      // is bound to `POST /<circle_id>/members/<member_id>/claim`.
-      // I can pass `claim` as the member_id and backend `claim_member_spot` will just ignore it because it extracts `token_member_id` from the token!
-      await claimMemberSpot(circle.id, 'claim', claimToken, token);
-      
-      Alert.alert('Spot Claimed', 'You have successfully claimed your spot in the circle!');
-      router.replace(circleWorkspaceHref(circle.id));
-    } catch (claimError) {
-      Alert.alert(
-        'Unable to claim spot',
-        claimError instanceof Error ? claimError.message : 'The backend rejected the claim request.'
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleRemove(member: BackendCircleMember) {
-    if (!token || !circle) {
-      return;
-    }
-
-    setActionMemberId(member.id);
-    try {
-      await removeCircleMember(token, circle.id, member.id);
-      await loadInviteData();
-    } catch (actionError) {
-      Alert.alert(
-        'Unable to remove request',
-        actionError instanceof Error
-          ? actionError.message
-          : 'The backend rejected the removal request.',
-      );
-    } finally {
-      setActionMemberId(null);
-    }
-  }
 
   if (loading) {
     return (
@@ -240,45 +160,7 @@ export default function InviteMemberScreen() {
     );
   }
 
-  if (claimToken) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.replace(circleWorkspaceHref(circle.id))}
-            accessibilityRole="button"
-          >
-            <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
-          </Pressable>
-          <View style={styles.headerCopy}>
-            <Text style={styles.kicker}>Claim Your Spot</Text>
-            <Text style={styles.title}>{circle.name}</Text>
-          </View>
-        </View>
 
-        <View style={styles.statusCard}>
-          <FontAwesome name="check-circle" size={48} color={colors.success} />
-          <Text style={styles.statusTitle}>You've been invited!</Text>
-          <Text style={styles.statusText}>
-            The organizer has invited you to claim a spot in this savings circle.
-          </Text>
-          <Pressable
-            style={[styles.primaryButton, submitting && styles.disabledButton, { marginTop: 24 }]}
-            onPress={() => void handleClaimSpot()}
-            disabled={submitting}
-            accessibilityRole="button"
-          >
-            <Text style={styles.primaryButtonText}>
-              {submitting ? 'Claiming...' : 'Claim My Spot'}
-            </Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const pendingRequests = circle.waitlist || [];
   const hasReachedLimit = (circle.members?.length || 0) >= 20;
 
   return (
@@ -373,53 +255,6 @@ export default function InviteMemberScreen() {
           </>
         )}
 
-        <View style={styles.pendingCard}>
-          <Text style={styles.sectionTitle}>Pending requests</Text>
-          <Text style={styles.sectionSubtitle}>
-            Approve or remove join requests from the backend
-          </Text>
-
-          {pendingRequests.length > 0 ? (
-            pendingRequests.map((member) => (
-              <View key={member.id} style={styles.pendingRow}>
-                <View style={styles.pendingInfo}>
-                  <Text style={styles.pendingName}>{memberName(member)}</Text>
-                  <Text style={styles.pendingMeta}>
-                    {member.phone || member.email || 'No contact provided'}
-                  </Text>
-                </View>
-                <View style={styles.pendingActions}>
-                  <Pressable
-                    style={[
-                      styles.pendingApproveButton,
-                      actionMemberId === member.id && styles.disabledButton,
-                    ]}
-                    disabled={actionMemberId === member.id}
-                    onPress={() => void handleApprove(member)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Approve ${memberName(member)}`}
-                  >
-                    <Text style={styles.pendingApproveText}>Approve</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.pendingRemoveButton,
-                      actionMemberId === member.id && styles.disabledButton,
-                    ]}
-                    disabled={actionMemberId === member.id}
-                    onPress={() => void handleRemove(member)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${memberName(member)}`}
-                  >
-                    <Text style={styles.pendingRemoveText}>Remove</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>No pending requests yet.</Text>
-          )}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -592,70 +427,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '900',
-  },
-  pendingCard: {
-    backgroundColor: colors.card,
-    borderColor: colors.cardBorder,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    marginTop: 16,
-    padding: spacing.card,
-  },
-  pendingRow: {
-    borderBottomColor: colors.cardBorder,
-    borderBottomWidth: 1,
-    paddingVertical: 14,
-  },
-  pendingInfo: {
-    marginBottom: 10,
-  },
-  pendingName: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  pendingMeta: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-  pendingActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  pendingApproveButton: {
-    alignItems: 'center',
-    backgroundColor: colors.success,
-    borderRadius: radii.control,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 42,
-  },
-  pendingApproveText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  pendingRemoveButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primarySoft,
-    borderRadius: radii.control,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 42,
-  },
-  pendingRemoveText: {
-    color: colors.primaryDark,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  emptyText: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 20,
-    paddingVertical: 8,
   },
   disabledButton: {
     opacity: 0.55,

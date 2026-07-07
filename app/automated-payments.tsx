@@ -7,12 +7,12 @@ import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthSession } from '@/lib/authContext';
-import { createFinancialConnectionsSession, getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
+import { createFinancialConnectionsSession, getLinkedAccounts, type BackendLinkedAccount, type AuthResponse } from '@/lib/api';
 import { colors, radii, spacing } from '@/lib/theme';
 
 const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
 
-function NativeStripeButton({ session, onSuccess, label }: { session: any, onSuccess?: () => void, label?: string }) {
+function NativeStripeButton({ session, onSuccess, label }: { session: AuthResponse, onSuccess?: () => void, label?: string }) {
   const [isLinkingBank, setIsLinkingBank] = useState(false);
   const { collectFinancialConnectionsAccounts } = useFinancialConnectionsSheet();
 
@@ -30,8 +30,9 @@ function NativeStripeButton({ session, onSuccess, label }: { session: any, onSuc
         Alert.alert('Success', 'Your bank account has been securely linked!');
         onSuccess?.();
       }
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to initiate bank connection.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to initiate bank connection.';
+      Alert.alert('Error', msg);
     } finally {
       setIsLinkingBank(false);
     }
@@ -56,7 +57,7 @@ function NativeStripeButton({ session, onSuccess, label }: { session: any, onSuc
   );
 }
 
-function LinkedAccountsList({ session }: { session: any }) {
+function LinkedAccountsList({ session }: { session: AuthResponse }) {
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -66,8 +67,8 @@ function LinkedAccountsList({ session }: { session: any }) {
       setIsLoading(true);
       const linked = await getLinkedAccounts(session.session.token);
       setAccounts(linked);
-    } catch (err) {
-      console.error('Failed to fetch linked accounts:', err);
+    } catch {
+      // silent — component will show empty state
     } finally {
       setIsLoading(false);
     }
@@ -111,6 +112,8 @@ function LinkedAccountsList({ session }: { session: any }) {
 
 export default function AutomatedPaymentsScreen() {
   const { session } = useAuthSession();
+
+  if (!session) return null;
 
   return (
     <SafeAreaView style={styles.screen}>

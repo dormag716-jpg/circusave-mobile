@@ -94,7 +94,11 @@ export function MarketProvider({ children }: { children: React.ReactNode }) {
         ...session,
         user: { ...session.user, preferredMarket: newMarket },
       };
-      await setAuthenticatedSession(updatedSession);
+      try {
+        await setAuthenticatedSession(updatedSession);
+      } catch {
+        // ignore — UI state is already updated
+      }
     }
   };
 

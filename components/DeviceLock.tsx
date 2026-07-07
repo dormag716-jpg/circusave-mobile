@@ -48,21 +48,26 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const authenticate = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
-    if (!hasHardware || !isEnrolled) {
-      // Fallback if hardware/biometrics not set up
-      setIsLocked(false);
-      return;
-    }
+      if (!hasHardware || !isEnrolled) {
+        // Fallback if hardware/biometrics not set up
+        setIsLocked(false);
+        return;
+      }
 
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock CircuSave',
-      fallbackLabel: 'Use Passcode',
-    });
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock CircuSave',
+        fallbackLabel: 'Use Passcode',
+      });
 
-    if (result.success) {
+      if (result.success) {
+        setIsLocked(false);
+      }
+    } catch {
+      // If biometric API fails for any reason, fail open so the user isn't locked out
       setIsLocked(false);
     }
   };
@@ -88,7 +93,11 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   }, [isLockEnabled]);
 
   const setLockEnabled = async (enabled: boolean) => {
-    await SecureStore.setItemAsync(SECURE_STORE_KEY, enabled ? 'true' : 'false');
+    try {
+      await SecureStore.setItemAsync(SECURE_STORE_KEY, enabled ? 'true' : 'false');
+    } catch {
+      // ignore storage failures — in-memory state is still updated
+    }
     setIsLockEnabled(enabled);
   };
 

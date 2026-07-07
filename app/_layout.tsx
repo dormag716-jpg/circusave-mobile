@@ -78,7 +78,7 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       {isStripeSupported ? (
-        <StripeProvider publishableKey="pk_test_51Toz5oGYTxAEnaSfXEezxF5hmboh2RBPXxe1lrHfOTlkFg5PjgfC4nyCwuwJXBh96XtqzCMvUUBnWGiRj7EBr2KH00OjkeVaHG" merchantIdentifier="merchant.com.circusave">
+        <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''} merchantIdentifier="merchant.com.circusave">
           <AuthSessionProvider>
             <MarketProvider>
               <DeviceLockProvider>

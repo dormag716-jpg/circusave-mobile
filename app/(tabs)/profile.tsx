@@ -108,6 +108,13 @@ export default function ProfileScreen() {
           />
 
           <MenuItem
+            icon="credit-card"
+            title="Payment Preferences"
+            subtitle="CashApp, Venmo, and PayPal tags for receiving payouts"
+            onPress={() => router.push('/payment-preferences')}
+          />
+
+          <MenuItem
             icon="globe"
             title="Cultural Terminology"
             subtitle={`Currently using terms for: ${market.toUpperCase()}`}

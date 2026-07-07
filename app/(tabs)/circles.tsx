@@ -24,7 +24,7 @@ export default function CirclesScreen() {
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [inviteLink, setInviteLink] = useState('');
+  const [howItWorksExpanded, setHowItWorksExpanded] = useState(false);
   const [circleDetails, setCircleDetails] = useState<Record<string, BackendCircleDetail>>({});
   const token = session?.session.token;
   const userId = session?.user?.id;
@@ -74,28 +74,6 @@ export default function CirclesScreen() {
       void loadCircles();
     }, [loadCircles]),
   );
-
-  const handleJoinCircle = () => {
-    if (!inviteLink) return;
-    let id = inviteLink.trim();
-    let isWorkspace = false;
-    
-    if (id.includes('/workspace/')) {
-       id = id.split('/workspace/').pop() || id;
-       isWorkspace = true;
-    } else if (id.includes('/invite/')) {
-       id = id.split('/invite/').pop() || id;
-    }
-
-    if (id) {
-       if (isWorkspace) {
-         router.push(`/circle/workspace?circleId=${id}`);
-       } else {
-         router.push(`/invite/${id}`);
-       }
-       setInviteLink('');
-    }
-  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -153,64 +131,51 @@ export default function CirclesScreen() {
         ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
         ListFooterComponent={
           <View>
-            <View style={styles.joinContainer}>
-              <Text style={styles.joinTitle}>Join a Circle</Text>
-              <Text style={styles.joinSubtitle}>
-                Savings circles are private. To join, paste your invite link or code below.
-              </Text>
-              <View style={styles.joinInputRow}>
-                <TextInput
-                  style={styles.joinInput}
-                  placeholder="https://app.circusave.com/invite/..."
-                  placeholderTextColor={colors.subtle}
-                  value={inviteLink}
-                  onChangeText={setInviteLink}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <Pressable 
-                  style={({ pressed }) => [styles.joinButton, pressed && styles.joinButtonPressed]}
-                  onPress={handleJoinCircle}
-                >
-                  <Text style={styles.joinButtonText}>Join</Text>
-                </Pressable>
-              </View>
-            </View>
-
             <View style={styles.howItWorksContainer}>
-              <Text style={styles.howItWorksTitle}>How joining works</Text>
-              
-              <View style={styles.stepRow}>
-                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>1</Text></View>
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>Get the invite link from your steward</Text>
-                  <Text style={styles.stepDescription}>The steward shares a unique link for their circle — by text, email, or messaging app.</Text>
-                </View>
-              </View>
+              <Pressable 
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }} 
+                onPress={() => setHowItWorksExpanded(!howItWorksExpanded)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.howItWorksTitle, { marginBottom: 0 }]}>How joining works</Text>
+                <FontAwesome name={howItWorksExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.text} />
+              </Pressable>
 
-              <View style={styles.stepRow}>
-                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>2</Text></View>
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>Open the link and submit your details</Text>
-                  <Text style={styles.stepDescription}>Enter your name, phone number, and email so the steward can confirm your identity.</Text>
-                </View>
-              </View>
+              {howItWorksExpanded ? (
+                <View style={{ marginTop: 24 }}>
+                  <View style={styles.stepRow}>
+                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>1</Text></View>
+                    <View style={styles.stepContent}>
+                      <Text style={styles.stepTitle}>Get the invite link from the organizer</Text>
+                      <Text style={styles.stepDescription}>The organizer shares a unique link to join their circle.</Text>
+                    </View>
+                  </View>
 
-              <View style={styles.stepRow}>
-                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View>
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>Wait for steward approval</Text>
-                  <Text style={styles.stepDescription}>The steward reviews your request and adds you to the active roster or queues you for the next cycle.</Text>
-                </View>
-              </View>
+                  <View style={styles.stepRow}>
+                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>2</Text></View>
+                    <View style={styles.stepContent}>
+                      <Text style={styles.stepTitle}>Open the link & Log In</Text>
+                      <Text style={styles.stepDescription}>Tap the link and log into your account (or sign up).</Text>
+                    </View>
+                  </View>
 
-              <View style={styles.stepRow}>
-                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>4</Text></View>
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>Access your circle workspace</Text>
-                  <Text style={styles.stepDescription}>Once approved, your circle appears on My Circles where you can track contributions, payouts, and your turn.</Text>
+                  <View style={styles.stepRow}>
+                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View>
+                    <View style={styles.stepContent}>
+                      <Text style={styles.stepTitle}>Tap Join</Text>
+                      <Text style={styles.stepDescription}>You will instantly be added to the circle roster.</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.stepRow}>
+                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>4</Text></View>
+                    <View style={styles.stepContent}>
+                      <Text style={styles.stepTitle}>Access your workspace</Text>
+                      <Text style={styles.stepDescription}>Track contributions, see payouts, and know when it's your turn!</Text>
+                    </View>
+                  </View>
                 </View>
-              </View>
+              ) : null}
             </View>
           </View>
         }
@@ -636,4 +601,3 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-
