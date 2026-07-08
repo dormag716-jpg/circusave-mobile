@@ -276,29 +276,35 @@ function WorkspaceContent({
     () => getOrderedMembers(circle),
     [circle.members, circle.turnOrder],
   );
-  const currentRoundMembers = useMemo(
-    () =>
-      orderedMembers.map((member) => {
-        const contribution = findContribution(
-          scheduleData?.contributions,
-          member.id,
-          currentRoundNumber,
-        );
+  const currentRoundContributions = useMemo(() => {
+    return scheduleData?.contributions?.filter((c) => c.round === currentRoundNumber) || [];
+  }, [scheduleData?.contributions, currentRoundNumber]);
 
-        return {
-          contribution,
-          member,
-          status: contributionStatus(
+  const currentRoundMembers = useMemo(
+    () => {
+      return currentRoundContributions
+        .map((contribution) => {
+          const member = orderedMembers.find((m) => m.id === contribution.memberId);
+          if (!member) return null;
+
+          return {
             contribution,
-            roundWallet,
-            ledgerEntries,
-            member.id,
-            currentRoundNumber,
-          ),
-        };
-      }),
-    [currentRoundNumber, orderedMembers, roundWallet, scheduleData?.contributions],
+            member,
+            status: contributionStatus(
+              contribution,
+              roundWallet,
+              ledgerEntries,
+              member.id,
+              currentRoundNumber,
+            ),
+          };
+        })
+        .filter((m): m is NonNullable<typeof m> => m !== null);
+    },
+    [currentRoundContributions, orderedMembers, roundWallet, ledgerEntries, currentRoundNumber],
   );
+  
+  const expectedContributionsCount = currentRoundMembers.length;
   const viewerMemberId = roundWorkspace?.viewerMemberId ?? null;
 
   const viewerMember =
@@ -345,10 +351,7 @@ function WorkspaceContent({
   // ── Normalized display state ─────────────────────────────────────────────
   // Single source of truth for all Round tab display. Backend still controls
   // whether a payout can actually be released (canReleasePayout below).
-  const expectedContributionsCount =
-    typeof totalMembers === 'number' && Number.isFinite(totalMembers)
-      ? totalMembers
-      : currentRoundMembers.length;
+
 
   const totalRoundsCount = circle.totalRounds ?? scheduleData?.schedule?.length ?? expectedContributionsCount;
 
