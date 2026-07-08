@@ -525,14 +525,15 @@ function WorkspaceContent({
       });
     }
     
-    if (recipient.paypalEmail) {
+    const paypalEmail = recipient.paypalEmail;
+    if (paypalEmail) {
       buttons.push({
-        text: `PayPal (${recipient.paypalEmail})`,
+        text: `PayPal (${paypalEmail})`,
         onPress: () => {
           // If it's a paypal.me link or an email
-          const link = recipient.paypalEmail.includes('paypal.me') 
-            ? `https://${recipient.paypalEmail}/${payoutAmount}` 
-            : `https://paypal.com/myaccount/transfer/homepage?amount=${payoutAmount}&to=${recipient.paypalEmail}`;
+          const link = paypalEmail.includes('paypal.me') 
+            ? `https://${paypalEmail}/${payoutAmount}` 
+            : `https://paypal.com/myaccount/transfer/homepage?amount=${payoutAmount}&to=${paypalEmail}`;
           Linking.openURL(link);
           setTimeout(promptConfirmRelease, 1000);
         }
@@ -1013,7 +1014,7 @@ function RoundTab({
                     alignItems: 'center',
                     borderWidth: 1,
                     borderColor: colors.cardBorder,
-                    borderRadius: radii.base,
+                    borderRadius: radii.card,
                     backgroundColor: 'rgba(255, 255, 255, 0.02)',
                     marginBottom: 12,
                     marginTop: 8,

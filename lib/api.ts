@@ -741,17 +741,11 @@ export function updateUserProfile(
   token: string,
   payload: { name?: string; cashtag?: string; venmoHandle?: string; paypalEmail?: string }
 ): Promise<{ user: AuthUser; session: AuthSession }> {
-  return fetchJson<{ user: AuthUser; session: AuthSession }>(
-    `${getApiUrl()}/auth/me`,
-    {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    }
-  );
+  return requestJson<{ user: AuthUser; session: AuthSession }>('/auth/me', {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(payload),
+  });
 }
 
 export type BackendChatMessage = {

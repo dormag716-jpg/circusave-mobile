@@ -80,9 +80,17 @@ export async function registerForPushNotifications(): Promise<NotificationResult
       projectId ? { projectId } : undefined,
     );
     token = tokenResult.data;
-  } catch (err) {
-    // Token fetch can fail in simulators / non-EAS builds — don't block the user
-    console.warn('[CircuSave] Push token unavailable:', err);
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    const isLocalDevMissingFirebase = 
+      __DEV__ && 
+      (errMsg.includes('Default FirebaseApp is not initialized') || 
+       errMsg.includes('FCM credentials'));
+       
+    if (!isLocalDevMissingFirebase) {
+      console.warn('[CircuSave] Push token unavailable:', err);
+    }
+    
     return {
       ok: false,
       reason: 'Could not obtain push token. Is this a development build with EAS?',

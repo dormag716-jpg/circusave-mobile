@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
-import { useAuth } from '../lib/auth';
+import { useAuthSession } from '../lib/authContext';
 import { updateUserProfile } from '../lib/api';
 import { colors } from '../lib/theme';
 
 export default function PaymentPreferencesScreen() {
   const router = useRouter();
-  const { session, user, refreshUser } = useAuth();
+  const { session: authSession, refreshSession } = useAuthSession();
+  const user = authSession?.user;
+  const session = authSession?.session;
   
   const [loading, setLoading] = useState(false);
   const [cashtag, setCashtag] = useState(user?.cashtag || '');
@@ -45,7 +47,7 @@ export default function PaymentPreferencesScreen() {
         venmoHandle: cleanVenmo || undefined,
         paypalEmail: paypalEmail.trim() || undefined
       });
-      await refreshUser();
+      await refreshSession();
       Alert.alert('Saved', 'Your payment preferences have been updated.');
       router.back();
     } catch (e: any) {
@@ -82,7 +84,7 @@ export default function PaymentPreferencesScreen() {
             <TextInput
               style={styles.input}
               placeholder="$cashtag"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.muted}
               value={cashtag}
               onChangeText={setCashtag}
               autoCapitalize="none"
@@ -99,7 +101,7 @@ export default function PaymentPreferencesScreen() {
             <TextInput
               style={styles.input}
               placeholder="@username"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.muted}
               value={venmoHandle}
               onChangeText={setVenmoHandle}
               autoCapitalize="none"
@@ -116,7 +118,7 @@ export default function PaymentPreferencesScreen() {
             <TextInput
               style={styles.input}
               placeholder="email@example.com or paypal.me/tag"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.muted}
               value={paypalEmail}
               onChangeText={setPaypalEmail}
               autoCapitalize="none"
@@ -133,7 +135,7 @@ export default function PaymentPreferencesScreen() {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={colors.surface} />
+            <ActivityIndicator color={colors.card} />
           ) : (
             <Text style={styles.saveButtonText}>Save Preferences</Text>
           )}
@@ -155,9 +157,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 20,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.cardBorder,
   },
   backButton: {
     width: 40,
@@ -191,9 +193,9 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.cardBorder,
     borderRadius: 12,
     paddingHorizontal: 16,
     height: 52,
@@ -211,7 +213,7 @@ const styles = StyleSheet.create({
   },
   helperText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: colors.muted,
     marginTop: 6,
     paddingHorizontal: 4,
   },
@@ -227,7 +229,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   saveButtonText: {
-    color: colors.surface,
+    color: colors.card,
     fontSize: 16,
     fontWeight: '700',
   }
