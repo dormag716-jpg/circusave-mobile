@@ -758,6 +758,7 @@ function RoundTab({
   payoutReleased,
   recipient,
   totalMembers,
+  totalRoundsCount,
   visibleConfirmedCount,
   visibleProgress,
   viewerContributionStatus,
