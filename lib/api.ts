@@ -107,6 +107,7 @@ export type BackendCircleDetail = {
   };
   frequency: string;
   members: BackendCircleMember[];
+  totalRounds?: number;
   organizerId: string;
   paymentInstructions?: string | null;
   pot_status?: string;

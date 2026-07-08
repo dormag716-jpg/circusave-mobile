@@ -345,22 +345,24 @@ function WorkspaceContent({
   // ── Normalized display state ─────────────────────────────────────────────
   // Single source of truth for all Round tab display. Backend still controls
   // whether a payout can actually be released (canReleasePayout below).
-  const visibleTotalCount =
+  const expectedContributionsCount =
     typeof totalMembers === 'number' && Number.isFinite(totalMembers)
       ? totalMembers
       : currentRoundMembers.length;
+
+  const totalRoundsCount = circle.totalRounds ?? scheduleData?.schedule?.length ?? expectedContributionsCount;
 
   const visibleConfirmedCount = currentRoundMembers.filter(
     (entry) => entry.status.raw === 'confirmed',
   ).length;
 
   const visibleProgress =
-    visibleTotalCount > 0
-      ? Math.round((visibleConfirmedCount / visibleTotalCount) * 100)
+    expectedContributionsCount > 0
+      ? Math.round((visibleConfirmedCount / expectedContributionsCount) * 100)
       : null;
 
   const displayAllConfirmed =
-    visibleTotalCount > 0 && visibleConfirmedCount >= visibleTotalCount;
+    expectedContributionsCount > 0 && visibleConfirmedCount >= expectedContributionsCount;
 
   const backendPayoutReady = roundWorkspace?.readyForPayout === true;
   const payoutReleased = roundWorkspace?.payoutReleased === true;
@@ -694,7 +696,8 @@ function WorkspaceContent({
               payoutAmount={payoutAmount}
               payoutReleased={payoutReleased}
               recipient={recipient}
-              totalMembers={visibleTotalCount}
+              totalMembers={expectedContributionsCount}
+              totalRoundsCount={totalRoundsCount}
               visibleConfirmedCount={visibleConfirmedCount}
               visibleProgress={visibleProgress}
               viewerContributionStatus={viewerContributionStatus}
@@ -788,6 +791,7 @@ function RoundTab({
   payoutReleased: boolean;
   recipient?: BackendCircleMember;
   totalMembers: number;
+  totalRoundsCount: number;
   visibleConfirmedCount: number;
   visibleProgress: number | null;
   viewerContributionStatus: ContributionStatusView;
@@ -801,8 +805,8 @@ function RoundTab({
   const [actionSearch, setActionSearch] = useState('');
 
   // All display values arrive pre-normalized from WorkspaceContent.
-  // totalMembers here is already the visibleTotalCount.
-  const visibleTotalCount = totalMembers;
+  const expectedContributionsCount = totalMembers;
+  const visibleTotalRounds = totalRoundsCount;
 
   const isViewerRecipient = viewerMember && recipient && viewerMember.id === recipient.id;
 
@@ -834,7 +838,7 @@ function RoundTab({
             <Text style={styles.heroRoundText}>{currentRoundNumber}</Text>
           </View>
           <View style={styles.heroHeaderCopy}>
-            <Text style={styles.heroEyebrow}>Round {currentRoundNumber} of {visibleTotalCount}</Text>
+            <Text style={styles.heroEyebrow}>Round {currentRoundNumber} of {visibleTotalRounds}</Text>
             <Text style={styles.heroTitle}>
               {capitalizeFrequency(circle.frequency)} cycle
             </Text>
@@ -850,7 +854,7 @@ function RoundTab({
             label="Confirmed"
             value={formatConfirmedStatusFromCounts(
               visibleConfirmedCount,
-              visibleTotalCount,
+              expectedContributionsCount,
             )}
           />
           <InfoRow label="Progress" value={formatProgress(visibleProgress)} last />
