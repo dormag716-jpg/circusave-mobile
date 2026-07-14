@@ -119,7 +119,7 @@ export default function InviteMemberScreen() {
     if (!circle) return;
     try {
       await Share.share({
-        message: `Join my savings circle '${circle.name}' on CircuSave! Download the app and sign up to see our round: https://app.circusave.com/invite/${circle.id}`,
+        message: `Join my savings circle '${circle.name}' on CircuSave! Download the app and sign up to see our round: https://circusave.com/invite/${circle.id}`,
       });
     } catch (error) {
       Alert.alert('Unable to share link', 'An error occurred while trying to open the share menu.');

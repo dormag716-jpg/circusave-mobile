@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,16 +8,25 @@ import {
   StyleSheet,
   Text,
   View,
-  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles, getCircleDetail, type BackendCircleDetail } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import { circleWorkspaceHref, createCircleHref } from '@/lib/navigation';
+import {
+  circleWorkspaceHref,
+  completedCirclesHref,
+  createCircleHref,
+} from '@/lib/navigation';
 import { isOrganizer } from '@/lib/permissions';
 import { colors, spacing } from '@/lib/theme';
 import type { BackendCircleSummary } from '@/lib/types';
+
+const SETUP_STATUSES = new Set(['setup', 'forming', 'paused']);
+
+type ListItem =
+  | { type: 'header'; id: string; title: string; count: number }
+  | { type: 'circle'; id: string; circle: BackendCircleSummary };
 
 export default function CirclesScreen() {
   const { session } = useAuthSession();
@@ -25,11 +34,54 @@ export default function CirclesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [howItWorksExpanded, setHowItWorksExpanded] = useState(false);
-  const [circleDetails, setCircleDetails] = useState<Record<string, BackendCircleDetail>>({});
+  const [circleDetails, setCircleDetails] = useState<
+    Record<string, BackendCircleDetail>
+  >({});
   const token = session?.session.token;
   const userId = session?.user?.id;
 
-  const activeCircles = circles.filter((circle) => circle.status === 'active');
+  const activeCircles = useMemo(
+    () => circles.filter((circle) => circle.status === 'active'),
+    [circles],
+  );
+  const setupCircles = useMemo(
+    () => circles.filter((circle) => SETUP_STATUSES.has(circle.status)),
+    [circles],
+  );
+  const hasAnyCircles = activeCircles.length > 0 || setupCircles.length > 0;
+
+  const listData = useMemo(() => {
+    const items: ListItem[] = [];
+    if (!hasAnyCircles) {
+      return items;
+    }
+
+    if (setupCircles.length > 0) {
+      items.push({
+        type: 'header',
+        id: 'header-setup',
+        title: 'In setup',
+        count: setupCircles.length,
+      });
+      for (const circle of setupCircles) {
+        items.push({ type: 'circle', id: circle.id, circle });
+      }
+    }
+
+    if (activeCircles.length > 0) {
+      items.push({
+        type: 'header',
+        id: 'header-active',
+        title: 'Active Circles',
+        count: activeCircles.length,
+      });
+      for (const circle of activeCircles) {
+        items.push({ type: 'circle', id: circle.id, circle });
+      }
+    }
+
+    return items;
+  }, [activeCircles, setupCircles, hasAnyCircles]);
 
   const loadCircles = useCallback(async () => {
     if (!token) {
@@ -44,14 +96,16 @@ export default function CirclesScreen() {
     try {
       const summaries = await getCircles(token);
       setCircles(summaries);
-      
-      const active = summaries.filter(c => c.status === 'active');
-      const details = await Promise.all(
-        active.map(c => getCircleDetail(token, c.id).catch(() => null))
+
+      const detailTargets = summaries.filter(
+        (c) => c.status === 'active' || SETUP_STATUSES.has(c.status),
       );
-      
+      const details = await Promise.all(
+        detailTargets.map((c) => getCircleDetail(token, c.id).catch(() => null)),
+      );
+
       const detailsMap: Record<string, BackendCircleDetail> = {};
-      active.forEach((circle, index) => {
+      detailTargets.forEach((circle, index) => {
         const detail = details[index];
         if (detail) {
           detailsMap[circle.id] = detail;
@@ -78,24 +132,17 @@ export default function CirclesScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <FlatList
-        data={activeCircles}
+        data={listData}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <>
-            <View style={styles.header}>
-              <Text style={styles.title}>My Circles</Text>
-              <Text style={styles.subtitle}>
-                Your active savings groups.
-              </Text>
-            </View>
-
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Active Circles</Text>
-              <Text style={styles.sectionCount}>{activeCircles.length}</Text>
-            </View>
-          </>
+          <View style={styles.header}>
+            <Text style={styles.title}>My Circles</Text>
+            <Text style={styles.subtitle}>
+              Your savings groups — setup and active.
+            </Text>
+          </View>
         }
         ListEmptyComponent={
           loading ? (
@@ -121,57 +168,115 @@ export default function CirclesScreen() {
             <EmptyState />
           )
         }
-        renderItem={({ item }) => (
-          <CircleCard 
-            circle={item} 
-            detail={circleDetails[item.id]} 
-            userId={userId} 
-          />
-        )}
+        renderItem={({ item }) => {
+          if (item.type === 'header') {
+            return (
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{item.title}</Text>
+                <Text style={styles.sectionCount}>{item.count}</Text>
+              </View>
+            );
+          }
+
+          return (
+            <CircleCard
+              circle={item.circle}
+              detail={circleDetails[item.circle.id]}
+              userId={userId}
+            />
+          );
+        }}
         ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
         ListFooterComponent={
           <View>
+            <Pressable
+              style={({ pressed }) => [
+                styles.completedLink,
+                pressed && styles.cardPressed,
+              ]}
+              onPress={() => router.push(completedCirclesHref)}
+              accessibilityRole="button"
+              accessibilityLabel="View completed circles"
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.completedLinkTitle}>Completed circles</Text>
+                <Text style={styles.completedLinkSubtitle}>
+                  View finished groups and restart one if you want.
+                </Text>
+              </View>
+              <FontAwesome name="chevron-right" size={16} color={colors.muted} />
+            </Pressable>
+
             <View style={styles.howItWorksContainer}>
-              <Pressable 
-                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }} 
+              <Pressable
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
                 onPress={() => setHowItWorksExpanded(!howItWorksExpanded)}
                 accessibilityRole="button"
               >
-                <Text style={[styles.howItWorksTitle, { marginBottom: 0 }]}>How joining works</Text>
-                <FontAwesome name={howItWorksExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.text} />
+                <Text style={[styles.howItWorksTitle, { marginBottom: 0 }]}>
+                  How joining works
+                </Text>
+                <FontAwesome
+                  name={howItWorksExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.text}
+                />
               </Pressable>
 
               {howItWorksExpanded ? (
                 <View style={{ marginTop: 24 }}>
                   <View style={styles.stepRow}>
-                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>1</Text></View>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>1</Text>
+                    </View>
                     <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>Get the invite link from the organizer</Text>
-                      <Text style={styles.stepDescription}>The organizer shares a unique link to join their circle.</Text>
+                      <Text style={styles.stepTitle}>
+                        Get the invite link from the organizer
+                      </Text>
+                      <Text style={styles.stepDescription}>
+                        The organizer shares a unique link to join their circle.
+                      </Text>
                     </View>
                   </View>
 
                   <View style={styles.stepRow}>
-                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>2</Text></View>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>2</Text>
+                    </View>
                     <View style={styles.stepContent}>
                       <Text style={styles.stepTitle}>Open the link & Log In</Text>
-                      <Text style={styles.stepDescription}>Tap the link and log into your account (or sign up).</Text>
+                      <Text style={styles.stepDescription}>
+                        Tap the link and log into your account (or sign up).
+                      </Text>
                     </View>
                   </View>
 
                   <View style={styles.stepRow}>
-                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>3</Text>
+                    </View>
                     <View style={styles.stepContent}>
                       <Text style={styles.stepTitle}>Tap Join</Text>
-                      <Text style={styles.stepDescription}>You will instantly be added to the circle roster.</Text>
+                      <Text style={styles.stepDescription}>
+                        You will instantly be added to the circle roster.
+                      </Text>
                     </View>
                   </View>
 
                   <View style={styles.stepRow}>
-                    <View style={styles.stepNumber}><Text style={styles.stepNumberText}>4</Text></View>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>4</Text>
+                    </View>
                     <View style={styles.stepContent}>
                       <Text style={styles.stepTitle}>Access your workspace</Text>
-                      <Text style={styles.stepDescription}>Track contributions, see payouts, and know when it's your turn!</Text>
+                      <Text style={styles.stepDescription}>
+                        Track contributions, see payouts, and know when it's
+                        your turn!
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -203,45 +308,82 @@ function CircleCard({
   userId?: string;
 }) {
   const userIsOrganizer = isOrganizer(circle.userRole);
+  const isSetup = SETUP_STATUSES.has(circle.status);
   const progress = circle.currentRoundProgress?.percentConfirmed ?? 0;
-  
+
   const totalRounds = detail?.members?.length ?? circle.memberCount;
-  const viewerPosition = detail && userId ? getViewerPosition(detail, userId) : null;
+  const viewerPosition =
+    detail && userId ? getViewerPosition(detail, userId) : null;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={() => router.push(circleWorkspaceHref(circle.id))}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${circle.name}`}
+      accessibilityLabel={
+        isSetup ? `Continue setup for ${circle.name}` : `Open ${circle.name}`
+      }
     >
       <View style={styles.cardHeader}>
         <View style={styles.circleInfo}>
           <View style={styles.circleTitleRow}>
             <Text style={styles.circleName}>{circle.name}</Text>
+            {isSetup ? (
+              <View style={styles.setupTag}>
+                <Text style={styles.setupTagText}>Setup</Text>
+              </View>
+            ) : null}
             {userIsOrganizer ? (
               <View style={styles.organizerTag}>
                 <Text style={styles.organizerTagText}>Organizer</Text>
               </View>
             ) : null}
           </View>
-          <Text style={styles.circleMeta}>
-            {capitalize(circle.frequency)} • Round {circle.currentRound} of {totalRounds}
-          </Text>
-          {viewerPosition ? (
-            <Text style={{ color: colors.success, fontSize: 13, fontWeight: '800', marginTop: 4 }}>
-              Your position: #{viewerPosition}
+          {isSetup ? (
+            <Text style={styles.circleMeta}>
+              {capitalize(circle.status)} • {circle.memberCount}{' '}
+              {circle.memberCount === 1 ? 'member' : 'members'} •{' '}
+              {formatMoney(circle.contributionAmount)}
             </Text>
-          ) : null}
+          ) : (
+            <>
+              <Text style={styles.circleMeta}>
+                {capitalize(circle.frequency)} • Round {circle.currentRound} of{' '}
+                {totalRounds}
+              </Text>
+              {viewerPosition ? (
+                <Text
+                  style={{
+                    color: colors.success,
+                    fontSize: 13,
+                    fontWeight: '800',
+                    marginTop: 4,
+                  }}
+                >
+                  Your position: #{viewerPosition}
+                </Text>
+              ) : null}
+            </>
+          )}
         </View>
-        <View style={{ alignItems: 'center' }}>
-          <View style={styles.progressRing}>
-            <Text style={styles.progressText}>{progress}%</Text>
+        {!isSetup ? (
+          <View style={{ alignItems: 'center' }}>
+            <View style={styles.progressRing}>
+              <Text style={styles.progressText}>{progress}%</Text>
+            </View>
+            <Text
+              style={{
+                color: colors.muted,
+                fontSize: 11,
+                fontWeight: '800',
+                marginTop: 6,
+              }}
+            >
+              {circle.currentRoundProgress?.confirmedCount ?? 0} of {totalRounds}{' '}
+              confirmed
+            </Text>
           </View>
-          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800', marginTop: 6 }}>
-            {circle.currentRoundProgress?.confirmedCount ?? 0} of {totalRounds} confirmed
-          </Text>
-        </View>
+        ) : null}
       </View>
 
       <View style={styles.detailsRow}>
@@ -258,7 +400,9 @@ function CircleCard({
       </View>
 
       <View style={styles.openButton}>
-        <Text style={styles.openButtonText}>Open Circle</Text>
+        <Text style={styles.openButtonText}>
+          {isSetup ? 'Continue setup' : 'Open Circle'}
+        </Text>
         <FontAwesome name="arrow-right" size={18} color="#ffffff" />
       </View>
     </Pressable>
@@ -269,9 +413,9 @@ function EmptyState() {
   return (
     <View style={styles.emptyState}>
       <FontAwesome name="users" size={80} color={colors.muted} />
-      <Text style={styles.emptyTitle}>No active circles yet</Text>
+      <Text style={styles.emptyTitle}>No circles yet</Text>
       <Text style={styles.emptySubtitle}>
-        Create a savings group to begin.
+        Create a savings group or join one with an invite link.
       </Text>
     </View>
   );
@@ -285,7 +429,7 @@ function getViewerPosition(detail: BackendCircleDetail, userId: string) {
     const nB = posB === -1 ? 9999 : posB;
     return nA - nB;
   });
-  const viewer = ordered.find(m => m.userId === userId);
+  const viewer = ordered.find((m) => m.userId === userId);
   return viewer ? ordered.indexOf(viewer) + 1 : null;
 }
 
@@ -330,7 +474,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 4,
+    marginTop: 8,
   },
   sectionTitle: {
     color: colors.text,
@@ -341,9 +486,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 20,
     fontWeight: '700',
-  },
-  cardStack: {
-    gap: 20,
   },
   card: {
     backgroundColor: colors.card,
@@ -384,6 +526,17 @@ const styles = StyleSheet.create({
   },
   organizerTagText: {
     color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  setupTag: {
+    backgroundColor: colors.warningSoft,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  setupTagText: {
+    color: '#92400E',
     fontSize: 11,
     fontWeight: '900',
   },
@@ -501,57 +654,27 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
-  joinContainer: {
-    marginTop: 40,
+  completedLink: {
+    alignItems: 'center',
     backgroundColor: colors.card,
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
     borderColor: colors.cardBorder,
-  },
-  joinTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.textStrong,
-  },
-  joinSubtitle: {
-    fontSize: 14,
-    color: colors.muted,
-    marginTop: 6,
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  joinInputRow: {
+    borderRadius: 20,
+    borderWidth: 1,
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
+    marginTop: 24,
+    padding: 18,
   },
-  joinInput: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 54,
-    fontSize: 15,
+  completedLinkTitle: {
     color: colors.textStrong,
+    fontSize: 16,
+    fontWeight: '900',
   },
-  joinButton: {
-    backgroundColor: colors.primary,
-    height: 54,
-    paddingHorizontal: 24,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  joinButtonPressed: {
-    opacity: 0.85,
-  },
-  joinButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
+  completedLinkSubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
   },
   howItWorksContainer: {
     marginTop: 24,

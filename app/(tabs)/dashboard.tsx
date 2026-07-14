@@ -1,10 +1,10 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
-import { useEffect, useState, type ComponentProps } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState, type ComponentProps } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,14 +14,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   getCircleDetail,
+  getCircleSchedule,
   getCircles,
   getDashboardSummary,
   type BackendCircleDetail,
+  type BackendRoundSnapshot,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { useMarket } from '@/lib/market';
 import {
   circleWorkspaceHref,
+  contributionHref,
   createCircleHref,
   myCirclesHref,
 } from '@/lib/navigation';
@@ -31,97 +34,162 @@ import type { BackendCircleSummary, DashboardSummary } from '@/lib/types';
 
 type IconName = ComponentProps<typeof FontAwesome>['name'];
 
+const PERSONAL_DUE_STATUSES = new Set(['due', 'missed', 'rejected']);
+const REVIEW_STATUSES = new Set(['submitted', 'late']);
+const DETAIL_LIMIT = 5;
+
 export default function DashboardScreen() {
   const { session } = useAuthSession();
   const { t } = useMarket();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
-  const [firstCircleDetail, setFirstCircleDetail] =
-    useState<BackendCircleDetail | null>(null);
+  const [circleDetails, setCircleDetails] = useState<
+    Record<string, BackendCircleDetail>
+  >({});
+  const [circleSchedules, setCircleSchedules] = useState<
+    Record<string, BackendRoundSnapshot>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const token = session?.session.token;
+  const userId = session?.user.id;
   const displayName = session?.user.name ?? 'Member';
   const firstName = displayName.split(' ')[0] || 'Member';
-  const activeCircles = circles.filter((circle) => circle.status === 'active');
+
+  const activeCircles = useMemo(
+    () => circles.filter((circle) => circle.status === 'active'),
+    [circles],
+  );
+
+  const userIsOrganizer = useMemo(
+    () => activeCircles.some((circle) => isOrganizer(circle.userRole)),
+    [activeCircles],
+  );
+
+  const { personalDueCircles, reviewTargets } = useMemo(
+    () =>
+      deriveContributionActions(
+        activeCircles,
+        circleDetails,
+        circleSchedules,
+        userId,
+      ),
+    [activeCircles, circleDetails, circleSchedules, userId],
+  );
+
+  const personalDueCount = personalDueCircles.length;
+  const reviewCount = reviewTargets.reduce(
+    (sum, target) => sum + target.count,
+    0,
+  );
+  const firstReviewTarget = reviewTargets[0];
+  const firstDueCircle = personalDueCircles[0];
+
   const firstCircle = activeCircles[0];
-  const userIsOrganizer = isOrganizer(firstCircle?.userRole);
-  const progress = firstCircle?.currentRoundProgress?.percentConfirmed;
-  const currentRoundNumber = firstCircle?.currentRound;
-  const recipientName = getCurrentRecipientName(firstCircleDetail);
-  const totalRounds = firstCircleDetail?.members?.length;
-  const viewerMember = firstCircleDetail?.members.find((m) => m.userId === session?.user.id);
-  const isViewerRecipient = viewerMember && firstCircleDetail?.currentRoundSummary?.recipientMemberId === viewerMember.id;
+  const firstDetail = firstCircle ? circleDetails[firstCircle.id] : null;
+  const recipientName = getCurrentRecipientName(firstDetail);
 
-  const dueDateStr = firstCircleDetail?.currentRoundSummary?.dueDate;
-  let formattedDueDate = '';
-  if (dueDateStr) {
-    // Try to parse YYYY-MM-DD
-    const parts = dueDateStr.split('-');
-    if (parts.length >= 3) {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const m = parseInt(parts[1], 10);
-      const d = parseInt(parts[2], 10);
-      if (m >= 1 && m <= 12 && !isNaN(d)) {
-        formattedDueDate = `${months[m - 1]} ${d}`;
-      } else {
-        formattedDueDate = dueDateStr;
+  const loadDashboard = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!token) {
+        setError('Your session is missing an access token. Sign in again.');
+        setSummary(null);
+        setCircles([]);
+        setCircleDetails({});
+        setCircleSchedules({});
+        setLoading(false);
+        return;
       }
-    } else {
-      formattedDueDate = dueDateStr; // Fallback to raw API string
-    }
-  }
 
-  async function loadDashboard() {
-    if (!token) {
-      setError('Your session is missing an access token. Sign in again.');
-      setSummary(null);
-      setCircles([]);
-      setFirstCircleDetail(null);
-      setLoading(false);
-      return;
-    }
+      if (!options?.silent) {
+        setLoading(true);
+      }
+      setError(null);
 
-    setLoading(true);
-    setError(null);
+      try {
+        const [nextSummary, nextCircles] = await Promise.all([
+          getDashboardSummary(token),
+          getCircles(token),
+        ]);
+        const nextActiveCircles = nextCircles.filter(
+          (circle) => circle.status === 'active',
+        );
+        const toLoad = nextActiveCircles.slice(0, DETAIL_LIMIT);
+
+        const [details, schedules] = await Promise.all([
+          Promise.all(
+            toLoad.map((c) => getCircleDetail(token, c.id).catch(() => null)),
+          ),
+          Promise.all(
+            toLoad.map((c) =>
+              getCircleSchedule(token, c.id).catch(() => null),
+            ),
+          ),
+        ]);
+
+        const detailsMap: Record<string, BackendCircleDetail> = {};
+        const schedulesMap: Record<string, BackendRoundSnapshot> = {};
+        toLoad.forEach((circle, index) => {
+          const detail = details[index];
+          const schedule = schedules[index];
+          if (detail) {
+            detailsMap[circle.id] = detail;
+          }
+          if (schedule) {
+            schedulesMap[circle.id] = schedule;
+          }
+        });
+
+        setSummary(nextSummary);
+        setCircles(nextCircles);
+        setCircleDetails(detailsMap);
+        setCircleSchedules(schedulesMap);
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Unable to load your dashboard.',
+        );
+        setSummary(null);
+        setCircles([]);
+        setCircleDetails({});
+        setCircleSchedules({});
+      } finally {
+        setLoading(false);
+      }
+    },
+    [token],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadDashboard();
+    }, [loadDashboard]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const [nextSummary, nextCircles] = await Promise.all([
-        getDashboardSummary(token),
-        getCircles(token),
-      ]);
-      const nextActiveCircles = nextCircles.filter(
-        (circle) => circle.status === 'active',
-      );
-      const nextFirstCircle = nextActiveCircles[0];
-
-      setSummary(nextSummary);
-      setCircles(nextCircles);
-      setFirstCircleDetail(
-        nextFirstCircle ? await getCircleDetail(token, nextFirstCircle.id) : null,
-      );
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load your dashboard.',
-      );
-      setSummary(null);
-      setCircles([]);
-      setFirstCircleDetail(null);
+      await loadDashboard({ silent: true });
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
-  }
-
-  useEffect(() => {
-    void loadDashboard();
-  }, [token]);
+  }, [loadDashboard]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         <View style={styles.greeting}>
           <View style={styles.welcomeRow}>
@@ -131,9 +199,7 @@ export default function DashboardScreen() {
             <View
               style={[
                 styles.roleBadge,
-                userIsOrganizer
-                  ? styles.organizerBadge
-                  : styles.memberBadge,
+                userIsOrganizer ? styles.organizerBadge : styles.memberBadge,
               ]}
             >
               <Text style={styles.roleBadgeText}>
@@ -153,34 +219,110 @@ export default function DashboardScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             pagingEnabled
-            snapToInterval={Dimensions.get('window').width - spacing.screenX * 2 + 16}
+            snapToInterval={
+              Dimensions.get('window').width - spacing.screenX * 2 + 16
+            }
             decelerationRate="fast"
             contentContainerStyle={styles.heroCarouselContainer}
           >
             {activeCircles.map((circle) => {
               const potTotal = circle.contributionAmount * circle.memberCount;
               return (
-                <View key={circle.id} style={styles.carouselHeroCard}>
+                <Pressable
+                  key={circle.id}
+                  style={({ pressed }) => [
+                    styles.carouselHeroCard,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => router.push(circleWorkspaceHref(circle.id))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${circle.name}`}
+                >
                   <Text style={styles.heroSub}>{circle.name}</Text>
                   <Text style={styles.heroLabel}>In the Pot</Text>
-                  <Text style={styles.heroAmount}>
-                    {formatMoney(potTotal)}
-                  </Text>
+                  <Text style={styles.heroAmount}>{formatMoney(potTotal)}</Text>
                   <View style={styles.heroFooterRow}>
                     <Text style={styles.heroFooterText}>
                       Contribution: {formatMoney(circle.contributionAmount)}
                     </Text>
+                    <Text style={styles.heroTapHint}>Tap to open</Text>
                   </View>
-                </View>
+                </Pressable>
               );
             })}
           </ScrollView>
         ) : (
           <View style={styles.heroCard}>
-            <Text style={styles.heroLabel}>No active {t('circles').toLowerCase()}</Text>
-            <Text style={styles.heroSub}>Create or join a {t('circle').toLowerCase()} to get started</Text>
+            <Text style={styles.heroLabel}>
+              No active {t('circles').toLowerCase()}
+            </Text>
+            <Text style={styles.heroSub}>
+              Create or join a {t('circle').toLowerCase()} to get started
+            </Text>
           </View>
         )}
+
+        {personalDueCount > 0 && firstDueCircle ? (
+          <View style={[styles.payDueCard, { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }]}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <View style={[styles.actionCardHeader, { marginBottom: 4 }]}>
+                <FontAwesome name="exclamation-circle" size={18} color={colors.primaryDark} />
+                <Text style={styles.payDueTitle}>Contribution Due</Text>
+              </View>
+              <Text style={[styles.payDueSubtitle, { marginTop: 0 }]}>
+                Next payment for {firstDueCircle.name} is ready.
+              </Text>
+            </View>
+            <Pressable
+              style={({ pressed }) => [
+                styles.payDueButton,
+                { marginTop: 0, paddingHorizontal: 14, paddingVertical: 10 },
+                pressed && styles.pressed,
+              ]}
+              onPress={() =>
+                router.push(contributionHref(firstDueCircle.id))
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Pay your part"
+            >
+              <Text style={styles.payDueButtonText}>Pay Now</Text>
+              <FontAwesome name="arrow-right" size={12} color="#ffffff" />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {reviewCount > 0 && firstReviewTarget ? (
+          <View style={[styles.reviewCard, { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }]}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <View style={[styles.actionCardHeader, { marginBottom: 4 }]}>
+                <FontAwesome name="check-circle" size={18} color="#B45309" />
+                <Text style={styles.reviewTitle}>Payments to review</Text>
+              </View>
+              <Text style={[styles.reviewSubtitle, { marginTop: 0 }]}>
+                {reviewCount === 1
+                  ? `1 payment waiting in ${firstReviewTarget.circle.name}`
+                  : `${reviewCount} payments waiting for review`}
+              </Text>
+            </View>
+            <Pressable
+              style={({ pressed }) => [
+                styles.reviewButton,
+                { marginTop: 0, paddingHorizontal: 14, paddingVertical: 10 },
+                pressed && styles.pressed,
+              ]}
+              onPress={() =>
+                router.push(
+                  circleWorkspaceHref(firstReviewTarget.circle.id, 'round'),
+                )
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Review payments"
+            >
+              <Text style={styles.reviewButtonText}>Review</Text>
+              <FontAwesome name="arrow-right" size={12} color="#ffffff" />
+            </Pressable>
+          </View>
+        ) : null}
 
         {error ? (
           <View style={styles.errorCard}>
@@ -211,7 +353,11 @@ export default function DashboardScreen() {
             value={String(summary?.activeCircles ?? activeCircles.length)}
             label={`Active ${t('circles')}`}
             color={colors.primary}
-            detail={userIsOrganizer ? `You manage these ${t('circles').toLowerCase()}` : undefined}
+            detail={
+              userIsOrganizer
+                ? `You manage these ${t('circles').toLowerCase()}`
+                : undefined
+            }
           />
         </View>
 
@@ -227,55 +373,92 @@ export default function DashboardScreen() {
             </Pressable>
           </View>
 
-          {firstCircle ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.circleCard,
-                pressed && styles.pressed,
-              ]}
-              onPress={() => router.push(circleWorkspaceHref(firstCircle.id))}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${firstCircle.name}`}
-            >
-              <View style={styles.circleHeader}>
-                <Text style={styles.circleName}>{firstCircle.name}</Text>
-                <View style={styles.progressRing}>
-                  <Text style={styles.progressText}>
-                    {formatProgress(progress)}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.circleMeta}>
-                {capitalize(firstCircle.frequency)} • Round{' '}
-                {formatRound(currentRoundNumber)}{totalRounds ? ` of ${totalRounds}` : ''}
-              </Text>
-                {isViewerRecipient ? (
-                  <View style={{ alignItems: 'flex-start' }}>
-                    <Text style={[styles.recipient, { color: colors.success, fontWeight: '900' }]}>
-                      ✨ It's your turn this round
+          {activeCircles.length > 0 ? (
+            <View style={styles.circleList}>
+              {activeCircles.map((circle) => {
+                const detail = circleDetails[circle.id];
+                const progress = circle.currentRoundProgress?.percentConfirmed;
+                const currentRoundNumber = circle.currentRound;
+                const totalRounds = detail?.members?.length;
+                const viewerMember = detail?.members.find(
+                  (m) => m.userId === userId,
+                );
+                const isViewerRecipient =
+                  viewerMember &&
+                  detail?.currentRoundSummary?.recipientMemberId ===
+                    viewerMember.id;
+                const circleRecipientName = getCurrentRecipientName(detail);
+                const formattedDueDate = formatShortDueDate(
+                  detail?.currentRoundSummary?.dueDate,
+                );
+                const circleIsOrganizer = isOrganizer(circle.userRole);
+
+                return (
+                  <Pressable
+                    key={circle.id}
+                    style={({ pressed }) => [
+                      styles.circleCard,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() =>
+                      router.push(circleWorkspaceHref(circle.id))
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${circle.name}`}
+                  >
+                    <View style={styles.circleHeader}>
+                      <Text style={styles.circleName}>{circle.name}</Text>
+                      <View style={styles.progressRing}>
+                        <Text style={styles.progressText}>
+                          {formatProgress(progress)}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.circleMeta}>
+                      {capitalize(circle.frequency)} • Round{' '}
+                      {formatRound(currentRoundNumber)}
+                      {totalRounds ? ` of ${totalRounds}` : ''}
                     </Text>
-                    {formattedDueDate ? (
-                      <Text style={[styles.circleMeta, { marginTop: 2, color: colors.success }]}>
-                        Payout: {formattedDueDate}
-                      </Text>
+                    {isViewerRecipient ? (
+                      <View style={{ alignItems: 'flex-start' }}>
+                        <Text
+                          style={[
+                            styles.recipient,
+                            { color: colors.success, fontWeight: '900' },
+                          ]}
+                        >
+                          ✨ It's your turn this round
+                        </Text>
+                        {formattedDueDate ? (
+                          <Text
+                            style={[
+                              styles.circleMeta,
+                              { marginTop: 2, color: colors.success },
+                            ]}
+                          >
+                            Payout: {formattedDueDate}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : (
+                      <View style={{ alignItems: 'flex-start' }}>
+                        <Text style={styles.recipient}>
+                          Next: {circleRecipientName ?? 'Unavailable'}
+                        </Text>
+                        {formattedDueDate ? (
+                          <Text style={[styles.circleMeta, { marginTop: 2 }]}>
+                            Payout: {formattedDueDate}
+                          </Text>
+                        ) : null}
+                      </View>
+                    )}
+                    {circleIsOrganizer ? (
+                      <Text style={styles.manageLabel}>Manage as Organizer</Text>
                     ) : null}
-                  </View>
-                ) : (
-                  <View style={{ alignItems: 'flex-start' }}>
-                    <Text style={styles.recipient}>
-                      Next: {recipientName ?? 'Unavailable'}
-                    </Text>
-                    {formattedDueDate ? (
-                      <Text style={[styles.circleMeta, { marginTop: 2 }]}>
-                        Payout: {formattedDueDate}
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-              {userIsOrganizer ? (
-                <Text style={styles.manageLabel}>Manage as Organizer</Text>
-              ) : null}
-            </Pressable>
+                  </Pressable>
+                );
+              })}
+            </View>
           ) : (
             <View style={styles.emptyCard}>
               <FontAwesome name="users" size={28} color={colors.muted} />
@@ -320,6 +503,65 @@ export default function DashboardScreen() {
   );
 }
 
+function deriveContributionActions(
+  activeCircles: BackendCircleSummary[],
+  circleDetails: Record<string, BackendCircleDetail>,
+  circleSchedules: Record<string, BackendRoundSnapshot>,
+  userId?: string,
+) {
+  const personalDueCircles: BackendCircleSummary[] = [];
+  const reviewTargets: { circle: BackendCircleSummary; count: number }[] = [];
+
+  for (const circle of activeCircles) {
+    const schedule = circleSchedules[circle.id];
+    if (!schedule) {
+      continue;
+    }
+
+    const detail = circleDetails[circle.id];
+    const viewerMemberId =
+      schedule.roundWorkspace?.viewerMemberId ??
+      detail?.members.find((member) => member.userId === userId)?.id ??
+      null;
+
+    const currentRound =
+      schedule.roundWorkspace?.currentRoundNumber ?? schedule.currentRound;
+
+    const contributionsForRound = schedule.contributions.filter(
+      (contribution) => contribution.round === currentRound,
+    );
+
+    if (viewerMemberId) {
+      const viewerContribution = contributionsForRound.find(
+        (contribution) => contribution.memberId === viewerMemberId,
+      );
+      const status = String(viewerContribution?.status ?? '')
+        .trim()
+        .toLowerCase();
+
+      if (!viewerContribution || PERSONAL_DUE_STATUSES.has(status)) {
+        personalDueCircles.push(circle);
+      }
+    }
+
+    const canReview =
+      schedule.roundWorkspace?.viewerPermissions?.canApproveContributions ===
+        true || isOrganizer(circle.userRole);
+
+    if (canReview) {
+      const pendingReview = contributionsForRound.filter((contribution) =>
+        REVIEW_STATUSES.has(String(contribution.status).trim().toLowerCase()),
+      ).length;
+
+      if (pendingReview > 0) {
+        reviewTargets.push({ circle, count: pendingReview });
+      }
+    }
+  }
+
+  return { personalDueCircles, reviewTargets };
+}
+
 function StatCard({
   icon,
   value,
@@ -352,12 +594,12 @@ function getGreeting() {
 
 function getNextPayoutLabel(payoutDate?: string) {
   if (!payoutDate) {
-    return 'â€”';
+    return '—';
   }
 
   const payoutTime = Date.parse(payoutDate);
   if (!Number.isFinite(payoutTime)) {
-    return 'â€”';
+    return '—';
   }
 
   const days = Math.max(
@@ -367,7 +609,7 @@ function getNextPayoutLabel(payoutDate?: string) {
   return days === 0 ? 'Today' : `In ${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
-function getCurrentRecipientName(circle: BackendCircleDetail | null) {
+function getCurrentRecipientName(circle: BackendCircleDetail | null | undefined) {
   const recipientMemberId = circle?.currentRoundSummary?.recipientMemberId;
   if (!recipientMemberId) {
     return null;
@@ -379,14 +621,45 @@ function getCurrentRecipientName(circle: BackendCircleDetail | null) {
   return recipient?.full_name || recipient?.name || null;
 }
 
+function formatShortDueDate(dueDateStr?: string | null) {
+  if (!dueDateStr) {
+    return '';
+  }
+
+  const parts = dueDateStr.split('-');
+  if (parts.length >= 3) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (m >= 1 && m <= 12 && !Number.isNaN(d)) {
+      return `${months[m - 1]} ${d}`;
+    }
+  }
+
+  return dueDateStr;
+}
+
 function formatProgress(progress?: number) {
   return typeof progress === 'number' && Number.isFinite(progress)
     ? `${Math.max(0, Math.min(100, Math.round(progress)))}%`
-    : 'â€”';
+    : '—';
 }
 
 function formatRound(round?: number) {
-  return typeof round === 'number' && Number.isFinite(round) ? round : 'â€”';
+  return typeof round === 'number' && Number.isFinite(round) ? round : '—';
 }
 
 function formatMoney(amount: number) {
@@ -473,10 +746,16 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     width: '100%',
     alignItems: 'center',
+    gap: 6,
   },
   heroFooterText: {
     color: '#ffffff',
     fontSize: 15,
+    fontWeight: '700',
+  },
+  heroTapHint: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
     fontWeight: '700',
   },
   heroLabel: {
@@ -491,12 +770,84 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginVertical: 8,
   },
-  heroLoader: {
-    marginVertical: 17,
-  },
   heroSub: {
     color: '#C4B5FD',
     fontSize: 15,
+  },
+  payDueCard: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    marginBottom: 16,
+    padding: 18,
+  },
+  actionCardHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  payDueTitle: {
+    color: colors.primaryDark,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  payDueSubtitle: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+  payDueButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  payDueButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  reviewCard: {
+    backgroundColor: colors.warningSoft,
+    borderColor: '#FCD34D',
+    borderRadius: radii.card,
+    borderWidth: 1,
+    marginBottom: 16,
+    padding: 18,
+  },
+  reviewTitle: {
+    color: '#92400E',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  reviewSubtitle: {
+    color: '#78350F',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+  reviewButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#D97706',
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  reviewButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '900',
   },
   errorCard: {
     alignItems: 'center',
@@ -585,6 +936,9 @@ const styles = StyleSheet.create({
   seeAll: {
     color: colors.primary,
     fontWeight: '700',
+  },
+  circleList: {
+    gap: 16,
   },
   circleCard: {
     backgroundColor: colors.card,
@@ -689,5 +1043,3 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
   },
 });
-
-

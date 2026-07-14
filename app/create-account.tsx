@@ -31,7 +31,8 @@ export default function CreateAccountScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { setAuthenticatedSession, setPostAuthTarget } = useAuthSession();
+  const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
+    useAuthSession();
   const incomingUrl = Linking.useURL();
 
   async function handleCreateAccount() {
@@ -59,7 +60,10 @@ export default function CreateAccountScreen() {
         phone: phone.trim(),
         password,
       });
-      setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+      // Keep an explicit target (e.g. invite return) over the raw deep link.
+      if (!postAuthTarget) {
+        setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+      }
       await setAuthenticatedSession(result);
     } catch (error) {
       Alert.alert(

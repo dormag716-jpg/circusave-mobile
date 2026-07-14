@@ -17,7 +17,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { addCircleMember, createCircle, startCircle, getCircleDetail } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import { createCircleHref } from '@/lib/navigation';
+import {
+  circleInviteHref,
+  circleWorkspaceHref,
+  createCircleHref,
+} from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
 const steps = [
@@ -193,9 +197,23 @@ export default function CircleSetupWizardScreen() {
 
       await startCircle(token, createdCircle.id);
 
-      Alert.alert('Success', 'Circle created successfully!', [
-        { text: 'OK', onPress: () => router.replace('/(tabs)/circles') },
-      ]);
+      Alert.alert(
+        'Circle created',
+        'Share invites so members can join and claim their spots.',
+        [
+          {
+            text: 'Invite members',
+            onPress: () =>
+              router.replace(circleInviteHref(createdCircle.id)),
+          },
+          {
+            text: 'Open workspace',
+            style: 'cancel',
+            onPress: () =>
+              router.replace(circleWorkspaceHref(createdCircle.id)),
+          },
+        ],
+      );
     } catch (error) {
       Alert.alert(
         'Unable to create circle',

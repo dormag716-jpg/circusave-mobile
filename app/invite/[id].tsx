@@ -18,7 +18,7 @@ import {
   type BackendInvitePreview,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import { circleWorkspaceHref } from '@/lib/navigation';
+import { circleWorkspaceHref, inviteJoinHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
 function capitalizeFrequency(f: string | undefined) {
@@ -26,11 +26,18 @@ function capitalizeFrequency(f: string | undefined) {
 }
 
 export default function JoinInviteScreen() {
-  const { session } = useAuthSession();
+  const { session, setPostAuthTarget } = useAuthSession();
   const params = useLocalSearchParams<{ id?: string | string[], claimToken?: string | string[] }>();
   const circleId = Array.isArray(params.id) ? params.id[0] : params.id;
   const claimToken = Array.isArray(params.claimToken) ? params.claimToken[0] : params.claimToken;
   const token = session?.session.token;
+
+  function continueAuth(path: '/login' | '/create-account') {
+    if (circleId) {
+      setPostAuthTarget(inviteJoinHref(circleId, claimToken));
+    }
+    router.push(path);
+  }
 
   const [preview, setPreview] = useState<BackendInvitePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -190,14 +197,26 @@ export default function JoinInviteScreen() {
           ) : (
             <View style={styles.loginCard}>
               <Text style={styles.loginText}>
-                You need to log in to join this circle.
+                Sign in or create an account to join this circle. We'll bring
+                you right back here.
               </Text>
               <Pressable
                 style={styles.primaryButton}
-                onPress={() => router.push('/login')}
+                onPress={() => continueAuth('/login')}
                 accessibilityRole="button"
+                accessibilityLabel="Log in to join"
               >
-                <Text style={styles.primaryButtonText}>Log In or Sign Up</Text>
+                <Text style={styles.primaryButtonText}>Log In</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.primaryButton, styles.secondaryAuthButton]}
+                onPress={() => continueAuth('/create-account')}
+                accessibilityRole="button"
+                accessibilityLabel="Create account to join"
+              >
+                <Text style={styles.secondaryAuthButtonText}>
+                  Create account
+                </Text>
               </Pressable>
             </View>
           )}
@@ -332,11 +351,23 @@ const styles = StyleSheet.create({
   },
   loginCard: {
     alignItems: 'center',
+    gap: 12,
+    width: '100%',
   },
   loginText: {
     fontSize: 15,
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: 4,
     textAlign: 'center',
+  },
+  secondaryAuthButton: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.cardBorder,
+    borderWidth: 1,
+  },
+  secondaryAuthButtonText: {
+    color: colors.primaryDark,
+    fontSize: 17,
+    fontWeight: '800',
   },
 });

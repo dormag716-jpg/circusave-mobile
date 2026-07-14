@@ -1,12 +1,14 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState, useRef, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,13 +32,17 @@ import {
   type BackendLedgerEntry,
   type BackendRoundContribution,
   type BackendRoundSnapshot,
-  type BackendScheduleRound,
   type BackendWalletSnapshot,
   requestPositionSwap,
   getMemberAccessToken,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import { circleInviteHref, circlePaymentSetupHref, contributionHref, myCirclesHref } from '@/lib/navigation';
+import {
+  circleInviteHref,
+  circlePaymentSetupHref,
+  contributionHref,
+  myCirclesHref,
+} from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 import ChatFeed from '@/components/ChatFeed';
 import ChatInput from '@/components/ChatInput';
@@ -74,15 +80,20 @@ export default function CircleWorkspaceScreen() {
   const [circle, setCircle] = useState<BackendCircleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [resolvedRound, setResolvedRound] = useState<number | null>(null);
 
-  async function loadWorkspace() {
+  async function loadWorkspace(options?: { silent?: boolean }) {
     if (!token || !circleId) {
       setError('Missing token or circle ID.');
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -94,7 +105,9 @@ export default function CircleWorkspaceScreen() {
           : 'Unable to load circle.',
       );
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -102,11 +115,33 @@ export default function CircleWorkspaceScreen() {
     void loadWorkspace();
   }, [circleId, token]);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadWorkspace({ silent: true });
+      setRefreshNonce((n) => n + 1);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const displayRound = resolvedRound ?? circle?.currentRound;
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          circle && token ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void handleRefresh()}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          ) : undefined
+        }
       >
         <View style={styles.header}>
           <Pressable
@@ -122,7 +157,7 @@ export default function CircleWorkspaceScreen() {
             <Text style={styles.title}>{circle?.name || 'Circle'}</Text>
             <Text style={styles.subtitle}>
               {circle
-                ? `Round ${circle.currentRound} · ${capitalizeFrequency(circle.frequency)}`
+                ? `Round ${displayRound ?? circle.currentRound} · ${capitalizeFrequency(circle.frequency)}`
                 : 'Loading...'}
             </Text>
           </View>
@@ -164,8 +199,10 @@ export default function CircleWorkspaceScreen() {
             token={token}
             userId={session.user.id}
             initialTab={initialTab}
-            onReload={() => loadWorkspace()}
+            onReload={() => loadWorkspace({ silent: true })}
             isPremium={isPremium}
+            refreshNonce={refreshNonce}
+            onRoundResolved={setResolvedRound}
           />
         ) : (
           <StatusCard
@@ -186,6 +223,8 @@ function WorkspaceContent({
   initialTab,
   onReload,
   isPremium,
+  refreshNonce,
+  onRoundResolved,
 }: {
   circle: BackendCircleDetail;
   token: string;
@@ -193,6 +232,8 @@ function WorkspaceContent({
   initialTab: ActiveTab;
   onReload: () => Promise<void>;
   isPremium: boolean;
+  refreshNonce: number;
+  onRoundResolved: (round: number) => void;
 }) {
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
@@ -200,14 +241,14 @@ function WorkspaceContent({
   );
   const [ledgerEntries, setLedgerEntries] = useState<BackendLedgerEntry[]>([]);
   const [secondaryLoading, setSecondaryLoading] = useState(true);
+  const [secondaryError, setSecondaryError] = useState<string | null>(null);
   const cacheHealRetries = useRef(0);
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
-  const [paymentInstructions, setPaymentInstructions] = useState<string | null>(
-    circle.paymentInstructions ?? null,
-  );
+  const paymentInstructions = circle.paymentInstructions ?? null;
 
-  const loadBackendSections = async () => {
+  const loadBackendSections = useCallback(async () => {
     setSecondaryLoading(true);
+    setSecondaryError(null);
     try {
       const [scheduleResponse, ledgerResponse] = await Promise.all([
         getCircleSchedule(token, circle.id),
@@ -216,8 +257,7 @@ function WorkspaceContent({
       setScheduleData(scheduleResponse);
       setLedgerEntries(ledgerResponse.entries || []);
     } catch (loadError) {
-      Alert.alert(
-        'Unable to refresh workspace',
+      setSecondaryError(
         loadError instanceof Error
           ? loadError.message
           : 'The backend did not return the workspace data.',
@@ -225,11 +265,11 @@ function WorkspaceContent({
     } finally {
       setSecondaryLoading(false);
     }
-  };
+  }, [token, circle.id]);
 
   useEffect(() => {
     void loadBackendSections();
-  }, [circle.id, token]);
+  }, [circle.id, token, refreshNonce, loadBackendSections]);
 
   // scheduleData is the single source of truth for the round summary.
   // Do not fall back to circle.currentRoundSummary — it can be stale relative
@@ -238,8 +278,6 @@ function WorkspaceContent({
   const roundWorkspace = scheduleData?.roundWorkspace;
   const viewerPermissions = roundWorkspace?.viewerPermissions;
   const viewerRole = roundWorkspace?.viewerRole;
-  const isCircleActive =
-    circle.status !== 'setup' && circle.status !== 'completed' && circle.status !== 'cancelled';
 
   const { messages, sendMessage, sending } = useChat(circle.id);
 
@@ -276,36 +314,46 @@ function WorkspaceContent({
     () => getOrderedMembers(circle),
     [circle.members, circle.turnOrder],
   );
-  const currentRoundContributions = useMemo(() => {
-    return scheduleData?.contributions?.filter((c) => c.round === currentRoundNumber) || [];
-  }, [scheduleData?.contributions, currentRoundNumber]);
 
-  const currentRoundMembers = useMemo(
-    () => {
-      return currentRoundContributions
-        .map((contribution) => {
-          const member = orderedMembers.find((m) => m.id === contribution.memberId);
-          if (!member) return null;
+  // Roster-based: every circle member appears, left-joined to their contribution.
+  const currentRoundMembers = useMemo(() => {
+    return orderedMembers.map((member) => {
+      const contribution = findContribution(
+        scheduleData?.contributions,
+        member.id,
+        currentRoundNumber,
+      );
+      return {
+        contribution,
+        member,
+        status: contributionStatus(
+          contribution,
+          roundWallet,
+          ledgerEntries,
+          member.id,
+          currentRoundNumber,
+        ),
+      };
+    });
+  }, [
+    orderedMembers,
+    scheduleData?.contributions,
+    roundWallet,
+    ledgerEntries,
+    currentRoundNumber,
+  ]);
 
-          return {
-            contribution,
-            member,
-            status: contributionStatus(
-              contribution,
-              roundWallet,
-              ledgerEntries,
-              member.id,
-              currentRoundNumber,
-            ),
-          };
-        })
-        .filter((m): m is NonNullable<typeof m> => m !== null);
-    },
-    [currentRoundContributions, orderedMembers, roundWallet, ledgerEntries, currentRoundNumber],
-  );
-  
-  const expectedContributionsCount = currentRoundMembers.length;
+  const expectedContributionsCount =
+    summary?.expectedContributionCount ??
+    roundWorkspace?.totalMemberCount ??
+    orderedMembers.length;
   const viewerMemberId = roundWorkspace?.viewerMemberId ?? null;
+
+  useEffect(() => {
+    if (typeof currentRoundNumber === 'number' && Number.isFinite(currentRoundNumber)) {
+      onRoundResolved(currentRoundNumber);
+    }
+  }, [currentRoundNumber, onRoundResolved]);
 
   const viewerMember =
     orderedMembers.find((member) => member.id === viewerMemberId) ??
@@ -316,7 +364,7 @@ function WorkspaceContent({
     // our circle.members cache is likely stale. Heal it automatically once.
     if (hasBackendWorkspaceAccess && !viewerMember && cacheHealRetries.current < 1) {
       cacheHealRetries.current += 1;
-      onReload(); // This calls loadWorkspace(), triggering a fresh fetch
+      onReload();
     }
   }, [hasBackendWorkspaceAccess, viewerMember, onReload]);
   const viewerContribution = viewerMember
@@ -336,8 +384,6 @@ function WorkspaceContent({
   const viewerPayoutPosition = viewerMember
     ? orderedMembers.findIndex((m) => m.id === viewerMember.id) + 1
     : null;
-  const totalMembers =
-    summary?.expectedContributionCount ?? roundWorkspace?.totalMemberCount;
   const recipientId =
     summary?.recipientMemberId ?? roundWorkspace?.currentRecipientMemberId;
   const recipient = orderedMembers.find((member) => member.id === recipientId);
@@ -352,8 +398,8 @@ function WorkspaceContent({
   // Single source of truth for all Round tab display. Backend still controls
   // whether a payout can actually be released (canReleasePayout below).
 
-
-  const totalRoundsCount = circle.totalRounds ?? scheduleData?.schedule?.length ?? expectedContributionsCount;
+  const totalRoundsCount =
+    circle.totalRounds ?? scheduleData?.schedule?.length ?? expectedContributionsCount;
 
   const visibleConfirmedCount = currentRoundMembers.filter(
     (entry) => entry.status.raw === 'confirmed',
@@ -361,11 +407,16 @@ function WorkspaceContent({
 
   const visibleProgress =
     expectedContributionsCount > 0
-      ? Math.round((visibleConfirmedCount / expectedContributionsCount) * 100)
+      ? Math.round(
+          (Math.min(visibleConfirmedCount, expectedContributionsCount) /
+            expectedContributionsCount) *
+            100,
+        )
       : null;
 
   const displayAllConfirmed =
-    expectedContributionsCount > 0 && visibleConfirmedCount >= expectedContributionsCount;
+    expectedContributionsCount > 0 &&
+    visibleConfirmedCount >= expectedContributionsCount;
 
   const backendPayoutReady = roundWorkspace?.readyForPayout === true;
   const payoutReleased = roundWorkspace?.payoutReleased === true;
@@ -445,13 +496,27 @@ function WorkspaceContent({
         note: 'Marked paid by organizer.',
         paymentMethod: 'cash',
       });
+      try {
+        await approveContribution(token, circle.id, member.id);
+      } catch (approveError) {
+        const message =
+          approveError instanceof Error ? approveError.message : '';
+        if (!message.includes('already has confirmed pot funding recorded')) {
+          await Promise.all([onReload(), loadBackendSections()]);
+          Alert.alert(
+            'Payment recorded',
+            'Payment was recorded as submitted, but could not be auto-confirmed. Use Confirm Receipt when ready.',
+          );
+          return;
+        }
+      }
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (markPaidError) {
       Alert.alert(
-        'Unable to mark paid',
+        'Unable to record payment',
         markPaidError instanceof Error
           ? markPaidError.message
-          : 'The backend rejected the mark-paid request.',
+          : 'The backend rejected the record-payment request.',
       );
     } finally {
       setActionMemberId(null);
@@ -659,9 +724,6 @@ function WorkspaceContent({
       </View>
 
       {activeTab === 'round' ? (
-        // Initial load gate: scheduleData has not yet arrived from the backend.
-        // Show a loading card rather than rendering the Round tab with stale
-        // data from the primary circle detail response.
         !scheduleData && secondaryLoading ? (
           <StatusCard
             icon="spinner"
@@ -669,15 +731,41 @@ function WorkspaceContent({
             title="Loading round data"
             text="Fetching the latest round details from the backend…"
           />
-        ) : (
+        ) : !scheduleData && secondaryError ? (
+          <View style={styles.statusCard}>
+            <FontAwesome name="warning" size={34} color={colors.warning} />
+            <Text style={styles.statusTitle}>Unable to load round data</Text>
+            <Text style={styles.statusText}>{secondaryError}</Text>
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => void loadBackendSections()}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading round data"
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : scheduleData ? (
           <>
-            {/* Re-sync spinner: scheduleData exists but is being refreshed
-                (e.g. after approving a contribution). Keep showing live data
-                above so the organizer doesn't see a flash of skeleton. */}
             {secondaryLoading ? (
               <View style={styles.inlineLoading}>
                 <ActivityIndicator color={colors.primary} />
                 <Text style={styles.inlineLoadingText}>Syncing backend data…</Text>
+              </View>
+            ) : null}
+            {secondaryError ? (
+              <View style={styles.inlineErrorBanner}>
+                <FontAwesome name="warning" size={14} color={colors.warning} />
+                <Text style={styles.inlineErrorText}>
+                  Could not refresh: {secondaryError}
+                </Text>
+                <Pressable
+                  onPress={() => void loadBackendSections()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry refresh"
+                >
+                  <Text style={styles.inlineErrorRetry}>Retry</Text>
+                </Pressable>
               </View>
             ) : null}
             <RoundTab
@@ -708,10 +796,15 @@ function WorkspaceContent({
               viewerPayoutPosition={viewerPayoutPosition}
               processingMemberId={actionMemberId}
               paymentInstructions={paymentInstructions}
-              token={token}
               isPremium={isPremium}
             />
           </>
+        ) : (
+          <StatusCard
+            icon="clock-o"
+            title="Round data unavailable"
+            text="The backend has not returned schedule data for this circle yet."
+          />
         )
       ) : null}
 
@@ -730,12 +823,11 @@ function WorkspaceContent({
           members={orderedMembers}
           recipientId={recipientId}
           userId={userId}
-          onRequestSwap={handleRequestSwap}
-          token={token}
+          currentRoundNumber={currentRoundNumber}
         />
       ) : null}
 
-      {activeTab === 'records' ? <RecordsTab entries={ledgerEntries} circleId={circle.id} members={circle.members || []} /> : null}
+      {activeTab === 'records' ? <RecordsTab entries={ledgerEntries} circleId={circle.id} members={circle.members || []} isPremium={isPremium} /> : null}
     </View>
   );
 }
@@ -768,7 +860,6 @@ function RoundTab({
   viewerMember,
   viewerPayoutPosition,
   paymentInstructions,
-  token,
   isPremium,
 }: {
   canReleasePayout: boolean;
@@ -802,10 +893,10 @@ function RoundTab({
   viewerMember?: BackendCircleMember;
   viewerPayoutPosition?: number | null;
   paymentInstructions?: string | null;
-  token: string;
   isPremium: boolean;
 }) {
   const [visibleActionCount, setVisibleActionCount] = useState(5);
+  const [showAllPaid, setShowAllPaid] = useState(false);
   const [actionSearch, setActionSearch] = useState('');
 
   // All display values arrive pre-normalized from WorkspaceContent.
@@ -836,74 +927,75 @@ function RoundTab({
         </View>
       ) : null}
 
-      <View style={styles.heroCard}>
-        <View style={styles.heroHeader}>
-          <View style={styles.heroRoundBadge}>
-            <Text style={styles.heroRoundText}>{currentRoundNumber}</Text>
+      <View style={[styles.heroCard, { backgroundColor: '#6231d6', padding: 24, borderRadius: 20 }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.15)', width: 50, height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>{currentRoundNumber}</Text>
+            </View>
+            <View>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>Round {currentRoundNumber} of {visibleTotalRounds}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>Collecting contributions</Text>
+            </View>
           </View>
-          <View style={styles.heroHeaderCopy}>
-            <Text style={styles.heroEyebrow}>Round {currentRoundNumber} of {visibleTotalRounds}</Text>
-            <Text style={styles.heroTitle}>
-              {capitalizeFrequency(circle.frequency)} cycle
+          <View style={{ backgroundColor: '#8a6234', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <FontAwesome name="clock-o" size={14} color="#fef08a" />
+            <Text style={{ color: '#fef08a', fontSize: 13, fontWeight: '600' }}>Not ready yet</Text>
+          </View>
+        </View>
+
+        {recipient ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 28 }}>
+            <Image 
+              source={{ uri: `https://i.pravatar.cc/150?u=${recipient.id}` }} 
+              style={{ width: 68, height: 68, borderRadius: 34, borderWidth: 2, borderColor: '#fff' }} 
+            />
+            <View style={{ marginLeft: 16, flex: 1 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Payout recipient</Text>
+              <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900', marginTop: 2 }}>{memberName(recipient)}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600', marginTop: 4 }}>Will receive</Text>
+              <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900', marginTop: -2 }}>{formatOptionalMoney(payoutAmount)}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={{ marginTop: 24 }}>
+          <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginBottom: 16 }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Progress</Text>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
+              {visibleConfirmedCount} of {expectedContributionsCount} confirmed
             </Text>
           </View>
-        </View>
-
-        <View style={styles.heroGrid}>
-          <InfoRow 
-            label="Payout this round" 
-            value={recipient ? `${memberName(recipient)} receives ${formatOptionalMoney(payoutAmount)}` : 'Unassigned'} 
-          />
-          <InfoRow
-            label="Confirmed"
-            value={formatConfirmedStatusFromCounts(
-              visibleConfirmedCount,
-              expectedContributionsCount,
-            )}
-          />
-          <InfoRow label="Progress" value={formatProgress(visibleProgress)} last />
-        </View>
-
-        <View style={styles.heroFooter}>
-          <StatusBadge
-            label={payoutReleased ? 'Payout released' : displayPayoutReady ? 'Ready for payout' : 'In progress'}
-            tone={payoutReleased ? 'success' : displayPayoutReady ? 'ready' : 'muted'}
-          />
-          <StatusBadge
-            label={displayRoundStatus}
-            tone="soft"
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1, height: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 5, overflow: 'hidden' }}>
+              <View style={{ width: `${Math.max(0, Math.min(100, visibleProgress || 0))}%`, height: '100%', backgroundColor: '#22c55e', borderRadius: 5 }} />
+            </View>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>{Math.round(visibleProgress || 0)}%</Text>
+          </View>
         </View>
       </View>
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Round details</Text>
-        <Text style={styles.sectionSubtitle}>
-          Live backend status for the current round
-        </Text>
-        <DetailRow label="Contribution" value={formatMoney(circle.contributionAmount)} />
-        <DetailRow label="Due date" value={formatDate(dueDate)} />
-        <DetailRow
-          label="Expected contributions"
-          value={typeof totalMembers === 'number' ? `${totalMembers} expected` : 'Unavailable'}
-        />
-        <DetailRow
-          label="Payout readiness"
-          value={payoutReleased ? 'Released' : displayPayoutReady ? 'Ready' : 'Not ready'}
-          last
-        />
-      </View>
 
-      {!canReviewContributions ? (
+      {/* Members only: report own payment. Organizers manage everyone below. */}
+      {!canReviewContributions && viewerMember ? (
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>My Next Action</Text>
+          <Text style={styles.sectionTitle}>My contribution</Text>
           <Text style={styles.sectionSubtitle}>
-            {viewerMember 
-              ? `Your ${formatMoney(circle.contributionAmount)} contribution is due.` 
-              : 'Membership unavailable.'}
+            Report your own payment for this round. Only you can use this action.
+          </Text>
+          <Text style={[styles.sectionSubtitle, { marginTop: 8 }]}>
+            {memberCanSubmitContribution
+              ? `Your ${formatMoney(circle.contributionAmount)} contribution is due.`
+              : viewerContributionStatus.raw === 'confirmed'
+                ? 'Your contribution for this round is confirmed.'
+                : viewerContributionStatus.raw === 'submitted' ||
+                    viewerContributionStatus.raw === 'late'
+                  ? 'Your payment is waiting for the organizer to confirm.'
+                  : `Status: ${viewerContributionStatus.label}`}
           </Text>
           
-          {viewerMember && memberCanSubmitContribution ? (
+          {memberCanSubmitContribution ? (
             <View style={styles.paymentInstructions}>
               <FontAwesome name="send" size={14} color={colors.primary} style={{ marginBottom: 6 }} />
               <Text style={styles.paymentInstructionsTitle}>Where to send your payment</Text>
@@ -913,8 +1005,8 @@ function RoundTab({
             </View>
           ) : null}
 
-          {/* Post-submit pending state */}
-          {viewerMember && viewerContributionStatus.raw === 'submitted' ? (
+          {viewerContributionStatus.raw === 'submitted' ||
+          viewerContributionStatus.raw === 'late' ? (
             <View style={styles.pendingConfirmationCard}>
               <FontAwesome name="clock-o" size={20} color={colors.warning} />
               <View style={{ flex: 1, gap: 4 }}>
@@ -924,24 +1016,20 @@ function RoundTab({
                 </Text>
               </View>
             </View>
-          ) : viewerMember ? (
-            memberCanSubmitContribution ? (
-              <Pressable
-                style={styles.primaryButton}
-                onPress={() => router.push(contributionHref(circle.id))}
-                accessibilityRole="button"
-                accessibilityLabel="I Sent It"
-              >
-                <Text style={styles.primaryButtonText}>I Sent It ✓</Text>
-              </Pressable>
-            ) : (
-              <StatusBadge
-                label={viewerContributionStatus.label}
-                tone={statusTone(viewerContributionStatus.raw)}
-              />
-            )
+          ) : memberCanSubmitContribution ? (
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => router.push(contributionHref(circle.id))}
+              accessibilityRole="button"
+              accessibilityLabel="I Sent It"
+            >
+              <Text style={styles.primaryButtonText}>I Sent It ✓</Text>
+            </Pressable>
           ) : (
-            <StatusBadge label="Membership unavailable" tone="muted" />
+            <StatusBadge
+              label={viewerContributionStatus.label}
+              tone={statusTone(viewerContributionStatus.raw)}
+            />
           )}
         </View>
       ) : null}
@@ -952,196 +1040,6 @@ function RoundTab({
           <Text style={styles.sectionSubtitle}>
             Your payout position: #{viewerPayoutPosition} • You receive on Round {viewerPayoutPosition}
           </Text>
-        </View>
-      ) : null}
-
-      {canReviewContributions ? (
-        <View style={styles.sectionCard}>
-          <View style={styles.organizerNextActionsHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Organizer next actions</Text>
-              <Text style={styles.sectionSubtitle}>
-                Payments that need your attention this round.
-              </Text>
-            </View>
-            {/* Quick link to set payment instructions */}
-            {!paymentInstructions ? (
-              <Pressable
-                style={styles.setupInstructionsButton}
-                onPress={() => router.push(circlePaymentSetupHref(circle.id))}
-              >
-                <FontAwesome name="credit-card" size={12} color={colors.primary} />
-                <Text style={styles.setupInstructionsText}>Set Payment Info</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                style={[styles.setupInstructionsButton, { borderColor: colors.success }]}
-                onPress={() => router.push(circlePaymentSetupHref(circle.id))}
-              >
-                <FontAwesome name="check-circle" size={12} color={colors.success} />
-                <Text style={[styles.setupInstructionsText, { color: colors.success }]}>Payment Info Set</Text>
-              </Pressable>
-            )}
-          </View>
-
-          {(() => {
-            const actionableMembers = currentRoundMembers
-              .filter(({ status }) => {
-                const canMarkPaid = ['due', 'missed', 'rejected'].includes(status.raw);
-                const canApprove = ['submitted', 'late'].includes(status.raw);
-                return canMarkPaid || canApprove;
-              })
-              .sort((a, b) => {
-                const aCanApprove = ['submitted', 'late'].includes(a.status.raw);
-                const bCanApprove = ['submitted', 'late'].includes(b.status.raw);
-                if (aCanApprove && !bCanApprove) return -1;
-                if (!aCanApprove && bCanApprove) return 1;
-                return 0;
-              });
-
-            if (actionableMembers.length === 0) {
-              return (
-                <Text style={[styles.helperText, { marginTop: 12 }]}>
-                  All payments are confirmed for this round.
-                </Text>
-              );
-            }
-
-            const filteredMembers = actionableMembers.filter(m => 
-              memberName(m.member).toLowerCase().includes(actionSearch.toLowerCase())
-            );
-
-            const visibleMembers = filteredMembers.slice(0, visibleActionCount);
-            const remainingCount = filteredMembers.length - visibleMembers.length;
-
-            return (
-              <View style={styles.actionList}>
-                {actionableMembers.length > 5 || actionSearch.trim() !== '' ? (
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: colors.cardBorder,
-                    borderRadius: radii.card,
-                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                    marginBottom: 12,
-                    marginTop: 8,
-                    paddingHorizontal: 12,
-                  }}>
-                    <FontAwesome name="search" size={14} color={colors.subtle} style={{ marginRight: 8 }} />
-                    <TextInput
-                      style={{
-                        flex: 1,
-                        paddingVertical: 10,
-                        fontSize: 15,
-                        color: colors.text,
-                      }}
-                      placeholder="Search by member name..."
-                      placeholderTextColor={colors.subtle}
-                      value={actionSearch}
-                      onChangeText={setActionSearch}
-                      autoCorrect={false}
-                      returnKeyType="search"
-                    />
-                    {actionSearch.length > 0 ? (
-                      <Pressable 
-                        onPress={() => setActionSearch('')} 
-                        accessibilityRole="button"
-                        style={{ padding: 4, marginLeft: 4 }}
-                      >
-                        <FontAwesome name="times-circle" size={16} color={colors.subtle} />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
-                {actionSearch.trim() !== '' && filteredMembers.length === 0 ? (
-                  <Text style={[styles.helperText, { marginTop: 4, marginBottom: 8 }]}>
-                    No members match "{actionSearch}".
-                  </Text>
-                ) : null}
-                {visibleMembers.map(({ member, status }) => {
-                  const isProcessing = processingMemberId === member.id;
-                  const canMarkPaid = ['due', 'missed', 'rejected'].includes(status.raw);
-                  const canApprove = ['submitted', 'late'].includes(status.raw);
-                  const canReject = canApprove;
-
-                  return (
-                    <View key={member.id} style={styles.actionRow}>
-                      {/* Name + single status badge - no duplicate in the button area */}
-                      <View style={styles.actionRowCopy}>
-                        <Text style={styles.actionName} numberOfLines={2}>
-                          {canApprove 
-                            ? `${memberName(member)} says they sent ${formatMoney(circle.contributionAmount)}` 
-                            : memberName(member)}
-                        </Text>
-                        <StatusBadge label={status.label} tone={statusTone(status.raw)} />
-                      </View>
-
-                      {(canMarkPaid || canApprove) ? (
-                        <View style={styles.actionButtons}>
-                          {canMarkPaid ? (
-                            <Pressable
-                              style={styles.confirmButton}
-                              disabled={isProcessing}
-                              onPress={() => onMarkPaid(member)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Mark ${memberName(member)} paid`}
-                            >
-                              <Text style={styles.confirmText}>Mark Paid</Text>
-                            </Pressable>
-                          ) : null}
-                          {canRemindMembers && canMarkPaid ? (
-                            <Pressable
-                              style={styles.secondaryButton}
-                              disabled={isProcessing}
-                              onPress={() => onRemind(member)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Remind ${memberName(member)}`}
-                            >
-                              <Text style={styles.secondaryButtonText}>Remind</Text>
-                            </Pressable>
-                          ) : null}
-                          {canApprove ? (
-                            <Pressable
-                              style={styles.confirmButton}
-                              disabled={isProcessing}
-                              onPress={() => onApprove(member)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Confirm receipt from ${memberName(member)}`}
-                            >
-                              <Text style={styles.confirmText}>Confirm Receipt</Text>
-                            </Pressable>
-                          ) : null}
-                          {canReject ? (
-                            <Pressable
-                              style={styles.rejectButton}
-                              disabled={isProcessing}
-                              onPress={() => onReject(member)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Reject ${memberName(member)} contribution`}
-                            >
-                              <Text style={styles.rejectText}>Reject</Text>
-                            </Pressable>
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-                {remainingCount > 0 ? (
-                  <Pressable
-                    style={{ marginTop: 8, paddingVertical: 12, alignItems: 'center' }}
-                    onPress={() => setVisibleActionCount(c => c + 5)}
-                    accessibilityRole="button"
-                  >
-                    <Text style={{ color: colors.primary, fontWeight: '600' }}>
-                      Show {Math.min(5, remainingCount)} more action{Math.min(5, remainingCount) === 1 ? '' : 's'} ({remainingCount} left)
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            );
-          })()}
         </View>
       ) : null}
 
@@ -1182,6 +1080,179 @@ function RoundTab({
           The round appears fully confirmed. Waiting for backend payout permission.
         </Text>
       ) : null}
+
+      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20, marginBottom: 16 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>Who has paid</Text>
+          <Pressable onPress={() => setShowAllPaid(!showAllPaid)}>
+            <Text style={{ color: '#6b37cf', fontSize: 14, fontWeight: '800' }}>
+              {showAllPaid ? 'Show less' : 'View all'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {[...currentRoundMembers]
+          .sort((a, b) => {
+            const aConfirmed = a.status.raw === 'confirmed';
+            const bConfirmed = b.status.raw === 'confirmed';
+            if (aConfirmed && !bConfirmed) return 1;
+            if (!aConfirmed && bConfirmed) return -1;
+            return 0;
+          })
+          .slice(0, showAllPaid ? undefined : 4)
+          .map(({ member, status }, index, arr) => {
+          let badgeColor = '#f3f4f6';
+          let textColor = '#4b5563';
+          let badgeText = status.label;
+          let icon = null;
+
+          if (status.raw === 'confirmed') {
+            badgeColor = '#dcfce7';
+            textColor = '#166534';
+            badgeText = 'Confirmed';
+          } else if (status.raw === 'submitted' || status.raw === 'late') {
+            badgeColor = '#fef3c7';
+            textColor = '#92400e';
+            badgeText = 'Submitted';
+          } else {
+            badgeColor = '#f3f4f6';
+            textColor = '#4b5563';
+            badgeText = 'Pending';
+            icon = <FontAwesome name="clock-o" size={12} color="#4b5563" style={{ marginRight: 4 }} />;
+          }
+
+          const isProcessing = processingMemberId === member.id;
+          const canMarkPaid = ['due', 'missed', 'rejected'].includes(status.raw);
+          const canApprove = ['submitted', 'late'].includes(status.raw);
+          const showActions = canReviewContributions && (canMarkPaid || canApprove);
+
+          return (
+            <View key={member.id}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+                <Image 
+                  source={{ uri: `https://i.pravatar.cc/150?u=${member.id}` }} 
+                  style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} 
+                />
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberName(member)}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', marginRight: 16 }}>{formatMoney(circle.contributionAmount)}</Text>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: badgeColor, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                  {icon}
+                  <Text style={{ color: textColor, fontSize: 12, fontWeight: '800' }}>{badgeText}</Text>
+                </View>
+              </View>
+
+              {showActions && (
+                <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16, gap: 8, paddingLeft: 68 }}>
+                  {canApprove ? (
+                    <>
+                      <Pressable
+                        style={{ flex: 1, backgroundColor: '#10b981', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                        disabled={isProcessing}
+                        onPress={() => onApprove(member)}
+                      >
+                        <FontAwesome name="check-circle-o" size={14} color="#fff" />
+                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Confirm</Text>
+                      </Pressable>
+                      <Pressable
+                        style={{ flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ef4444', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                        disabled={isProcessing}
+                        onPress={() => onReject(member)}
+                      >
+                        <FontAwesome name="times-circle-o" size={14} color="#ef4444" />
+                        <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '800' }}>Reject</Text>
+                      </Pressable>
+                    </>
+                  ) : canMarkPaid ? (
+                    <>
+                      <Pressable
+                        style={{ flex: 1, backgroundColor: '#3b82f6', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                        disabled={isProcessing}
+                        onPress={() => onMarkPaid(member)}
+                      >
+                        <FontAwesome name="check-circle-o" size={14} color="#fff" />
+                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Record Paid</Text>
+                      </Pressable>
+                      {canRemindMembers ? (
+                        <Pressable
+                          style={{ flex: 1, backgroundColor: '#f3f4f6', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                          disabled={isProcessing}
+                          onPress={() => onRemind(member)}
+                        >
+                          <FontAwesome name="bell-o" size={14} color="#4b5563" />
+                          <Text style={{ color: '#4b5563', fontSize: 13, fontWeight: '800' }}>Remind</Text>
+                        </Pressable>
+                      ) : null}
+                    </>
+                  ) : null}
+                </View>
+              )}
+
+              {index < arr.length - 1 ? (
+                <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 68 }} />
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20 }]}>
+        <View style={{ padding: 16, paddingBottom: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>Round details</Text>
+        </View>
+
+        <View style={{ paddingBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+              <FontAwesome name="dollar" size={14} color="#7c3aed" />
+            </View>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Contribution</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
+              <Text style={{ fontWeight: '900', color: '#111827' }}>{formatMoney(circle.contributionAmount)}</Text>{' '}per member
+            </Text>
+          </View>
+
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+              <FontAwesome name="calendar" size={14} color="#7c3aed" />
+            </View>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Due date</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
+              <Text style={{ fontWeight: '900', color: '#111827' }}>{formatDate(dueDate) || 'Unknown'}</Text>
+              {dueDate ? ` ${formatRelativeDays(dueDate)}` : ''}
+            </Text>
+          </View>
+
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+              <FontAwesome name="users" size={14} color="#7c3aed" />
+            </View>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Expected contributions</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
+              <Text style={{ fontWeight: '900', color: '#111827' }}>{typeof expectedContributionsCount === 'number' && expectedContributionsCount > 0 ? expectedContributionsCount : 'Unknown'} members</Text>
+            </Text>
+          </View>
+
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+              <FontAwesome name="shield" size={14} color="#7c3aed" />
+            </View>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Payout readiness</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
+              <Text style={{ fontWeight: '900', color: payoutReleased ? '#166534' : displayPayoutReady ? '#d97706' : '#d97706' }}>
+                {payoutReleased ? 'Released' : displayPayoutReady ? 'Ready' : 'Not ready'}
+              </Text>
+              {' '}({visibleConfirmedCount} of {expectedContributionsCount} confirmed)
+            </Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
@@ -1193,8 +1264,7 @@ function PeopleTab({
   members,
   recipientId,
   userId,
-  onRequestSwap,
-  token,
+  currentRoundNumber,
 }: {
   circle: BackendCircleDetail;
   hasSchedule: boolean;
@@ -1202,11 +1272,9 @@ function PeopleTab({
   members: BackendCircleMember[];
   recipientId?: string | null;
   userId: string;
-  onRequestSwap: (targetMemberId: string) => void;
-  token: string;
+  currentRoundNumber: number;
 }) {
   const [showAll, setShowAll] = useState(false);
-  const [swapModalVisible, setSwapModalVisible] = useState(false);
   const visibleMembers = showAll ? members : members.slice(0, 10);
   const remainingCount = members.length - 10;
 
@@ -1221,46 +1289,6 @@ function PeopleTab({
           <Text style={styles.helperText}>Payout order is not available yet.</Text>
         ) : null}
       </View>
-
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={swapModalVisible}
-        onRequestClose={() => setSwapModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Request Position Swap</Text>
-              <Pressable onPress={() => setSwapModalVisible(false)} hitSlop={20}>
-                <FontAwesome name="times" size={24} color={colors.textStrong} />
-              </Pressable>
-            </View>
-            <Text style={styles.modalDescription}>
-              Select a member to request a position swap. If they accept, your payout rounds will be exchanged.
-            </Text>
-            
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
-              {members.filter(m => m.id !== userId).map(m => (
-                <Pressable
-                  key={m.id}
-                  style={styles.swapMemberOption}
-                  onPress={() => {
-                    setSwapModalVisible(false);
-                    onRequestSwap(m.id);
-                  }}
-                >
-                  <View style={styles.swapMemberAvatar}>
-                    <Text style={styles.swapMemberAvatarText}>{memberName(m)[0]}</Text>
-                  </View>
-                  <Text style={styles.swapMemberName}>{memberName(m)}</Text>
-                  <FontAwesome name="chevron-right" size={12} color={colors.muted} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       <View style={styles.peopleList}>
         {members.map((member, index) => {
@@ -1280,7 +1308,12 @@ function PeopleTab({
                   </Text>
                   <View style={styles.personMetaRow}>
                     <StatusBadge label={roleLabel} tone="muted" />
-                    {isRecipient ? <StatusBadge label="Recipient" tone="success" /> : null}
+                    {hasSchedule && (index + 1) < currentRoundNumber ? (
+                      <StatusBadge label="Paid" tone="success" />
+                    ) : null}
+                    {hasSchedule && (index + 1) === currentRoundNumber ? (
+                      <StatusBadge label="Current round" tone="warning" />
+                    ) : null}
                     {member.reliabilityScore !== undefined ? (
                       <View style={styles.reliabilityBadge}>
                         <FontAwesome 
@@ -1298,38 +1331,6 @@ function PeopleTab({
                   </View>
                 </View>
               </View>
-
-              {member.id === userId && hasSchedule && (
-                <Pressable
-                  style={styles.swapButton}
-                  onPress={() => setSwapModalVisible(true)}
-                  accessibilityRole="button"
-                >
-                  <FontAwesome name="exchange" size={14} color={colors.primary} />
-                  <Text style={styles.swapButtonText}>Request Swap</Text>
-                </Pressable>
-              )}
-
-              {!member.userId && isOrganizer && (
-                <Pressable
-                  style={styles.swapButton}
-                  onPress={async () => {
-                    try {
-                      if (!token) throw new Error('Not authenticated');
-                      const { claimToken } = await getMemberAccessToken(circle.id, member.id, token);
-                      await Share.share({
-                        message: `Claim your spot in '${circle.name}': https://app.circusave.com/invite/${circle.id}?claimToken=${claimToken}`,
-                      });
-                    } catch (error) {
-                      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to generate link');
-                    }
-                  }}
-                  accessibilityRole="button"
-                >
-                  <FontAwesome name="link" size={14} color={colors.primary} />
-                  <Text style={styles.swapButtonText}>Share Spot Link</Text>
-                </Pressable>
-              )}
             </View>
           );
         })}
@@ -1383,57 +1384,87 @@ function PeopleTab({
   );
 }
 
-function RecordsTab({ entries, circleId, members }: { entries: BackendLedgerEntry[], circleId: string, members: BackendCircleMember[] }) {
+function RecordsTab({ entries, circleId, members, isPremium }: { entries: BackendLedgerEntry[], circleId: string, members: BackendCircleMember[], isPremium: boolean }) {
+  const visibleEntries = isPremium ? entries : entries.slice(0, 10);
+  const hasMore = !isPremium && entries.length > 10;
+
   return (
     <View style={styles.section}>
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Records</Text>
-        <Text style={styles.sectionSubtitle}>
-          Confirmed backend activity for this circle
-        </Text>
-      </View>
+      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+          <View style={{ backgroundColor: '#f3e8ff', width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+            <FontAwesome name="line-chart" size={20} color="#7c3aed" />
+          </View>
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>Activity</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
+              {entries.length} recorded action{entries.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+        </View>
 
-      {entries.length === 0 ? (
-        <View style={styles.emptyLedger}>
-          <FontAwesome name="book" size={28} color={colors.muted} />
-          <Text style={styles.emptyLedgerText}>No ledger entries yet.</Text>
-        </View>
-      ) : (
-        <View style={styles.ledgerList}>
-          {entries.slice(0, 10).map((entry) => (
-            <View key={entry.id} style={styles.ledgerRow}>
-              <View style={[styles.ledgerIcon, { backgroundColor: `${ledgerIconColor(entry)}15` }]}>
-                <FontAwesome
-                  name={ledgerIcon(entry)}
-                  size={16}
-                  color={ledgerIconColor(entry)}
-                />
-              </View>
-              <View style={styles.ledgerInfo}>
-                <Text style={styles.ledgerTitle}>{ledgerTitle(entry)}</Text>
-                <Text style={styles.ledgerMeta}>
-                  {entryMemberName(entry, members)}
-                  {entryMemberName(entry, members) ? ' · ' : ''}
-                  Round {entry.round || '—'} · {formatDateTime(entry.created_at || entry.at)}
+        {entries.length === 0 ? (
+          <View style={{ padding: 32, alignItems: 'center' }}>
+            <FontAwesome name="book" size={32} color="#d1d5db" />
+            <Text style={{ marginTop: 12, fontSize: 16, color: '#6b7280', fontWeight: '600' }}>No activity yet.</Text>
+          </View>
+        ) : (
+          <View>
+            {visibleEntries.map((entry, index) => {
+              const bg = `${ledgerIconColor(entry)}15`;
+              return (
+                <View key={entry.id}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: bg, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                      <FontAwesome name={ledgerIcon(entry)} size={16} color={ledgerIconColor(entry)} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>{ledgerTitle(entry)}</Text>
+                      <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                        {entryMemberName(entry, members)}
+                        {entryMemberName(entry, members) ? ' · ' : ''}
+                        Round {entry.round || '—'} · {formatRelativeDays(entry.created_at || entry.at)}
+                      </Text>
+                    </View>
+                    {typeof entry.amount === 'number' ? (
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: ledgerIconColor(entry) }}>
+                        {ledgerAmountLabel(entry)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {index < visibleEntries.length - 1 ? (
+                    <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 68 }} />
+                  ) : null}
+                </View>
+              );
+            })}
+
+            {hasMore ? (
+              <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center' }}>
+                <FontAwesome name="lock" size={24} color="#6b37cf" style={{ marginBottom: 8 }} />
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', textAlign: 'center' }}>Unlock Full History</Text>
+                <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
+                  You have {entries.length - 10} more activities hidden. Upgrade to Premium to view your entire circle's history.
                 </Text>
+                <Pressable
+                  style={{ backgroundColor: '#6b37cf', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, width: '100%', alignItems: 'center' }}
+                  onPress={() => router.push('/subscription')}
+                >
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>Upgrade to Premium</Text>
+                </Pressable>
               </View>
-              {typeof entry.amount === 'number' ? (
-                <Text style={[styles.ledgerAmount, { color: ledgerIconColor(entry) }]}>
-                  {ledgerAmountLabel(entry)}
-                </Text>
-              ) : null}
-            </View>
-          ))}
-          <Pressable
-            style={[styles.memberActionButton, { marginTop: 16 }]}
-            onPress={() => router.push('/circle/history')}
-            accessibilityRole="button"
-          >
-            <FontAwesome name="download" size={16} color={colors.primary} />
-            <Text style={styles.memberActionText}>Export Full History</Text>
-          </Pressable>
-        </View>
-      )}
+            ) : (
+              <Pressable
+                style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                onPress={() => Alert.alert('Export not available yet', 'Full history export will be available when the backend endpoint is connected.')}
+              >
+                <FontAwesome name="download" size={14} color="#6b37cf" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#6b37cf', fontSize: 15, fontWeight: '800' }}>Export Full History</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -1579,7 +1610,7 @@ function findContribution(
   memberId?: string,
   roundNumber?: number,
 ) {
-  if (!contributions || !memberId || !roundNumber) {
+  if (!contributions || !memberId || roundNumber == null) {
     return undefined;
   }
 
@@ -1628,7 +1659,7 @@ function hasConfirmedPotCredit(
   memberId?: string,
   roundNumber?: number,
 ) {
-  if (!wallet || !memberId || !roundNumber) {
+  if (!wallet || !memberId || roundNumber == null) {
     return false;
   }
 
@@ -1656,7 +1687,7 @@ function hasConfirmedContributionLedgerEntry(
   memberId?: string,
   roundNumber?: number,
 ) {
-  if (!memberId || !roundNumber) {
+  if (!memberId || roundNumber == null) {
     return false;
   }
 
@@ -1785,6 +1816,20 @@ function formatDate(value?: string | null) {
   });
 }
 
+function formatRelativeDays(value?: string | null) {
+  if (!value) return null;
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return null;
+  
+  const diffTime = time - Date.now();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays > 0) return `(in ${diffDays} day${diffDays === 1 ? '' : 's'})`;
+  if (diffDays === 0) return '(today)';
+  if (diffDays === -1) return '(yesterday)';
+  return `(${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'} ago)`;
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return '—';
   const time = Date.parse(value);
@@ -1888,6 +1933,29 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     fontWeight: '700',
+  },
+  inlineErrorBanner: {
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B55',
+    borderRadius: radii.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  inlineErrorText: {
+    color: '#92400E',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  inlineErrorRetry: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
   },
   tabBar: {
     backgroundColor: colors.card,

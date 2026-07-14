@@ -1,21 +1,36 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { myCirclesHref } from '@/lib/navigation';
+import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function CircleHistoryScreen() {
+  const params = useLocalSearchParams<{ circleId?: string | string[] }>();
+  const circleId = Array.isArray(params.circleId)
+    ? params.circleId[0]
+    : params.circleId;
+
+  function handleBack() {
+    if (circleId) {
+      router.replace(circleWorkspaceHref(circleId));
+      return;
+    }
+    router.replace(myCirclesHref);
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Pressable
             style={styles.backButton}
-            onPress={() => router.replace(myCirclesHref)}
+            onPress={handleBack}
             accessibilityRole="button"
-            accessibilityLabel="Back to My Circles"
+            accessibilityLabel={
+              circleId ? 'Back to circle workspace' : 'Back to My Circles'
+            }
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
@@ -26,12 +41,23 @@ export default function CircleHistoryScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.eyebrow}>Circle history</Text>
+          <Text style={styles.eyebrow}>Coming soon</Text>
           <Text style={styles.cardTitle}>Circle history is not available yet.</Text>
           <Text style={styles.body}>
-            Completed circle history will appear here after the backend history
-            endpoint is connected.
+            Completed circle history and export will appear here after the
+            backend history endpoint is connected. Use Records in the workspace
+            for recent ledger activity.
           </Text>
+          <Pressable
+            style={styles.primaryButton}
+            onPress={handleBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Text style={styles.primaryButtonText}>
+              {circleId ? 'Back to workspace' : 'Back to My Circles'}
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -103,5 +129,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     marginTop: 8,
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radii.control,
+    justifyContent: 'center',
+    marginTop: 18,
+    minHeight: 48,
+    paddingHorizontal: 16,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });

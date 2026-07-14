@@ -1,4 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getActivity, getCircleDetail } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { circleWorkspaceHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 import type { BackendActivity } from '@/lib/types';
 
@@ -28,6 +30,7 @@ export default function ActivityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const token = session?.session.token;
+  const isPremium = session?.user?.role?.toLowerCase() === 'premium';
 
   const loadActivity = useCallback(async (isRefresh = false) => {
     if (!token) {
@@ -81,7 +84,7 @@ export default function ActivityScreen() {
     void loadActivity();
   }, [loadActivity]);
 
-  const visibleEntries = entries.filter((entry) => {
+  let visibleEntries = entries.filter((entry) => {
     if (activeFilter === 'all') return true;
     if (activeFilter === 'contributions') {
       return entry.type.includes('contribution');
@@ -89,12 +92,17 @@ export default function ActivityScreen() {
     return entry.type.includes('payout');
   });
 
+  const hasMore = !isPremium && visibleEntries.length > 10;
+  if (!isPremium) {
+    visibleEntries = visibleEntries.slice(0, 10);
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <FlatList
         data={visibleEntries}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: 40 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -127,6 +135,10 @@ export default function ActivityScreen() {
                 onPress={() => setActiveFilter('payouts')}
               />
             </View>
+            
+            {visibleEntries.length > 0 && (
+              <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, marginTop: 16, paddingTop: 8 }} />
+            )}
           </>
         }
         ListEmptyComponent={
@@ -159,28 +171,41 @@ export default function ActivityScreen() {
             </View>
           )
         }
-        renderItem={({ item }) => (
-          <ActivityCard entry={item} memberMap={memberMap} />
+        renderItem={({ item, index }) => (
+          <View style={{ backgroundColor: '#fff', paddingHorizontal: 16 }}>
+            <ActivityCard entry={item} memberMap={memberMap} />
+            {index < visibleEntries.length - 1 ? (
+              <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
+            ) : null}
+          </View>
         )}
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListFooterComponent={
           visibleEntries.length > 0 ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.exportButton,
-                pressed && styles.pressed,
-              ]}
-              onPress={() =>
-                Alert.alert(
-                  'Export history',
-                  'History export will be available when the backend export endpoint is connected.',
-                )
-              }
-              accessibilityRole="button"
-              accessibilityLabel="Export full history"
-            >
-              <Text style={styles.exportButtonText}>Export Full History</Text>
-            </Pressable>
+            <View style={{ backgroundColor: '#fff', borderBottomLeftRadius: 20, borderBottomRightRadius: 20, overflow: 'hidden', paddingBottom: 8 }}>
+              {hasMore ? (
+                <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center' }}>
+                  <FontAwesome name="lock" size={24} color="#6b37cf" style={{ marginBottom: 8 }} />
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', textAlign: 'center' }}>Unlock Full History</Text>
+                  <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
+                    Upgrade to Premium to view your complete contribution and payout history.
+                  </Text>
+                  <Pressable
+                    style={{ backgroundColor: '#6b37cf', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, width: '100%', alignItems: 'center' }}
+                    onPress={() => router.push('/subscription')}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>Upgrade to Premium</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                  onPress={() => Alert.alert('Export not available yet', 'Full history export will be available when the backend export endpoint is connected.')}
+                >
+                  <FontAwesome name="download" size={14} color="#6b37cf" style={{ marginRight: 8 }} />
+                  <Text style={{ color: '#6b37cf', fontSize: 15, fontWeight: '800' }}>Export Full History</Text>
+                </Pressable>
+              )}
+            </View>
           ) : null
         }
       />
@@ -209,34 +234,45 @@ function ActivityCard({ entry, memberMap }: { entry: BackendActivity; memberMap:
   const memberName = getResolvedMemberName(entry, memberMap);
 
   return (
-    <View style={styles.activityCard}>
-      <View style={[styles.iconContainer, { backgroundColor: `${color}18` }]}>
-        <FontAwesome
-          name={iconName}
-          size={22}
-          color={color}
-        />
+    <Pressable
+      style={({ pressed }) => [
+        { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 },
+        pressed && { opacity: 0.7 },
+      ]}
+      onPress={() => {
+        if (entry.circleId) {
+          router.push(circleWorkspaceHref(entry.circleId));
+        }
+      }}
+      disabled={!entry.circleId}
+    >
+      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${color}15`, justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+        <FontAwesome name={iconName} size={18} color={color} />
       </View>
 
-      <View style={styles.details}>
-        <Text style={styles.description}>{entry.title}</Text>
-        <Text style={styles.activityMeta}>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>{entry.title}</Text>
+        <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
           {memberName ? `${memberName} • ` : ''}
           {entry.circleName}
           {entry.round ? ` • Round ${entry.round}` : ''}
         </Text>
         {entry.message ? (
-          <Text style={styles.message}>{entry.message}</Text>
+          <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 4 }}>{entry.message}</Text>
         ) : null}
-        <Text style={styles.date}>{formatDate(entry.createdAt)}</Text>
       </View>
 
-      {entry.amount !== null ? (
-        <Text style={[styles.amount, { color }]}>
-          {prefix}{formatMoney(entry.amount)}
+      <View style={{ alignItems: 'flex-end', marginLeft: 12 }}>
+        {entry.amount !== null ? (
+          <Text style={{ fontSize: 16, fontWeight: '900', color }}>
+            {prefix}{formatMoney(entry.amount)}
+          </Text>
+        ) : null}
+        <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, fontWeight: '600' }}>
+          {formatDate(entry.createdAt)}
         </Text>
-      ) : null}
-    </View>
+      </View>
+    </Pressable>
   );
 }
 

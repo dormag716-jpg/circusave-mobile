@@ -198,6 +198,26 @@ export default function ContributionPaymentScreen() {
           >
             <Text style={styles.primaryButtonText}>Retry</Text>
           </Pressable>
+          {circleId ? (
+            <Pressable
+              style={[
+                styles.primaryButton,
+                { backgroundColor: colors.primarySoft, marginTop: 12 },
+              ]}
+              onPress={() => router.replace(circleWorkspaceHref(circleId))}
+              accessibilityRole="button"
+              accessibilityLabel="Back to workspace"
+            >
+              <Text
+                style={[
+                  styles.primaryButtonText,
+                  { color: colors.primaryDark },
+                ]}
+              >
+                Back to workspace
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </SafeAreaView>
     );

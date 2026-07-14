@@ -35,6 +35,24 @@ export function circlePaymentSetupHref(circleId: string): Href {
   };
 }
 
+export function inviteJoinHref(circleId: string, claimToken?: string | null): Href {
+  return {
+    pathname: '/invite/[id]',
+    params: claimToken
+      ? { id: circleId, claimToken }
+      : { id: circleId },
+  } as Href;
+}
+
+export function circleHistoryHref(circleId: string): Href {
+  return {
+    pathname: '/circle/history',
+    params: { circleId },
+  };
+}
+
+export const completedCirclesHref = '/completed-circles' as const;
+
 export function canAccessCircleRoute(input: {
   requestedCircleId: string | null;
   authoritativeCircleId: string;

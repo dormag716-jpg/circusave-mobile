@@ -57,6 +57,14 @@ export type CreateCircleInput = {
   contributionAmount: number;
   frequency: 'weekly' | 'biweekly' | 'monthly';
   startDate: string;
+  organizerParticipates?: boolean;
+  organizerPayoutPosition?: number;
+  members?: Array<{
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email?: string;
+  }>;
 };
 
 export type CreateCircleMemberInput = {

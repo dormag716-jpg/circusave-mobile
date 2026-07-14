@@ -37,7 +37,8 @@ export default function LoginScreen() {
   const [otpRequested, setOtpRequested] = useState(false);
   const [resetVerified, setResetVerified] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { setAuthenticatedSession, setPostAuthTarget } = useAuthSession();
+  const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
+    useAuthSession();
   const incomingUrl = Linking.useURL();
 
   const normalizedEmail = email.trim().toLowerCase();
@@ -81,7 +82,10 @@ export default function LoginScreen() {
     try {
       if (!recoveryMode) {
         const result = await login({ email: normalizedEmail, password });
-        setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+        // Keep an explicit target (e.g. invite return) over the raw deep link.
+        if (!postAuthTarget) {
+          setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+        }
         await setAuthenticatedSession(result);
         return;
       }
