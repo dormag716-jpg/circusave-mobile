@@ -35,7 +35,11 @@ import {
   type BackendWalletSnapshot,
   requestPositionSwap,
   getMemberAccessToken,
+  circleShortCode,
+  approveJoinRequest,
+  requestAdditionalHand,
 } from '@/lib/api';
+
 import { useAuthSession } from '@/lib/authContext';
 import {
   circleInviteHref,
@@ -824,6 +828,8 @@ function WorkspaceContent({
           recipientId={recipientId}
           userId={userId}
           currentRoundNumber={currentRoundNumber}
+          token={token ?? ''}
+          onRefresh={() => { void onReload(); }}
         />
       ) : null}
 
@@ -1265,6 +1271,8 @@ function PeopleTab({
   recipientId,
   userId,
   currentRoundNumber,
+  token,
+  onRefresh,
 }: {
   circle: BackendCircleDetail;
   hasSchedule: boolean;
@@ -1273,82 +1281,236 @@ function PeopleTab({
   recipientId?: string | null;
   userId: string;
   currentRoundNumber: number;
+  token: string;
+  onRefresh: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [addingHand, setAddingHand] = useState(false);
+  const [showHandModal, setShowHandModal] = useState(false);
   const visibleMembers = showAll ? members : members.slice(0, 10);
   const remainingCount = members.length - 10;
+  const shortCode = circleShortCode(circle.id);
+  const waitlist: BackendCircleMember[] = (circle as any).waitlist ?? [];
+
+  async function handleApprove(memberId: string) {
+    setApprovingId(memberId);
+    try {
+      await approveJoinRequest(token, circle.id, memberId);
+      Alert.alert('Approved!', 'The member has been approved and added to the circle.');
+      onRefresh();
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Could not approve member.');
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  async function handleAddHand() {
+    setAddingHand(true);
+    setShowHandModal(false);
+    try {
+      await requestAdditionalHand(token, circle.id);
+      Alert.alert('Request Sent', 'Your request for an additional hand has been sent to the organizer.');
+      onRefresh();
+    } catch (e) {
+      Alert.alert('Not available', e instanceof Error ? e.message : 'Could not request additional hand.');
+    } finally {
+      setAddingHand(false);
+    }
+  }
+
+  // Check if the viewer already has a slot (to offer +Hand)
+  const viewerMember = members.find((m) => m.userId === userId);
+  const canAddHand = !isOrganizer && !!viewerMember && circle.status === 'active';
 
   return (
     <View style={styles.section}>
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>People</Text>
-        <Text style={styles.sectionSubtitle}>
-          {members.length} members • Payout order shown below
-        </Text>
-        {!hasSchedule ? (
-          <Text style={styles.helperText}>Payout order is not available yet.</Text>
-        ) : null}
+
+      {/* ── Circle Code Card ────────────────────────────────────── */}
+      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Circle Invite Code</Text>
+            <Text style={{ fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: 2 }}>{shortCode}</Text>
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>Share this code so members can request to join</Text>
+          </View>
+          <View style={{ gap: 8, alignItems: 'flex-end' }}>
+            <Pressable
+              style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${colors.primary}12`, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 }, pressed && { opacity: 0.7 }]}
+              onPress={async () => {
+                try {
+                  await Share.share({ message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${circle.id}` });
+                } catch { /* cancelled */ }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Share circle code"
+            >
+              <FontAwesome name="share-alt" size={14} color={colors.primary} />
+              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>Share</Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.peopleList}>
-        {members.map((member, index) => {
-          const isRecipient = member.id === recipientId;
-          const roleLabel =
-            member.id === circle.organizerId ? 'Organizer' : 'Member';
+      {/* ── Pending Approval (organizer only) ───────────────────── */}
+      {isOrganizer && waitlist.length > 0 ? (
+        <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', marginTop: 12 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', backgroundColor: '#fffbeb' }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#fef3c7', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+              <FontAwesome name="clock-o" size={15} color="#d97706" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '900', color: '#92400e' }}>Pending Approval</Text>
+              <Text style={{ fontSize: 12, color: '#a16207', marginTop: 1 }}>{waitlist.length} request{waitlist.length > 1 ? 's' : ''} waiting for your review</Text>
+            </View>
+          </View>
+          {waitlist.map((m) => (
+            <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f9fafb' }}>
+              <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '900', color: colors.primary }}>
+                  {(memberName(m)[0] ?? '?').toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberName(m)}</Text>
+                {m.phone ? <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>{m.phone}</Text> : null}
+              </View>
+              <Pressable
+                style={({ pressed }) => [{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7, marginLeft: 8 }, pressed && { opacity: 0.7 }, approvingId === m.id && { opacity: 0.5 }]}
+                onPress={() => handleApprove(m.id)}
+                disabled={approvingId === m.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Approve ${memberName(m)}`}
+              >
+                {approvingId === m.id
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Approve</Text>}
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
-          return (
-            <View key={member.id} style={styles.personCard}>
-              <View style={styles.personCardMain}>
-                <View style={styles.positionBadge}>
-                  <Text style={styles.positionText}>{index + 1}</Text>
-                </View>
-                <View style={styles.personInfo}>
-                  <Text style={styles.personName} numberOfLines={1} ellipsizeMode="tail">
-                    {memberName(member)}
-                  </Text>
-                  <View style={styles.personMetaRow}>
-                    <StatusBadge label={roleLabel} tone="muted" />
-                    {hasSchedule && (index + 1) < currentRoundNumber ? (
-                      <StatusBadge label="Paid" tone="success" />
-                    ) : null}
-                    {hasSchedule && (index + 1) === currentRoundNumber ? (
-                      <StatusBadge label="Current round" tone="warning" />
-                    ) : null}
-                    {member.reliabilityScore !== undefined ? (
-                      <View style={styles.reliabilityBadge}>
-                        <FontAwesome 
-                          name="shield" 
-                          size={12} 
-                          color={
-                            member.reliabilityScore >= 90 ? colors.success : 
-                            member.reliabilityScore >= 70 ? colors.warning : 
-                            colors.danger
-                          } 
-                        />
-                        <Text style={styles.reliabilityText}>{member.reliabilityScore}%</Text>
-                      </View>
-                    ) : null}
+      {/* ── Member list ─────────────────────────────────────────── */}
+      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', marginTop: 12 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+          <Text style={styles.sectionTitle}>People</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>{members.length} members • Payout order</Text>
+        </View>
+        {!hasSchedule ? (
+          <Text style={[styles.helperText, { padding: 16 }]}>Payout order is not available yet.</Text>
+        ) : null}
+        <View style={styles.peopleList}>
+          {visibleMembers.map((member, index) => {
+            const isRecipient = member.id === recipientId;
+            const roleLabel = member.id === circle.organizerId ? 'Organizer' : 'Member';
+            return (
+              <View key={member.id} style={styles.personCard}>
+                <View style={styles.personCardMain}>
+                  <View style={styles.positionBadge}>
+                    <Text style={styles.positionText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.personInfo}>
+                    <Text style={styles.personName} numberOfLines={1} ellipsizeMode="tail">
+                      {memberName(member)}
+                    </Text>
+                    <View style={styles.personMetaRow}>
+                      <StatusBadge label={roleLabel} tone="muted" />
+                      {hasSchedule && (index + 1) < currentRoundNumber ? (
+                        <StatusBadge label="Paid" tone="success" />
+                      ) : null}
+                      {hasSchedule && (index + 1) === currentRoundNumber ? (
+                        <StatusBadge label="Current round" tone="warning" />
+                      ) : null}
+                      {member.reliabilityScore !== undefined ? (
+                        <View style={styles.reliabilityBadge}>
+                          <FontAwesome
+                            name="shield"
+                            size={12}
+                            color={member.reliabilityScore >= 90 ? colors.success : member.reliabilityScore >= 70 ? colors.warning : colors.danger}
+                          />
+                          <Text style={styles.reliabilityText}>{member.reliabilityScore}%</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                 </View>
               </View>
-            </View>
-          );
-        })}
-
-        {!showAll && remainingCount > 0 ? (
-          <Pressable
-            style={[styles.confirmButton, { marginTop: 12, alignSelf: 'center' }]}
-            onPress={() => setShowAll(true)}
-            accessibilityRole="button"
-            accessibilityLabel={`Show all ${members.length} members`}
-          >
-            <Text style={styles.confirmText}>
-              Show {remainingCount} more member{remainingCount === 1 ? '' : 's'}
-            </Text>
-          </Pressable>
-        ) : null}
+            );
+          })}
+          {!showAll && remainingCount > 0 ? (
+            <Pressable
+              style={[styles.confirmButton, { marginTop: 12, alignSelf: 'center' }]}
+              onPress={() => setShowAll(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Show all ${members.length} members`}
+            >
+              <Text style={styles.confirmText}>
+                Show {remainingCount} more member{remainingCount === 1 ? '' : 's'}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
+      {/* ── Add Another Hand (participant) ──────────────────────── */}
+      {canAddHand ? (
+        <>
+          <Modal visible={showHandModal} transparent animationType="slide" onRequestClose={() => setShowHandModal(false)}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+              <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 28, paddingBottom: 44 }}>
+                <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginBottom: 14 }}>
+                    <FontAwesome name="hand-o-up" size={28} color={colors.primary} />
+                  </View>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center', marginBottom: 8 }}>Add Another Hand</Text>
+                  <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', lineHeight: 22 }}>
+                    In the susu model, you can hold <Text style={{ fontWeight: '800', color: '#111827' }}>multiple slots</Text> in the same circle. Each hand means:
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 16, gap: 10, marginBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <FontAwesome name="check-circle" size={16} color={colors.success} />
+                    <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>You contribute <Text style={{ fontWeight: '800' }}>once per hand</Text> each round</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <FontAwesome name="check-circle" size={16} color={colors.success} />
+                    <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>You receive a <Text style={{ fontWeight: '800' }}>separate payout</Text> for each hand</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <FontAwesome name="info-circle" size={16} color="#2563eb" />
+                    <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>The organizer must approve your additional hand request</Text>
+                  </View>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [{ backgroundColor: colors.primary, borderRadius: 16, minHeight: 54, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }, pressed && { opacity: 0.85 }]}
+                  onPress={handleAddHand}
+                  disabled={addingHand}
+                  accessibilityRole="button"
+                >
+                  {addingHand ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>Request Another Hand</Text>}
+                </Pressable>
+                <Pressable style={({ pressed }) => [{ borderRadius: 16, minHeight: 48, justifyContent: 'center', alignItems: 'center' }, pressed && { opacity: 0.7 }]} onPress={() => setShowHandModal(false)}>
+                  <Text style={{ color: '#6b7280', fontSize: 16, fontWeight: '700' }}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
+          <Pressable
+            style={[styles.memberActionButton, { borderStyle: 'dashed', borderWidth: 2, borderColor: `${colors.primary}40`, backgroundColor: `${colors.primary}06` }]}
+            onPress={() => setShowHandModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Request an additional hand in this circle"
+          >
+            <FontAwesome name="hand-o-up" size={18} color={colors.primary} />
+            <Text style={styles.memberActionText}>+ Add Another Hand</Text>
+          </Pressable>
+        </>
+      ) : null}
+
+      {/* ── Organizer Actions ───────────────────────────────────── */}
       {isOrganizer ? (
         circle.status === 'setup' ? (
           <Pressable
@@ -1366,17 +1528,15 @@ function PeopleTab({
             onPress={async () => {
               try {
                 await Share.share({
-                  message: `Access our savings circle '${circle.name}' on CircuSave: https://app.circusave.com/workspace/${circle.id}`,
+                  message: `Join my savings circle '${circle.name}' on CircuSave!\n\nCode: ${shortCode}\n\nOr link: https://app.circusave.com/invite/${circle.id}`,
                 });
-              } catch (error) {
-                // Ignore share cancellation
-              }
+              } catch { /* cancelled */ }
             }}
             accessibilityRole="button"
             accessibilityLabel="Share Access Link"
           >
-            <FontAwesome name="link" size={18} color={colors.primary} />
-            <Text style={styles.memberActionText}>Share Access Link</Text>
+            <FontAwesome name="share-alt" size={18} color={colors.primary} />
+            <Text style={styles.memberActionText}>Share Invite Code</Text>
           </Pressable>
         )
       ) : null}

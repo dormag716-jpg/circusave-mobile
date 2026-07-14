@@ -1,10 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -43,6 +45,8 @@ type MemberDraft = {
   phone: string;
 };
 
+const DRAFT_KEY = 'circle_wizard_draft';
+
 export default function CircleSetupWizardScreen() {
   const { session } = useAuthSession();
   const { sourceCircleId } = useLocalSearchParams<{ sourceCircleId: string }>();
@@ -59,6 +63,81 @@ export default function CircleSetupWizardScreen() {
     phone: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Draft helpers ──────────────────────────────────────────────────────────
+  const saveDraft = useCallback(
+    (overrides?: Partial<{ activeStep: number; circleName: string; amount: string; customAmount: string; schedule: string; members: MemberDraft[] }>) => {
+      if (sourceCircleId) return; // don't persist template-clone flows
+      const draft = {
+        activeStep: overrides?.activeStep ?? activeStep,
+        circleName: overrides?.circleName ?? circleName,
+        amount: overrides?.amount ?? amount,
+        customAmount: overrides?.customAmount ?? customAmount,
+        schedule: overrides?.schedule ?? schedule,
+        members: overrides?.members ?? members,
+      };
+      SecureStore.setItemAsync(DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
+    },
+    [activeStep, circleName, amount, customAmount, schedule, members, sourceCircleId],
+  );
+
+  function clearDraft() {
+    SecureStore.deleteItemAsync(DRAFT_KEY).catch(() => {});
+  }
+
+  // Auto-save draft 600ms after any state change
+  useEffect(() => {
+    if (!draftLoaded) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => saveDraft(), 600);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [activeStep, circleName, amount, customAmount, schedule, members, draftLoaded, saveDraft]);
+
+  // Load saved draft on first mount (unless cloning a circle)
+  useEffect(() => {
+    if (sourceCircleId) {
+      setDraftLoaded(true);
+      return;
+    }
+    SecureStore.getItemAsync(DRAFT_KEY).then((raw) => {
+      if (!raw) { setDraftLoaded(true); return; }
+      try {
+        const draft = JSON.parse(raw);
+        const hasContent = draft.circleName || (draft.members && draft.members.length > 0);
+        if (!hasContent) { setDraftLoaded(true); return; }
+        Alert.alert(
+          '📋 Resume your circle?',
+          `You were in the middle of setting up "${draft.circleName || 'a new circle'}". Would you like to continue where you left off?`,
+          [
+            {
+              text: 'Start fresh',
+              style: 'destructive',
+              onPress: () => { clearDraft(); setDraftLoaded(true); },
+            },
+            {
+              text: 'Resume',
+              onPress: () => {
+                setActiveStep(draft.activeStep ?? 0);
+                setCircleName(draft.circleName ?? '');
+                setAmount(draft.amount ?? '$100');
+                setCustomAmount(draft.customAmount ?? '');
+                setSchedule(draft.schedule ?? 'Weekly');
+                setMembers(draft.members ?? []);
+                setDraftLoaded(true);
+              },
+            },
+          ],
+          { cancelable: false },
+        );
+      } catch {
+        clearDraft();
+        setDraftLoaded(true);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     async function loadSourceCircle() {
@@ -153,7 +232,8 @@ export default function CircleSetupWizardScreen() {
       return;
     }
     if (isLastStep) {
-      await createCircleFromWizard();
+      // Show organizer consent modal instead of immediately creating
+      setShowConsentModal(true);
       return;
     }
     setActiveStep((currentStep) =>
@@ -197,6 +277,9 @@ export default function CircleSetupWizardScreen() {
 
       await startCircle(token, createdCircle.id);
 
+      // Circle created — clear the saved draft
+      clearDraft();
+
       Alert.alert(
         'Circle created',
         'Share invites so members can join and claim their spots.',
@@ -226,9 +309,98 @@ export default function CircleSetupWizardScreen() {
     }
   }
 
+  // ── Consent modal ──────────────────────────────────────────────────────────
+  function ConsentModal() {
+    return (
+      <Modal
+        visible={showConsentModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowConsentModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 44 }}>
+
+            {/* Icon */}
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                <FontAwesome name="lock" size={32} color="#7c3aed" />
+              </View>
+              <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827', textAlign: 'center' }}>Ready to launch?</Text>
+              <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginTop: 8, lineHeight: 22 }}>
+                Once your circle is started, <Text style={{ fontWeight: '800', color: '#111827' }}>you will not be able to add or remove members.</Text> Make sure everyone below is correct before continuing.
+              </Text>
+            </View>
+
+            {/* Member summary */}
+            <View style={{ backgroundColor: '#f9fafb', borderRadius: 16, padding: 16, marginBottom: 20 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Circle Roster ({members.length + 1} members)</Text>
+              {/* Organizer row */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                  <FontAwesome name="star" size={14} color="#7c3aed" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>You (Organizer)</Text>
+                  <Text style={{ fontSize: 12, color: '#6b7280' }}>Receives payout #1</Text>
+                </View>
+              </View>
+              {members.slice(0, 4).map((m, i) => (
+                <View key={m.phone} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#ede9fe', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#7c3aed' }}>{(m.firstName[0] || '').toUpperCase()}{(m.lastName[0] || '').toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>{memberDisplayName(m)}</Text>
+                    <Text style={{ fontSize: 12, color: '#6b7280' }}>{m.phone}</Text>
+                  </View>
+                </View>
+              ))}
+              {members.length > 4 ? (
+                <Text style={{ fontSize: 13, color: '#6b7280', fontWeight: '600', textAlign: 'center', marginTop: 4 }}>+ {members.length - 4} more members</Text>
+              ) : null}
+            </View>
+
+            {/* Warning banner */}
+            <View style={{ flexDirection: 'row', backgroundColor: '#fff7ed', borderRadius: 12, borderWidth: 1, borderColor: '#fed7aa', padding: 12, marginBottom: 24, alignItems: 'flex-start', gap: 10 }}>
+              <FontAwesome name="exclamation-triangle" size={16} color="#f97316" style={{ marginTop: 1 }} />
+              <Text style={{ flex: 1, fontSize: 13, color: '#92400e', lineHeight: 19 }}>
+                <Text style={{ fontWeight: '800' }}>This action is final.</Text> After starting, the member list is locked. Contribution amount and schedule are also locked.
+              </Text>
+            </View>
+
+            {/* Buttons */}
+            <Pressable
+              style={({ pressed }) => [{ backgroundColor: '#7c3aed', borderRadius: 20, minHeight: 56, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }, pressed && { opacity: 0.85 }, isSubmitting && { opacity: 0.65 }]}
+              onPress={async () => {
+                setShowConsentModal(false);
+                await createCircleFromWizard();
+              }}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>Yes, start the circle</Text>
+              )}
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [{ borderRadius: 20, minHeight: 52, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb' }, pressed && { opacity: 0.7 }]}
+              onPress={() => setShowConsentModal(false)}
+            >
+              <Text style={{ color: '#374151', fontSize: 16, fontWeight: '700' }}>Go back and review</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView
+    <>
+      <ConsentModal />
+      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+        <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
@@ -680,6 +852,7 @@ export default function CircleSetupWizardScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </>
   );
 }
 

@@ -801,4 +801,60 @@ export async function getMemberAccessToken(circleId: string, memberId: string, t
   });
 }
 
+/**
+ * Derives a human-friendly short code from a circle UUID.
+ * Example: "f3a1b2c4-5e6f-..." → "CSX-F3A1B2C4"
+ */
+export function circleShortCode(circleId: string): string {
+  const segment = circleId.replace(/-/g, '').slice(0, 8).toUpperCase();
+  return `CSX-${segment}`;
+}
+
+/**
+ * Resolves a user-entered short code (e.g. "CSX-F3A1B2C4" or raw UUID prefix)
+ * by searching the user's own circle list first, then attempting a public preview
+ * lookup. Returns { circleId, preview } on success.
+ */
+export async function resolveCircleCode(
+  token: string,
+  rawCode: string,
+): Promise<{ circleId: string; preview: BackendInvitePreview }> {
+  // Normalize: strip prefix, whitespace, lowercase (keep hyphens so full UUIDs still work)
+  const cleaned = rawCode.trim().replace(/^CSX-?/i, '').toLowerCase();
+  
+  if (cleaned.replace(/[-\s]/g, '').length < 6) {
+    throw new ApiError('Code is too short. Check and try again.', 400);
+  }
+  
+  // Try the user's own circles first to find a full UUID that starts with the cleaned string (without hyphens)
+  let circles: { id: string }[] = [];
+  try {
+    circles = await requestJson<{ id: string }[]>('/groups', { token });
+  } catch {
+    // Ignore - fall through to direct lookup
+  }
+  
+  const searchString = cleaned.replace(/-/g, '');
+  const matched = circles.find((c) => c.id.replace(/-/g, '').toLowerCase().startsWith(searchString));
+  const circleId = matched?.id ?? cleaned;
+  
+  const preview = await getPublicInvitePreview(circleId);
+  return { circleId: preview.id ?? circleId, preview };
+}
+
+/**
+ * Request an additional hand (slot) in a circle the user already belongs to.
+ * Each hand = an independent contribution + payout position.
+ */
+export function requestAdditionalHand(
+  token: string,
+  circleId: string,
+): Promise<unknown> {
+  return requestJson<unknown>(`/groups/${circleId}/join`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ additionalHand: true }),
+  });
+}
+
 

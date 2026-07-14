@@ -138,10 +138,27 @@ export default function CirclesScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.title}>My Circles</Text>
-            <Text style={styles.subtitle}>
-              Your savings groups — setup and active.
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>My Circles</Text>
+                <Text style={styles.subtitle}>
+                  Your savings groups — setup and active.
+                </Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  backgroundColor: `${colors.primary}12`, borderRadius: 12,
+                  paddingHorizontal: 12, paddingVertical: 8, marginTop: 4,
+                }, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push('/join-circle')}
+                accessibilityRole="button"
+                accessibilityLabel="Join circle by code"
+              >
+                <FontAwesome name="key" size={13} color={colors.primary} />
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>Join by Code</Text>
+              </Pressable>
+            </View>
           </View>
         }
         ListEmptyComponent={

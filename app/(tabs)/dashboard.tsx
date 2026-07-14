@@ -26,6 +26,7 @@ import {
   circleWorkspaceHref,
   contributionHref,
   createCircleHref,
+  joinCircleHref,
   myCirclesHref,
 } from '@/lib/navigation';
 import { isOrganizer } from '@/lib/permissions';
@@ -490,12 +491,12 @@ export default function DashboardScreen() {
               styles.secondaryAction,
               pressed && styles.pressed,
             ]}
-            onPress={() => router.push('/(tabs)/activity')}
+            onPress={() => router.push(joinCircleHref)}
             accessibilityRole="button"
-            accessibilityLabel="Open recent activity"
+            accessibilityLabel="Join a circle with code"
           >
-            <FontAwesome name="list" size={20} color={colors.primary} />
-            <Text style={styles.secondaryActionText}>Recent Activity</Text>
+            <FontAwesome name="key" size={18} color={colors.primary} />
+            <Text style={styles.secondaryActionText}>Join by Code</Text>
           </Pressable>
         </View>
       </ScrollView>

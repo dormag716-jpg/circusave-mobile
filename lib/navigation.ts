@@ -6,6 +6,7 @@ import type { CirclePermissionKey, CirclePermissions } from './types';
 export const dashboardHref = '/(tabs)/dashboard' as const;
 export const myCirclesHref = '/(tabs)/circles' as const;
 export const createCircleHref = '/(tabs)/create-circle' as const;
+export const joinCircleHref = '/join-circle' as const;
 
 export function circleWorkspaceHref(circleId: string, tab?: string): Href {
   return {
