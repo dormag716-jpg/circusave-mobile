@@ -362,91 +362,177 @@ export default function CircleSetupWizardScreen() {
 
             {activeStep === 3 ? (
               <>
-                <Text style={styles.label}>Add trusted members</Text>
-                <Text style={{ color: colors.muted, marginBottom: 16, fontSize: 14 }}>
-                  We'll send them an invite via phone or email.
+                {/* Header with member count */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={styles.label}>Add trusted members</Text>
+                  {members.length > 0 && (
+                    <View style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
+                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{members.length} added</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ color: colors.muted, marginBottom: 20, fontSize: 14, lineHeight: 20 }}>
+                  We'll send each person an invite via phone or email.
                 </Text>
-                <View style={styles.memberForm}>
-                  <View style={styles.memberNameRow}>
-                    <TextInput
-                      style={[styles.input, styles.memberNameInput]}
-                      value={newMember.firstName}
-                      onChangeText={(firstName) =>
-                        setNewMember((current) => ({ ...current, firstName }))
-                      }
-                      placeholder="First name"
-                      placeholderTextColor={colors.subtle}
-                      autoCapitalize="words"
-                      returnKeyType="next"
-                    />
-                    <TextInput
-                      style={[styles.input, styles.memberNameInput]}
-                      value={newMember.lastName}
-                      onChangeText={(lastName) =>
-                        setNewMember((current) => ({ ...current, lastName }))
-                      }
-                      placeholder="Last name"
-                      placeholderTextColor={colors.subtle}
-                      autoCapitalize="words"
-                      returnKeyType="next"
-                    />
+
+                {/* Input form card */}
+                <View style={{ backgroundColor: `${colors.primary}06`, borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}20`, padding: 16, marginBottom: 20, gap: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>First Name</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: '#fff' }]}
+                        value={newMember.firstName}
+                        onChangeText={(firstName) =>
+                          setNewMember((current) => ({ ...current, firstName }))
+                        }
+                        placeholder="First name"
+                        placeholderTextColor={colors.subtle}
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Last Name</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: '#fff' }]}
+                        value={newMember.lastName}
+                        onChangeText={(lastName) =>
+                          setNewMember((current) => ({ ...current, lastName }))
+                        }
+                        placeholder="Last name"
+                        placeholderTextColor={colors.subtle}
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                      />
+                    </View>
                   </View>
-                  <TextInput
-                    style={styles.input}
-                    value={newMember.phone}
-                    onChangeText={(phone) =>
-                      setNewMember((current) => ({ ...current, phone }))
-                    }
-                    placeholder="Phone number"
-                    placeholderTextColor={colors.subtle}
-                    keyboardType="phone-pad"
-                    returnKeyType="next"
-                  />
-                  <TextInput
-                    style={styles.input}
-                    value={newMember.email}
-                    onChangeText={(email) =>
-                      setNewMember((current) => ({ ...current, email }))
-                    }
-                    placeholder="Email (optional)"
-                    placeholderTextColor={colors.subtle}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    onSubmitEditing={addMember}
-                    returnKeyType="done"
-                  />
+
+                  <View>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Phone Number</Text>
+                    <View style={{ position: 'relative' }}>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: '#fff', paddingLeft: 44 }]}
+                        value={newMember.phone}
+                        onChangeText={(phone) =>
+                          setNewMember((current) => ({ ...current, phone }))
+                        }
+                        placeholder="(555) 000-0000"
+                        placeholderTextColor={colors.subtle}
+                        keyboardType="phone-pad"
+                        returnKeyType="next"
+                      />
+                      <View style={{ position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' }}>
+                        <FontAwesome name="phone" size={16} color={colors.primary} />
+                      </View>
+                    </View>
+                  </View>
+
+                  <View>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Email <Text style={{ color: colors.subtle, fontWeight: '600', textTransform: 'none' }}>(optional)</Text></Text>
+                    <View style={{ position: 'relative' }}>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: '#fff', paddingLeft: 44 }]}
+                        value={newMember.email}
+                        onChangeText={(email) =>
+                          setNewMember((current) => ({ ...current, email }))
+                        }
+                        placeholder="member@email.com"
+                        placeholderTextColor={colors.subtle}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        onSubmitEditing={addMember}
+                        returnKeyType="done"
+                      />
+                      <View style={{ position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' }}>
+                        <FontAwesome name="envelope-o" size={15} color={colors.primary} />
+                      </View>
+                    </View>
+                  </View>
+
                   <Pressable
-                    style={styles.addBtn}
+                    style={({ pressed }) => [
+                      styles.addBtn,
+                      { flexDirection: 'row', gap: 8 },
+                      pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                    ]}
                     onPress={addMember}
                     accessibilityRole="button"
                     accessibilityLabel="Add member"
                   >
+                    <FontAwesome name="user-plus" size={16} color="#fff" />
                     <Text style={styles.addBtnText}>Add Member</Text>
                   </Pressable>
                 </View>
-                {members.length ? (
-                  <View style={styles.membersList}>
-                    {members.map((member) => (
-                      <Pressable
-                        key={member.phone}
-                        style={styles.memberTag}
-                        onPress={() => removeMember(member.phone)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${memberDisplayName(member)}`}
-                      >
-                        <Text style={styles.memberTagText}>
-                          {memberDisplayName(member)}
+
+                {/* Members list — capped height so form stays in view */}
+                {members.length > 0 ? (
+                  <View style={{ borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}15`, overflow: 'hidden', backgroundColor: '#fff' }}>
+                    {/* Sticky header inside the list box */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Circle Members
+                      </Text>
+                      <View style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>{members.length}</Text>
+                      </View>
+                    </View>
+
+                    {/* Scrollable list — max 3 cards visible (~228px), scrolls for more */}
+                    <ScrollView
+                      style={{ maxHeight: 228 }}
+                      contentContainerStyle={{ gap: 0 }}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={true}
+                    >
+                      {members.map((member, index) => {
+                        const initials = `${member.firstName[0] || ''}${member.lastName[0] || ''}`.toUpperCase();
+                        const avatarColors = ['#7c3aed', '#059669', '#d97706', '#dc2626', '#2563eb', '#0891b2'];
+                        const avatarBg = avatarColors[index % avatarColors.length];
+                        return (
+                          <View key={member.phone}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10 }}>
+                              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${avatarBg}15`, justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 2, borderColor: `${avatarBg}25` }}>
+                                <Text style={{ color: avatarBg, fontSize: 14, fontWeight: '900' }}>{initials}</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberDisplayName(member)}</Text>
+                                <Text style={{ fontSize: 13, color: colors.muted, marginTop: 1 }}>{member.phone}{member.email ? ` · ${member.email}` : ''}</Text>
+                              </View>
+                              <Pressable
+                                onPress={() => removeMember(member.phone)}
+                                style={({ pressed }) => [{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#fee2e2', justifyContent: 'center', alignItems: 'center' }, pressed && { opacity: 0.7 }]}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Remove ${memberDisplayName(member)}`}
+                              >
+                                <FontAwesome name="times" size={12} color="#ef4444" />
+                              </Pressable>
+                            </View>
+                            {index < members.length - 1 ? (
+                              <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 66 }} />
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+
+                    {/* Scroll hint when there are many members */}
+                    {members.length > 3 ? (
+                      <View style={{ paddingVertical: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f3f4f6', backgroundColor: '#fafafa' }}>
+                        <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '600' }}>
+                          <FontAwesome name="arrows-v" size={11} color={colors.muted} /> Scroll to see all {members.length} members
                         </Text>
-                        <FontAwesome
-                          name="times"
-                          size={12}
-                          color={colors.primaryDark}
-                        />
-                      </Pressable>
-                    ))}
+                      </View>
+                    ) : null}
                   </View>
                 ) : (
-                  <Text style={styles.emptyMembers}>No members added yet.</Text>
+                  <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${colors.primary}10`, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                      <FontAwesome name="users" size={28} color={colors.primary} />
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 4 }}>No members yet</Text>
+                    <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center' }}>Add at least 2 trusted people to start your circle.</Text>
+                  </View>
                 )}
               </>
             ) : null}
