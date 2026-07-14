@@ -1,4 +1,4 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+﻿import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -9,7 +9,7 @@ import { useAuthSession } from '@/lib/authContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
 import { scheduleTestNotification } from '@/lib/notifications';
 import { useMarket, type MarketType } from '@/lib/market';
-import { colors, radii, spacing, typography } from '@/lib/theme';
+import { colors, radii, spacing } from '@/lib/theme';
 
 export default function SettingsScreen() {
   const { session, signOut } = useAuthSession();
@@ -159,7 +159,7 @@ export default function SettingsScreen() {
         </Pressable>
 
         {/* Version */}
-        <Text style={styles.version}>CircuSave v1.0.0 • Build 2026.06</Text>
+        <Text style={styles.version}>CircuSave v1.0.0 â€¢ Build 2026.06</Text>
 
         {/* Cultural Terminology Modal */}
         <Modal
@@ -482,3 +482,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   }
 });
+
