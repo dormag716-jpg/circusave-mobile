@@ -35,7 +35,6 @@ import {
   type BackendWalletSnapshot,
   requestPositionSwap,
   getMemberAccessToken,
-  circleShortCode,
   approveJoinRequest,
   requestAdditionalHand,
 } from '@/lib/api';
@@ -1290,7 +1289,7 @@ function PeopleTab({
   const [showHandModal, setShowHandModal] = useState(false);
   const visibleMembers = showAll ? members : members.slice(0, 10);
   const remainingCount = members.length - 10;
-  const shortCode = circleShortCode(circle.id);
+  const shortCode = circle.circleCode;
   const waitlist: BackendCircleMember[] = (circle as any).waitlist ?? [];
 
   async function handleApprove(memberId: string) {
@@ -1332,15 +1331,20 @@ function PeopleTab({
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Circle Invite Code</Text>
-            <Text style={{ fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: 2 }}>{shortCode}</Text>
+            <Text style={{ fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: 2 }}>{shortCode || 'Code unavailable'}</Text>
             <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>Share this code so members can request to join</Text>
           </View>
           <View style={{ gap: 8, alignItems: 'flex-end' }}>
             <Pressable
-              style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${colors.primary}12`, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${colors.primary}12`, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 }, (pressed || !shortCode) && { opacity: 0.5 }]}
+              disabled={!shortCode}
               onPress={async () => {
+                if (!shortCode) {
+                  Alert.alert('Code Unavailable', 'The circle code is not available for sharing right now.');
+                  return;
+                }
                 try {
-                  await Share.share({ message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${circle.id}` });
+                  await Share.share({ message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${shortCode}` });
                 } catch { /* cancelled */ }
               }}
               accessibilityRole="button"
@@ -1524,11 +1528,16 @@ function PeopleTab({
           </Pressable>
         ) : (
           <Pressable
-            style={styles.memberActionButton}
+            style={({ pressed }) => [styles.memberActionButton, (pressed || !shortCode) && { opacity: 0.5 }]}
+            disabled={!shortCode}
             onPress={async () => {
+              if (!shortCode) {
+                Alert.alert('Code Unavailable', 'The circle code is not available for sharing right now.');
+                return;
+              }
               try {
                 await Share.share({
-                  message: `Join my savings circle '${circle.name}' on CircuSave!\n\nCode: ${shortCode}\n\nOr link: https://app.circusave.com/invite/${circle.id}`,
+                  message: `Join my savings circle '${circle.name}' on CircuSave!\n\nCode: ${shortCode}\n\nOr link: https://app.circusave.com/invite/${shortCode}`,
                 });
               } catch { /* cancelled */ }
             }}

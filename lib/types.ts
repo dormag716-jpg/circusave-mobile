@@ -128,6 +128,7 @@ export type ActivityResponse = {
 export type BackendCircleSummary = {
   id: string;
   name: string;
+  circleCode?: string;
   status: string;
   pot_status: string;
   contributionAmount: number;

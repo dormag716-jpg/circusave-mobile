@@ -96,6 +96,7 @@ export type BackendCircleMember = {
 export type BackendCircleDetail = {
   id: string;
   name: string;
+  circleCode?: string;
   contributionAmount: number;
   currentRound: number;
   currentRoundSummary?: {
@@ -137,6 +138,7 @@ export type BackendInvitePreview = {
   membersCount?: number;
   members_count?: number;
   name: string;
+  circleCode?: string;
   organizerName?: string;
   organizer_name?: string;
   startDate?: string;
@@ -819,27 +821,52 @@ export async function resolveCircleCode(
   token: string,
   rawCode: string,
 ): Promise<{ circleId: string; preview: BackendInvitePreview }> {
-  // Normalize: strip prefix, whitespace, lowercase (keep hyphens so full UUIDs still work)
-  const cleaned = rawCode.trim().replace(/^CSX-?/i, '').toLowerCase();
-  
-  if (cleaned.replace(/[-\s]/g, '').length < 6) {
+  const trimmed = rawCode.trim();
+
+  if (trimmed.replace(/[-\s]/g, '').length < 6) {
     throw new ApiError('Code is too short. Check and try again.', 400);
   }
-  
-  // Try the user's own circles first to find a full UUID that starts with the cleaned string (without hyphens)
+
+  // Public circle code: send the complete code directly to the backend.
+  if (/^CSX-?/i.test(trimmed)) {
+    const normalizedCode = trimmed
+      .toUpperCase()
+      .replace(/^CSX(?!-)/, 'CSX-');
+
+    const preview = await getPublicInvitePreview(normalizedCode);
+
+    return {
+      circleId: preview.id ?? normalizedCode,
+      preview,
+    };
+  }
+
+  // Legacy UUID or UUID-prefix support.
   let circles: { id: string }[] = [];
+
   try {
     circles = await requestJson<{ id: string }[]>('/groups', { token });
   } catch {
-    // Ignore - fall through to direct lookup
+    // Direct UUID lookup below can still succeed.
   }
-  
+
+  const cleaned = trimmed.toLowerCase();
   const searchString = cleaned.replace(/-/g, '');
-  const matched = circles.find((c) => c.id.replace(/-/g, '').toLowerCase().startsWith(searchString));
-  const circleId = matched?.id ?? cleaned;
-  
-  const preview = await getPublicInvitePreview(circleId);
-  return { circleId: preview.id ?? circleId, preview };
+
+  const matched = circles.find((circle) =>
+    circle.id.replace(/-/g, '').toLowerCase().startsWith(searchString),
+  );
+
+  const identifier =
+    matched?.id ??
+    (searchString.length >= 32 ? cleaned : trimmed);
+
+  const preview = await getPublicInvitePreview(identifier);
+
+  return {
+    circleId: preview.id ?? identifier,
+    preview,
+  };
 }
 
 /**
