@@ -25,6 +25,7 @@ import {
   createCircleHref,
 } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
+import { Avatar } from '@/components/Avatar';
 
 const steps = [
   'Name your circle',
@@ -658,14 +659,11 @@ export default function CircleSetupWizardScreen() {
                       showsVerticalScrollIndicator={true}
                     >
                       {members.map((member, index) => {
-                        const initials = `${member.firstName[0] || ''}${member.lastName[0] || ''}`.toUpperCase();
-                        const avatarColors = ['#7c3aed', '#059669', '#d97706', '#dc2626', '#2563eb', '#0891b2'];
-                        const avatarBg = avatarColors[index % avatarColors.length];
                         return (
                           <View key={member.phone}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10 }}>
-                              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${avatarBg}15`, justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 2, borderColor: `${avatarBg}25` }}>
-                                <Text style={{ color: avatarBg, fontSize: 14, fontWeight: '900' }}>{initials}</Text>
+                              <View style={{ marginRight: 12 }}>
+                                <Avatar name={memberDisplayName(member)} size={40} />
                               </View>
                               <View style={{ flex: 1 }}>
                                 <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberDisplayName(member)}</Text>

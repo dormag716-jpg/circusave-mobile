@@ -48,6 +48,7 @@ import {
 } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 import ChatFeed from '@/components/ChatFeed';
+import { Avatar } from '@/components/Avatar';
 import ChatInput from '@/components/ChatInput';
 import { useChat } from '@/lib/useChat';
 
@@ -951,11 +952,10 @@ function RoundTab({
 
         {recipient ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 28 }}>
-            <Image 
-              source={{ uri: `https://i.pravatar.cc/150?u=${recipient.id}` }} 
-              style={{ width: 68, height: 68, borderRadius: 34, borderWidth: 2, borderColor: '#fff' }} 
-            />
-            <View style={{ marginLeft: 16, flex: 1 }}>
+            <View style={{ marginRight: 16 }}>
+              <Avatar name={memberName(recipient)} size={68} />
+            </View>
+            <View style={{ flex: 1 }}>
               <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Payout recipient</Text>
               <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900', marginTop: 2 }}>{memberName(recipient)}</Text>
               <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600', marginTop: 4 }}>Will receive</Text>
@@ -1134,10 +1134,9 @@ function RoundTab({
           return (
             <View key={member.id}>
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-                <Image 
-                  source={{ uri: `https://i.pravatar.cc/150?u=${member.id}` }} 
-                  style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} 
-                />
+                <View style={{ marginRight: 12 }}>
+                  <Avatar name={memberName(member)} size={40} />
+                </View>
                 <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberName(member)}</Text>
                 <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', marginRight: 16 }}>{formatMoney(circle.contributionAmount)}</Text>
                 

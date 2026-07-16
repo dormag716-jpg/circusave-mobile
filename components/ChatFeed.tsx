@@ -1,5 +1,6 @@
 import React from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { Avatar } from './Avatar';
 import { colors } from '@/lib/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import type { BackendChatMessage } from '@/lib/api';
@@ -32,8 +33,8 @@ export default function ChatFeed({ messages, currentUserId }: ChatFeedProps) {
         return (
           <View style={[styles.messageWrapper, isMe ? styles.messageWrapperMe : null]}>
             {!isMe && (
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{item.senderName[0]}</Text>
+              <View style={{ marginRight: 8 }}>
+                <Avatar name={item.senderName} size={32} />
               </View>
             )}
             <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>

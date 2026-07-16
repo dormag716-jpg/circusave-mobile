@@ -1,9 +1,10 @@
-﻿import FontAwesome from '@expo/vector-icons/FontAwesome';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Avatar } from '@/components/Avatar';
 
 import { useAuthSession } from '@/lib/authContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
@@ -24,7 +25,6 @@ export default function SettingsScreen() {
 
   const displayName = session?.user.name ?? 'Settings';
   const email = session?.user.email ?? 'Connected to backend session';
-  const initials = getInitials(displayName);
   const reliabilityScore = session?.user.reliabilityScore !== undefined 
     ? `${session.user.reliabilityScore}%` 
     : '--%';
@@ -37,9 +37,7 @@ export default function SettingsScreen() {
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>
             <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials}</Text>
-              </View>
+              <Avatar name={displayName} size={90} />
               <View style={styles.badgeContainer}>
                 <FontAwesome name="check-circle" size={18} color={colors.primary} />
               </View>
@@ -244,14 +242,7 @@ function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
   );
 }
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase())
-    .join('');
-}
+
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F8FAFC' },
