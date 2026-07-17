@@ -40,6 +40,8 @@ const amountPresets = ['$50', '$100', '$200', '$500'] as const;
 const scheduleOptions = ['Weekly', 'Bi-weekly', 'Monthly'] as const;
 
 type MemberDraft = {
+  /** Stable React list identity — not the phone (multiple hands may share a phone). */
+  draftId: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -47,6 +49,18 @@ type MemberDraft = {
 };
 
 const DRAFT_KEY = 'circle_wizard_draft';
+
+/** Client-side stable id for draft member rows (not a backend membership id). */
+function createMemberDraftId(): string {
+  return `md_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function ensureMemberDraftId(member: MemberDraft): MemberDraft {
+  if (member.draftId) {
+    return member;
+  }
+  return { ...member, draftId: createMemberDraftId() };
+}
 
 export default function CircleSetupWizardScreen() {
   const { session } = useAuthSession();
@@ -58,6 +72,7 @@ export default function CircleSetupWizardScreen() {
   const [schedule, setSchedule] = useState('Weekly');
   const [members, setMembers] = useState<MemberDraft[]>([]);
   const [newMember, setNewMember] = useState<MemberDraft>({
+    draftId: '',
     email: '',
     firstName: '',
     lastName: '',
@@ -126,7 +141,9 @@ export default function CircleSetupWizardScreen() {
                 setAmount(draft.amount ?? '$100');
                 setCustomAmount(draft.customAmount ?? '');
                 setSchedule(draft.schedule ?? 'Weekly');
-                setMembers(draft.members ?? []);
+                setMembers(
+                  ((draft.members ?? []) as MemberDraft[]).map(ensureMemberDraftId),
+                );
                 setDraftLoaded(true);
               },
             },
@@ -155,13 +172,14 @@ export default function CircleSetupWizardScreen() {
           setCustomAmount(detail.contributionAmount.toString());
         }
 
-        const prefilledMembers: MemberDraft[] = detail.members.map(m => {
+        const prefilledMembers: MemberDraft[] = detail.members.map((m) => {
           const parts = (m.full_name || m.name || '').trim().split(' ');
           return {
+            draftId: createMemberDraftId(),
             firstName: parts[0] || '',
             lastName: parts.slice(1).join(' ') || '',
             email: m.email || '',
-            phone: m.phone || ''
+            phone: m.phone || '',
           };
         });
         // Remove the organizer themselves from the draft members if they are in the list
@@ -202,8 +220,15 @@ export default function CircleSetupWizardScreen() {
       Alert.alert('Duplicate', 'Member already added.');
       return;
     }
-    setMembers((currentMembers) => [...currentMembers, member]);
+    setMembers((currentMembers) => [
+      ...currentMembers,
+      {
+        ...member,
+        draftId: member.draftId || createMemberDraftId(),
+      },
+    ]);
     setNewMember({
+      draftId: '',
       email: '',
       firstName: '',
       lastName: '',
@@ -211,9 +236,9 @@ export default function CircleSetupWizardScreen() {
     });
   }
 
-  function removeMember(phone: string) {
+  function removeMember(draftId: string) {
     setMembers((currentMembers) =>
-      currentMembers.filter((member) => member.phone !== phone),
+      currentMembers.filter((member) => member.draftId !== draftId),
     );
   }
 
@@ -346,8 +371,8 @@ export default function CircleSetupWizardScreen() {
                   <Text style={{ fontSize: 12, color: '#6b7280' }}>Receives payout #1</Text>
                 </View>
               </View>
-              {members.slice(0, 4).map((m, i) => (
-                <View key={m.phone} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              {members.slice(0, 4).map((m) => (
+                <View key={m.draftId} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                   <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#ede9fe', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
                     <Text style={{ fontSize: 13, fontWeight: '900', color: '#7c3aed' }}>{(m.firstName[0] || '').toUpperCase()}{(m.lastName[0] || '').toUpperCase()}</Text>
                   </View>
@@ -660,7 +685,7 @@ export default function CircleSetupWizardScreen() {
                     >
                       {members.map((member, index) => {
                         return (
-                          <View key={member.phone}>
+                          <View key={member.draftId}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10 }}>
                               <View style={{ marginRight: 12 }}>
                                 <Avatar name={memberDisplayName(member)} size={40} />
@@ -670,7 +695,7 @@ export default function CircleSetupWizardScreen() {
                                 <Text style={{ fontSize: 13, color: colors.muted, marginTop: 1 }}>{member.phone}{member.email ? ` · ${member.email}` : ''}</Text>
                               </View>
                               <Pressable
-                                onPress={() => removeMember(member.phone)}
+                                onPress={() => removeMember(member.draftId)}
                                 style={({ pressed }) => [{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#fee2e2', justifyContent: 'center', alignItems: 'center' }, pressed && { opacity: 0.7 }]}
                                 accessibilityRole="button"
                                 accessibilityLabel={`Remove ${memberDisplayName(member)}`}
@@ -715,7 +740,7 @@ export default function CircleSetupWizardScreen() {
                 </Text>
                 <View style={styles.reviewMembers}>
                   {members.map((member, index) => (
-                    <View key={member.phone} style={[styles.memberTag, { justifyContent: 'space-between', paddingVertical: 14, marginBottom: 8 }]}>
+                    <View key={member.draftId} style={[styles.memberTag, { justifyContent: 'space-between', paddingVertical: 14, marginBottom: 8 }]}>
                       <Text style={[styles.memberTagText, { fontSize: 15 }]}>
                         {index + 2}. {memberDisplayName(member)}
                       </Text>
@@ -801,7 +826,7 @@ export default function CircleSetupWizardScreen() {
                   </View>
                   
                   {members.map((member, index) => (
-                    <View key={member.phone} style={styles.reviewMemberCard}>
+                    <View key={member.draftId} style={styles.reviewMemberCard}>
                       <View style={styles.reviewMemberAvatar}>
                         <Text style={styles.reviewMemberAvatarText}>{index + 2}</Text>
                       </View>
@@ -888,6 +913,7 @@ function todayIsoDate() {
 
 function normalizeMemberDraft(member: MemberDraft): MemberDraft {
   return {
+    draftId: member.draftId || createMemberDraftId(),
     email: member.email.trim().toLowerCase(),
     firstName: member.firstName.trim(),
     lastName: member.lastName.trim(),
