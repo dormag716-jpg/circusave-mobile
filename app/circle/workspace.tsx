@@ -1318,9 +1318,40 @@ function PeopleTab({
     }
   }
 
-  // Check if the viewer already has a slot (to offer +Hand)
-  const viewerMember = members.find((m) => m.userId === userId);
-  const canAddHand = !isOrganizer && !!viewerMember && circle.status === 'active';
+  // Existing members (including organizers) may request more hands before lock.
+  // Count active hands plus the user's pending additional-hand waitlist items so
+  // "+ Add Another Hand" is hidden while Hand 2/3 is awaiting approval.
+  const viewerHands = members.filter((m) => m.userId === userId);
+  const viewerHandCount = viewerHands.length;
+  const viewerPendingAdditionalHands = waitlist.filter((entry) => {
+    if (entry.userId !== userId) {
+      return false;
+    }
+    const handNumber = Number(entry.handNumber ?? entry.hand_number ?? 1);
+    return entry.isAdditionalHand === true || handNumber > 1;
+  });
+  const pendingAdditionalHand = viewerPendingAdditionalHands[0] ?? null;
+  const pendingAdditionalHandNumber = pendingAdditionalHand
+    ? Number(
+        pendingAdditionalHand.handNumber ??
+          pendingAdditionalHand.hand_number ??
+          1,
+      )
+    : null;
+  const totalHandsTowardCap =
+    viewerHandCount + viewerPendingAdditionalHands.length;
+  const structureAllowsAdditionalHand =
+    circle.status === 'draft' ||
+    (!circle.startedAt && circle.status !== 'completed');
+  const canAddHand =
+    viewerHandCount > 0 &&
+    !pendingAdditionalHand &&
+    totalHandsTowardCap < 3 &&
+    structureAllowsAdditionalHand;
+  const showPendingAdditionalHand =
+    viewerHandCount > 0 &&
+    pendingAdditionalHand !== null &&
+    structureAllowsAdditionalHand;
 
   return (
     <View style={styles.section}>
@@ -1376,8 +1407,14 @@ function PeopleTab({
                 </Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberName(m)}</Text>
-                {m.phone ? <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>{m.phone}</Text> : null}
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>
+                  {m.displayLabel || memberName(m)}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
+                  {m.isAdditionalHand || Number(m.handNumber ?? m.hand_number ?? 1) > 1
+                    ? `Additional hand request · Hand ${m.handNumber ?? m.hand_number ?? 1}`
+                    : m.phone || 'Join request'}
+                </Text>
               </View>
               <Pressable
                 style={({ pressed }) => [{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7, marginLeft: 8 }, pressed && { opacity: 0.7 }, approvingId === m.id && { opacity: 0.5 }]}
@@ -1400,7 +1437,13 @@ function PeopleTab({
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
           <Text style={styles.sectionTitle}>People</Text>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>{members.length} members • Payout order</Text>
+          <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>
+            {circle.handCount ?? members.length} hands
+            {circle.uniqueMemberCount
+              ? ` · ${circle.uniqueMemberCount} people`
+              : ''}{' '}
+            • Payout order
+          </Text>
         </View>
         {!hasSchedule ? (
           <Text style={[styles.helperText, { padding: 16 }]}>Payout order is not available yet.</Text>
@@ -1417,10 +1460,21 @@ function PeopleTab({
                   </View>
                   <View style={styles.personInfo}>
                     <Text style={styles.personName} numberOfLines={1} ellipsizeMode="tail">
-                      {memberName(member)}
+                      {member.displayLabel || memberName(member)}
                     </Text>
                     <View style={styles.personMetaRow}>
                       <StatusBadge label={roleLabel} tone="muted" />
+                      {Number(member.handNumber ?? member.hand_number ?? 1) > 1 ||
+                      members.filter((m) => m.userId && m.userId === member.userId).length >
+                        1 ? (
+                        <StatusBadge
+                          label={
+                            member.handLabel ||
+                            `Hand ${member.handNumber ?? member.hand_number ?? 1}`
+                          }
+                          tone="muted"
+                        />
+                      ) : null}
                       {hasSchedule && (index + 1) < currentRoundNumber ? (
                         <StatusBadge label="Paid" tone="success" />
                       ) : null}
@@ -1458,7 +1512,47 @@ function PeopleTab({
         </View>
       </View>
 
-      {/* ── Add Another Hand (participant) ──────────────────────── */}
+      {/* ── Additional hand: pending status or request action ───── */}
+      {showPendingAdditionalHand ? (
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              marginTop: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              backgroundColor: '#fffbeb',
+              borderColor: '#fde68a',
+            },
+          ]}
+          accessibilityRole="text"
+          accessibilityLabel={`Additional hand request pending for Hand ${pendingAdditionalHandNumber}`}
+        >
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: '#fef3c7',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <FontAwesome name="clock-o" size={18} color="#d97706" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '900', color: '#92400e' }}>
+              Additional hand request pending
+            </Text>
+            <Text style={{ fontSize: 13, color: '#a16207', marginTop: 4, lineHeight: 18 }}>
+              The organizer must approve Hand {pendingAdditionalHandNumber} before
+              it becomes active.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       {canAddHand ? (
         <>
           <Modal visible={showHandModal} transparent animationType="slide" onRequestClose={() => setShowHandModal(false)}>
@@ -1883,7 +1977,7 @@ function hasConfirmedContributionLedgerEntry(
 }
 
 function memberName(member: BackendCircleMember | undefined) {
-  return member?.full_name || member?.name || 'Unknown member';
+  return member?.displayLabel || member?.full_name || member?.name || 'Unknown member';
 }
 
 function entryMemberName(entry: BackendLedgerEntry, members: BackendCircleMember[]) {

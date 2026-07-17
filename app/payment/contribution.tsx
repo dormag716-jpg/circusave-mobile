@@ -79,41 +79,52 @@ export default function ContributionPaymentScreen() {
     void loadContribution();
   }, [circleId, token]);
 
-  const viewerMember = findViewerMember(circle, userId);
-  const contribution = viewerMember
-    ? snapshot?.contributions.find((entry) => entry.memberId === viewerMember.id)
-    : undefined;
+  const viewerHands = findViewerHands(circle, userId, snapshot);
+  const amountPerHand = circle?.contributionAmount ?? 0;
+  const totalOwedPerRound =
+    circle?.viewerContributionSummary?.totalOwedPerRound ??
+    amountPerHand * viewerHands.length;
   const recipient = findRecipient(circle, snapshot);
   const currentRound =
     snapshot?.currentRoundSummary?.roundNumber ??
     snapshot?.roundWorkspace?.currentRoundNumber ??
     snapshot?.currentRound ??
     circle?.currentRound;
-  const statusLabel = contributionStatusLabel(contribution);
+
+  const dueHands = viewerHands.filter((hand) =>
+    ['due', 'missed', 'rejected'].includes(hand.status),
+  );
+  const [selectedHandId, setSelectedHandId] = useState<string | null>(null);
+  const activeHandId =
+    selectedHandId && dueHands.some((h) => h.id === selectedHandId)
+      ? selectedHandId
+      : dueHands[0]?.id ?? viewerHands[0]?.id ?? null;
+  const activeHand = viewerHands.find((h) => h.id === activeHandId);
+  const statusLabel = contributionStatusLabel(
+    activeHand
+      ? { memberId: activeHand.id, round: currentRound ?? 0, status: activeHand.status }
+      : undefined,
+  );
   const canSubmit = Boolean(
-    viewerMember &&
-      contribution &&
-      ['due', 'missed', 'rejected'].includes(
-        String(contribution.status || '').toLowerCase(),
-      ),
+    activeHand && ['due', 'missed', 'rejected'].includes(activeHand.status),
   );
 
   async function handleSubmitContribution() {
-    if (!token || !circle || !viewerMember) {
-      Alert.alert('Contribution unavailable', 'Unable to identify your membership.');
+    if (!token || !circle || !activeHand) {
+      Alert.alert('Contribution unavailable', 'Unable to identify your hand.');
       return;
     }
 
     setSubmitting(true);
     try {
-      await submitContribution(token, circle.id, viewerMember.id);
+      await submitContribution(token, circle.id, activeHand.id);
       Alert.alert(
         'Contribution submitted',
-        'Your payment is now waiting for organizer confirmation.',
+        `${activeHand.label}: payment is waiting for organizer confirmation.`,
         [
           {
             text: 'OK',
-            onPress: () => router.replace(circleWorkspaceHref(circle.id)),
+            onPress: () => void loadContribution(),
           },
         ],
       );
@@ -130,38 +141,37 @@ export default function ContributionPaymentScreen() {
   }
 
   async function handleStripePayment() {
-    if (!token || !circle || !viewerMember || currentRound == null) return;
+    if (!token || !circle || !activeHand || currentRound == null) return;
     setPayingStripe(true);
     try {
       const { clientSecret } = await createPaymentIntent(
         token,
         circle.id,
         currentRound,
-        circle.contributionAmount
+        circle.contributionAmount,
+        activeHand.id,
       );
-      
+
       const { error: initError } = await stripe.initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: 'CircuSave',
         returnURL: 'circusave://stripe-redirect',
       });
-      
+
       if (initError) throw initError;
-      
+
       const { error: presentError } = await stripe.presentPaymentSheet();
       if (presentError) {
         if (presentError.code === 'Canceled') {
-          return; // Just cancel
+          return;
         }
         throw presentError;
       }
-      
+
       Alert.alert(
         'Payment successful',
-        'Your payment has been successfully processed and is awaiting server confirmation.',
-        [
-          { text: 'OK', onPress: () => router.replace(circleWorkspaceHref(circle.id)) }
-        ]
+        `${activeHand.label}: payment processed and awaits server confirmation.`,
+        [{ text: 'OK', onPress: () => void loadContribution() }],
       );
     } catch (err: any) {
       Alert.alert('Payment Failed', err.message || 'Unable to complete Stripe payment.');
@@ -242,15 +252,62 @@ export default function ContributionPaymentScreen() {
         </View>
 
         <View style={styles.amountCard}>
-          <Text style={styles.amountLabel}>Contribution Due</Text>
+          <Text style={styles.amountLabel}>
+            {viewerHands.length > 1 ? 'Total Due This Round' : 'Contribution Due'}
+          </Text>
           <Text style={styles.amountText}>
-            {formatMoney(circle.contributionAmount)}
+            {formatMoney(
+              dueHands.length > 0
+                ? amountPerHand * dueHands.length
+                : totalOwedPerRound,
+            )}
           </Text>
           <Text style={styles.amountBody}>
-            {capitalize(circle.frequency)} contribution for Round{' '}
-            {formatRound(currentRound)}
+            {viewerHands.length > 1
+              ? `${formatMoney(amountPerHand)} per hand · ${viewerHands.length} hands · Round ${formatRound(currentRound)}`
+              : `${capitalize(circle.frequency)} contribution for Round ${formatRound(currentRound)}`}
           </Text>
         </View>
+
+        {viewerHands.length > 0 ? (
+          <View style={styles.reviewCard}>
+            <Text style={styles.reviewTitle}>Your hands</Text>
+            {viewerHands.map((hand) => {
+              const selected = hand.id === activeHandId;
+              const due = ['due', 'missed', 'rejected'].includes(hand.status);
+              return (
+                <Pressable
+                  key={hand.id}
+                  style={[
+                    styles.handRow,
+                    selected && styles.handRowSelected,
+                    !due && styles.handRowSettled,
+                  ]}
+                  onPress={() => setSelectedHandId(hand.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${hand.label}`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.handTitle}>{hand.label}</Text>
+                    <Text style={styles.handMeta}>
+                      {formatMoney(amountPerHand)} · {contributionStatusLabel({
+                        memberId: hand.id,
+                        round: currentRound ?? 0,
+                        status: hand.status,
+                      })}
+                    </Text>
+                  </View>
+                  {selected ? (
+                    <FontAwesome name="check-circle" size={18} color={colors.primary} />
+                  ) : null}
+                </Pressable>
+              );
+            })}
+            <Text style={styles.handHint}>
+              Pay one hand at a time. Paying one hand never covers another.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <View style={styles.iconBox}>
@@ -269,12 +326,20 @@ export default function ContributionPaymentScreen() {
           <Text style={styles.reviewTitle}>Review</Text>
           <ReviewRow label="Circle" value={circle.name} />
           <ReviewRow label="Round" value={formatRound(currentRound)} />
+          <ReviewRow
+            label="Selected hand"
+            value={activeHand?.label ?? '—'}
+          />
+          <ReviewRow
+            label="Amount for hand"
+            value={formatMoney(amountPerHand)}
+          />
           <ReviewRow label="Status" value={statusLabel} />
         </View>
 
-        {!viewerMember ? (
+        {viewerHands.length === 0 ? (
           <Text style={styles.unavailableText}>
-            Your active membership was not found for this circle.
+            Your active hands were not found for this circle.
           </Text>
         ) : null}
 
@@ -313,12 +378,51 @@ export default function ContributionPaymentScreen() {
   );
 }
 
-function findViewerMember(circle: BackendCircleDetail | null, userId?: string) {
+type ViewerHandRow = {
+  id: string;
+  label: string;
+  handNumber: number;
+  status: string;
+};
+
+function findViewerHands(
+  circle: BackendCircleDetail | null,
+  userId?: string,
+  snapshot?: BackendRoundSnapshot | null,
+): ViewerHandRow[] {
   if (!circle || !userId) {
-    return undefined;
+    return [];
   }
 
-  return circle.members.find((member) => member.userId === userId);
+  const fromDetail =
+    circle.viewerHands && circle.viewerHands.length > 0
+      ? circle.viewerHands
+      : circle.members.filter((member) => member.userId === userId);
+
+  const multi = fromDetail.length > 1;
+  return fromDetail
+    .map((member) => {
+      const handNumber = Number(member.handNumber ?? member.hand_number ?? 1);
+      const base =
+        member.displayLabel ||
+        member.full_name ||
+        member.name ||
+        'Your hand';
+      const label =
+        multi && !String(base).includes('Hand')
+          ? `${base} · Hand ${handNumber}`
+          : base;
+      const contribution = snapshot?.contributions?.find(
+        (entry) => entry.memberId === member.id,
+      );
+      return {
+        id: member.id,
+        label,
+        handNumber,
+        status: String(contribution?.status || 'due').toLowerCase(),
+      };
+    })
+    .sort((a, b) => a.handNumber - b.handNumber);
 }
 
 function findRecipient(
@@ -373,6 +477,40 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  handRow: {
+    borderColor: colors.cardBorder,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  handRowSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  handRowSettled: {
+    opacity: 0.72,
+  },
+  handTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  handMeta: {
+    color: colors.muted,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  handHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.background,

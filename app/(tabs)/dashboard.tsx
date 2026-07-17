@@ -520,10 +520,16 @@ function deriveContributionActions(
     }
 
     const detail = circleDetails[circle.id];
-    const viewerMemberId =
-      schedule.roundWorkspace?.viewerMemberId ??
-      detail?.members.find((member) => member.userId === userId)?.id ??
-      null;
+    const viewerMemberIds =
+      schedule.roundWorkspace?.viewerMemberIds &&
+      schedule.roundWorkspace.viewerMemberIds.length > 0
+        ? schedule.roundWorkspace.viewerMemberIds
+        : detail?.members
+            .filter((member) => member.userId === userId)
+            .map((member) => member.id) ??
+          (schedule.roundWorkspace?.viewerMemberId
+            ? [schedule.roundWorkspace.viewerMemberId]
+            : []);
 
     const currentRound =
       schedule.roundWorkspace?.currentRoundNumber ?? schedule.currentRound;
@@ -532,15 +538,18 @@ function deriveContributionActions(
       (contribution) => contribution.round === currentRound,
     );
 
-    if (viewerMemberId) {
-      const viewerContribution = contributionsForRound.find(
-        (contribution) => contribution.memberId === viewerMemberId,
-      );
-      const status = String(viewerContribution?.status ?? '')
-        .trim()
-        .toLowerCase();
-
-      if (!viewerContribution || PERSONAL_DUE_STATUSES.has(status)) {
+    if (viewerMemberIds.length > 0) {
+      // Due if any of the user's hands still need payment this round.
+      const hasDueHand = viewerMemberIds.some((memberId) => {
+        const viewerContribution = contributionsForRound.find(
+          (contribution) => contribution.memberId === memberId,
+        );
+        const status = String(viewerContribution?.status ?? '')
+          .trim()
+          .toLowerCase();
+        return !viewerContribution || PERSONAL_DUE_STATUSES.has(status);
+      });
+      if (hasDueHand) {
         personalDueCircles.push(circle);
       }
     }

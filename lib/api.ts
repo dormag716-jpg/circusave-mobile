@@ -58,6 +58,8 @@ export type CreateCircleInput = {
   frequency: 'weekly' | 'biweekly' | 'monthly';
   startDate: string;
   organizerParticipates?: boolean;
+  /** 1–3 hands for a participating organizer. */
+  organizerHandCount?: number;
   organizerPayoutPosition?: number;
   members?: Array<{
     firstName: string;
@@ -84,6 +86,14 @@ export type BackendCircleMember = {
   email?: string | null;
   full_name?: string;
   id: string;
+  /** Stable hand identifier — same as membership id. */
+  handId?: string;
+  handNumber?: number;
+  hand_number?: number;
+  handLabel?: string;
+  displayLabel?: string;
+  isParticipating?: boolean;
+  isAdditionalHand?: boolean;
   name?: string;
   phone?: string | null;
   userId?: string | null;
@@ -91,6 +101,27 @@ export type BackendCircleMember = {
   venmoHandle?: string | null;
   paypalEmail?: string | null;
   reliabilityScore?: number;
+};
+
+export type BackendViewerHand = {
+  handId: string;
+  memberId?: string;
+  handNumber: number;
+  handLabel?: string;
+  displayLabel?: string;
+  isParticipating?: boolean;
+};
+
+export type BackendViewerContributionSummary = {
+  handCount: number;
+  amountPerHand: number;
+  totalOwedPerRound: number;
+  hands: Array<{
+    handId: string;
+    handNumber: number;
+    displayLabel?: string;
+    amountOwed: number;
+  }>;
 };
 
 export type BackendCircleDetail = {
@@ -116,6 +147,14 @@ export type BackendCircleDetail = {
   };
   frequency: string;
   members: BackendCircleMember[];
+  /** Active hands (participating memberships) — drives pot and rounds. */
+  handCount?: number;
+  totalHands?: number;
+  memberCount?: number;
+  uniqueMemberCount?: number;
+  viewerHands?: BackendCircleMember[];
+  viewerHandCount?: number;
+  viewerContributionSummary?: BackendViewerContributionSummary | null;
   totalRounds?: number;
   organizerId: string;
   paymentInstructions?: string | null;
@@ -216,6 +255,9 @@ export type BackendRoundSnapshot = {
     readyForPayout?: boolean;
     totalMemberCount?: number;
     viewerMemberId?: string | null;
+    viewerMemberIds?: string[];
+    viewerHands?: BackendViewerHand[];
+    viewerHandCount?: number;
     viewerPermissions?: {
       canApproveContributions?: boolean;
       canReleasePayout?: boolean;
@@ -729,14 +771,36 @@ export async function createFinancialConnectionsSession(token: string): Promise<
 }
 
 export async function createPaymentIntent(
-  token: string, 
-  circleId: string, 
-  roundNumber: number, 
-  amount: number
-): Promise<{ clientSecret: string, paymentIntentId: string }> {
-  return requestJson<{ clientSecret: string; paymentIntentId: string }>('/wallet/stripe/payment-intent', {
+  token: string,
+  circleId: string,
+  roundNumber: number,
+  amount: number,
+  memberId?: string,
+): Promise<{
+  clientSecret: string;
+  paymentIntentId: string;
+  memberId?: string;
+  handId?: string;
+  handNumber?: number;
+  amountCents?: number;
+}> {
+  return requestJson<{
+    clientSecret: string;
+    paymentIntentId: string;
+    memberId?: string;
+    handId?: string;
+    handNumber?: number;
+    amountCents?: number;
+  }>('/wallet/stripe/payment-intent', {
     method: 'POST',
-    body: JSON.stringify({ circleId, roundNumber, amount: Math.round(amount * 100) }),
+    body: JSON.stringify({
+      circleId,
+      roundNumber,
+      // Server derives authoritative amount; amount kept for older backends.
+      amount: Math.round(amount * 100),
+      memberId: memberId || undefined,
+      handId: memberId || undefined,
+    }),
     token,
   });
 }
