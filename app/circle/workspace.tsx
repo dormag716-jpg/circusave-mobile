@@ -48,6 +48,7 @@ import {
   requestAdditionalHand,
   startCircle,
 } from '@/lib/api';
+import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
 import { useAuthSession } from '@/lib/authContext';
 import {
@@ -893,7 +894,16 @@ function WorkspaceContent({
         />
       ) : null}
 
-      {activeTab === 'records' ? <RecordsTab entries={ledgerEntries} circleId={circle.id} members={circle.members || []} isPremium={isPremium} /> : null}
+      {activeTab === 'records' ? (
+        <RecordsStatementCenter
+          circleId={circle.id}
+          token={token ?? ''}
+          members={circle.members || []}
+          ledgerEntries={ledgerEntries}
+          isPremium={isPremium}
+          circleName={circle.name}
+        />
+      ) : null}
     </View>
   );
 }
@@ -3359,91 +3369,6 @@ function ExpandableMemberTile({
           })}
         </View>
       ) : null}
-    </View>
-  );
-}
-
-function RecordsTab({ entries, circleId, members, isPremium }: { entries: BackendLedgerEntry[], circleId: string, members: BackendCircleMember[], isPremium: boolean }) {
-  const visibleEntries = isPremium ? entries : entries.slice(0, 10);
-  const hasMore = !isPremium && entries.length > 10;
-
-  return (
-    <View style={styles.section}>
-      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-          <View style={{ backgroundColor: '#f3e8ff', width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-            <FontAwesome name="line-chart" size={20} color="#7c3aed" />
-          </View>
-          <View>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>Activity</Text>
-            <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
-              {entries.length} recorded action{entries.length === 1 ? '' : 's'}
-            </Text>
-          </View>
-        </View>
-
-        {entries.length === 0 ? (
-          <View style={{ padding: 32, alignItems: 'center' }}>
-            <FontAwesome name="book" size={32} color="#d1d5db" />
-            <Text style={{ marginTop: 12, fontSize: 16, color: '#6b7280', fontWeight: '600' }}>No activity yet.</Text>
-          </View>
-        ) : (
-          <View>
-            {visibleEntries.map((entry, index) => {
-              const bg = `${ledgerIconColor(entry)}15`;
-              return (
-                <View key={entry.id}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: bg, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                      <FontAwesome name={ledgerIcon(entry)} size={16} color={ledgerIconColor(entry)} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>{ledgerTitle(entry)}</Text>
-                      <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-                        {entryMemberName(entry, members)}
-                        {entryMemberName(entry, members) ? ' · ' : ''}
-                        Round {entry.round || '—'} · {formatRelativeDays(entry.created_at || entry.at)}
-                      </Text>
-                    </View>
-                    {typeof entry.amount === 'number' ? (
-                      <Text style={{ fontSize: 15, fontWeight: '800', color: ledgerIconColor(entry) }}>
-                        {ledgerAmountLabel(entry)}
-                      </Text>
-                    ) : null}
-                  </View>
-                  {index < visibleEntries.length - 1 ? (
-                    <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 68 }} />
-                  ) : null}
-                </View>
-              );
-            })}
-
-            {hasMore ? (
-              <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center' }}>
-                <FontAwesome name="lock" size={24} color="#6b37cf" style={{ marginBottom: 8 }} />
-                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', textAlign: 'center' }}>Unlock Full History</Text>
-                <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
-                  You have {entries.length - 10} more activities hidden. Upgrade to Premium to view your entire circle's history.
-                </Text>
-                <Pressable
-                  style={{ backgroundColor: '#6b37cf', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, width: '100%', alignItems: 'center' }}
-                  onPress={() => router.push('/subscription')}
-                >
-                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>Upgrade to Premium</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable
-                style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
-                onPress={() => Alert.alert('Export not available yet', 'Full history export will be available when the backend endpoint is connected.')}
-              >
-                <FontAwesome name="download" size={14} color="#6b37cf" style={{ marginRight: 8 }} />
-                <Text style={{ color: '#6b37cf', fontSize: 15, fontWeight: '800' }}>Export Full History</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-      </View>
     </View>
   );
 }

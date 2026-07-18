@@ -315,6 +315,202 @@ export type BackendLedgerPage = {
   next_cursor?: string | null;
 };
 
+/** Backend money field: cents number or the literal "Unavailable". */
+export type StatementMoney = number | 'Unavailable';
+
+export type MemberStatementIndexRow = {
+  subjectKey: string;
+  userId: string | null;
+  handId: string | null;
+  displayName: string;
+  membershipStatus: string;
+  roleSummary?: string;
+  handCount: number;
+  handIds: string[];
+  totals: {
+    contributedCents: StatementMoney;
+    contributedDisplay: string;
+    receivedCents: StatementMoney;
+    receivedDisplay: string;
+  };
+  canRequestStatement: boolean;
+  unclaimed?: boolean;
+};
+
+export type MemberStatementsIndex = {
+  documentType: string;
+  circle: {
+    id: string;
+    name: string;
+    status: string;
+    contributionAmountCents: number;
+    contributionAmountDisplay: string;
+    frequency: string | null;
+  };
+  viewer: {
+    userId: string;
+    role: string;
+    canViewAllMembers: boolean;
+  };
+  members: MemberStatementIndexRow[];
+  unclaimedHands: MemberStatementIndexRow[];
+};
+
+export type MemberStatementSnapshot = {
+  documentType: string;
+  version: number;
+  statementReference: string;
+  generatedAt: string;
+  generatedByUserId: string;
+  title: string;
+  circle: {
+    id: string;
+    name: string;
+    status: string;
+    contributionAmountCents: number | StatementMoney;
+    contributionAmountDisplay: string;
+    frequency: string | null;
+  };
+  member: {
+    userId: string | null;
+    displayName: string;
+    membershipStatus: string;
+    roleSummary?: string | null;
+    unclaimed?: boolean;
+  };
+  period: {
+    mode: 'full_circle' | 'custom' | string;
+    from: string | null;
+    to: string | null;
+    label: string;
+  };
+  circleParticipation: {
+    totalParticipatingHands: number | 'Unavailable';
+    totalRounds: number | 'Unavailable';
+    memberHandCount: number;
+  };
+  hands: Array<{
+    handId: string;
+    handNumber: number;
+    displayLabel: string;
+    isParticipating: boolean;
+    payoutPosition: number | 'Unavailable';
+    contributions: {
+      expectedCents: StatementMoney;
+      expectedDisplay: string;
+      confirmedCents: StatementMoney;
+      confirmedDisplay: string;
+      pendingCents: StatementMoney;
+      pendingDisplay: string;
+      missedCents: StatementMoney;
+      missedDisplay: string;
+      rejectedCents: StatementMoney;
+      rejectedDisplay: string;
+      byRound: Array<{
+        contributionId: string;
+        roundNumber: number;
+        dueDate: string | null;
+        status: string;
+        expectedCents: number;
+        expectedDisplay: string;
+        paidCents: number;
+        paidDisplay: string;
+        paymentMethod?: string | null;
+        submittedAt?: string | null;
+        confirmedAt?: string | null;
+      }>;
+    };
+    payouts: {
+      receivedCents: StatementMoney;
+      receivedDisplay: string;
+      received: Array<{
+        payoutId: string;
+        roundNumber: number | null;
+        amountCents: number;
+        amountDisplay: string;
+        status: string;
+        paidAt: string | null;
+      }>;
+      scheduled: Array<{
+        roundNumber: number;
+        dueDate: string | null;
+        amountCents: StatementMoney;
+        amountDisplay: string;
+        status: string;
+        roundStatus?: string;
+      }>;
+    };
+    remainingObligationsCents: StatementMoney;
+    remainingObligationsDisplay: string;
+  }>;
+  memberTotals: {
+    totalContributedCents: StatementMoney;
+    totalContributedDisplay: string;
+    totalReceivedCents: StatementMoney;
+    totalReceivedDisplay: string;
+    remainingObligationsCents: StatementMoney;
+    remainingObligationsDisplay: string;
+  };
+  ledger: Array<{
+    id: string;
+    at: string | null;
+    eventType: string;
+    amountCents: number | null;
+    amountDisplay: string;
+    roundNumber: number | null;
+    handId: string | null;
+    reference: string;
+    statusOrNote: string | null;
+    description: string | null;
+  }>;
+  verification: {
+    footerText: string;
+    disclaimer?: string;
+    dataSource: string;
+    contentFingerprint?: string;
+  };
+};
+
+export type StatementPeriodInput = {
+  period?: 'full_circle' | 'custom';
+  from?: string;
+  to?: string;
+};
+
+export type MemberStatementPdfResult = {
+  bytes: Uint8Array;
+  statementReference: string;
+  generatedAt: string;
+  filename: string;
+  documentId?: string;
+};
+
+export type StatementDocumentSummary = {
+  id: string;
+  circleId: string;
+  statementReference: string;
+  documentType: string;
+  subjectUserId: string | null;
+  handId: string | null;
+  memberDisplayName: string;
+  membershipStatus?: string | null;
+  period: {
+    mode: string;
+    from: string | null;
+    to: string | null;
+    label: string;
+  };
+  generatedAt: string | null;
+  generatedByUserId: string;
+  contentFingerprint?: string | null;
+};
+
+export type StatementDocumentsPage = {
+  documentType: string;
+  circleId: string;
+  documents: StatementDocumentSummary[];
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -617,6 +813,154 @@ export function getLedgerEntries(
   circleId: string,
 ): Promise<BackendLedgerPage> {
   return requestJson<BackendLedgerPage>(`/ledger/${circleId}`, { token });
+}
+
+function buildStatementPeriodQuery(period?: StatementPeriodInput): string {
+  const params = new URLSearchParams();
+  const mode = period?.period || 'full_circle';
+  params.set('period', mode);
+  if (mode === 'custom') {
+    if (period?.from) params.set('from', period.from);
+    if (period?.to) params.set('to', period.to);
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export function getMemberStatementsIndex(
+  token: string,
+  circleId: string,
+): Promise<MemberStatementsIndex> {
+  return requestJson<MemberStatementsIndex>(
+    `/groups/${circleId}/member-statements`,
+    { token },
+  );
+}
+
+export function getMemberStatementSnapshotForUser(
+  token: string,
+  circleId: string,
+  subjectUserId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementSnapshot> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestJson<MemberStatementSnapshot>(
+    `/groups/${circleId}/member-statements/users/${encodeURIComponent(subjectUserId)}${qs}`,
+    { token },
+  );
+}
+
+export function getMemberStatementSnapshotForHand(
+  token: string,
+  circleId: string,
+  handId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementSnapshot> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestJson<MemberStatementSnapshot>(
+    `/groups/${circleId}/member-statements/hands/${encodeURIComponent(handId)}${qs}`,
+    { token },
+  );
+}
+
+async function requestPdf(
+  path: string,
+  token: string,
+): Promise<MemberStatementPdfResult> {
+  const headers = new Headers();
+  headers.set('Accept', 'application/pdf');
+  headers.set('X-CircuSave-Client', 'mobile');
+  headers.set('Origin', 'circusave-mobile');
+  headers.set('Authorization', `Bearer ${token}`);
+
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, { headers });
+  } catch {
+    throw new Error(
+      'Could not reach the CircuSave backend. Confirm EXPO_PUBLIC_API_BASE_URL and that Flask is reachable from this device.',
+    );
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let payload: unknown = text;
+    try {
+      payload = text ? JSON.parse(text) : undefined;
+    } catch {
+      payload = text;
+    }
+    throw new ApiError(errorMessage(payload, response.status), response.status);
+  }
+
+  const buffer = await response.arrayBuffer();
+  const statementReference =
+    response.headers.get('X-Statement-Reference') ||
+    response.headers.get('x-statement-reference') ||
+    'statement';
+  const generatedAt =
+    response.headers.get('X-Statement-Generated-At') ||
+    response.headers.get('x-statement-generated-at') ||
+    '';
+  const documentId =
+    response.headers.get('X-Statement-Document-Id') ||
+    response.headers.get('x-statement-document-id') ||
+    undefined;
+  const safeRef = statementReference.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return {
+    bytes: new Uint8Array(buffer),
+    statementReference,
+    generatedAt,
+    filename: `CircuSave_Member_Circle_Statement_${safeRef}.pdf`,
+    documentId: documentId || undefined,
+  };
+}
+
+export function downloadMemberStatementPdfForUser(
+  token: string,
+  circleId: string,
+  subjectUserId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementPdfResult> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestPdf(
+    `/groups/${circleId}/member-statements/users/${encodeURIComponent(subjectUserId)}/pdf${qs}`,
+    token,
+  );
+}
+
+export function downloadMemberStatementPdfForHand(
+  token: string,
+  circleId: string,
+  handId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementPdfResult> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestPdf(
+    `/groups/${circleId}/member-statements/hands/${encodeURIComponent(handId)}/pdf${qs}`,
+    token,
+  );
+}
+
+export function getStatementDocuments(
+  token: string,
+  circleId: string,
+): Promise<StatementDocumentsPage> {
+  return requestJson<StatementDocumentsPage>(
+    `/groups/${circleId}/statement-documents`,
+    { token },
+  );
+}
+
+export function downloadStatementDocumentPdf(
+  token: string,
+  circleId: string,
+  documentId: string,
+): Promise<MemberStatementPdfResult> {
+  return requestPdf(
+    `/groups/${circleId}/statement-documents/${encodeURIComponent(documentId)}/pdf`,
+    token,
+  );
 }
 
 export function approveContribution(
