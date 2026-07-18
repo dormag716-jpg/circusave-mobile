@@ -18,6 +18,11 @@ import {
   type BackendInvitePreview,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  joinOutcomeMessage,
+  joinOutcomeTitle,
+  resolveJoinOutcome,
+} from '@/lib/joinOutcome';
 import { circleWorkspaceHref, inviteJoinHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
@@ -77,15 +82,26 @@ export default function JoinInviteScreen() {
 
     setJoining(true);
     try {
-      await requestJoin(token, circleId, claimToken);
+      const result = await requestJoin(token, circleId, claimToken);
+      const outcome = resolveJoinOutcome(result, session?.user?.id);
+      const goWorkspace = outcome === 'claimed';
       Alert.alert(
-        'Success!',
-        'You have joined this circle.',
+        joinOutcomeTitle(outcome),
+        joinOutcomeMessage(outcome, preview.name),
         [
-          { text: 'OK', onPress: () => router.replace(circleWorkspaceHref(circleId)) }
-        ]
+          {
+            text: 'OK',
+            onPress: () =>
+              router.replace(
+                goWorkspace
+                  ? circleWorkspaceHref(circleId)
+                  : '/(tabs)/dashboard',
+              ),
+          },
+        ],
       );
     } catch (joinError) {
+      // Rejected / blocked join — surface the backend reason honestly.
       Alert.alert(
         'Unable to join',
         joinError instanceof Error

@@ -1,12 +1,17 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
 import type { BackendCircleSummary } from '@/lib/types';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  buildOpenCircleCapacity,
+  openCircleLimitMessage,
+} from '@/lib/circleCapacity';
+import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
 type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
@@ -14,23 +19,44 @@ type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
 export default function CreateCircleGuideScreen() {
   const { session } = useAuthSession();
   const token = session?.session.token;
-  
+  const role = session?.user?.role;
+
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!token) {
       setLoading(false);
       return;
     }
+    setLoading(true);
     getCircles(token)
       .then(setCircles)
-      .catch(() => {})
+      .catch(() => setCircles([]))
       .finally(() => setLoading(false));
   }, [token]);
 
-  const activeCircles = circles.filter(c => c.status === 'active');
-  const hasReachedLimit = activeCircles.length >= 1;
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  const openCap = buildOpenCircleCapacity({
+    circles,
+    organizerRoleOrTier: role,
+    organizerOwnedOnly: true,
+  });
+  const hasReachedLimit = openCap.atCapacity;
+  const existingId = openCap.primaryOpenCircleId;
+  const existing = existingId
+    ? circles.find((c) => c.id === existingId)
+    : undefined;
+  const existingIsSetup =
+    existing &&
+    ['draft', 'setup', 'forming'].includes(
+      String(existing.status || '').toLowerCase(),
+    );
 
   if (loading) {
     return (
@@ -57,6 +83,15 @@ export default function CreateCircleGuideScreen() {
           </Text>
         </View>
 
+        <View style={styles.planNote}>
+          <FontAwesome name="info-circle" size={16} color={colors.primary} />
+          <Text style={styles.planNoteText}>
+            Free plan: <Text style={styles.planNoteStrong}>1 open circle</Text> at
+            a time (setup or active). Complete a circle to free your slot, or
+            upgrade for unlimited circles.
+          </Text>
+        </View>
+
         <View style={styles.benefits}>
           <Benefit icon="lock" text="Authoritative ledger" />
           <Benefit icon="users" text="Trusted members only" />
@@ -68,15 +103,32 @@ export default function CreateCircleGuideScreen() {
             <View style={styles.limitIcon}>
               <FontAwesome name="lock" size={24} color={colors.warning} />
             </View>
-            <Text style={styles.limitTitle}>Circle Limit Reached</Text>
-            <Text style={styles.limitText}>
-              Free accounts are limited to 1 active circle. Upgrade to Premium to create unlimited circles.
-            </Text>
+            <Text style={styles.limitTitle}>Free plan limit</Text>
+            <Text style={styles.limitText}>{openCircleLimitMessage(openCap)}</Text>
+            {existingId ? (
+              <Pressable
+                style={styles.upgradeButton}
+                onPress={() => router.push(circleWorkspaceHref(existingId))}
+              >
+                <Text style={styles.upgradeButtonText}>
+                  {existingIsSetup
+                    ? `Continue “${existing?.name || 'your circle'}”`
+                    : `Open “${existing?.name || 'your circle'}”`}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.upgradeButton}
+                onPress={() => router.push(myCirclesHref)}
+              >
+                <Text style={styles.upgradeButtonText}>Go to My Circles</Text>
+              </Pressable>
+            )}
             <Pressable
-              style={styles.upgradeButton}
+              style={styles.secondaryButton}
               onPress={() => router.push('/subscription')}
             >
-              <Text style={styles.upgradeButtonText}>View Plans</Text>
+              <Text style={styles.secondaryButtonText}>View Premium plans</Text>
             </Pressable>
           </View>
         ) : (
@@ -94,7 +146,7 @@ export default function CreateCircleGuideScreen() {
             </Pressable>
 
             <Text style={styles.note}>
-              Takes about 2 minutes • You can edit later
+              Free: 1 open circle · Up to 20 members · Takes about 2 minutes
             </Text>
           </>
         )}
@@ -126,7 +178,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
   },
   emoji: {
     fontSize: 64,
@@ -144,6 +196,27 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     marginTop: 12,
     textAlign: 'center',
+  },
+  planNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    padding: 14,
+    marginBottom: 28,
+  },
+  planNoteText: {
+    flex: 1,
+    color: colors.primaryDark,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  planNoteStrong: {
+    fontWeight: '900',
   },
   benefits: {
     gap: 20,
@@ -223,7 +296,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.muted,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     lineHeight: 22,
   },
   upgradeButton: {
@@ -233,10 +306,21 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     width: '100%',
     alignItems: 'center',
+    marginBottom: 10,
   },
   upgradeButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '800',
+  },
+  secondaryButton: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: colors.primary,
+    fontSize: 15,
     fontWeight: '800',
   },
 });

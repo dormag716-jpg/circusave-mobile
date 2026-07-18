@@ -15,11 +15,12 @@ const plans = [
     period: "forever",
     tagline: "Perfect for starting your first circle",
     features: [
-      "1 active circle only",
+      "1 open circle at a time (setup or active)",
       "Up to 20 members per circle",
       "Track current round",
       "View payment progress",
       "Basic payout order",
+      "Start a new circle after you complete one",
     ],
     buttonText: "Continue Free",
     popular: false,
@@ -32,7 +33,7 @@ const plans = [
     tagline: "For organizers who manage serious circles",
     features: [
       "Unlimited circles",
-      "More members per circle",
+      "Up to 50 members per circle",
       "Full circle history",
       "Advanced records & exports",
       "Better reminders",

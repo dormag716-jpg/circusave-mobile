@@ -21,6 +21,12 @@ import {
   type BackendInvitePreview,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  joinOutcomeMessage,
+  joinOutcomeTitle,
+  resolveJoinOutcome,
+  type JoinOutcome,
+} from '@/lib/joinOutcome';
 import { dashboardHref } from '@/lib/navigation';
 import { colors, spacing } from '@/lib/theme';
 
@@ -31,12 +37,13 @@ function cap(s: string) {
 export default function JoinCircleScreen() {
   const { session, setPostAuthTarget } = useAuthSession();
   const token = session?.session.token;
+  const viewerUserId = session?.user?.id;
   const [code, setCode] = useState('');
   const [resolving, setResolving] = useState(false);
   const [joining, setJoining] = useState(false);
   const [preview, setPreview] = useState<BackendInvitePreview | null>(null);
   const [resolvedId, setResolvedId] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [joinOutcome, setJoinOutcome] = useState<JoinOutcome | null>(null);
 
   async function lookup() {
     if (!code.trim()) {
@@ -51,7 +58,7 @@ export default function JoinCircleScreen() {
     setResolving(true);
     setPreview(null);
     setResolvedId(null);
-    setSent(false);
+    setJoinOutcome(null);
     try {
       const { circleId, preview: p } = await resolveCircleCode(token, code);
       setPreview(p);
@@ -70,11 +77,11 @@ export default function JoinCircleScreen() {
     if (!token || !resolvedId) return;
     setJoining(true);
     try {
-      await requestJoin(token, resolvedId);
-      setSent(true);
+      const result = await requestJoin(token, resolvedId);
+      setJoinOutcome(resolveJoinOutcome(result, viewerUserId));
     } catch (e) {
       Alert.alert(
-        'Could not request to join',
+        'Could not join',
         e instanceof Error ? e.message : 'An error occurred.',
       );
     } finally {
@@ -85,10 +92,10 @@ export default function JoinCircleScreen() {
   function onCode(t: string) {
     const u = t.toUpperCase().replace(/[^A-Z0-9-]/g, '');
     setCode(u);
-    if (preview) {
+    if (preview || joinOutcome) {
       setPreview(null);
       setResolvedId(null);
-      setSent(false);
+      setJoinOutcome(null);
     }
   }
 
@@ -168,7 +175,7 @@ export default function JoinCircleScreen() {
           </View>
 
           {/* Preview card */}
-          {preview && !sent ? (
+          {preview && !joinOutcome ? (
             <View style={sty.previewCard}>
               {/* Header */}
               <View style={sty.previewHead}>
@@ -217,11 +224,13 @@ export default function JoinCircleScreen() {
                 </View>
               </View>
 
-              {/* Info */}
+              {/* Info — honest: claim when matched, otherwise organizer approval */}
               <View style={sty.infoBanner}>
                 <FontAwesome name="info-circle" size={14} color="#2563eb" />
                 <Text style={sty.infoTxt}>
-                  Your request goes to the organizer for approval. You'll be notified once accepted.
+                  If the organizer already added your phone or email, you may
+                  claim your hand right away. Otherwise your request waits for
+                  organizer approval.
                 </Text>
               </View>
 
@@ -242,25 +251,38 @@ export default function JoinCircleScreen() {
                 ) : (
                   <>
                     <FontAwesome name="hand-o-up" size={18} color="#fff" />
-                    <Text style={sty.joinTxt}>Request to Join</Text>
+                    <Text style={sty.joinTxt}>Join Circle</Text>
                   </>
                 )}
               </Pressable>
             </View>
           ) : null}
 
-          {/* Success state */}
-          {sent ? (
+          {/* Outcome: claimed vs pending (rejection uses the error alert) */}
+          {joinOutcome ? (
             <View style={sty.success}>
-              <View style={sty.checkCircle}>
-                <FontAwesome name="check" size={32} color="#059669" />
+              <View
+                style={[
+                  sty.checkCircle,
+                  joinOutcome === 'pending' && sty.pendingCircle,
+                ]}
+              >
+                <FontAwesome
+                  name={joinOutcome === 'claimed' ? 'check' : 'clock-o'}
+                  size={32}
+                  color={joinOutcome === 'claimed' ? '#059669' : '#b45309'}
+                />
               </View>
-              <Text style={sty.sucTitle}>Request Sent!</Text>
+              <Text
+                style={[
+                  sty.sucTitle,
+                  joinOutcome === 'pending' && sty.pendingTitle,
+                ]}
+              >
+                {joinOutcomeTitle(joinOutcome)}
+              </Text>
               <Text style={sty.sucTxt}>
-                Your request to join{' '}
-                <Text style={{ fontWeight: '800' }}>{preview?.name}</Text> has
-                been sent. The organizer will review it and you'll be notified
-                once approved.
+                {joinOutcomeMessage(joinOutcome, preview?.name)}
               </Text>
               <Pressable
                 style={sty.doneBtn}
@@ -275,7 +297,7 @@ export default function JoinCircleScreen() {
                   setCode('');
                   setPreview(null);
                   setResolvedId(null);
-                  setSent(false);
+                  setJoinOutcome(null);
                 }}
               >
                 <Text style={sty.anotherTxt}>Join another circle</Text>
@@ -485,11 +507,17 @@ const sty = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  pendingCircle: {
+    backgroundColor: '#fef3c7',
+  },
   sucTitle: {
     fontSize: 22,
     fontWeight: '900',
     color: '#065f46',
     marginBottom: 8,
+  },
+  pendingTitle: {
+    color: '#92400e',
   },
   sucTxt: {
     fontSize: 15,

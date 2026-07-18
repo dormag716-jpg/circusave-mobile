@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   FlatList,
   StyleSheet,
@@ -11,8 +12,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCircles, getCircleDetail, type BackendCircleDetail } from '@/lib/api';
+import {
+  deleteAllSetupDrafts,
+  deleteCircle,
+  getCircles,
+  getCircleDetail,
+  type BackendCircleDetail,
+} from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
 import {
   circleWorkspaceHref,
   completedCirclesHref,
@@ -21,8 +29,7 @@ import {
 import { isOrganizer } from '@/lib/permissions';
 import { colors, spacing } from '@/lib/theme';
 import type { BackendCircleSummary } from '@/lib/types';
-
-const SETUP_STATUSES = new Set(['setup', 'forming', 'paused']);
+import { isSetupCircleStatus } from '@/lib/circleSummary';
 
 type ListItem =
   | { type: 'header'; id: string; title: string; count: number }
@@ -34,6 +41,7 @@ export default function CirclesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [howItWorksExpanded, setHowItWorksExpanded] = useState(false);
+  const [purgingSetup, setPurgingSetup] = useState(false);
   const [circleDetails, setCircleDetails] = useState<
     Record<string, BackendCircleDetail>
   >({});
@@ -45,10 +53,19 @@ export default function CirclesScreen() {
     [circles],
   );
   const setupCircles = useMemo(
-    () => circles.filter((circle) => SETUP_STATUSES.has(circle.status)),
+    () => circles.filter((circle) => isSetupCircleStatus(circle.status)),
     [circles],
   );
   const hasAnyCircles = activeCircles.length > 0 || setupCircles.length > 0;
+  const openCap = useMemo(
+    () =>
+      buildOpenCircleCapacity({
+        circles,
+        organizerRoleOrTier: session?.user?.role,
+        organizerOwnedOnly: true,
+      }),
+    [circles, session?.user?.role],
+  );
 
   const listData = useMemo(() => {
     const items: ListItem[] = [];
@@ -98,7 +115,7 @@ export default function CirclesScreen() {
       setCircles(summaries);
 
       const detailTargets = summaries.filter(
-        (c) => c.status === 'active' || SETUP_STATUSES.has(c.status),
+        (c) => c.status === 'active' || isSetupCircleStatus(c.status),
       );
       const details = await Promise.all(
         detailTargets.map((c) => getCircleDetail(token, c.id).catch(() => null)),
@@ -129,6 +146,84 @@ export default function CirclesScreen() {
     }, [loadCircles]),
   );
 
+  const organizerSetupCircles = useMemo(
+    () =>
+      setupCircles.filter(
+        (c) => String(c.userRole || '').toLowerCase() === 'organizer',
+      ),
+    [setupCircles],
+  );
+
+  function confirmPurgeAllSetup() {
+    if (!token || organizerSetupCircles.length === 0 || purgingSetup) {
+      return;
+    }
+    Alert.alert(
+      'Delete all setup circles?',
+      `This permanently removes ${organizerSetupCircles.length} setup/draft circle${
+        organizerSetupCircles.length === 1 ? '' : 's'
+      } you organize. Active and completed circles are not affected. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete permanently',
+          style: 'destructive',
+          onPress: () => void purgeAllSetup(),
+        },
+      ],
+    );
+  }
+
+  async function purgeAllSetup() {
+    if (!token) return;
+    setPurgingSetup(true);
+    try {
+      const result = await deleteAllSetupDrafts(token);
+      await loadCircles();
+      Alert.alert(
+        'Setup circles removed',
+        result.deletedCount > 0
+          ? `Permanently deleted ${result.deletedCount} setup circle${
+              result.deletedCount === 1 ? '' : 's'
+            }.`
+          : 'No deletable setup circles were found (they may have already been removed).',
+      );
+    } catch (err) {
+      Alert.alert(
+        'Unable to delete setup circles',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
+    } finally {
+      setPurgingSetup(false);
+    }
+  }
+
+  async function confirmDeleteOneSetup(circle: BackendCircleSummary) {
+    if (!token) return;
+    Alert.alert(
+      'Delete this setup circle?',
+      `“${circle.name}” will be permanently deleted. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCircle(token, circle.id);
+              await loadCircles();
+            } catch (err) {
+              Alert.alert(
+                'Unable to delete',
+                err instanceof Error ? err.message : 'Please try again.',
+              );
+            }
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <FlatList
@@ -144,6 +239,31 @@ export default function CirclesScreen() {
                 <Text style={styles.subtitle}>
                   Your savings groups — setup and active.
                 </Text>
+                {!openCap.unlimited ? (
+                  <Text style={styles.freePlanHint}>
+                    Free plan: 1 open circle at a time
+                    {openCap.usedOpenCircles > 0
+                      ? ` · ${openCap.usedOpenCircles} open`
+                      : ''}
+                  </Text>
+                ) : null}
+                {organizerSetupCircles.length > 0 ? (
+                  <Pressable
+                    style={styles.purgeSetupBtn}
+                    onPress={confirmPurgeAllSetup}
+                    disabled={purgingSetup}
+                    accessibilityRole="button"
+                    accessibilityLabel="Delete all setup circles permanently"
+                  >
+                    {purgingSetup ? (
+                      <ActivityIndicator color={colors.danger} size="small" />
+                    ) : (
+                      <Text style={styles.purgeSetupBtnText}>
+                        Delete all setup ({organizerSetupCircles.length})
+                      </Text>
+                    )}
+                  </Pressable>
+                ) : null}
               </View>
               <Pressable
                 style={({ pressed }) => [{
@@ -200,6 +320,12 @@ export default function CirclesScreen() {
               circle={item.circle}
               detail={circleDetails[item.circle.id]}
               userId={userId}
+              onDeleteSetup={
+                isSetupCircleStatus(item.circle.status) &&
+                isOrganizer(item.circle.userRole)
+                  ? () => void confirmDeleteOneSetup(item.circle)
+                  : undefined
+              }
             />
           );
         }}
@@ -305,11 +431,29 @@ export default function CirclesScreen() {
 
       <Pressable
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        onPress={() => router.push(createCircleHref)}
+        onPress={() => {
+          if (openCap.atCapacity && openCap.primaryOpenCircleId) {
+            router.push(circleWorkspaceHref(openCap.primaryOpenCircleId));
+            return;
+          }
+          if (openCap.atCapacity) {
+            router.push(createCircleHref);
+            return;
+          }
+          router.push(createCircleHref);
+        }}
         accessibilityRole="button"
-        accessibilityLabel="Create circle"
+        accessibilityLabel={
+          openCap.atCapacity
+            ? 'Continue your open circle'
+            : 'Create circle'
+        }
       >
-        <FontAwesome name="plus" size={28} color="#ffffff" />
+        <FontAwesome
+          name={openCap.atCapacity ? 'arrow-right' : 'plus'}
+          size={28}
+          color="#ffffff"
+        />
       </Pressable>
     </SafeAreaView>
   );
@@ -319,13 +463,15 @@ function CircleCard({
   circle,
   detail,
   userId,
+  onDeleteSetup,
 }: {
   circle: BackendCircleSummary;
   detail?: BackendCircleDetail;
   userId?: string;
+  onDeleteSetup?: () => void;
 }) {
   const userIsOrganizer = isOrganizer(circle.userRole);
-  const isSetup = SETUP_STATUSES.has(circle.status);
+  const isSetup = isSetupCircleStatus(circle.status);
   const progress = circle.currentRoundProgress?.percentConfirmed ?? 0;
 
   const totalRounds = detail?.members?.length ?? circle.memberCount;
@@ -357,11 +503,24 @@ function CircleCard({
             ) : null}
           </View>
           {isSetup ? (
-            <Text style={styles.circleMeta}>
-              {capitalize(circle.status)} • {circle.memberCount}{' '}
-              {circle.memberCount === 1 ? 'member' : 'members'} •{' '}
-              {formatMoney(circle.contributionAmount)}
-            </Text>
+            <>
+              <Text style={styles.circleMeta}>
+                {capitalize(circle.status)} • {circle.memberCount}{' '}
+                {circle.memberCount === 1 ? 'member' : 'members'} •{' '}
+                {formatMoney(circle.contributionAmount)}
+              </Text>
+              {onDeleteSetup ? (
+                <Pressable
+                  style={styles.cardDeleteBtn}
+                  onPress={onDeleteSetup}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete setup circle ${circle.name}`}
+                >
+                  <FontAwesome name="trash-o" size={14} color={colors.danger} />
+                  <Text style={styles.cardDeleteBtnText}>Delete permanently</Text>
+                </Pressable>
+              ) : null}
+            </>
           ) : (
             <>
               <Text style={styles.circleMeta}>
@@ -486,6 +645,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     marginTop: 4,
+  },
+  freePlanHint: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  purgeSetupBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  purgeSetupBtnText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  cardDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FEF2F2',
+  },
+  cardDeleteBtnText: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '800',
   },
   sectionHeader: {
     alignItems: 'center',

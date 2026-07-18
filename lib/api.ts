@@ -160,11 +160,37 @@ export type BackendCircleDetail = {
   paymentInstructions?: string | null;
   pot_status?: string;
   startDate: string;
+  /** Null/absent before Start Circle; set when the circle starts. */
   startedAt?: string | null;
+  /**
+   * Lifecycle status: draft (setup) | active | completed.
+   * Authoritative with startedAt; mobile must not re-infer from schedule/rounds.
+   */
   status: string;
+  /**
+   * Convenience flag derived by backend from status + startedAt only.
+   * Not a separately mutable field.
+   */
+  isStarted?: boolean;
+  is_started?: boolean;
   waitlist?: BackendCircleMember[];
   turnOrder: string[];
   userRole?: 'organizer' | 'participant' | null;
+  /**
+   * Plan capacity for roster growth and AI Susu.
+   * Free: 20 participating hands; Premium: 50.
+   */
+  rosterCapacity?: {
+    tier?: 'free' | 'premium' | string;
+    maxHands?: number;
+    maxMembers?: number;
+    usedHands?: number;
+    remainingHands?: number;
+    atCapacity?: boolean;
+    unit?: string;
+    freeMaxHands?: number;
+    premiumMaxHands?: number;
+  };
 };
 
 export type BackendInvitePreview = {
@@ -654,6 +680,26 @@ export function createCircle(
   });
 }
 
+export function deleteCircle(token: string, circleId: string): Promise<unknown> {
+  return requestJson<unknown>(`/groups/${circleId}`, {
+    method: 'DELETE',
+    token,
+  });
+}
+
+/** Permanently delete all setup/draft/forming circles you organize. */
+export function deleteAllSetupDrafts(token: string): Promise<{
+  deletedCount: number;
+  deleted: Array<{ id: string; name: string; status: string }>;
+  skippedCount: number;
+  skipped: Array<{ id: string; reason: string }>;
+}> {
+  return requestJson(`/groups/setup-drafts`, {
+    method: 'DELETE',
+    token,
+  });
+}
+
 export function addCircleMember(
   token: string,
   circleId: string,
@@ -706,13 +752,29 @@ export function removeCircleMember(
   });
 }
 
+export type StartCircleOptions = {
+  /** Organizer reviewed payout order before start. */
+  confirmPayoutOrder?: boolean;
+  /** Organizer accepts managing unclaimed hands (cash path) or has none. */
+  confirmUnclaimedHands?: boolean;
+};
+
 export function startCircle(
   token: string,
   circleId: string,
+  options: StartCircleOptions = {},
 ): Promise<CreatedCircleResponse> {
+  const body: Record<string, boolean> = {};
+  if (options.confirmPayoutOrder) {
+    body.confirmPayoutOrder = true;
+  }
+  if (options.confirmUnclaimedHands) {
+    body.confirmUnclaimedHands = true;
+  }
   return requestJson<CreatedCircleResponse>(`/groups/${circleId}/start`, {
     method: 'POST',
     token,
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
   });
 }
 

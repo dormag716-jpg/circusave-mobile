@@ -32,6 +32,7 @@ import {
 import { isOrganizer } from '@/lib/permissions';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 import type { BackendCircleSummary, DashboardSummary } from '@/lib/types';
+import { isSetupCircleStatus } from '@/lib/circleSummary';
 
 type IconName = ComponentProps<typeof FontAwesome>['name'];
 
@@ -62,10 +63,14 @@ export default function DashboardScreen() {
     () => circles.filter((circle) => circle.status === 'active'),
     [circles],
   );
+  const setupCircles = useMemo(
+    () => circles.filter((circle) => isSetupCircleStatus(circle.status)),
+    [circles],
+  );
 
   const userIsOrganizer = useMemo(
-    () => activeCircles.some((circle) => isOrganizer(circle.userRole)),
-    [activeCircles],
+    () => [...activeCircles, ...setupCircles].some((circle) => isOrganizer(circle.userRole)),
+    [activeCircles, setupCircles],
   );
 
   const { personalDueCircles, reviewTargets } = useMemo(
@@ -215,6 +220,36 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
+        {setupCircles.length > 0 ? (
+          <View style={styles.setupSection}>
+            <View style={styles.setupSectionHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.setupSectionTitle}>Continue setup</Text>
+                <Text style={styles.setupSectionSubtitle}>Your draft circles are saved and waiting for setup.</Text>
+              </View>
+              <Pressable onPress={() => router.push(myCirclesHref)} accessibilityRole="button" accessibilityLabel="View all circles in setup">
+                <Text style={styles.setupSectionLink}>View all</Text>
+              </Pressable>
+            </View>
+            {setupCircles.slice(0, 3).map((circle) => (
+              <Pressable
+                key={circle.id}
+                style={({ pressed }) => [styles.setupCircleRow, pressed && styles.pressed]}
+                onPress={() => router.push(circleWorkspaceHref(circle.id, 'people'))}
+                accessibilityRole="button"
+                accessibilityLabel={`Continue setup for ${circle.name}`}
+              >
+                <View style={styles.setupCircleIcon}><FontAwesome name="wrench" size={15} color={colors.primary} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.setupCircleName}>{circle.name}</Text>
+                  <Text style={styles.setupCircleMeta}>Draft · Continue in People</Text>
+                </View>
+                <FontAwesome name="chevron-right" size={13} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         {activeCircles.length > 0 ? (
           <ScrollView
             horizontal
@@ -228,6 +263,10 @@ export default function DashboardScreen() {
           >
             {activeCircles.map((circle) => {
               const potTotal = circle.contributionAmount * circle.memberCount;
+              const detail = circleDetails[circle.id];
+              const schedule = circleSchedules[circle.id];
+              const payoutDate = resolvePayoutDate(circle, schedule, detail);
+              const payoutLabel = formatPayoutDateLabel(payoutDate);
               return (
                 <Pressable
                   key={circle.id}
@@ -237,15 +276,23 @@ export default function DashboardScreen() {
                   ]}
                   onPress={() => router.push(circleWorkspaceHref(circle.id))}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open ${circle.name}`}
+                  accessibilityLabel={`Open ${circle.name}${
+                    payoutLabel ? `, payout ${payoutLabel}` : ''
+                  }`}
                 >
                   <Text style={styles.heroSub}>{circle.name}</Text>
                   <Text style={styles.heroLabel}>In the Pot</Text>
                   <Text style={styles.heroAmount}>{formatMoney(potTotal)}</Text>
                   <View style={styles.heroFooterRow}>
-                    <Text style={styles.heroFooterText}>
-                      Contribution: {formatMoney(circle.contributionAmount)}
-                    </Text>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={styles.heroFooterText}>
+                        Contribution: {formatMoney(circle.contributionAmount)}
+                      </Text>
+                      <Text style={styles.heroPayoutDate}>
+                        Payout date:{' '}
+                        {payoutLabel || 'Not scheduled yet'}
+                      </Text>
+                    </View>
                     <Text style={styles.heroTapHint}>Tap to open</Text>
                   </View>
                 </Pressable>
@@ -258,7 +305,9 @@ export default function DashboardScreen() {
               No active {t('circles').toLowerCase()}
             </Text>
             <Text style={styles.heroSub}>
-              Create or join a {t('circle').toLowerCase()} to get started
+              {setupCircles.length > 0
+                ? 'Finish setup on a draft circle above — Free includes 1 open circle at a time.'
+                : `Create or join a ${t('circle').toLowerCase()} to get started. Free: 1 open circle at a time.`}
             </Text>
           </View>
         )}
@@ -389,9 +438,9 @@ export default function DashboardScreen() {
                   detail?.currentRoundSummary?.recipientMemberId ===
                     viewerMember.id;
                 const circleRecipientName = getCurrentRecipientName(detail);
-                const formattedDueDate = formatShortDueDate(
-                  detail?.currentRoundSummary?.dueDate,
-                );
+                const schedule = circleSchedules[circle.id];
+                const payoutDate = resolvePayoutDate(circle, schedule, detail);
+                const formattedPayoutDate = formatPayoutDateLabel(payoutDate);
                 const circleIsOrganizer = isOrganizer(circle.userRole);
 
                 return (
@@ -430,27 +479,25 @@ export default function DashboardScreen() {
                         >
                           ✨ It's your turn this round
                         </Text>
-                        {formattedDueDate ? (
-                          <Text
-                            style={[
-                              styles.circleMeta,
-                              { marginTop: 2, color: colors.success },
-                            ]}
-                          >
-                            Payout: {formattedDueDate}
-                          </Text>
-                        ) : null}
+                        <Text
+                          style={[
+                            styles.circleMeta,
+                            { marginTop: 2, color: colors.success },
+                          ]}
+                        >
+                          Payout date:{' '}
+                          {formattedPayoutDate || 'Not scheduled yet'}
+                        </Text>
                       </View>
                     ) : (
                       <View style={{ alignItems: 'flex-start' }}>
                         <Text style={styles.recipient}>
                           Next: {circleRecipientName ?? 'Unavailable'}
                         </Text>
-                        {formattedDueDate ? (
-                          <Text style={[styles.circleMeta, { marginTop: 2 }]}>
-                            Payout: {formattedDueDate}
-                          </Text>
-                        ) : null}
+                        <Text style={[styles.circleMeta, { marginTop: 2 }]}>
+                          Payout date:{' '}
+                          {formattedPayoutDate || 'Not scheduled yet'}
+                        </Text>
                       </View>
                     )}
                     {circleIsOrganizer ? (
@@ -619,6 +666,54 @@ function getNextPayoutLabel(payoutDate?: string) {
   return days === 0 ? 'Today' : `In ${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
+/** Prefer authoritative schedule/nextPayout date for the current round. */
+function resolvePayoutDate(
+  circle: BackendCircleSummary,
+  schedule?: BackendRoundSnapshot | null,
+  detail?: BackendCircleDetail | null,
+): string | null {
+  const fromSummary = circle.nextPayout?.payoutDate;
+  if (fromSummary) {
+    return fromSummary;
+  }
+
+  const roundNumber =
+    schedule?.roundWorkspace?.currentRoundNumber ??
+    schedule?.currentRound ??
+    detail?.currentRound ??
+    circle.currentRound;
+
+  const scheduleRows = schedule?.schedule ?? [];
+  const match = scheduleRows.find(
+    (row) => Number(row.round) === Number(roundNumber),
+  );
+  const fromSchedule = match?.payoutDate || match?.payout_date;
+  if (fromSchedule) {
+    return String(fromSchedule);
+  }
+
+  // Fallback only: some payloads put the round target date on dueDate.
+  const due = detail?.currentRoundSummary?.dueDate;
+  return due ? String(due) : null;
+}
+
+function formatPayoutDateLabel(payoutDate?: string | null): string {
+  if (!payoutDate) {
+    return '';
+  }
+
+  const short = formatShortDueDate(payoutDate);
+  if (!short) {
+    return '';
+  }
+
+  const relative = getNextPayoutLabel(payoutDate);
+  if (relative && relative !== '—') {
+    return `${short} (${relative})`;
+  }
+  return short;
+}
+
 function getCurrentRecipientName(circle: BackendCircleDetail | null | undefined) {
   const recipientMemberId = circle?.currentRoundSummary?.recipientMemberId;
   if (!recipientMemberId) {
@@ -685,6 +780,61 @@ function capitalize(value: string) {
 }
 
 const styles = StyleSheet.create({
+  setupSection: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 20,
+    padding: 16,
+  },
+  setupSectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  setupSectionTitle: {
+    color: colors.textStrong,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  setupSectionSubtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  setupSectionLink: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  setupCircleRow: {
+    alignItems: 'center',
+    borderTopColor: colors.cardBorder,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    minHeight: 62,
+    paddingVertical: 10,
+  },
+  setupCircleIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: 'center',
+    marginRight: 11,
+    width: 36,
+  },
+  setupCircleName: {
+    color: colors.textStrong,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  setupCircleMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 3,
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -755,13 +905,20 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     width: '100%',
-    alignItems: 'center',
-    gap: 6,
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 8,
   },
   heroFooterText: {
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  heroPayoutDate: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 4,
   },
   heroTapHint: {
     color: 'rgba(255,255,255,0.75)',

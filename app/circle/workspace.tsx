@@ -1,6 +1,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, useRef, type ComponentProps } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  type ComponentProps,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -36,7 +43,10 @@ import {
   requestPositionSwap,
   getMemberAccessToken,
   approveJoinRequest,
+  removeCircleMember,
+  reorderPayoutTurn,
   requestAdditionalHand,
+  startCircle,
 } from '@/lib/api';
 
 import { useAuthSession } from '@/lib/authContext';
@@ -46,17 +56,65 @@ import {
   contributionHref,
   myCirclesHref,
 } from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
+import {
+  buildClaimInviteShareMessage,
+  buildClaimInviteUrl,
+} from '@/lib/claimInvite';
+import {
+  formatHandsPeopleMetrics,
+  handClaimStatusLabel,
+  isCircleNotStarted,
+  isUnclaimedHand,
+  peopleHandsSectionTitle,
+  peoplePendingSectionTitle,
+  roundCompletedSubtitle,
+  roundCompletedTitle,
+  roundUnstartedSubtitle,
+  roundUnstartedTitle,
+} from '@/lib/circleLifecycleCopy';
+import {
+  buildCircleSetupProgress,
+  orderedParticipatingHands,
+  setupStepStatusLabel,
+  splitWaitlistRequests,
+  type SetupStepStatus,
+} from '@/lib/circleSetupProgress';
+import {
+  buildPayoutOrderReviewLines,
+  buildStartCircleConfirmations,
+  canShowStartCircleAction,
+  getCircleLifecyclePhase,
+  getStartCircleBlockReason,
+  getStartCircleReviewHints,
+  isCircleCompleted,
+  isCircleSetupState,
+  isCircleStarted,
+  requiresUnclaimedStartConfirmation,
+  type StartCircleConfirmations,
+} from '@/lib/startCircleReadiness';
+import { colors, radii, shadows, spacing } from '@/lib/theme';
 import ChatFeed from '@/components/ChatFeed';
 import { Avatar } from '@/components/Avatar';
 import ChatInput from '@/components/ChatInput';
 import { useChat } from '@/lib/useChat';
+import { DecisionSheet } from '@/components/DecisionSheet';
+import {
+  groupCurrentApiHandsForDisplay,
+  initialsForDisplay,
+  validateCurrentPayoutOrder,
+} from '@/lib/peopleWorkspace';
 
 type ActiveTab = 'round' | 'chat' | 'people' | 'records';
 
 type ContributionStatusView = {
   label: string;
   raw: string;
+};
+
+type PeopleNotice = {
+  title: string;
+  body: string;
+  tone: 'success' | 'warning';
 };
 
 const tabs: {
@@ -728,36 +786,17 @@ function WorkspaceContent({
       </View>
 
       {activeTab === 'round' ? (
-        !scheduleData && secondaryLoading ? (
-          <StatusCard
-            icon="spinner"
-            loading
-            title="Loading round data"
-            text="Fetching the latest round details from the backend…"
-          />
-        ) : !scheduleData && secondaryError ? (
-          <View style={styles.statusCard}>
-            <FontAwesome name="warning" size={34} color={colors.warning} />
-            <Text style={styles.statusTitle}>Unable to load round data</Text>
-            <Text style={styles.statusText}>{secondaryError}</Text>
-            <Pressable
-              style={styles.retryButton}
-              onPress={() => void loadBackendSections()}
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading round data"
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </Pressable>
-          </View>
-        ) : scheduleData ? (
+        // Lifecycle phase comes only from circle.status / startedAt / isStarted.
+        // Do not wait on schedule to decide setup vs live — schedule is for active rounds only.
+        isCircleNotStarted(circle) || isCircleCompleted(circle) || scheduleData ? (
           <>
-            {secondaryLoading ? (
+            {secondaryLoading && isCircleStarted(circle) && !isCircleCompleted(circle) ? (
               <View style={styles.inlineLoading}>
                 <ActivityIndicator color={colors.primary} />
                 <Text style={styles.inlineLoadingText}>Syncing backend data…</Text>
               </View>
             ) : null}
-            {secondaryError ? (
+            {secondaryError && isCircleStarted(circle) && !isCircleCompleted(circle) ? (
               <View style={styles.inlineErrorBanner}>
                 <FontAwesome name="warning" size={14} color={colors.warning} />
                 <Text style={styles.inlineErrorText}>
@@ -803,6 +842,27 @@ function WorkspaceContent({
               isPremium={isPremium}
             />
           </>
+        ) : !scheduleData && secondaryLoading ? (
+          <StatusCard
+            icon="spinner"
+            loading
+            title="Loading round data"
+            text="Fetching the latest round details from the backend…"
+          />
+        ) : !scheduleData && secondaryError ? (
+          <View style={styles.statusCard}>
+            <FontAwesome name="warning" size={34} color={colors.warning} />
+            <Text style={styles.statusTitle}>Unable to load round data</Text>
+            <Text style={styles.statusText}>{secondaryError}</Text>
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => void loadBackendSections()}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading round data"
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </Pressable>
+          </View>
         ) : (
           <StatusCard
             icon="clock-o"
@@ -904,49 +964,329 @@ function RoundTab({
   const [visibleActionCount, setVisibleActionCount] = useState(5);
   const [showAllPaid, setShowAllPaid] = useState(false);
   const [actionSearch, setActionSearch] = useState('');
+  // Always start collapsed; only open when the user taps (reference terms, not live status).
+  const [roundDetailsExpanded, setRoundDetailsExpanded] = useState(false);
+
+  useEffect(() => {
+    // New round or circle → keep details closed until needed.
+    setRoundDetailsExpanded(false);
+  }, [circle.id, currentRoundNumber]);
 
   // All display values arrive pre-normalized from WorkspaceContent.
   const expectedContributionsCount = totalMembers;
   const visibleTotalRounds = totalRoundsCount;
+  // Authoritative only: status / startedAt / isStarted — never schedule presence.
+  const lifecyclePhase = getCircleLifecyclePhase(circle);
+  const notStarted = lifecyclePhase === 'setup';
+  const completed = lifecyclePhase === 'completed';
 
   const isViewerRecipient = viewerMember && recipient && viewerMember.id === recipient.id;
+  const potTarget =
+    Number.isFinite(circle.contributionAmount) && expectedContributionsCount > 0
+      ? circle.contributionAmount * expectedContributionsCount
+      : payoutAmount ?? null;
+
+  // Setup / draft: planned hands only — never Collecting, dues, or payout readiness.
+  if (notStarted) {
+    const plannedHands =
+      currentRoundMembers.length > 0
+        ? currentRoundMembers.map(({ member }) => member)
+        : (circle.members || []).filter((m) => m.isParticipating !== false);
+    const handMetrics = formatHandsPeopleMetrics({
+      handCount: circle.handCount ?? plannedHands.length,
+      uniqueMemberCount: circle.uniqueMemberCount,
+      fallbackHandCount: plannedHands.length,
+    });
+    const plannedRounds =
+      visibleTotalRounds > 0 ? visibleTotalRounds : plannedHands.length;
+
+    return (
+      <View style={styles.section}>
+        <View
+          style={[
+            styles.heroCard,
+            {
+              backgroundColor: '#6231d6',
+              padding: 24,
+              borderRadius: 20,
+            },
+          ]}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.15)',
+                width: 50,
+                height: 50,
+                borderRadius: 12,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <FontAwesome name="calendar-o" size={22} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
+                {roundUnstartedTitle()}
+              </Text>
+              <Text
+                style={{
+                  color: 'rgba(255,255,255,0.85)',
+                  fontSize: 14,
+                  marginTop: 4,
+                  lineHeight: 20,
+                }}
+              >
+                {roundUnstartedSubtitle()}
+              </Text>
+            </View>
+          </View>
+          <View
+            style={{
+              marginTop: 20,
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              borderRadius: 14,
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '700' }}>
+              ROSTER
+            </Text>
+            <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', marginTop: 4 }}>
+              {handMetrics}
+            </Text>
+            <Text
+              style={{
+                color: 'rgba(255,255,255,0.75)',
+                fontSize: 13,
+                marginTop: 6,
+                lineHeight: 18,
+              }}
+            >
+              {plannedRounds} planned payout round
+              {plannedRounds === 1 ? '' : 's'} once the organizer starts.
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.sectionCard,
+            { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20 },
+          ]}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: 16,
+              borderBottomWidth: 1,
+              borderBottomColor: '#f3f4f6',
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
+              Planned hands
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>
+              Not active yet
+            </Text>
+          </View>
+          {plannedHands.length === 0 ? (
+            <Text style={[styles.helperText, { padding: 16 }]}>
+              No planned hands on this circle yet.
+            </Text>
+          ) : (
+            plannedHands.map((member, index) => (
+              <View
+                key={member.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  borderBottomWidth: index === plannedHands.length - 1 ? 0 : 1,
+                  borderBottomColor: '#f9fafb',
+                }}
+              >
+                <View style={styles.positionBadge}>
+                  <Text style={styles.positionText}>{index + 1}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text
+                    style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}
+                    numberOfLines={1}
+                  >
+                    {member.displayLabel || memberName(member)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+                    Payout position #{index + 1}
+                  </Text>
+                </View>
+                <StatusBadge
+                  label={handClaimStatusLabel(member)}
+                  tone={isUnclaimedHand(member) ? 'warning' : 'success'}
+                />
+              </View>
+            ))
+          )}
+        </View>
+
+        <View style={[styles.sectionCard, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+          <Text style={[styles.sectionTitle, { color: '#1e40af' }]}>Before contributions start</Text>
+          <Text style={[styles.sectionSubtitle, { color: '#1e3a8a' }]}>
+            Hands are planned payout positions. After the organizer starts the circle, each
+            participating hand becomes a live contribution obligation for round 1.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Completed: historical only — no Start, no structural setup, no live Collecting chrome.
+  if (completed) {
+    return (
+      <View style={styles.section}>
+        <View
+          style={[
+            styles.heroCard,
+            {
+              backgroundColor: '#374151',
+              padding: 24,
+              borderRadius: 20,
+            },
+          ]}
+        >
+          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
+            {roundCompletedTitle()}
+          </Text>
+          <Text
+            style={{
+              color: 'rgba(255,255,255,0.85)',
+              fontSize: 14,
+              marginTop: 8,
+              lineHeight: 20,
+            }}
+          >
+            {roundCompletedSubtitle()}
+          </Text>
+          {visibleTotalRounds > 0 ? (
+            <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 12 }}>
+              {visibleTotalRounds} round{visibleTotalRounds === 1 ? '' : 's'} in this cycle
+            </Text>
+          ) : null}
+        </View>
+        {recipient ? (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Last recorded recipient</Text>
+            <Text style={styles.sectionSubtitle}>{memberName(recipient)}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.section}>
-      {isViewerRecipient ? (
-        <View style={[styles.sectionCard, { marginTop: 0, marginBottom: 16, borderColor: colors.success, backgroundColor: `${colors.success}10` }]}>
-          <Text style={[styles.sectionTitle, { color: colors.success }]}>
-            🎉 You receive the payout this round
-          </Text>
-          <Text style={styles.sectionSubtitle}>
-            When all contributions are confirmed, the organizer can release the payout to you.
-          </Text>
-        </View>
-      ) : recipient ? (
-        <View style={[styles.sectionCard, { marginTop: 0, marginBottom: 16, borderColor: '#6366f1', backgroundColor: '#6366f110' }]}>
-          <Text style={[styles.sectionTitle, { color: '#6366f1' }]}>
-            🎁 {memberName(recipient)} receives the payout
-          </Text>
-          <Text style={styles.sectionSubtitle}>
-            {memberName(recipient)} will receive {formatOptionalMoney(payoutAmount)} once all contributions are collected.
-          </Text>
-        </View>
-      ) : null}
-
+      {/* Single hero: round status, recipient, pot, progress (no duplicate banners) */}
       <View style={[styles.heroCard, { backgroundColor: '#6231d6', padding: 24, borderRadius: 20 }]}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.15)', width: 50, height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>{currentRoundNumber}</Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 10,
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.15)',
+                width: 50,
+                height: 50,
+                borderRadius: 12,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>
+                {currentRoundNumber}
+              </Text>
             </View>
-            <View>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>Round {currentRoundNumber} of {visibleTotalRounds}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>Collecting contributions</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
+                Round {currentRoundNumber}
+                {visibleTotalRounds > 0 ? ` of ${visibleTotalRounds}` : ''}
+              </Text>
+              <Text
+                style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}
+                numberOfLines={2}
+              >
+                {displayRoundStatus}
+              </Text>
+              {dueDate ? (
+                <Text
+                  style={{
+                    color: 'rgba(255,255,255,0.75)',
+                    fontSize: 12,
+                    fontWeight: '600',
+                    marginTop: 4,
+                  }}
+                >
+                  Payout {formatDate(dueDate)}
+                  {formatRelativeDays(dueDate)
+                    ? ` · ${formatRelativeDays(dueDate)}`
+                    : ''}
+                </Text>
+              ) : null}
             </View>
           </View>
-          <View style={{ backgroundColor: '#8a6234', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <FontAwesome name="clock-o" size={14} color="#fef08a" />
-            <Text style={{ color: '#fef08a', fontSize: 13, fontWeight: '600' }}>Not ready yet</Text>
+          <View
+            style={{
+              backgroundColor: payoutReleased
+                ? 'rgba(34,197,94,0.25)'
+                : displayPayoutReady
+                  ? 'rgba(245,158,11,0.3)'
+                  : 'rgba(138,98,52,0.9)',
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <FontAwesome
+              name={
+                payoutReleased
+                  ? 'check'
+                  : displayPayoutReady
+                    ? 'check-circle'
+                    : 'clock-o'
+              }
+              size={14}
+              color={payoutReleased || displayPayoutReady ? '#fff' : '#fef08a'}
+            />
+            <Text
+              style={{
+                color: payoutReleased || displayPayoutReady ? '#fff' : '#fef08a',
+                fontSize: 13,
+                fontWeight: '600',
+              }}
+            >
+              {payoutReleased
+                ? 'Released'
+                : displayPayoutReady
+                  ? 'Ready'
+                  : 'Collecting'}
+            </Text>
           </View>
         </View>
 
@@ -956,56 +1296,132 @@ function RoundTab({
               <Avatar name={memberName(recipient)} size={68} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Payout recipient</Text>
-              <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900', marginTop: 2 }}>{memberName(recipient)}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600', marginTop: 4 }}>Will receive</Text>
-              <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900', marginTop: -2 }}>{formatOptionalMoney(payoutAmount)}</Text>
+              <Text
+                style={{
+                  color: 'rgba(255,255,255,0.8)',
+                  fontSize: 13,
+                  fontWeight: '600',
+                }}
+              >
+                {isViewerRecipient
+                  ? 'You receive this round'
+                  : 'Payout recipient'}
+              </Text>
+              <Text
+                style={{
+                  color: '#fff',
+                  fontSize: 22,
+                  fontWeight: '900',
+                  marginTop: 2,
+                }}
+              >
+                {memberName(recipient)}
+              </Text>
+              <Text
+                style={{
+                  color: 'rgba(255,255,255,0.8)',
+                  fontSize: 13,
+                  fontWeight: '600',
+                  marginTop: 4,
+                }}
+              >
+                Pot amount
+              </Text>
+              <Text
+                style={{
+                  color: '#fff',
+                  fontSize: 32,
+                  fontWeight: '900',
+                  marginTop: -2,
+                }}
+              >
+                {formatOptionalMoney(payoutAmount)}
+              </Text>
             </View>
           </View>
         ) : null}
 
         <View style={{ marginTop: 24 }}>
-          <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginBottom: 16 }} />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Progress</Text>
+          <View
+            style={{
+              height: 1,
+              backgroundColor: 'rgba(255,255,255,0.15)',
+              marginBottom: 16,
+            }}
+          />
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
+              Progress
+            </Text>
             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
               {visibleConfirmedCount} of {expectedContributionsCount} confirmed
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ flex: 1, height: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 5, overflow: 'hidden' }}>
-              <View style={{ width: `${Math.max(0, Math.min(100, visibleProgress || 0))}%`, height: '100%', backgroundColor: '#22c55e', borderRadius: 5 }} />
+            <View
+              style={{
+                flex: 1,
+                height: 10,
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                borderRadius: 5,
+                overflow: 'hidden',
+              }}
+            >
+              <View
+                style={{
+                  width: `${Math.max(0, Math.min(100, visibleProgress || 0))}%`,
+                  height: '100%',
+                  backgroundColor: '#22c55e',
+                  borderRadius: 5,
+                }}
+              />
             </View>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>{Math.round(visibleProgress || 0)}%</Text>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>
+              {Math.round(visibleProgress || 0)}%
+            </Text>
           </View>
         </View>
       </View>
-
 
       {/* Members only: report own payment. Organizers manage everyone below. */}
       {!canReviewContributions && viewerMember ? (
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>My contribution</Text>
           <Text style={styles.sectionSubtitle}>
-            Report your own payment for this round. Only you can use this action.
-          </Text>
-          <Text style={[styles.sectionSubtitle, { marginTop: 8 }]}>
             {memberCanSubmitContribution
-              ? `Your ${formatMoney(circle.contributionAmount)} contribution is due.`
+              ? `Your ${formatMoney(circle.contributionAmount)} contribution is due this round.`
               : viewerContributionStatus.raw === 'confirmed'
                 ? 'Your contribution for this round is confirmed.'
                 : viewerContributionStatus.raw === 'submitted' ||
                     viewerContributionStatus.raw === 'late'
                   ? 'Your payment is waiting for the organizer to confirm.'
                   : `Status: ${viewerContributionStatus.label}`}
+            {viewerPayoutPosition
+              ? ` · Your payout turn is #${viewerPayoutPosition}.`
+              : ''}
           </Text>
-          
+
           {memberCanSubmitContribution ? (
             <View style={styles.paymentInstructions}>
-              <FontAwesome name="send" size={14} color={colors.primary} style={{ marginBottom: 6 }} />
-              <Text style={styles.paymentInstructionsTitle}>Where to send your payment</Text>
+              <FontAwesome
+                name="send"
+                size={14}
+                color={colors.primary}
+                style={{ marginBottom: 6 }}
+              />
+              <Text style={styles.paymentInstructionsTitle}>
+                Where to send your payment
+              </Text>
               <Text style={styles.paymentInstructionsText}>
-                {paymentInstructions ?? 'Contact the organizer for payment details.'}
+                {paymentInstructions ??
+                  'Contact the organizer for payment details.'}
               </Text>
             </View>
           ) : null}
@@ -1015,9 +1431,11 @@ function RoundTab({
             <View style={styles.pendingConfirmationCard}>
               <FontAwesome name="clock-o" size={20} color={colors.warning} />
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={styles.pendingConfirmationTitle}>Payment reported!</Text>
+                <Text style={styles.pendingConfirmationTitle}>
+                  Payment reported
+                </Text>
                 <Text style={styles.pendingConfirmationText}>
-                  Waiting for the organizer to confirm receipt. You're all set for now.
+                  Waiting for the organizer to confirm receipt.
                 </Text>
               </View>
             </View>
@@ -1036,15 +1454,6 @@ function RoundTab({
               tone={statusTone(viewerContributionStatus.raw)}
             />
           )}
-        </View>
-      ) : null}
-
-      {viewerPayoutPosition && !canReviewContributions ? (
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Your turn</Text>
-          <Text style={styles.sectionSubtitle}>
-            Your payout position: #{viewerPayoutPosition} • You receive on Round {viewerPayoutPosition}
-          </Text>
         </View>
       ) : null}
 
@@ -1200,64 +1609,131 @@ function RoundTab({
         })}
       </View>
 
-      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20 }]}>
-        <View style={{ padding: 16, paddingBottom: 12 }}>
-          <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>Round details</Text>
-        </View>
-
-        <View style={{ paddingBottom: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-              <FontAwesome name="dollar" size={14} color="#7c3aed" />
-            </View>
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Contribution</Text>
-            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
-              <Text style={{ fontWeight: '900', color: '#111827' }}>{formatMoney(circle.contributionAmount)}</Text>{' '}per member
+      {/* Reference-only details: no fields already shown in the hero */}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            padding: 0,
+            overflow: 'hidden',
+            backgroundColor: '#fff',
+            borderRadius: 20,
+          },
+        ]}
+      >
+        <Pressable
+          style={styles.roundDetailsHeader}
+          onPress={() => setRoundDetailsExpanded((open) => !open)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: roundDetailsExpanded }}
+          accessibilityLabel={
+            roundDetailsExpanded
+              ? 'Collapse round details'
+              : 'Expand round details'
+          }
+        >
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.roundDetailsTitle}>Round details</Text>
+            <Text style={styles.roundDetailsSummary} numberOfLines={2}>
+              {roundDetailsExpanded
+                ? 'Tap to hide'
+                : 'Tap for frequency, pot size, and turn order'}
             </Text>
           </View>
+          <FontAwesome
+            name={roundDetailsExpanded ? 'chevron-up' : 'chevron-down'}
+            size={13}
+            color={colors.subtle}
+            style={{ marginLeft: 10 }}
+          />
+        </Pressable>
 
-          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-              <FontAwesome name="calendar" size={14} color="#7c3aed" />
-            </View>
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Due date</Text>
-            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
-              <Text style={{ fontWeight: '900', color: '#111827' }}>{formatDate(dueDate) || 'Unknown'}</Text>
-              {dueDate ? ` ${formatRelativeDays(dueDate)}` : ''}
-            </Text>
+        {roundDetailsExpanded ? (
+          <View style={{ paddingBottom: 8 }}>
+            <RoundDetailRow
+              icon="refresh"
+              label="Frequency"
+              value={capitalizeFrequency(circle.frequency) || '—'}
+            />
+            <RoundDetailRow
+              icon="dollar"
+              label="Contribution per hand"
+              value={`${formatMoney(circle.contributionAmount)} every ${
+                capitalizeFrequency(circle.frequency)?.toLowerCase() || 'round'
+              }`}
+            />
+            <RoundDetailRow
+              icon="users"
+              label="Participating hands"
+              value={
+                expectedContributionsCount > 0
+                  ? `${expectedContributionsCount} hand${
+                      expectedContributionsCount === 1 ? '' : 's'
+                    } this cycle`
+                  : 'Unknown'
+              }
+            />
+            <RoundDetailRow
+              icon="money"
+              label="Full pot (all hands)"
+              value={
+                potTarget != null ? formatMoney(potTarget) : '—'
+              }
+            />
+            {viewerPayoutPosition ? (
+              <RoundDetailRow
+                icon="list-ol"
+                label="Your payout turn"
+                value={`Position #${viewerPayoutPosition} of ${
+                  visibleTotalRounds || expectedContributionsCount || '—'
+                }`}
+                last
+              />
+            ) : (
+              <RoundDetailRow
+                icon="info-circle"
+                label="Cycle length"
+                value={
+                  visibleTotalRounds > 0
+                    ? `${visibleTotalRounds} round${
+                        visibleTotalRounds === 1 ? '' : 's'
+                      }`
+                    : 'Set by participating hands'
+                }
+                last
+              />
+            )}
           </View>
-
-          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-              <FontAwesome name="users" size={14} color="#7c3aed" />
-            </View>
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Expected contributions</Text>
-            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
-              <Text style={{ fontWeight: '900', color: '#111827' }}>{typeof expectedContributionsCount === 'number' && expectedContributionsCount > 0 ? expectedContributionsCount : 'Unknown'} members</Text>
-            </Text>
-          </View>
-
-          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-              <FontAwesome name="shield" size={14} color="#7c3aed" />
-            </View>
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' }}>Payout readiness</Text>
-            <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'right' }}>
-              <Text style={{ fontWeight: '900', color: payoutReleased ? '#166534' : displayPayoutReady ? '#d97706' : '#d97706' }}>
-                {payoutReleased ? 'Released' : displayPayoutReady ? 'Ready' : 'Not ready'}
-              </Text>
-              {' '}({visibleConfirmedCount} of {expectedContributionsCount} confirmed)
-            </Text>
-          </View>
-        </View>
+        ) : null}
       </View>
     </View>
+  );
+}
+
+function RoundDetailRow({
+  icon,
+  label,
+  value,
+  last,
+}: {
+  icon: ComponentProps<typeof FontAwesome>['name'];
+  label: string;
+  value: string;
+  last?: boolean;
+}) {
+  return (
+    <>
+      <View style={styles.roundDetailRow}>
+        <View style={styles.roundDetailIcon}>
+          <FontAwesome name={icon} size={14} color={colors.primary} />
+        </View>
+        <Text style={styles.roundDetailLabel}>{label}</Text>
+        <Text style={styles.roundDetailValue} numberOfLines={3}>
+          {value}
+        </Text>
+      </View>
+      {!last ? <View style={styles.roundDetailDivider} /> : null}
+    </>
   );
 }
 
@@ -1282,25 +1758,244 @@ function PeopleTab({
   token: string;
   onRefresh: () => void;
 }) {
-  const [showAll, setShowAll] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [addingHand, setAddingHand] = useState(false);
   const [showHandModal, setShowHandModal] = useState(false);
-  const visibleMembers = showAll ? members : members.slice(0, 10);
-  const remainingCount = members.length - 10;
+  const [startingCircle, setStartingCircle] = useState(false);
+  const [sharingClaimId, setSharingClaimId] = useState<string | null>(null);
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+  /** Mirrors start contract confirmPayoutOrder — not a DB field. */
+  const [payoutOrderReviewed, setPayoutOrderReviewed] = useState(false);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
+  const [expandedMemberKey, setExpandedMemberKey] = useState<string | null>(null);
+  const [inviteSectionExpanded, setInviteSectionExpanded] = useState(true);
+  const [showPayoutReview, setShowPayoutReview] = useState(false);
+  const [declineTarget, setDeclineTarget] = useState<BackendCircleMember | null>(null);
+  const [showRequestSent, setShowRequestSent] = useState(false);
+  const [showUnclaimedReview, setShowUnclaimedReview] = useState(false);
+  const [pendingStartConfirmations, setPendingStartConfirmations] = useState<StartCircleConfirmations | null>(null);
+  const [peopleNotice, setPeopleNotice] = useState<PeopleNotice | null>(null);
   const shortCode = circle.circleCode;
   const waitlist: BackendCircleMember[] = (circle as any).waitlist ?? [];
+  // People tab structural controls: lifecycle from status/startedAt/isStarted only.
+  const lifecyclePhase = getCircleLifecyclePhase(circle);
+  const circleNotStarted = lifecyclePhase === 'setup';
+  const showSetupOrganizerActions = canShowStartCircleAction({
+    isOrganizer,
+    circle,
+  });
+  const startBlockReason = getStartCircleBlockReason({
+    circle,
+    members,
+    waitlist,
+  });
+  const startReviewHints = getStartCircleReviewHints({ members, waitlist });
+  const needsUnclaimedConfirm = requiresUnclaimedStartConfirmation(members);
+  const setupProgress = useMemo(
+    () =>
+      buildCircleSetupProgress({
+        circle,
+        members,
+        waitlist,
+        payoutOrderReviewed,
+      }),
+    [circle, members, waitlist, payoutOrderReviewed],
+  );
+  const { joinRequests, additionalHandRequests } = useMemo(
+    () => splitWaitlistRequests(waitlist),
+    [waitlist],
+  );
+  const payoutOrderRows = useMemo(
+    () =>
+      orderedParticipatingHands({
+        members,
+        turnOrder: circle.turnOrder,
+      }),
+    [members, circle.turnOrder],
+  );
+  const memberGroups = useMemo(
+    () => groupCurrentApiHandsForDisplay(members),
+    [members],
+  );
 
+  const toggleMemberExpanded = useCallback((groupKey: string) => {
+    setExpandedMemberKey((prev) => (prev === groupKey ? null : groupKey));
+  }, []);
+  const payoutOrderValidation = useMemo(
+    () => validateCurrentPayoutOrder(members, circle.turnOrder ?? []),
+    [members, circle.turnOrder],
+  );
   async function handleApprove(memberId: string) {
+    if (!circleNotStarted) {
+      Alert.alert(
+        'Structure locked',
+        'Join and additional-hand requests cannot be approved after the circle has started.',
+      );
+      return;
+    }
     setApprovingId(memberId);
     try {
       await approveJoinRequest(token, circle.id, memberId);
       Alert.alert('Approved!', 'The member has been approved and added to the circle.');
       onRefresh();
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Could not approve member.');
+      setPeopleNotice({
+        title: 'Request not approved',
+        body: e instanceof Error ? e.message : 'The backend could not approve this request.',
+        tone: 'warning',
+      });
     } finally {
       setApprovingId(null);
+    }
+  }
+
+  function handleDecline(member: BackendCircleMember) {
+    if (!circleNotStarted || decliningId) return;
+    setDeclineTarget(member);
+  }
+
+  async function confirmDecline() {
+    if (!declineTarget || decliningId) return;
+    setDecliningId(declineTarget.id);
+    try {
+      await removeCircleMember(token, circle.id, declineTarget.id);
+      setDeclineTarget(null);
+      onRefresh();
+    } catch (error) {
+      Alert.alert(
+        'Unable to decline request',
+        error instanceof Error ? error.message : 'The backend rejected the decline action.',
+      );
+    } finally {
+      setDecliningId(null);
+    }
+  }
+
+  async function handleShareClaimInvite(member: BackendCircleMember) {
+    if (!token || sharingClaimId) {
+      return;
+    }
+    setSharingClaimId(member.id);
+    try {
+      const { claimToken } = await getMemberAccessToken(circle.id, member.id, token);
+      const claimUrl = buildClaimInviteUrl(circle.id, claimToken);
+      await Share.share({
+        message: buildClaimInviteShareMessage({
+          circleName: circle.name,
+          handName: member.displayLabel || memberName(member),
+          claimUrl,
+        }),
+      });
+    } catch (error) {
+      Alert.alert(
+        'Unable to share claim invite',
+        error instanceof Error
+          ? error.message
+          : 'Could not generate a claim link for this hand.',
+      );
+    } finally {
+      setSharingClaimId(null);
+    }
+  }
+
+  async function handleCopyCircleCode() {
+    if (!shortCode) {
+      Alert.alert('Code unavailable', 'The backend has not provided a circle code.');
+      return;
+    }
+    try {
+      // Loaded on demand so an older development binary can still register this
+      // route. Native clipboard support becomes available after rebuilding the
+      // Android/iOS app with expo-clipboard included.
+      const Clipboard = await import('expo-clipboard');
+      await Clipboard.setStringAsync(shortCode);
+      Alert.alert('Code copied', `${shortCode} is ready to paste.`);
+    } catch {
+      Alert.alert(
+        'Copy needs an app rebuild',
+        'This installed development app does not include clipboard support yet. Use Share for now, then rebuild the native app to enable Copy.',
+      );
+    }
+  }
+
+  function promptStartCircle() {
+    if (startingCircle) {
+      return;
+    }
+    if (startBlockReason) {
+      setPeopleNotice({ title: 'Circle not ready', body: startBlockReason, tone: 'warning' });
+      return;
+    }
+    promptPayoutOrderReview();
+  }
+
+  function promptPayoutOrderReview() {
+    setShowPayoutReview(true);
+  }
+
+  function promptUnclaimedHandsReview() {
+    if (!needsUnclaimedConfirm) {
+      promptFinalStartConfirm({ unclaimedManagedConfirmed: true });
+      return;
+    }
+
+    setShowUnclaimedReview(true);
+  }
+
+  function promptFinalStartConfirm(input: { unclaimedManagedConfirmed: boolean }) {
+    const confirmations = buildStartCircleConfirmations({
+      members,
+      payoutOrderReviewed: true,
+      unclaimedManagedConfirmed: input.unclaimedManagedConfirmed,
+    });
+
+    setPendingStartConfirmations(confirmations);
+  }
+
+  async function executeStartCircle(confirmations: StartCircleConfirmations) {
+    if (startingCircle) {
+      return;
+    }
+    // Re-check readiness immediately before the API call.
+    const blockReason = getStartCircleBlockReason({
+      circle,
+      members,
+      waitlist,
+    });
+    if (blockReason) {
+      setPendingStartConfirmations(null);
+      setPeopleNotice({ title: 'Circle not ready', body: blockReason, tone: 'warning' });
+      return;
+    }
+    if (!confirmations.confirmPayoutOrder) {
+      setPendingStartConfirmations(null);
+      setPeopleNotice({ title: 'Circle not ready', body: 'Confirm the payout order before starting.', tone: 'warning' });
+      return;
+    }
+    if (needsUnclaimedConfirm && !confirmations.confirmUnclaimedHands) {
+      setPendingStartConfirmations(null);
+      setPeopleNotice({ title: 'Circle not ready', body: 'Confirm you will manage unclaimed hands, or share claim invites first.', tone: 'warning' });
+      return;
+    }
+
+    setStartingCircle(true);
+    try {
+      await startCircle(token, circle.id, {
+        confirmPayoutOrder: true,
+        confirmUnclaimedHands: confirmations.confirmUnclaimedHands,
+      });
+      await onRefresh();
+      setPendingStartConfirmations(null);
+      setPeopleNotice({ title: 'Circle started', body: 'Contributions are now active and the payout order is locked.', tone: 'success' });
+    } catch (error) {
+      setPendingStartConfirmations(null);
+      setPeopleNotice({
+        title: 'Unable to start circle',
+        body: error instanceof Error ? error.message : 'The backend rejected the start request.',
+        tone: 'warning',
+      });
+    } finally {
+      setStartingCircle(false);
     }
   }
 
@@ -1309,12 +2004,34 @@ function PeopleTab({
     setShowHandModal(false);
     try {
       await requestAdditionalHand(token, circle.id);
-      Alert.alert('Request Sent', 'Your request for an additional hand has been sent to the organizer.');
+      setShowRequestSent(true);
       onRefresh();
     } catch (e) {
       Alert.alert('Not available', e instanceof Error ? e.message : 'Could not request additional hand.');
     } finally {
       setAddingHand(false);
+    }
+  }
+
+  async function handleReorderHand(memberId: string, move: 'up' | 'down') {
+    if (!token || reorderingId) {
+      return;
+    }
+    setReorderingId(memberId);
+    try {
+      await reorderPayoutTurn(token, circle.id, memberId, move);
+      // Structure changed — organizer must re-confirm at Start.
+      setPayoutOrderReviewed(false);
+      onRefresh();
+    } catch (error) {
+      Alert.alert(
+        'Unable to reorder',
+        error instanceof Error
+          ? error.message
+          : 'Could not update the payout order.',
+      );
+    } finally {
+      setReorderingId(null);
     }
   }
 
@@ -1340,307 +2057,1307 @@ function PeopleTab({
     : null;
   const totalHandsTowardCap =
     viewerHandCount + viewerPendingAdditionalHands.length;
-  const structureAllowsAdditionalHand =
-    circle.status === 'draft' ||
-    (!circle.startedAt && circle.status !== 'completed');
+  // Additional hands only while structure is unlocked (setup/draft, not started).
+  const structureAllowsAdditionalHand = isCircleSetupState(circle);
   const canAddHand =
     viewerHandCount > 0 &&
     !pendingAdditionalHand &&
     totalHandsTowardCap < 3 &&
     structureAllowsAdditionalHand;
+
   const showPendingAdditionalHand =
     viewerHandCount > 0 &&
     pendingAdditionalHand !== null &&
     structureAllowsAdditionalHand;
 
-  return (
-    <View style={styles.section}>
-
-      {/* ── Circle Code Card ────────────────────────────────────── */}
-      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Circle Invite Code</Text>
-            <Text style={{ fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: 2 }}>{shortCode || 'Code unavailable'}</Text>
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>Share this code so members can request to join</Text>
+  const payoutReviewLines = buildPayoutOrderReviewLines({
+    members,
+    turnOrder: circle.turnOrder,
+  });
+  const payoutReviewSheet = (
+    <DecisionSheet
+      visible={showPayoutReview}
+      onClose={() => setShowPayoutReview(false)}
+      icon="list-ol"
+      title="Review payout order"
+      body="Confirm every participating hand is in the correct position. The order locks when the circle starts."
+      primaryLabel="Confirm order"
+      onPrimary={() => {
+        setShowPayoutReview(false);
+        setPayoutOrderReviewed(true);
+        promptUnclaimedHandsReview();
+      }}
+    >
+      <View style={styles.payoutReviewList}>
+        {payoutReviewLines.length > 0 ? payoutReviewLines.map((line, index) => (
+          <View key={`${line}-${index}`} style={styles.payoutReviewRow}>
+            <View style={styles.payoutReviewPosition}><Text style={styles.payoutReviewPositionText}>{index + 1}</Text></View>
+            <Text style={styles.payoutReviewName}>{line.replace(/^\d+\.\s*/, '').replace(/^•\s*/, '')}</Text>
           </View>
-          <View style={{ gap: 8, alignItems: 'flex-end' }}>
-            <Pressable
-              style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${colors.primary}12`, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 }, (pressed || !shortCode) && { opacity: 0.5 }]}
-              disabled={!shortCode}
-              onPress={async () => {
-                if (!shortCode) {
-                  Alert.alert('Code Unavailable', 'The circle code is not available for sharing right now.');
-                  return;
-                }
-                try {
-                  await Share.share({ message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${shortCode}` });
-                } catch { /* cancelled */ }
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Share circle code"
-            >
-              <FontAwesome name="share-alt" size={14} color={colors.primary} />
-              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>Share</Text>
-            </Pressable>
-          </View>
-        </View>
+        )) : <Text style={styles.helperText}>No payout order is available yet.</Text>}
       </View>
+    </DecisionSheet>
+  );
+  const unclaimedHandsForReview = members.filter(
+    (member) => member.isParticipating !== false && isUnclaimedHand(member),
+  );
+  const peopleOverlays = (
+    <>
+      {payoutReviewSheet}
+      <DecisionSheet
+        visible={Boolean(declineTarget)}
+        onClose={() => {
+          if (!decliningId) setDeclineTarget(null);
+        }}
+        icon="times"
+        iconTone="warning"
+        title="Decline request?"
+        body={declineTarget ? `Decline the pending request for ${memberName(declineTarget)}? No workspace access or financial hand will be granted.` : ''}
+        primaryLabel="Decline request"
+        onPrimary={() => void confirmDecline()}
+        busy={Boolean(decliningId)}
+      />
+      <DecisionSheet
+        visible={showRequestSent}
+        onClose={() => setShowRequestSent(false)}
+        icon="paper-plane"
+        iconTone="success"
+        title="Request sent"
+        body="Your additional-hand request is waiting for organizer approval. It will not become active until approved."
+        primaryLabel="Done"
+        secondaryLabel={null}
+        onPrimary={() => setShowRequestSent(false)}
+      />
+      <DecisionSheet
+        visible={showUnclaimedReview}
+        onClose={() => setShowUnclaimedReview(false)}
+        icon="user-o"
+        iconTone="warning"
+        title="Unclaimed hands"
+        body={`${unclaimedHandsForReview.length} planned hand${unclaimedHandsForReview.length === 1 ? '' : 's'} do not have connected workspace members. You can share claim invites first or explicitly manage these positions.`}
+        primaryLabel="I will manage them"
+        onPrimary={() => {
+          setShowUnclaimedReview(false);
+          promptFinalStartConfirm({ unclaimedManagedConfirmed: true });
+        }}
+      >
+        <View style={styles.unclaimedReviewList}>
+          {unclaimedHandsForReview.map((member) => (
+            <View key={member.id} style={styles.unclaimedReviewRow}>
+              <View style={styles.initialsAvatar}><Text style={styles.initialsText}>{initialsForDisplay(memberName(member))}</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.handDetailTitle}>{memberName(member)}</Text>
+                <Text style={styles.handDetailMeta}>No workspace access · Organizer-managed</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </DecisionSheet>
+      <DecisionSheet
+        visible={Boolean(pendingStartConfirmations)}
+        onClose={() => {
+          if (!startingCircle) setPendingStartConfirmations(null);
+        }}
+        icon="lock"
+        iconTone="warning"
+        title="Start this circle?"
+        body="Starting locks membership, participating hands, and payout order. Contribution obligations begin according to the saved schedule."
+        primaryLabel="Start circle"
+        onPrimary={() => {
+          if (pendingStartConfirmations) void executeStartCircle(pendingStartConfirmations);
+        }}
+        busy={startingCircle}
+      />
+      <DecisionSheet
+        visible={Boolean(peopleNotice)}
+        onClose={() => setPeopleNotice(null)}
+        icon={peopleNotice?.tone === 'success' ? 'check' : 'exclamation-triangle'}
+        iconTone={peopleNotice?.tone ?? 'warning'}
+        title={peopleNotice?.title ?? ''}
+        body={peopleNotice?.body ?? ''}
+        primaryLabel="Got it"
+        secondaryLabel={null}
+        onPrimary={() => setPeopleNotice(null)}
+      />
+    </>
+  );
 
-      {/* ── Pending Approval (organizer only) ───────────────────── */}
-      {isOrganizer && waitlist.length > 0 ? (
-        <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', marginTop: 12 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', backgroundColor: '#fffbeb' }}>
-            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#fef3c7', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-              <FontAwesome name="clock-o" size={15} color="#d97706" />
+  // ── Phase 1 setup (organizer + setup only) — single surface, accordion steps ─
+  if (circleNotStarted && isOrganizer && setupProgress) {
+    const progress = setupProgress;
+
+    const unclaimedMembers = members.filter(
+      (m) => isUnclaimedHand(m) && m.isParticipating !== false,
+    );
+    const participatingMembers = members.filter(
+      (m) => m.isParticipating !== false,
+    );
+
+    async function shareCircleCode() {
+      if (!shortCode) {
+        Alert.alert(
+          'Code unavailable',
+          'The circle code is not available for sharing right now.',
+        );
+        return;
+      }
+      try {
+        await Share.share({
+          message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${shortCode}`,
+        });
+      } catch {
+        /* cancelled */
+      }
+    }
+
+    function renderSetupStepBody(stepId: string) {
+      switch (stepId) {
+        case 'invite_members':
+          return (
+            <View style={styles.setupBody}>
+              <View style={styles.setupCodeBlock}>
+                <Text style={styles.setupMicroLabel}>Invite code</Text>
+                <View style={styles.setupCodeRow}>
+                  <Text
+                    selectable
+                    style={styles.setupCodeValue}
+                    accessibilityLabel={`Invite code ${shortCode || 'unavailable'}`}
+                  >
+                    {shortCode || '—'}
+                  </Text>
+                  <View style={styles.setupCodeActions}>
+                    <Pressable
+                      style={styles.setupIconBtn}
+                      disabled={!shortCode}
+                      onPress={() => void handleCopyCircleCode()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Copy circle code"
+                    >
+                      <FontAwesome name="copy" size={15} color={colors.primary} />
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.setupIconBtn,
+                        (pressed || !shortCode) && { opacity: 0.5 },
+                      ]}
+                      disabled={!shortCode}
+                      onPress={() => void shareCircleCode()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Share circle code"
+                    >
+                      <FontAwesome name="share-alt" size={15} color={colors.primary} />
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.setupPrimaryBtn,
+                  pressed && { opacity: 0.88 },
+                ]}
+                onPress={() => router.push(circleInviteHref(circle.id))}
+                accessibilityRole="button"
+                accessibilityLabel="Invite members"
+              >
+                <FontAwesome name="user-plus" size={15} color="#fff" />
+                <Text style={styles.setupPrimaryBtnText}>Invite members</Text>
+              </Pressable>
+            </View>
+          );
+
+        case 'review_claims_joins':
+          return (
+            <View style={styles.setupBody}>
+              {joinRequests.length === 0 ? (
+                <Text style={styles.setupEmpty}>No join requests to review.</Text>
+              ) : (
+                <View style={styles.setupList}>
+                  {joinRequests.map((entry) => {
+                    const m = entry as BackendCircleMember;
+                    return (
+                      <View key={m.id} style={styles.setupListRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.setupListTitle}>
+                            {m.displayLabel || memberName(m)}
+                          </Text>
+                          <Text style={styles.setupListSub}>
+                            Join request · {m.phone || 'Pending approval'}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <Pressable
+                            style={({ pressed }) => [styles.setupGhostBtn, pressed && { opacity: 0.85 }]}
+                            onPress={() => handleDecline(m)}
+                            disabled={decliningId === m.id || approvingId === m.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Decline ${memberName(m)}`}
+                          >
+                            <Text style={styles.setupGhostBtnText}>Decline</Text>
+                          </Pressable>
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.setupApproveBtn,
+                              pressed && { opacity: 0.85 },
+                              approvingId === m.id && { opacity: 0.5 },
+                            ]}
+                            onPress={() => handleApprove(m.id)}
+                            disabled={approvingId === m.id || decliningId === m.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Approve ${memberName(m)}`}
+                          >
+                            {approvingId === m.id ? (
+                              <ActivityIndicator color="#fff" size="small" />
+                            ) : (
+                              <Text style={styles.setupApproveBtnText}>Approve</Text>
+                            )}
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          );
+
+        case 'confirm_member_access':
+          return (
+            <View style={styles.setupBody}>
+              <Text style={styles.setupListHint}>
+                Claimed hands have workspace access. Unclaimed hands may stay as
+                cash-managed positions at Start.
+              </Text>
+              <View style={styles.setupList}>
+                {participatingMembers.map((member) => {
+                  const unclaimed = isUnclaimedHand(member);
+                  return (
+                    <View key={member.id} style={styles.setupListRow}>
+                      <View
+                        style={[
+                          styles.setupAvatar,
+                          {
+                            backgroundColor: unclaimed
+                              ? colors.warningSoft
+                              : colors.successSoft,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '800',
+                            color: unclaimed ? '#b45309' : '#047857',
+                          }}
+                        >
+                          {(memberName(member)[0] || '?').toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.setupListTitle}>
+                          {member.displayLabel || memberName(member)}
+                        </Text>
+                        <Text style={styles.setupListSub}>
+                          {unclaimed ? 'Unclaimed · no access' : 'Connected'}
+                        </Text>
+                      </View>
+                      <SetupStatusBadge
+                        status={unclaimed ? 'waiting' : 'complete'}
+                        compact
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          );
+
+        case 'review_additional_hands':
+          return (
+            <View style={styles.setupBody}>
+              {additionalHandRequests.length === 0 ? (
+                <Text style={styles.setupEmpty}>
+                  No Hand 2 / Hand 3 requests pending.
+                </Text>
+              ) : (
+                <View style={styles.setupList}>
+                  {additionalHandRequests.map((entry) => {
+                    const m = entry as BackendCircleMember;
+                    const handNum = Number(m.handNumber ?? m.hand_number ?? 2);
+                    return (
+                      <View key={m.id} style={styles.setupListRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.setupListTitle}>
+                            {m.displayLabel || memberName(m)}
+                          </Text>
+                          <Text style={styles.setupListSub}>
+                            Additional hand · Hand {handNum}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <Pressable
+                            style={({ pressed }) => [styles.setupGhostBtn, pressed && { opacity: 0.85 }]}
+                            onPress={() => handleDecline(m)}
+                            disabled={decliningId === m.id || approvingId === m.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Decline additional hand for ${memberName(m)}`}
+                          >
+                            <Text style={styles.setupGhostBtnText}>Decline</Text>
+                          </Pressable>
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.setupApproveBtn,
+                              pressed && { opacity: 0.85 },
+                              approvingId === m.id && { opacity: 0.5 },
+                            ]}
+                            onPress={() => handleApprove(m.id)}
+                            disabled={approvingId === m.id || decliningId === m.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Approve additional hand for ${memberName(m)}`}
+                          >
+                            {approvingId === m.id ? (
+                              <ActivityIndicator color="#fff" size="small" />
+                            ) : (
+                              <Text style={styles.setupApproveBtnText}>Approve</Text>
+                            )}
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              {canAddHand ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.setupGhostBtn,
+                    { alignSelf: 'flex-start', marginTop: 4 },
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  onPress={() => setShowHandModal(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Request an additional hand"
+                >
+                  <FontAwesome name="plus" size={12} color={colors.primary} />
+                  <Text style={styles.setupGhostBtnText}>Request another hand</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          );
+
+        case 'verify_structure':
+          return (
+            <View style={styles.setupBody}>
+              <View style={styles.setupMetricsRow}>
+                {[
+                  {
+                    label: 'People',
+                    value: String(progress.structure.peopleCount),
+                  },
+                  {
+                    label: 'Hands',
+                    value: String(progress.structure.handCount),
+                  },
+                  {
+                    label: 'Est. rounds',
+                    value: String(progress.structure.totalRounds),
+                  },
+                  {
+                    label: 'Per hand',
+                    value: `$${Math.round(progress.structure.contributionPerHand).toLocaleString()}`,
+                  },
+                  {
+                    label: 'Est. pot / round',
+                    value: `$${Math.round(progress.structure.potPerRound).toLocaleString()}`,
+                  },
+                  {
+                    label: 'Organizer',
+                    value: progress.structure.organizerParticipates
+                      ? 'In'
+                      : 'Out',
+                  },
+                ].map((metric) => (
+                  <View key={metric.label} style={styles.setupMetricCell}>
+                    <Text style={styles.setupMetricValue}>{metric.value}</Text>
+                    <Text style={styles.setupMetricLabel}>{metric.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          );
+
+        case 'finalize_payout_order':
+          return (
+            <View style={styles.setupBody}>
+              <Text style={styles.setupListHint}>
+                Reorder positions. Confirm the order when you start the circle —
+                listing hands does not finalize review.
+              </Text>
+              {progress.payoutOrderComplete && !progress.payoutOrderReviewed ? (
+                <Text style={styles.setupNotice}>
+                  Structure complete. Review still required at Start.
+                </Text>
+              ) : null}
+              <View style={styles.setupList}>
+                {payoutOrderRows.map((row, index) => (
+                  <View key={row.id} style={styles.setupListRow}>
+                    <View
+                      style={[
+                        styles.setupAvatar,
+                        {
+                          backgroundColor: row.inOrder
+                            ? colors.primarySoft
+                            : colors.warningSoft,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '900',
+                          color: row.inOrder ? colors.primary : '#b45309',
+                        }}
+                      >
+                        {index + 1}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.setupListTitle}>
+                        {(row as BackendCircleMember).displayLabel ||
+                          memberName(row as BackendCircleMember)}
+                      </Text>
+                      {!row.inOrder ? (
+                        <Text style={[styles.setupListSub, { color: '#b45309' }]}>
+                          Missing from order
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      {index > 0 ? (
+                        <Pressable
+                          onPress={() => void handleReorderHand(row.id, 'up')}
+                          disabled={Boolean(reorderingId)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Move up"
+                          hitSlop={8}
+                        >
+                          {reorderingId === row.id ? (
+                            <ActivityIndicator size="small" color={colors.primary} />
+                          ) : (
+                            <FontAwesome
+                              name="chevron-up"
+                              size={14}
+                              color={colors.primary}
+                            />
+                          )}
+                        </Pressable>
+                      ) : (
+                        <View style={{ width: 14 }} />
+                      )}
+                      {index < payoutOrderRows.length - 1 ? (
+                        <Pressable
+                          onPress={() => void handleReorderHand(row.id, 'down')}
+                          disabled={Boolean(reorderingId)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Move down"
+                          hitSlop={8}
+                        >
+                          <FontAwesome
+                            name="chevron-down"
+                            size={14}
+                            color={colors.primary}
+                          />
+                        </Pressable>
+                      ) : (
+                        <View style={{ width: 14 }} />
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          );
+
+        case 'review_and_start':
+          return (
+            <View style={styles.setupBody}>
+              {startBlockReason ? (
+                <Text style={styles.setupNotice}>{startBlockReason}</Text>
+              ) : (
+                <Text style={styles.setupListHint}>
+                  Starting locks membership, hands, and payout order
+                  {needsUnclaimedConfirm
+                    ? '. You will confirm unclaimed hands first.'
+                    : '.'}
+                </Text>
+              )}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.setupPrimaryBtn,
+                  {
+                    backgroundColor: startBlockReason
+                      ? colors.subtle
+                      : colors.primary,
+                  },
+                  (pressed || startingCircle) && { opacity: 0.88 },
+                ]}
+                onPress={promptStartCircle}
+                disabled={startingCircle || Boolean(startBlockReason)}
+                accessibilityRole="button"
+                accessibilityLabel="Start circle"
+                accessibilityState={{
+                  busy: startingCircle,
+                  disabled: startingCircle || Boolean(startBlockReason),
+                }}
+              >
+                {startingCircle ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <FontAwesome name="play" size={14} color="#fff" />
+                    <Text style={styles.setupPrimaryBtnText}>Start Circle</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          );
+
+        default:
+          return null;
+      }
+    }
+
+    return (
+      <View style={styles.section}>
+        {peopleOverlays}
+
+        {/* Invite people — expandable section at top */}
+        <View style={styles.peopleCard}>
+          <Pressable
+            style={styles.peopleCardHeader}
+            onPress={() => setInviteSectionExpanded((open) => !open)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: inviteSectionExpanded }}
+            accessibilityLabel={
+              inviteSectionExpanded
+                ? 'Collapse invite people'
+                : 'Expand invite people'
+            }
+          >
+            <View style={[styles.peopleIconBubble, { backgroundColor: colors.primarySoft }]}>
+              <FontAwesome name="user-plus" size={14} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '900', color: '#92400e' }}>Pending Approval</Text>
-              <Text style={{ fontSize: 12, color: '#a16207', marginTop: 1 }}>{waitlist.length} request{waitlist.length > 1 ? 's' : ''} waiting for your review</Text>
+              <Text style={styles.peopleCardTitle}>Invite people</Text>
+              {!inviteSectionExpanded ? (
+                <Text style={styles.peopleCardSub}>
+                  Share the code or claim links for planned hands
+                </Text>
+              ) : null}
+            </View>
+            <FontAwesome
+              name={inviteSectionExpanded ? 'chevron-up' : 'chevron-down'}
+              size={12}
+              color={colors.subtle}
+            />
+          </Pressable>
+          {inviteSectionExpanded ? renderSetupStepBody('invite_members') : null}
+        </View>
+
+        {/* Priority: pending reviews only when present */}
+        {joinRequests.length > 0 || additionalHandRequests.length > 0 ? (
+          <View style={styles.peopleSectionStack}>
+            {joinRequests.length > 0 ? (
+              <View style={styles.peopleCard}>
+                <View style={styles.peopleCardHeader}>
+                  <View style={[styles.peopleIconBubble, { backgroundColor: colors.warningSoft }]}>
+                    <FontAwesome name="inbox" size={14} color="#B45309" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.peopleCardTitle}>Join requests</Text>
+                    <Text style={styles.peopleCardSub}>
+                      {joinRequests.length} waiting · approve to grant a hand
+                    </Text>
+                  </View>
+                  <View style={styles.peopleCountPill}>
+                    <Text style={styles.peopleCountPillText}>{joinRequests.length}</Text>
+                  </View>
+                </View>
+                {renderSetupStepBody('review_claims_joins')}
+              </View>
+            ) : null}
+            {additionalHandRequests.length > 0 ? (
+              <View style={styles.peopleCard}>
+                <View style={styles.peopleCardHeader}>
+                  <View style={[styles.peopleIconBubble, { backgroundColor: colors.primarySoft }]}>
+                    <FontAwesome name="hand-o-up" size={14} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.peopleCardTitle}>Extra hands</Text>
+                    <Text style={styles.peopleCardSub}>
+                      Hand 2 / 3 requests for existing members
+                    </Text>
+                  </View>
+                  <View style={styles.peopleCountPill}>
+                    <Text style={styles.peopleCountPillText}>
+                      {additionalHandRequests.length}
+                    </Text>
+                  </View>
+                </View>
+                {renderSetupStepBody('review_additional_hands')}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Members + payout positions */}
+        <View style={styles.peopleCard}>
+          <View style={styles.peopleCardHeader}>
+            <View style={[styles.peopleIconBubble, { backgroundColor: colors.primarySoft }]}>
+              <FontAwesome name="users" size={14} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.peopleCardTitle}>Members</Text>
+              <Text style={styles.peopleCardSub}>
+                Expand to claim, reorder, or inspect hands
+              </Text>
+            </View>
+          </View>
+
+          {!payoutOrderValidation.valid ? (
+            <View style={styles.validationNotice}>
+              <Text style={styles.validationTitle}>Payout order needs attention</Text>
+              {payoutOrderValidation.missingHandIds.length ? (
+                <Text style={styles.validationText}>
+                  {payoutOrderValidation.missingHandIds.length} hand(s) missing from order.
+                </Text>
+              ) : null}
+              {payoutOrderValidation.duplicateHandIds.length ? (
+                <Text style={styles.validationText}>
+                  {payoutOrderValidation.duplicateHandIds.length} duplicate position(s).
+                </Text>
+              ) : null}
+              {payoutOrderValidation.unknownHandIds.length ? (
+                <Text style={styles.validationText}>
+                  {payoutOrderValidation.unknownHandIds.length} unknown position(s).
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.compactMemberList}>
+            {memberGroups.map((group, groupIndex) => (
+              <ExpandableMemberTile
+                key={group.key}
+                groupKey={group.key}
+                hands={group.hands as BackendCircleMember[]}
+                connectedUserId={group.connectedUserId}
+                expanded={expandedMemberKey === group.key}
+                isLast={groupIndex === memberGroups.length - 1}
+                organizerId={circle.organizerId}
+                turnOrder={circle.turnOrder ?? []}
+                payoutOrderRows={payoutOrderRows}
+                canReorder
+                canShareClaim={(hand) => isUnclaimedHand(hand) && Boolean(token)}
+                sharingClaimId={sharingClaimId}
+                reorderingId={reorderingId}
+                metaExtra={null}
+                onToggle={() => toggleMemberExpanded(group.key)}
+                onShareClaim={(hand) => void handleShareClaimInvite(hand)}
+                onReorder={(handId, move) => void handleReorderHand(handId, move)}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* Finish setup + Start Circle */}
+        <View style={[styles.peopleCard, styles.peopleStartCard]}>
+          <Text style={styles.setupEyebrow}>Finish setup</Text>
+          <Text style={styles.peopleCardTitle}>Start circle</Text>
+          <Text style={[styles.peopleCardSub, { marginBottom: 12 }]}>
+            {progress.nextAction ||
+              'Locks membership, hands, and payout order. Contributions begin after start.'}
+          </Text>
+          {renderSetupStepBody('review_and_start')}
+        </View>
+
+        {canAddHand ? (
+          <Modal
+            visible={showHandModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowHandModal(false)}
+          >
+            <View style={styles.setupModalOverlay}>
+              <View style={styles.setupModalSheet}>
+                <Text style={styles.setupModalTitle}>Add another hand</Text>
+                <Text style={styles.setupModalBody}>
+                  Each hand is a separate contribution and payout slot. The
+                  organizer must explicitly approve the request.
+                </Text>
+                <Pressable
+                  style={styles.setupPrimaryBtn}
+                  onPress={handleAddHand}
+                  disabled={addingHand}
+                  accessibilityRole="button"
+                >
+                  {addingHand ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.setupPrimaryBtnText}>
+                      Request another hand
+                    </Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={styles.setupModalCancel}
+                  onPress={() => setShowHandModal(false)}
+                >
+                  <Text style={styles.setupModalCancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
+        ) : null}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.section}>
+      {peopleOverlays}
+
+      {/* Invite code */}
+      <View style={styles.peopleCard}>
+        <View style={styles.setupCodeBlock}>
+          <Text style={styles.setupMicroLabel}>Circle invite code</Text>
+          <View style={styles.setupCodeRow}>
+            <Text
+              selectable
+              style={styles.setupCodeValue}
+              accessibilityLabel={`Invite code ${shortCode || 'unavailable'}`}
+            >
+              {shortCode || '—'}
+            </Text>
+            <View style={styles.setupCodeActions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.setupIconBtn,
+                  (pressed || !shortCode) && { opacity: 0.5 },
+                ]}
+                disabled={!shortCode}
+                onPress={() => void handleCopyCircleCode()}
+                accessibilityRole="button"
+                accessibilityLabel="Copy circle code"
+              >
+                <FontAwesome name="copy" size={15} color={colors.text} />
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.setupIconBtn,
+                  (pressed || !shortCode) && { opacity: 0.5 },
+                ]}
+                disabled={!shortCode}
+                onPress={async () => {
+                  if (!shortCode) {
+                    Alert.alert(
+                      'Code unavailable',
+                      'The circle code is not available for sharing right now.',
+                    );
+                    return;
+                  }
+                  try {
+                    await Share.share({
+                      message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${shortCode}`,
+                    });
+                  } catch {
+                    /* cancelled */
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Share circle code"
+              >
+                <FontAwesome name="share-alt" size={15} color={colors.primary} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+        {isOrganizer && circleNotStarted ? (
+          <Pressable
+            style={[styles.setupPrimaryBtn, { marginTop: 12 }]}
+            onPress={() => router.push(circleInviteHref(circle.id))}
+            accessibilityRole="button"
+            accessibilityLabel="Invite a member"
+          >
+            <FontAwesome name="user-plus" size={15} color="#fff" />
+            <Text style={styles.setupPrimaryBtnText}>Invite a member</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {/* Pending requests */}
+      {isOrganizer && waitlist.length > 0 ? (
+        <View style={styles.peopleCard}>
+          <View style={styles.peopleCardHeader}>
+            <View style={[styles.peopleIconBubble, { backgroundColor: colors.warningSoft }]}>
+              <FontAwesome name="clock-o" size={14} color="#B45309" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.peopleCardTitle}>{peoplePendingSectionTitle()}</Text>
+              <Text style={styles.peopleCardSub}>
+                {circleNotStarted
+                  ? `${waitlist.length} waiting for review`
+                  : 'Structure locked — cannot approve after start'}
+              </Text>
+            </View>
+            <View style={styles.peopleCountPill}>
+              <Text style={styles.peopleCountPillText}>{waitlist.length}</Text>
             </View>
           </View>
           {waitlist.map((m) => (
-            <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f9fafb' }}>
-              <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: '900', color: colors.primary }}>
-                  {(memberName(m)[0] ?? '?').toUpperCase()}
+            <View key={m.id} style={styles.setupListRow}>
+              <View style={styles.initialsAvatar}>
+                <Text style={styles.initialsText}>
+                  {initialsForDisplay(memberName(m))}
                 </Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>
+                <Text style={styles.setupListTitle}>
                   {m.displayLabel || memberName(m)}
                 </Text>
-                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
-                  {m.isAdditionalHand || Number(m.handNumber ?? m.hand_number ?? 1) > 1
-                    ? `Additional hand request · Hand ${m.handNumber ?? m.hand_number ?? 1}`
+                <Text style={styles.setupListSub}>
+                  {m.isAdditionalHand ||
+                  Number(m.handNumber ?? m.hand_number ?? 1) > 1
+                    ? `Extra hand · Hand ${m.handNumber ?? m.hand_number ?? 1}`
                     : m.phone || 'Join request'}
                 </Text>
               </View>
-              <Pressable
-                style={({ pressed }) => [{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7, marginLeft: 8 }, pressed && { opacity: 0.7 }, approvingId === m.id && { opacity: 0.5 }]}
-                onPress={() => handleApprove(m.id)}
-                disabled={approvingId === m.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Approve ${memberName(m)}`}
-              >
-                {approvingId === m.id
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Approve</Text>}
-              </Pressable>
+              {circleNotStarted ? (
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    style={styles.setupGhostBtn}
+                    onPress={() => handleDecline(m)}
+                    disabled={decliningId === m.id || approvingId === m.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Decline ${memberName(m)}`}
+                  >
+                    <Text style={[styles.setupGhostBtnText, { color: colors.text }]}>
+                      Decline
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.setupApproveBtn}
+                    onPress={() => handleApprove(m.id)}
+                    disabled={approvingId === m.id || decliningId === m.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Approve ${memberName(m)}`}
+                  >
+                    {approvingId === m.id ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.setupApproveBtnText}>Approve</Text>
+                    )}
+                  </Pressable>
+                </View>
+              ) : (
+                <StatusBadge label="Locked" tone="muted" />
+              )}
             </View>
           ))}
         </View>
       ) : null}
 
-      {/* ── Member list ─────────────────────────────────────────── */}
-      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', marginTop: 12 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-          <Text style={styles.sectionTitle}>People</Text>
-          <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>
-            {circle.handCount ?? members.length} hands
-            {circle.uniqueMemberCount
-              ? ` · ${circle.uniqueMemberCount} people`
-              : ''}{' '}
-            • Payout order
-          </Text>
-        </View>
-        {!hasSchedule ? (
-          <Text style={[styles.helperText, { padding: 16 }]}>Payout order is not available yet.</Text>
-        ) : null}
-        <View style={styles.peopleList}>
-          {visibleMembers.map((member, index) => {
-            const isRecipient = member.id === recipientId;
-            const roleLabel = member.id === circle.organizerId ? 'Organizer' : 'Member';
-            return (
-              <View key={member.id} style={styles.personCard}>
-                <View style={styles.personCardMain}>
-                  <View style={styles.positionBadge}>
-                    <Text style={styles.positionText}>{index + 1}</Text>
-                  </View>
-                  <View style={styles.personInfo}>
-                    <Text style={styles.personName} numberOfLines={1} ellipsizeMode="tail">
-                      {member.displayLabel || memberName(member)}
-                    </Text>
-                    <View style={styles.personMetaRow}>
-                      <StatusBadge label={roleLabel} tone="muted" />
-                      {Number(member.handNumber ?? member.hand_number ?? 1) > 1 ||
-                      members.filter((m) => m.userId && m.userId === member.userId).length >
-                        1 ? (
-                        <StatusBadge
-                          label={
-                            member.handLabel ||
-                            `Hand ${member.handNumber ?? member.hand_number ?? 1}`
-                          }
-                          tone="muted"
-                        />
-                      ) : null}
-                      {hasSchedule && (index + 1) < currentRoundNumber ? (
-                        <StatusBadge label="Paid" tone="success" />
-                      ) : null}
-                      {hasSchedule && (index + 1) === currentRoundNumber ? (
-                        <StatusBadge label="Current round" tone="warning" />
-                      ) : null}
-                      {member.reliabilityScore !== undefined ? (
-                        <View style={styles.reliabilityBadge}>
-                          <FontAwesome
-                            name="shield"
-                            size={12}
-                            color={member.reliabilityScore >= 90 ? colors.success : member.reliabilityScore >= 70 ? colors.warning : colors.danger}
-                          />
-                          <Text style={styles.reliabilityText}>{member.reliabilityScore}%</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-          {!showAll && remainingCount > 0 ? (
-            <Pressable
-              style={[styles.confirmButton, { marginTop: 12, alignSelf: 'center' }]}
-              onPress={() => setShowAll(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`Show all ${members.length} members`}
-            >
-              <Text style={styles.confirmText}>
-                Show {remainingCount} more member{remainingCount === 1 ? '' : 's'}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
-
-      {/* ── Additional hand: pending status or request action ───── */}
-      {showPendingAdditionalHand ? (
-        <View
-          style={[
-            styles.sectionCard,
-            {
-              marginTop: 12,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              backgroundColor: '#fffbeb',
-              borderColor: '#fde68a',
-            },
-          ]}
-          accessibilityRole="text"
-          accessibilityLabel={`Additional hand request pending for Hand ${pendingAdditionalHandNumber}`}
-        >
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: '#fef3c7',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <FontAwesome name="clock-o" size={18} color="#d97706" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '900', color: '#92400e' }}>
-              Additional hand request pending
-            </Text>
-            <Text style={{ fontSize: 13, color: '#a16207', marginTop: 4, lineHeight: 18 }}>
-              The organizer must approve Hand {pendingAdditionalHandNumber} before
-              it becomes active.
+      {!isOrganizer && showPendingAdditionalHand ? (
+        <View style={styles.peopleCard}>
+          <View style={styles.validationNotice}>
+            <Text style={styles.validationTitle}>Additional hand pending</Text>
+            <Text style={styles.validationText}>
+              Hand {pendingAdditionalHandNumber} is waiting for organizer approval.
             </Text>
           </View>
         </View>
       ) : null}
 
+      {/* Members / hands */}
+      <View style={styles.peopleCard}>
+        <View style={styles.peopleCardHeader}>
+          <View style={[styles.peopleIconBubble, { backgroundColor: colors.primarySoft }]}>
+            <FontAwesome name="users" size={14} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.peopleCardTitle}>{peopleHandsSectionTitle()}</Text>
+            <Text style={styles.peopleCardSub}>
+              {formatHandsPeopleMetrics({
+                handCount: circle.handCount ?? members.length,
+                uniqueMemberCount: circle.uniqueMemberCount,
+                fallbackHandCount: members.length,
+              })}
+              {circleNotStarted ? ' · Planned' : ' · Live'}
+            </Text>
+          </View>
+        </View>
+        {circleNotStarted ? (
+          <Text style={[styles.peopleCardSub, { marginBottom: 8 }]}>
+            Planned hands become live contribution positions after start.
+          </Text>
+        ) : null}
+        {!hasSchedule ? (
+          <Text style={[styles.peopleCardSub, { marginBottom: 8 }]}>
+            Payout order is not available yet.
+          </Text>
+        ) : null}
+
+        <View style={styles.compactMemberList}>
+          {memberGroups.map((group, groupIndex) => (
+            <ExpandableMemberTile
+              key={group.key}
+              groupKey={group.key}
+              hands={group.hands as BackendCircleMember[]}
+              connectedUserId={group.connectedUserId}
+              expanded={expandedMemberKey === group.key}
+              isLast={groupIndex === memberGroups.length - 1}
+              organizerId={circle.organizerId}
+              turnOrder={circle.turnOrder ?? []}
+              payoutOrderRows={payoutOrderRows}
+              canReorder={false}
+              canShareClaim={(hand) =>
+                isOrganizer &&
+                circleNotStarted &&
+                isUnclaimedHand(hand) &&
+                Boolean(token)
+              }
+              sharingClaimId={sharingClaimId}
+              reorderingId={null}
+              metaExtra={hasSchedule ? ' · See Round for dues' : ''}
+              onToggle={() => toggleMemberExpanded(group.key)}
+              onShareClaim={(hand) => void handleShareClaimInvite(hand)}
+              onReorder={() => {}}
+            />
+          ))}
+        </View>
+      </View>
+
       {canAddHand ? (
         <>
-          <Modal visible={showHandModal} transparent animationType="slide" onRequestClose={() => setShowHandModal(false)}>
-            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-              <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 28, paddingBottom: 44 }}>
-                <View style={{ alignItems: 'center', marginBottom: 20 }}>
-                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginBottom: 14 }}>
-                    <FontAwesome name="hand-o-up" size={28} color={colors.primary} />
+          <Modal
+            visible={showHandModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowHandModal(false)}
+          >
+            <View style={styles.setupModalOverlay}>
+              <View style={styles.setupModalSheet}>
+                <View style={{ alignItems: 'center', marginBottom: 8 }}>
+                  <View
+                    style={[
+                      styles.peopleIconBubble,
+                      {
+                        width: 56,
+                        height: 56,
+                        borderRadius: 28,
+                        marginBottom: 12,
+                      },
+                    ]}
+                  >
+                    <FontAwesome name="hand-o-up" size={24} color={colors.primary} />
                   </View>
-                  <Text style={{ fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center', marginBottom: 8 }}>Add Another Hand</Text>
-                  <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', lineHeight: 22 }}>
-                    In the susu model, you can hold <Text style={{ fontWeight: '800', color: '#111827' }}>multiple slots</Text> in the same circle. Each hand means:
-                  </Text>
+                  <Text style={styles.setupModalTitle}>Add another hand</Text>
                 </View>
-                <View style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 16, gap: 10, marginBottom: 20 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <FontAwesome name="check-circle" size={16} color={colors.success} />
-                    <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>You contribute <Text style={{ fontWeight: '800' }}>once per hand</Text> each round</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <FontAwesome name="check-circle" size={16} color={colors.success} />
-                    <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>You receive a <Text style={{ fontWeight: '800' }}>separate payout</Text> for each hand</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <FontAwesome name="info-circle" size={16} color="#2563eb" />
-                    <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>The organizer must approve your additional hand request</Text>
-                  </View>
-                </View>
+                <Text style={styles.setupModalBody}>
+                  Each hand is a separate contribution and payout slot (max 3). The
+                  organizer must approve Hand 2 / Hand 3 requests.
+                </Text>
                 <Pressable
-                  style={({ pressed }) => [{ backgroundColor: colors.primary, borderRadius: 16, minHeight: 54, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }, pressed && { opacity: 0.85 }]}
+                  style={styles.setupPrimaryBtn}
                   onPress={handleAddHand}
                   disabled={addingHand}
                   accessibilityRole="button"
                 >
-                  {addingHand ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>Request Another Hand</Text>}
+                  {addingHand ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.setupPrimaryBtnText}>
+                      Request another hand
+                    </Text>
+                  )}
                 </Pressable>
-                <Pressable style={({ pressed }) => [{ borderRadius: 16, minHeight: 48, justifyContent: 'center', alignItems: 'center' }, pressed && { opacity: 0.7 }]} onPress={() => setShowHandModal(false)}>
-                  <Text style={{ color: '#6b7280', fontSize: 16, fontWeight: '700' }}>Cancel</Text>
+                <Pressable
+                  style={styles.setupModalCancel}
+                  onPress={() => setShowHandModal(false)}
+                >
+                  <Text style={styles.setupModalCancelText}>Cancel</Text>
                 </Pressable>
               </View>
             </View>
           </Modal>
           <Pressable
-            style={[styles.memberActionButton, { borderStyle: 'dashed', borderWidth: 2, borderColor: `${colors.primary}40`, backgroundColor: `${colors.primary}06` }]}
+            style={styles.peopleDashedBtn}
             onPress={() => setShowHandModal(true)}
             accessibilityRole="button"
             accessibilityLabel="Request an additional hand in this circle"
           >
-            <FontAwesome name="hand-o-up" size={18} color={colors.primary} />
-            <Text style={styles.memberActionText}>+ Add Another Hand</Text>
+            <FontAwesome name="plus" size={14} color={colors.primary} />
+            <Text style={styles.peopleDashedBtnText}>Add another hand</Text>
           </Pressable>
         </>
       ) : null}
 
-      {/* ── Organizer Actions ───────────────────────────────────── */}
-      {isOrganizer ? (
-        circle.status === 'setup' ? (
+      {showSetupOrganizerActions ? (
+        <View style={[styles.peopleCard, styles.peopleStartCard]}>
+          <Text style={styles.peopleCardTitle}>Start circle</Text>
+          {startBlockReason ? (
+            <Text style={[styles.peopleCardSub, { marginBottom: 12 }]}>
+              {startBlockReason}
+            </Text>
+          ) : (
+            <Text style={[styles.peopleCardSub, { marginBottom: 12 }]}>
+              Starting locks membership, hands, and payout order
+              {needsUnclaimedConfirm ? '. You will confirm unclaimed hands first.' : '.'}
+            </Text>
+          )}
           <Pressable
-            style={styles.memberActionButton}
-            onPress={() => router.push(circleInviteHref(circle.id))}
+            style={({ pressed }) => [
+              styles.setupPrimaryBtn,
+              (pressed || startingCircle) && { opacity: 0.88 },
+              startingCircle && { opacity: 0.65 },
+            ]}
+            onPress={promptStartCircle}
+            disabled={startingCircle}
             accessibilityRole="button"
-            accessibilityLabel="Invite members"
+            accessibilityLabel="Start circle"
+            accessibilityState={{ busy: startingCircle, disabled: startingCircle }}
           >
-            <FontAwesome name="user-plus" size={18} color={colors.primary} />
-            <Text style={styles.memberActionText}>Invite Members</Text>
+            {startingCircle ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <>
+                <FontAwesome name="play" size={14} color="#ffffff" />
+                <Text style={styles.setupPrimaryBtnText}>Start Circle</Text>
+              </>
+            )}
           </Pressable>
-        ) : (
-          <Pressable
-            style={({ pressed }) => [styles.memberActionButton, (pressed || !shortCode) && { opacity: 0.5 }]}
-            disabled={!shortCode}
-            onPress={async () => {
-              if (!shortCode) {
-                Alert.alert('Code Unavailable', 'The circle code is not available for sharing right now.');
-                return;
-              }
-              try {
-                await Share.share({
-                  message: `Join my savings circle '${circle.name}' on CircuSave!\n\nCode: ${shortCode}\n\nOr link: https://app.circusave.com/invite/${shortCode}`,
-                });
-              } catch { /* cancelled */ }
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Share Access Link"
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Expand/collapse member row. Details unmount completely when collapsed so no
+ * empty “skeleton” panel remains (border/height residue from open styles).
+ */
+function ExpandableMemberTile({
+  groupKey,
+  hands,
+  connectedUserId,
+  expanded,
+  isLast,
+  organizerId,
+  turnOrder,
+  payoutOrderRows,
+  canReorder,
+  canShareClaim,
+  sharingClaimId,
+  reorderingId,
+  metaExtra,
+  onToggle,
+  onShareClaim,
+  onReorder,
+}: {
+  groupKey: string;
+  hands: BackendCircleMember[];
+  connectedUserId: string | null;
+  expanded: boolean;
+  isLast: boolean;
+  organizerId: string;
+  turnOrder: string[];
+  payoutOrderRows: Array<{ id: string }>;
+  canReorder: boolean;
+  canShareClaim: (hand: BackendCircleMember) => boolean;
+  sharingClaimId: string | null;
+  reorderingId: string | null;
+  metaExtra: string | null;
+  onToggle: () => void;
+  onShareClaim: (hand: BackendCircleMember) => void;
+  onReorder: (handId: string, move: 'up' | 'down') => void;
+}) {
+  const first = hands[0];
+  if (!first) {
+    return null;
+  }
+  const organizer = hands.some((hand) => hand.id === organizerId);
+  const connected = Boolean(connectedUserId);
+  const display = memberName(first);
+  const showDetails = expanded && hands.length > 0;
+
+  return (
+    <View
+      collapsable={false}
+      style={[
+        styles.peopleMemberTile,
+        showDetails ? styles.peopleMemberTileOpen : styles.peopleMemberTileClosed,
+        isLast && { marginBottom: 0 },
+      ]}
+    >
+      <Pressable
+        style={styles.compactMemberMain}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showDetails }}
+        accessibilityLabel={`${showDetails ? 'Collapse' : 'Expand'} details for ${display}`}
+      >
+        <View style={styles.initialsAvatar}>
+          <Text style={styles.initialsText}>{initialsForDisplay(display)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={styles.peopleNameRow}>
+            <Text style={styles.personName} numberOfLines={1}>
+              {display}
+            </Text>
+            {organizer ? (
+              <View style={styles.peopleRolePill}>
+                <Text style={styles.peopleRolePillText}>Org</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.compactMemberMeta}>
+            {hands.length} hand{hands.length === 1 ? '' : 's'}
+            {metaExtra || ''}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.peopleAccessPill,
+            connected ? styles.peopleAccessPillOn : styles.peopleAccessPillOff,
+          ]}
+        >
+          <Text
+            style={[
+              styles.peopleAccessPillText,
+              connected
+                ? styles.peopleAccessPillTextOn
+                : styles.peopleAccessPillTextOff,
+            ]}
           >
-            <FontAwesome name="share-alt" size={18} color={colors.primary} />
-            <Text style={styles.memberActionText}>Share Invite Code</Text>
-          </Pressable>
-        )
+            {connected ? 'Connected' : 'Unclaimed'}
+          </Text>
+        </View>
+        <FontAwesome
+          name={showDetails ? 'chevron-up' : 'chevron-down'}
+          size={12}
+          color={colors.subtle}
+          style={{ marginLeft: 8 }}
+        />
+      </Pressable>
+
+      {showDetails ? (
+        <View
+          key={`${groupKey}-details`}
+          style={styles.handDetailList}
+          collapsable={false}
+        >
+          {hands.map((hand, handIndex) => {
+            const orderIndex = turnOrder.indexOf(hand.id);
+            const payoutRowIndex = payoutOrderRows.findIndex(
+              (row) => row.id === hand.id,
+            );
+            const share = canShareClaim(hand);
+            const handKey = `${groupKey}:${hand.id || 'hand'}:${handIndex}`;
+            return (
+              <View key={handKey} style={styles.handDetailRow}>
+                <View
+                  style={[
+                    styles.setupAvatar,
+                    {
+                      backgroundColor:
+                        orderIndex >= 0
+                          ? colors.primarySoft
+                          : colors.warningSoft,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '900',
+                      color: orderIndex >= 0 ? colors.primary : '#B45309',
+                    }}
+                  >
+                    {orderIndex >= 0 ? orderIndex + 1 : '—'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.handDetailTitle}>
+                    {hand.handLabel ||
+                      `Hand ${hand.handNumber ?? hand.hand_number ?? handIndex + 1}`}
+                  </Text>
+                  <Text style={styles.handDetailMeta}>
+                    {handClaimStatusLabel(hand)}
+                    {orderIndex >= 0
+                      ? ` · Position ${orderIndex + 1}`
+                      : ' · Not in order'}
+                  </Text>
+                </View>
+                {share ? (
+                  <Pressable
+                    style={styles.handClaimBtn}
+                    onPress={() => onShareClaim(hand)}
+                    disabled={sharingClaimId === hand.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Share claim invite for ${memberName(hand)}`}
+                  >
+                    {sharingClaimId === hand.id ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Text style={styles.handClaimAction}>Claim</Text>
+                    )}
+                  </Pressable>
+                ) : null}
+                {canReorder && payoutRowIndex >= 0 ? (
+                  <View style={styles.reorderControls}>
+                    <Pressable
+                      onPress={() => onReorder(hand.id, 'up')}
+                      disabled={Boolean(reorderingId) || payoutRowIndex === 0}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Move ${memberName(hand)} up`}
+                      style={{
+                        opacity: payoutRowIndex === 0 ? 0.25 : 1,
+                        padding: 6,
+                      }}
+                    >
+                      <FontAwesome
+                        name="chevron-up"
+                        size={13}
+                        color={colors.primary}
+                      />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onReorder(hand.id, 'down')}
+                      disabled={
+                        Boolean(reorderingId) ||
+                        payoutRowIndex === payoutOrderRows.length - 1
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Move ${memberName(hand)} down`}
+                      style={{
+                        opacity:
+                          payoutRowIndex === payoutOrderRows.length - 1
+                            ? 0.25
+                            : 1,
+                        padding: 6,
+                      }}
+                    >
+                      <FontAwesome
+                        name="chevron-down"
+                        size={13}
+                        color={colors.primary}
+                      />
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
       ) : null}
     </View>
   );
@@ -1816,6 +3533,57 @@ function DetailRow({
     <View style={[styles.detailRow, last && styles.lastDetailRow]}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+}
+
+function setupStatusTone(status: SetupStepStatus): {
+  bg: string;
+  fg: string;
+} {
+  switch (status) {
+    case 'complete':
+      return { bg: colors.successSoft, fg: '#047857' };
+    case 'action_required':
+      return { bg: '#FFEDD5', fg: '#C2410C' };
+    case 'waiting':
+      return { bg: '#DBEAFE', fg: '#1D4ED8' };
+    case 'blocked':
+      return { bg: '#F1F5F9', fg: '#64748B' };
+    default:
+      return { bg: '#F1F5F9', fg: '#64748B' };
+  }
+}
+
+function SetupStatusBadge({
+  status,
+  compact,
+}: {
+  status: SetupStepStatus;
+  compact?: boolean;
+}) {
+  const tone = setupStatusTone(status);
+  const label = compact
+    ? status === 'action_required'
+      ? 'Action'
+      : status === 'waiting'
+        ? 'Waiting'
+        : status === 'complete'
+          ? 'Done'
+          : 'Blocked'
+    : setupStepStatusLabel(status);
+  return (
+    <View
+      style={{
+        backgroundColor: tone.bg,
+        borderRadius: 999,
+        paddingHorizontal: compact ? 8 : 10,
+        paddingVertical: compact ? 3 : 4,
+      }}
+    >
+      <Text style={{ fontSize: compact ? 10 : 11, fontWeight: '800', color: tone.fg }}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -2125,6 +3893,305 @@ function statusTone(raw: string): 'muted' | 'soft' | 'ready' | 'success' | 'warn
 }
 
 const styles = StyleSheet.create({
+  peopleSectionStack: {
+    gap: 12,
+  },
+  peopleHero: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
+    ...shadows.small,
+  },
+  peopleHeroTitle: {
+    color: colors.textStrong,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+  },
+  peopleHeroSub: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  peopleCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    ...shadows.small,
+  },
+  peopleStartCard: {
+    borderColor: colors.primaryBorder,
+    backgroundColor: '#FBF9FF',
+  },
+  peopleCardHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  peopleCardTitle: {
+    color: colors.textStrong,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  peopleCardSub: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  peopleIconBubble: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 12,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  peopleCountPill: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 999,
+    minWidth: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  peopleCountPillText: {
+    color: colors.textStrong,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  peopleMemberTile: {
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+    // Keep border width constant so open/close never leaves residual height.
+    paddingHorizontal: 10,
+  },
+  peopleMemberTileClosed: {
+    backgroundColor: colors.card,
+    borderColor: 'transparent',
+  },
+  peopleMemberTileOpen: {
+    backgroundColor: colors.background,
+    borderColor: colors.primaryBorder,
+  },
+  // When collapsed, never reserve space for details (no minHeight on tile).
+  peopleNameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  peopleRolePill: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  peopleRolePillText: {
+    color: colors.primaryDark,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  peopleAccessPill: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  peopleAccessPillOn: {
+    backgroundColor: colors.successSoft,
+  },
+  peopleAccessPillOff: {
+    backgroundColor: colors.warningSoft,
+  },
+  peopleAccessPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  peopleAccessPillTextOn: {
+    color: '#047857',
+  },
+  peopleAccessPillTextOff: {
+    color: '#B45309',
+  },
+  peopleDashedBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    borderRadius: 16,
+    borderStyle: 'dashed',
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  peopleDashedBtnText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  reorderControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+    marginLeft: 4,
+  },
+  handClaimBtn: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  setupHeaderSummary: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 14,
+    padding: 16,
+  },
+  compactMemberList: {
+    marginTop: 4,
+  },
+  compactMemberRow: {
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: 1,
+  },
+  compactMemberMain: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 64,
+    paddingVertical: 10,
+  },
+  initialsAvatar: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  initialsText: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  compactMemberMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  compactContribution: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 3,
+  },
+  handDetailList: {
+    borderTopColor: colors.cardBorder,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginBottom: 4,
+    paddingLeft: 4,
+    paddingRight: 4,
+  },
+  handDetailRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 54,
+    paddingVertical: 10,
+  },
+  handDetailTitle: {
+    color: colors.textStrong,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  handDetailMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 3,
+  },
+  handClaimAction: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  validationNotice: {
+    backgroundColor: colors.warningSoft,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 12,
+  },
+  validationTitle: {
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  validationText: {
+    color: '#A16207',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  payoutReviewList: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  payoutReviewRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    minHeight: 54,
+    paddingHorizontal: 14,
+  },
+  payoutReviewPosition: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 15,
+    height: 30,
+    justifyContent: 'center',
+    marginRight: 12,
+    width: 30,
+  },
+  payoutReviewPositionText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  payoutReviewName: {
+    color: colors.textStrong,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  unclaimedReviewList: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  unclaimedReviewRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
   screen: { flex: 1, backgroundColor: '#F8FAFC' },
   content: {
     paddingBottom: 100,
@@ -2258,6 +4325,79 @@ const styles = StyleSheet.create({
     borderRadius: radii.card,
     borderWidth: 1,
     padding: 14,
+  },
+  roundDetailsHeader: {
+    alignItems: 'center',
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  roundDetailsTitle: {
+    color: colors.textStrong,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  roundDetailsSummary: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  roundDetailsStatusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  roundDetailsStatusReleased: {
+    backgroundColor: colors.successSoft,
+  },
+  roundDetailsStatusReady: {
+    backgroundColor: colors.warningSoft,
+  },
+  roundDetailsStatusPending: {
+    backgroundColor: '#F3F4F6',
+  },
+  roundDetailsStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  roundDetailRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  roundDetailIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    marginRight: 12,
+    width: 32,
+  },
+  roundDetailLabel: {
+    color: colors.textStrong,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    paddingRight: 8,
+  },
+  roundDetailValue: {
+    color: colors.muted,
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    maxWidth: '48%',
+    textAlign: 'right',
+  },
+  roundDetailDivider: {
+    backgroundColor: '#F3F4F6',
+    height: 1,
+    marginLeft: 60,
   },
   sectionTitle: {
     color: colors.textStrong,
@@ -2811,6 +4951,250 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: colors.textStrong,
+  },
+
+  /* ── Setup People (fintech single surface) ─────────────────── */
+  setupShell: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    paddingBottom: 4,
+  },
+  setupHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 12,
+  },
+  setupEyebrow: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  setupTitle: {
+    color: colors.textStrong,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  setupSubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  setupStepTitle: {
+    color: colors.textStrong,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  setupStepReason: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  setupBody: {
+    paddingHorizontal: 12,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  setupCodeBlock: {
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    padding: 14,
+    width: '100%',
+  },
+  setupCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+  },
+  setupCodeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: 6,
+  },
+  setupIconBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 10,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  setupMicroLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  setupCodeValue: {
+    color: colors.primary,
+    flex: 1,
+    flexShrink: 1,
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+    // Show full code; wrap if needed rather than truncating.
+    minWidth: 0,
+  },
+  setupGhostBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  setupGhostBtnText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  setupPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    minHeight: 48,
+    paddingHorizontal: 16,
+  },
+  setupPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  setupApproveBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  setupApproveBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  setupList: {
+    gap: 0,
+  },
+  setupListHint: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  setupListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.cardBorder,
+  },
+  setupListTitle: {
+    color: colors.textStrong,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  setupListSub: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  setupEmpty: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  setupAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  setupMetricsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  setupMetricCell: {
+    width: '30%',
+    flexGrow: 1,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'flex-start',
+  },
+  setupMetricValue: {
+    color: colors.textStrong,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  setupMetricLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  setupNotice: {
+    color: '#92400E',
+    fontSize: 12,
+    lineHeight: 17,
+    backgroundColor: colors.warningSoft,
+    borderRadius: 10,
+    padding: 10,
+    overflow: 'hidden',
+  },
+  setupModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  setupModalSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    gap: 14,
+  },
+  setupModalTitle: {
+    color: colors.textStrong,
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  setupModalBody: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  setupModalCancel: {
+    alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  setupModalCancelText: {
+    color: colors.muted,
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
 
