@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Linking from 'expo-linking';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,10 +17,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LegalCheckbox } from '@/components/LegalCheckbox';
 import { register } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { postAuthHrefFromUrl } from '@/lib/navigation';
 import { colors, shadows, spacing } from '@/lib/theme';
+
+const LEGAL_TERMS_HREF = '/legal/terms' as Href;
+const LEGAL_PRIVACY_HREF = '/legal/privacy' as Href;
+const LEGAL_FUNDS_HREF = '/legal/how-money-moves' as Href;
+const LEGAL_ECONSENT_HREF = '/legal/electronic-consent' as Href;
 
 export default function CreateAccountScreen() {
   const emailInputRef = useRef<TextInput>(null);
@@ -30,10 +36,20 @@ export default function CreateAccountScreen() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [acceptedTermsAndPrivacy, setAcceptedTermsAndPrivacy] = useState(false);
+  const [acceptedFundsDisclosure, setAcceptedFundsDisclosure] = useState(false);
+  const [acceptedElectronicConsent, setAcceptedElectronicConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
     useAuthSession();
   const incomingUrl = Linking.useURL();
+
+  const hasAcceptedRequiredPolicies =
+    acceptedTermsAndPrivacy &&
+    acceptedFundsDisclosure &&
+    acceptedElectronicConsent;
+
+  const createDisabled = isSubmitting || !hasAcceptedRequiredPolicies;
 
   async function handleCreateAccount() {
     if (isSubmitting) return;
@@ -48,6 +64,14 @@ export default function CreateAccountScreen() {
 
     if (password.length < 8) {
       Alert.alert('Weak password', 'Password must be at least 8 characters.');
+      return;
+    }
+
+    if (!hasAcceptedRequiredPolicies) {
+      Alert.alert(
+        'Review required agreements',
+        'You must accept the required agreements and disclosures before creating your account.',
+      );
       return;
     }
 
@@ -159,12 +183,70 @@ export default function CreateAccountScreen() {
               onSubmitEditing={() => void handleCreateAccount()}
             />
 
+            <View style={styles.legalBlock}>
+              <Text style={styles.legalHeading}>Required agreements</Text>
+
+              <LegalCheckbox
+                checked={acceptedTermsAndPrivacy}
+                onCheckedChange={setAcceptedTermsAndPrivacy}
+                accessibilityLabel="I agree to the Terms of Service and acknowledge the Privacy Policy"
+                segments={[
+                  { type: 'text', text: 'I agree to the ' },
+                  { type: 'link', text: 'Terms of Service', href: LEGAL_TERMS_HREF },
+                  { type: 'text', text: ' and acknowledge the ' },
+                  { type: 'link', text: 'Privacy Policy', href: LEGAL_PRIVACY_HREF },
+                  { type: 'text', text: '.' },
+                ]}
+              />
+
+              <LegalCheckbox
+                checked={acceptedFundsDisclosure}
+                onCheckedChange={setAcceptedFundsDisclosure}
+                accessibilityLabel="I understand that CircuSave is a digital savings-circle coordination and recordkeeping platform and does not hold member contribution funds"
+                segments={[
+                  {
+                    type: 'text',
+                    text:
+                      'I understand that CircuSave is a digital savings-circle coordination and recordkeeping platform. CircuSave does not hold, store, pool, invest, or use member contribution funds. ',
+                  },
+                  {
+                    type: 'link',
+                    text: 'Learn how money moves',
+                    href: LEGAL_FUNDS_HREF,
+                  },
+                  { type: 'text', text: '.' },
+                ]}
+              />
+
+              <LegalCheckbox
+                checked={acceptedElectronicConsent}
+                onCheckedChange={setAcceptedElectronicConsent}
+                accessibilityLabel="I consent to receive required agreements, notices, disclosures, and records electronically"
+                segments={[
+                  {
+                    type: 'text',
+                    text:
+                      'I consent to receive required agreements, notices, disclosures, and records electronically. Review the ',
+                  },
+                  {
+                    type: 'link',
+                    text: 'Electronic Consent',
+                    href: LEGAL_ECONSENT_HREF,
+                  },
+                  { type: 'text', text: '.' },
+                ]}
+              />
+            </View>
+
             <Pressable
-              style={[styles.primaryButton, isSubmitting && styles.disabledButton]}
+              style={[styles.primaryButton, createDisabled && styles.disabledButton]}
               onPress={() => void handleCreateAccount()}
-              disabled={isSubmitting}
+              disabled={createDisabled}
               accessibilityRole="button"
-              accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
+              accessibilityState={{
+                busy: isSubmitting,
+                disabled: createDisabled,
+              }}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#ffffff" />
@@ -174,7 +256,7 @@ export default function CreateAccountScreen() {
             </Pressable>
 
             <Text style={styles.note}>
-              By creating an account, you agree to save responsibly with people you trust.
+              You can review these policies at any time in Settings → Legal & Policies.
             </Text>
           </View>
         </ScrollView>
@@ -250,6 +332,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 56,
     paddingHorizontal: 16,
+  },
+  legalBlock: {
+    borderColor: colors.cardBorder,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  legalHeading: {
+    color: colors.textStrong,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    marginBottom: 4,
+    marginTop: 4,
+    textTransform: 'uppercase',
   },
   primaryButton: {
     alignItems: 'center',

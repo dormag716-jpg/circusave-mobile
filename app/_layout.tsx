@@ -131,6 +131,11 @@ function AuthenticatedStack() {
       <Stack.Screen name="automated-payments" options={{ headerShown: false }} />
       <Stack.Screen name="subscription" options={{ headerShown: false }} />
       <Stack.Screen name="security" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/index" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/how-money-moves" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/electronic-consent" options={{ headerShown: false }} />
     </Stack>
   );
 }

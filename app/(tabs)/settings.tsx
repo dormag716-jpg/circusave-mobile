@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
@@ -135,6 +135,12 @@ export default function SettingsScreen() {
             subtitle="FAQs, contact support"
             onPress={() => router.push('/support')}
             isFirst
+          />
+          <MenuItem
+            icon="file-text-o"
+            title="Legal & Policies"
+            subtitle="Terms, privacy, disclosures, and how money moves"
+            onPress={() => router.push('/legal' as Href)}
             isLast
           />
         </View>
