@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LegalCheckbox } from '@/components/LegalCheckbox';
 import { register } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { LEGAL_VERSIONS } from '@/lib/legal';
 import { postAuthHrefFromUrl } from '@/lib/navigation';
 import { colors, shadows, spacing } from '@/lib/theme';
 
@@ -83,6 +84,13 @@ export default function CreateAccountScreen() {
         email: normalizedEmail,
         phone: phone.trim(),
         password,
+        legalAcceptance: {
+          acceptedLegal: true,
+          termsVersion: LEGAL_VERSIONS.terms,
+          privacyVersion: LEGAL_VERSIONS.privacy,
+          fundsDisclosureVersion: LEGAL_VERSIONS.fundsDisclosure,
+          electronicConsentVersion: LEGAL_VERSIONS.electronicConsent,
+        },
       });
       // Keep an explicit target (e.g. invite return) over the raw deep link.
       if (!postAuthTarget) {

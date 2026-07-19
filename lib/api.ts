@@ -659,11 +659,20 @@ export async function login(input: {
   return normalizeAuthResponse(payload, true);
 }
 
+export type RegistrationLegalAcceptance = {
+  acceptedLegal: true;
+  termsVersion: string;
+  privacyVersion: string;
+  fundsDisclosureVersion: string;
+  electronicConsentVersion: string;
+};
+
 export async function register(input: {
   name: string;
   email: string;
   phone?: string;
   password: string;
+  legalAcceptance: RegistrationLegalAcceptance;
 }): Promise<AuthResponse> {
   const payload = await requestJson<unknown>('/auth/mobile/register', {
     method: 'POST',
@@ -672,6 +681,11 @@ export async function register(input: {
       email: input.email.trim().toLowerCase(),
       phone: input.phone?.trim() || undefined,
       password: input.password,
+      acceptedLegal: input.legalAcceptance.acceptedLegal,
+      termsVersion: input.legalAcceptance.termsVersion,
+      privacyVersion: input.legalAcceptance.privacyVersion,
+      fundsDisclosureVersion: input.legalAcceptance.fundsDisclosureVersion,
+      electronicConsentVersion: input.legalAcceptance.electronicConsentVersion,
     }),
   });
   return normalizeAuthResponse(payload, true);
