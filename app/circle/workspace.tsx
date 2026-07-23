@@ -27,6 +27,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   approveContribution,
+  approveJoinRequest,
+  declineJoinRequest,
   getCircleDetail,
   getCircleSchedule,
   getLedgerEntries,
@@ -36,14 +38,13 @@ import {
   submitContribution,
   type BackendCircleDetail,
   type BackendCircleMember,
+  type BackendJoinRequest,
   type BackendLedgerEntry,
   type BackendRoundContribution,
   type BackendRoundSnapshot,
   type BackendWalletSnapshot,
   requestPositionSwap,
   getMemberAccessToken,
-  approveJoinRequest,
-  removeCircleMember,
   reorderPayoutTurn,
   requestAdditionalHand,
   startCircle,
@@ -61,6 +62,7 @@ import {
   buildClaimInviteShareMessage,
   buildClaimInviteUrl,
 } from '@/lib/claimInvite';
+import { copyText } from '@/lib/clipboard';
 import {
   formatHandsPeopleMetrics,
   handClaimStatusLabel,
@@ -890,7 +892,7 @@ function WorkspaceContent({
           userId={userId}
           currentRoundNumber={currentRoundNumber}
           token={token ?? ''}
-          onRefresh={() => { void onReload(); }}
+          onRefresh={onReload}
         />
       ) : null}
 
@@ -1766,7 +1768,7 @@ function PeopleTab({
   userId: string;
   currentRoundNumber: number;
   token: string;
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
 }) {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [addingHand, setAddingHand] = useState(false);
@@ -1780,13 +1782,19 @@ function PeopleTab({
   const [expandedMemberKey, setExpandedMemberKey] = useState<string | null>(null);
   const [inviteSectionExpanded, setInviteSectionExpanded] = useState(true);
   const [showPayoutReview, setShowPayoutReview] = useState(false);
-  const [declineTarget, setDeclineTarget] = useState<BackendCircleMember | null>(null);
+  const [declineTarget, setDeclineTarget] = useState<BackendJoinRequest | null>(null);
   const [showRequestSent, setShowRequestSent] = useState(false);
   const [showUnclaimedReview, setShowUnclaimedReview] = useState(false);
   const [pendingStartConfirmations, setPendingStartConfirmations] = useState<StartCircleConfirmations | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<PeopleNotice | null>(null);
+  const structureMutationBusy =
+    Boolean(approvingId) ||
+    Boolean(decliningId) ||
+    addingHand ||
+    startingCircle ||
+    Boolean(reorderingId);
   const shortCode = circle.circleCode;
-  const waitlist: BackendCircleMember[] = (circle as any).waitlist ?? [];
+  const waitlist: BackendJoinRequest[] = circle.waitlist ?? [];
   // People tab structural controls: lifecycle from status/startedAt/isStarted only.
   const lifecyclePhase = getCircleLifecyclePhase(circle);
   const circleNotStarted = lifecyclePhase === 'setup';
@@ -1835,19 +1843,19 @@ function PeopleTab({
     () => validateCurrentPayoutOrder(members, circle.turnOrder ?? []),
     [members, circle.turnOrder],
   );
-  async function handleApprove(memberId: string) {
-    if (!circleNotStarted) {
+  async function handleApprove(requestId: string) {
+    if (!circleNotStarted || structureMutationBusy) {
       Alert.alert(
         'Structure locked',
         'Join and additional-hand requests cannot be approved after the circle has started.',
       );
       return;
     }
-    setApprovingId(memberId);
+    setApprovingId(requestId);
     try {
-      await approveJoinRequest(token, circle.id, memberId);
+      await approveJoinRequest(token, circle.id, requestId);
+      await onRefresh();
       Alert.alert('Approved!', 'The member has been approved and added to the circle.');
-      onRefresh();
     } catch (e) {
       setPeopleNotice({
         title: 'Request not approved',
@@ -1859,18 +1867,18 @@ function PeopleTab({
     }
   }
 
-  function handleDecline(member: BackendCircleMember) {
-    if (!circleNotStarted || decliningId) return;
+  function handleDecline(member: BackendJoinRequest) {
+    if (!circleNotStarted || structureMutationBusy) return;
     setDeclineTarget(member);
   }
 
   async function confirmDecline() {
-    if (!declineTarget || decliningId) return;
-    setDecliningId(declineTarget.id);
+    if (!declineTarget || structureMutationBusy) return;
+    setDecliningId(declineTarget.requestId);
     try {
-      await removeCircleMember(token, circle.id, declineTarget.id);
+      await declineJoinRequest(token, circle.id, declineTarget.requestId);
       setDeclineTarget(null);
-      onRefresh();
+      await onRefresh();
     } catch (error) {
       Alert.alert(
         'Unable to decline request',
@@ -1914,22 +1922,29 @@ function PeopleTab({
       return;
     }
     try {
-      // Loaded on demand so an older development binary can still register this
-      // route. Native clipboard support becomes available after rebuilding the
-      // Android/iOS app with expo-clipboard included.
-      const Clipboard = await import('expo-clipboard');
-      await Clipboard.setStringAsync(shortCode);
-      Alert.alert('Code copied', `${shortCode} is ready to paste.`);
-    } catch {
+      // Uses expo-clipboard when the native binary includes it; otherwise Share
+      // (or an on-screen code) so older dev builds do not hard-crash.
+      const result = await copyText(shortCode);
+      if (result === 'clipboard') {
+        Alert.alert('Code copied', `${shortCode} is ready to paste.`);
+        return;
+      }
+      if (result === 'share') {
+        return;
+      }
+      Alert.alert('Circle code', shortCode);
+    } catch (error) {
       Alert.alert(
-        'Copy needs an app rebuild',
-        'This installed development app does not include clipboard support yet. Use Share for now, then rebuild the native app to enable Copy.',
+        'Unable to copy code',
+        error instanceof Error
+          ? error.message
+          : 'Share the code manually from the invite section.',
       );
     }
   }
 
   function promptStartCircle() {
-    if (startingCircle) {
+    if (structureMutationBusy) {
       return;
     }
     if (startBlockReason) {
@@ -1963,7 +1978,7 @@ function PeopleTab({
   }
 
   async function executeStartCircle(confirmations: StartCircleConfirmations) {
-    if (startingCircle) {
+    if (structureMutationBusy) {
       return;
     }
     // Re-check readiness immediately before the API call.
@@ -2010,12 +2025,15 @@ function PeopleTab({
   }
 
   async function handleAddHand() {
+    if (structureMutationBusy) {
+      return;
+    }
     setAddingHand(true);
     setShowHandModal(false);
     try {
       await requestAdditionalHand(token, circle.id);
+      await onRefresh();
       setShowRequestSent(true);
-      onRefresh();
     } catch (e) {
       Alert.alert('Not available', e instanceof Error ? e.message : 'Could not request additional hand.');
     } finally {
@@ -2024,7 +2042,7 @@ function PeopleTab({
   }
 
   async function handleReorderHand(memberId: string, move: 'up' | 'down') {
-    if (!token || reorderingId) {
+    if (!token || structureMutationBusy) {
       return;
     }
     setReorderingId(memberId);
@@ -2032,7 +2050,7 @@ function PeopleTab({
       await reorderPayoutTurn(token, circle.id, memberId, move);
       // Structure changed — organizer must re-confirm at Start.
       setPayoutOrderReviewed(false);
-      onRefresh();
+      await onRefresh();
     } catch (error) {
       Alert.alert(
         'Unable to reorder',
@@ -2283,7 +2301,7 @@ function PeopleTab({
               ) : (
                 <View style={styles.setupList}>
                   {joinRequests.map((entry) => {
-                    const m = entry as BackendCircleMember;
+                    const m = entry;
                     return (
                       <View key={m.id} style={styles.setupListRow}>
                         <View style={{ flex: 1 }}>
@@ -2298,7 +2316,7 @@ function PeopleTab({
                           <Pressable
                             style={({ pressed }) => [styles.setupGhostBtn, pressed && { opacity: 0.85 }]}
                             onPress={() => handleDecline(m)}
-                            disabled={decliningId === m.id || approvingId === m.id}
+                            disabled={structureMutationBusy}
                             accessibilityRole="button"
                             accessibilityLabel={`Decline ${memberName(m)}`}
                           >
@@ -2308,14 +2326,14 @@ function PeopleTab({
                             style={({ pressed }) => [
                               styles.setupApproveBtn,
                               pressed && { opacity: 0.85 },
-                              approvingId === m.id && { opacity: 0.5 },
+                              structureMutationBusy && { opacity: 0.5 },
                             ]}
-                            onPress={() => handleApprove(m.id)}
-                            disabled={approvingId === m.id || decliningId === m.id}
+                            onPress={() => handleApprove(m.requestId)}
+                            disabled={structureMutationBusy}
                             accessibilityRole="button"
                             accessibilityLabel={`Approve ${memberName(m)}`}
                           >
-                            {approvingId === m.id ? (
+                            {approvingId === m.requestId ? (
                               <ActivityIndicator color="#fff" size="small" />
                             ) : (
                               <Text style={styles.setupApproveBtnText}>Approve</Text>
@@ -2391,7 +2409,7 @@ function PeopleTab({
               ) : (
                 <View style={styles.setupList}>
                   {additionalHandRequests.map((entry) => {
-                    const m = entry as BackendCircleMember;
+                    const m = entry;
                     const handNum = Number(m.handNumber ?? m.hand_number ?? 2);
                     return (
                       <View key={m.id} style={styles.setupListRow}>
@@ -2407,7 +2425,7 @@ function PeopleTab({
                           <Pressable
                             style={({ pressed }) => [styles.setupGhostBtn, pressed && { opacity: 0.85 }]}
                             onPress={() => handleDecline(m)}
-                            disabled={decliningId === m.id || approvingId === m.id}
+                            disabled={structureMutationBusy}
                             accessibilityRole="button"
                             accessibilityLabel={`Decline additional hand for ${memberName(m)}`}
                           >
@@ -2417,14 +2435,14 @@ function PeopleTab({
                             style={({ pressed }) => [
                               styles.setupApproveBtn,
                               pressed && { opacity: 0.85 },
-                              approvingId === m.id && { opacity: 0.5 },
+                              structureMutationBusy && { opacity: 0.5 },
                             ]}
-                            onPress={() => handleApprove(m.id)}
-                            disabled={approvingId === m.id || decliningId === m.id}
+                            onPress={() => handleApprove(m.requestId)}
+                            disabled={structureMutationBusy}
                             accessibilityRole="button"
                             accessibilityLabel={`Approve additional hand for ${memberName(m)}`}
                           >
-                            {approvingId === m.id ? (
+                            {approvingId === m.requestId ? (
                               <ActivityIndicator color="#fff" size="small" />
                             ) : (
                               <Text style={styles.setupApproveBtnText}>Approve</Text>
@@ -2442,8 +2460,10 @@ function PeopleTab({
                     styles.setupGhostBtn,
                     { alignSelf: 'flex-start', marginTop: 4 },
                     pressed && { opacity: 0.8 },
+                    structureMutationBusy && { opacity: 0.5 },
                   ]}
                   onPress={() => setShowHandModal(true)}
+                  disabled={structureMutationBusy}
                   accessibilityRole="button"
                   accessibilityLabel="Request an additional hand"
                 >
@@ -2545,7 +2565,7 @@ function PeopleTab({
                       {index > 0 ? (
                         <Pressable
                           onPress={() => void handleReorderHand(row.id, 'up')}
-                          disabled={Boolean(reorderingId)}
+                          disabled={structureMutationBusy}
                           accessibilityRole="button"
                           accessibilityLabel="Move up"
                           hitSlop={8}
@@ -2566,7 +2586,7 @@ function PeopleTab({
                       {index < payoutOrderRows.length - 1 ? (
                         <Pressable
                           onPress={() => void handleReorderHand(row.id, 'down')}
-                          disabled={Boolean(reorderingId)}
+                          disabled={structureMutationBusy}
                           accessibilityRole="button"
                           accessibilityLabel="Move down"
                           hitSlop={8}
@@ -2608,15 +2628,16 @@ function PeopleTab({
                       ? colors.subtle
                       : colors.primary,
                   },
-                  (pressed || startingCircle) && { opacity: 0.88 },
+                  (pressed || structureMutationBusy) && { opacity: 0.88 },
+                  structureMutationBusy && { opacity: 0.65 },
                 ]}
                 onPress={promptStartCircle}
-                disabled={startingCircle || Boolean(startBlockReason)}
+                disabled={structureMutationBusy || Boolean(startBlockReason)}
                 accessibilityRole="button"
                 accessibilityLabel="Start circle"
                 accessibilityState={{
                   busy: startingCircle,
-                  disabled: startingCircle || Boolean(startBlockReason),
+                  disabled: structureMutationBusy || Boolean(startBlockReason),
                 }}
               >
                 {startingCircle ? (
@@ -2946,7 +2967,7 @@ function PeopleTab({
                   <Pressable
                     style={styles.setupGhostBtn}
                     onPress={() => handleDecline(m)}
-                    disabled={decliningId === m.id || approvingId === m.id}
+                    disabled={structureMutationBusy}
                     accessibilityRole="button"
                     accessibilityLabel={`Decline ${memberName(m)}`}
                   >
@@ -2956,12 +2977,12 @@ function PeopleTab({
                   </Pressable>
                   <Pressable
                     style={styles.setupApproveBtn}
-                    onPress={() => handleApprove(m.id)}
-                    disabled={approvingId === m.id || decliningId === m.id}
+                    onPress={() => handleApprove(m.requestId)}
+                    disabled={structureMutationBusy}
                     accessibilityRole="button"
                     accessibilityLabel={`Approve ${memberName(m)}`}
                   >
-                    {approvingId === m.id ? (
+                    {approvingId === m.requestId ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <Text style={styles.setupApproveBtnText}>Approve</Text>
@@ -3100,8 +3121,12 @@ function PeopleTab({
             </View>
           </Modal>
           <Pressable
-            style={styles.peopleDashedBtn}
+            style={[
+              styles.peopleDashedBtn,
+              structureMutationBusy && { opacity: 0.5 },
+            ]}
             onPress={() => setShowHandModal(true)}
+            disabled={structureMutationBusy}
             accessibilityRole="button"
             accessibilityLabel="Request an additional hand in this circle"
           >
@@ -3127,14 +3152,14 @@ function PeopleTab({
           <Pressable
             style={({ pressed }) => [
               styles.setupPrimaryBtn,
-              (pressed || startingCircle) && { opacity: 0.88 },
-              startingCircle && { opacity: 0.65 },
+              (pressed || structureMutationBusy) && { opacity: 0.88 },
+              structureMutationBusy && { opacity: 0.65 },
             ]}
             onPress={promptStartCircle}
-            disabled={startingCircle}
+            disabled={structureMutationBusy}
             accessibilityRole="button"
             accessibilityLabel="Start circle"
-            accessibilityState={{ busy: startingCircle, disabled: startingCircle }}
+            accessibilityState={{ busy: startingCircle, disabled: structureMutationBusy }}
           >
             {startingCircle ? (
               <ActivityIndicator color="#ffffff" />
@@ -3669,7 +3694,7 @@ function hasConfirmedContributionLedgerEntry(
   });
 }
 
-function memberName(member: BackendCircleMember | undefined) {
+function memberName(member: BackendCircleMember | BackendJoinRequest | undefined) {
   return member?.displayLabel || member?.full_name || member?.name || 'Unknown member';
 }
 
@@ -5122,4 +5147,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-
