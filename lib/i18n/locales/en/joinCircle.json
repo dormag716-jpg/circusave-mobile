@@ -1,0 +1,49 @@
+{
+  "backDashboard": "Back to dashboard",
+  "title": "Join a Circle",
+  "subtitle": "Enter the unique code shared by the organizer to request access.",
+  "codeLabel": "Circle code",
+  "codePlaceholder": "CSX-XXXXXXXX",
+  "codeHint": "Codes look like {{example}}",
+  "lookup": "Look up circle",
+  "enterCodeTitle": "Enter a code",
+  "enterCodeMessage": "Type the code you received from the organizer.",
+  "notFoundTitle": "Circle not found",
+  "notFoundMessage": "Check the code and try again.",
+  "joinErrorTitle": "Could not join",
+  "genericError": "The request could not be completed. Please try again.",
+  "organizerBy": "by {{name}}",
+  "organizerFallback": "Organizer",
+  "contribution": "Contribution",
+  "frequency": "Frequency",
+  "members": "Members",
+  "previewInfo": "If the organizer already added your phone or email, you may claim your hand right away. Otherwise your request waits for organizer approval.",
+  "requestAccessibility": "Request to join this circle",
+  "joinCircle": "Join Circle",
+  "outcome": {
+    "claimedTitle": "You're in!",
+    "claimedMessage": "Your hand in {{circleName}} is ready. You can open the circle workspace when you're ready.",
+    "pendingTitle": "Request sent",
+    "pendingMessage": "Your request to join {{circleName}} is waiting for the organizer to approve. You'll be notified once they review it.",
+    "unknownTitle": "Request submitted",
+    "unknownMessage": "Your request for {{circleName}} was submitted. Check your circles for the latest status.",
+    "circleFallback": "this circle"
+  },
+  "backDashboardAction": "Back to Dashboard",
+  "joinAnother": "Join another circle",
+  "signInRequired": "You need to be signed in to join a circle.",
+  "signIn": "Sign In",
+  "status": {
+    "draft": "Draft",
+    "setup": "Setup",
+    "active": "Active",
+    "completed": "Completed",
+    "paused": "Paused",
+    "pending": "Pending"
+  },
+  "frequencyValue": {
+    "weekly": "Weekly",
+    "biweekly": "Bi-weekly",
+    "monthly": "Monthly"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "fallbackName": "Círculo",
+  "headerSummary": "Ronda {{round}} · {{frequency}}",
+  "loading": "Cargando...",
+  "frequency": {
+    "weekly": "Semanal",
+    "biweekly": "Cada dos semanas",
+    "monthly": "Mensual"
+  },
+  "tabs": {
+    "round": "Ronda",
+    "chat": "Chat",
+    "people": "Personas",
+    "records": "Registros"
+  },
+  "accessibility": {
+    "backToCircles": "Volver a Mis círculos",
+    "dashboard": "Volver al panel",
+    "retryWorkspace": "Reintentar la carga del espacio",
+    "retryRefresh": "Reintentar la actualización",
+    "retryRound": "Reintentar la carga de la ronda"
+  },
+  "status": {
+    "settingUpTitle": "Preparando el espacio",
+    "settingUpBody": "Estamos cargando los datos más recientes del círculo.",
+    "openErrorTitle": "No se pudo abrir el círculo",
+    "workspacePendingTitle": "Espacio pendiente",
+    "workspacePendingBody": "El círculo se creó correctamente. El espacio completo se está preparando.",
+    "checkingMembershipTitle": "Verificando la membresía",
+    "checkingMembershipBody": "Estamos verificando tu acceso a este círculo.",
+    "syncing": "Sincronizando datos…",
+    "refreshError": "No se pudo actualizar.",
+    "roundLoadingTitle": "Cargando datos de la ronda",
+    "roundLoadingBody": "Obteniendo los detalles más recientes de la ronda…",
+    "roundErrorTitle": "No se pudieron cargar los datos de la ronda",
+    "roundUnavailableTitle": "Datos de la ronda no disponibles",
+    "roundUnavailableBody": "Aún no hay datos del calendario para este círculo.",
+    "genericError": "Algo salió mal. Inténtalo de nuevo.",
+    "retry": "Reintentar"
+  },
+  "access": {
+    "noMembership": "Sin membresía activa",
+    "unavailable": "Acceso no disponible",
+    "message": "No tienes acceso a {{circleName}} con esta cuenta.",
+    "back": "Volver a Mis círculos"
+  },
+  "setupRound": {
+    "title": "El círculo no ha comenzado",
+    "subtitle": "Completa los miembros y el orden de pago antes de iniciar el círculo. Los aportes comienzan después de Iniciar círculo.",
+    "roster": "Lista",
+    "plannedRounds_one": "{{count}} ronda de pago planificada cuando el organizador inicie.",
+    "plannedRounds_other": "{{count}} rondas de pago planificadas cuando el organizador inicie.",
+    "plannedHands": "Manos planificadas",
+    "notActive": "Aún no están activas",
+    "emptyHands": "Este círculo aún no tiene manos planificadas.",
+    "payoutPosition": "Posición de pago {{position}}",
+    "beforeStartTitle": "Antes de que comiencen los aportes",
+    "beforeStartBody": "Las manos son posiciones de pago planificadas. Cuando el organizador inicia el círculo, cada mano participante se convierte en una obligación de aporte para la ronda 1."
+  },
+  "completedRound": {
+    "title": "Círculo completado",
+    "subtitle": "Este círculo terminó. Consulta las rondas y los registros históricos a continuación.",
+    "roundCount_one": "{{count}} ronda en este ciclo",
+    "roundCount_other": "{{count}} rondas en este ciclo",
+    "lastRecipient": "Último destinatario registrado"
+  }
+}

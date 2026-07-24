@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,7 +10,6 @@ import type { BackendCircleSummary } from '@/lib/types';
 import { useAuthSession } from '@/lib/authContext';
 import {
   buildOpenCircleCapacity,
-  openCircleLimitMessage,
 } from '@/lib/circleCapacity';
 import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
@@ -17,6 +17,7 @@ import { colors, radii, spacing } from '@/lib/theme';
 type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
 
 export default function CreateCircleGuideScreen() {
+  const { t } = useTranslation('createCircle');
   const { session } = useAuthSession();
   const token = session?.session.token;
   const role = session?.user?.role;
@@ -63,6 +64,7 @@ export default function CreateCircleGuideScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.primary} />
+          <Text style={styles.loadingText}>{t('landing.loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -76,26 +78,23 @@ export default function CreateCircleGuideScreen() {
       >
         <View style={styles.hero}>
           <Text style={styles.emoji}>👥</Text>
-          <Text style={styles.title}>Start a new Circle</Text>
+          <Text style={styles.title}>{t('landing.title')}</Text>
           <Text style={styles.subtitle}>
-            Create a trusted savings group with family or friends.{'\n'}
-            Simple, transparent, and secure.
+            {t('landing.subtitle')}
           </Text>
         </View>
 
         <View style={styles.planNote}>
           <FontAwesome name="info-circle" size={16} color={colors.primary} />
           <Text style={styles.planNoteText}>
-            Free plan: <Text style={styles.planNoteStrong}>1 open circle</Text> at
-            a time (setup or active). Complete a circle to free your slot, or
-            upgrade for unlimited circles.
+            {t('landing.planNote')}
           </Text>
         </View>
 
         <View style={styles.benefits}>
-          <Benefit icon="lock" text="Authoritative ledger" />
-          <Benefit icon="users" text="Trusted members only" />
-          <Benefit icon="calendar" text="Automatic reminders" />
+          <Benefit icon="lock" text={t('landing.ledger')} />
+          <Benefit icon="users" text={t('landing.trusted')} />
+          <Benefit icon="calendar" text={t('landing.reminders')} />
         </View>
 
         {hasReachedLimit ? (
@@ -103,8 +102,8 @@ export default function CreateCircleGuideScreen() {
             <View style={styles.limitIcon}>
               <FontAwesome name="lock" size={24} color={colors.warning} />
             </View>
-            <Text style={styles.limitTitle}>Free plan limit</Text>
-            <Text style={styles.limitText}>{openCircleLimitMessage(openCap)}</Text>
+            <Text style={styles.limitTitle}>{t('landing.limitTitle')}</Text>
+            <Text style={styles.limitText}>{t('landing.limitMessage')}</Text>
             {existingId ? (
               <Pressable
                 style={styles.upgradeButton}
@@ -112,8 +111,14 @@ export default function CreateCircleGuideScreen() {
               >
                 <Text style={styles.upgradeButtonText}>
                   {existingIsSetup
-                    ? `Continue “${existing?.name || 'your circle'}”`
-                    : `Open “${existing?.name || 'your circle'}”`}
+                    ? t('landing.continueCircle', {
+                        circleName:
+                          existing?.name || t('landing.circleFallback'),
+                      })
+                    : t('landing.openCircle', {
+                        circleName:
+                          existing?.name || t('landing.circleFallback'),
+                      })}
                 </Text>
               </Pressable>
             ) : (
@@ -121,14 +126,14 @@ export default function CreateCircleGuideScreen() {
                 style={styles.upgradeButton}
                 onPress={() => router.push(myCirclesHref)}
               >
-                <Text style={styles.upgradeButtonText}>Go to My Circles</Text>
+                <Text style={styles.upgradeButtonText}>{t('landing.myCircles')}</Text>
               </Pressable>
             )}
             <Pressable
               style={styles.secondaryButton}
               onPress={() => router.push('/subscription')}
             >
-              <Text style={styles.secondaryButtonText}>View Premium plans</Text>
+              <Text style={styles.secondaryButtonText}>{t('landing.premium')}</Text>
             </Pressable>
           </View>
         ) : (
@@ -140,13 +145,13 @@ export default function CreateCircleGuideScreen() {
               ]}
               onPress={() => router.push('/create-circle/setup')}
               accessibilityRole="button"
-              accessibilityLabel="Create new circle"
+              accessibilityLabel={t('landing.createAccessibility')}
             >
-              <Text style={styles.primaryButtonText}>Create New Circle</Text>
+              <Text style={styles.primaryButtonText}>{t('landing.create')}</Text>
             </Pressable>
 
             <Text style={styles.note}>
-              Free: 1 open circle · Up to 20 members · Takes about 2 minutes
+              {t('landing.note')}
             </Text>
           </>
         )}
@@ -268,6 +273,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: colors.muted,
+    fontSize: 14,
   },
   limitCard: {
     backgroundColor: '#fff',

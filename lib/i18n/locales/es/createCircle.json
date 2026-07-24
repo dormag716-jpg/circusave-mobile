@@ -1,0 +1,165 @@
+{
+  "landing": {
+    "loading": "Cargando capacidad del círculo",
+    "title": "Crear un círculo nuevo",
+    "subtitle": "Crea un grupo de ahorro confiable con familiares o amistades.\nSimple, transparente y seguro.",
+    "planNote": "Plan gratis: 1 círculo abierto a la vez, en preparación o activo. Completa un círculo para liberar el espacio o mejora el plan para tener círculos ilimitados.",
+    "ledger": "Registro financiero autoritativo",
+    "trusted": "Solo miembros de confianza",
+    "reminders": "Recordatorios automáticos",
+    "limitTitle": "Límite del plan gratis",
+    "limitMessage": "El plan gratis permite un círculo abierto a la vez. Completa tu círculo abierto o mejora el plan para tener círculos ilimitados.",
+    "continueCircle": "Continuar “{{circleName}}”",
+    "openCircle": "Abrir “{{circleName}}”",
+    "circleFallback": "tu círculo",
+    "myCircles": "Ir a Mis círculos",
+    "premium": "Ver planes Premium",
+    "create": "Crear círculo nuevo",
+    "createAccessibility": "Crear un círculo nuevo",
+    "note": "Gratis: 1 círculo abierto · Hasta 20 miembros · Toma aproximadamente 2 minutos"
+  },
+  "steps": {
+    "basics": "Datos del círculo",
+    "contribution": "Configuración del aporte",
+    "organizer": "Participación de quien organiza",
+    "members": "Miembros planificados",
+    "schedule_preview": "Frecuencia",
+    "review": "Revisar y crear"
+  },
+  "progress": {
+    "step": "Paso {{current}} de {{total}}"
+  },
+  "draft": {
+    "resumeTitle": "📋 ¿Continuar con tu círculo?",
+    "resumeBody": "Estabas configurando “{{circleName}}”. ¿Quieres continuar donde lo dejaste?",
+    "newCircle": "un círculo nuevo"
+  },
+  "basics": {
+    "nameQuestion": "¿Cómo quieres llamar a este círculo?",
+    "description": "Un círculo de ahorro es un grupo de confianza donde cada mano activa aporta y se turna para recibir el fondo completo.",
+    "namePlaceholder": "p. ej., Ahorro familiar, Grupo de la iglesia"
+  },
+  "amount": {
+    "question": "¿Cuánto aportará cada mano?",
+    "description": "Cada mano activa aporta este monto en cada ronda.",
+    "customPlaceholder": "O ingresa otro monto"
+  },
+  "organizer": {
+    "question": "¿Aportarás y recibirás un pago en este círculo?",
+    "participateTitle": "Sí, participaré",
+    "participateBody": "Aportarás en cada ronda y recibirás un pago.",
+    "organizeOnlyTitle": "No, solo organizaré",
+    "organizeOnlyBody": "Administrarás el círculo sin aportar ni recibir un pago.",
+    "handExplanation": "Comienzas con la Mano 1. La posición de pago se define después de que los miembros reclamen sus lugares y se aprueben las manos adicionales. Puedes solicitar más manos en la pestaña Personas durante la configuración."
+  },
+  "members": {
+    "title": "Agregar a otras personas",
+    "added_one": "{{count}} agregado",
+    "added_other": "{{count}} agregados",
+    "description": "No te agregues aquí. Tu participación se definió en el paso anterior. Cada persona comienza con la Mano 1.",
+    "firstName": "Nombre",
+    "firstNamePlaceholder": "Nombre",
+    "lastName": "Apellido",
+    "lastNamePlaceholder": "Apellido",
+    "phone": "Número de teléfono",
+    "phonePlaceholder": "(555) 000-0000",
+    "email": "Correo electrónico",
+    "emailPlaceholder": "miembro@correo.com",
+    "optional": "(opcional)",
+    "emptyTitle": "Aún no hay miembros",
+    "emptyParticipating": "Agrega al menos a otra persona para que el círculo tenga 2 manos.",
+    "emptyOrganizingOnly": "Agrega al menos a 2 personas (tú solo organizas).",
+    "handLabel": "{{name}} · Mano {{number}}",
+    "organizer": "Organizador/a",
+    "organizerParticipates": "Organizador/a · participa",
+    "plannedMember": "Miembro planificado"
+  },
+  "schedule": {
+    "question": "¿Con qué frecuencia se harán los aportes?",
+    "description": "Esta frecuencia se guarda con el círculo. El orden de pagos se completa después de crearlo.",
+    "payoutDeferred": "El orden de pagos se definirá después de que los miembros reclamen sus lugares y se aprueben las manos adicionales.",
+    "options": {
+      "weekly": "Semanal",
+      "biweekly": "Cada dos semanas",
+      "monthly": "Mensual"
+    }
+  },
+  "review": {
+    "title": "Revisar el borrador del círculo",
+    "description": "Esto solo crea un borrador. El círculo todavía no comenzará.",
+    "untitledCircle": "Círculo sin título",
+    "contribution": "Aporte",
+    "frequency": "Frecuencia",
+    "organizer": "Organizador/a",
+    "participates": "Participa",
+    "organizeOnly": "Solo organiza",
+    "plannedPeople": "Personas planificadas",
+    "plannedHands": "Manos planificadas",
+    "estimatedRounds": "Rondas estimadas",
+    "estimatedPot": "Fondo estimado por ronda",
+    "organizingOnlyNote": "Solo organizas y no se te cuenta en las personas, manos, el fondo ni las rondas.",
+    "plannedMembers": "Miembros planificados"
+  },
+  "confirmation": {
+    "title": "¿Crear este círculo?",
+    "body": "Tu círculo se creará como borrador para que puedas invitar miembros, gestionar solicitudes y aprobar manos adicionales. El orden de pagos y el inicio del círculo vienen después, no en este paso.",
+    "warningTitle": "El inicio es un paso separado.",
+    "warningBody": "Crear el círculo no lo inicia ni define el orden de pagos. Continúa la configuración en la pestaña Personas después de crearlo."
+  },
+  "success": {
+    "title": "Borrador del círculo creado",
+    "body": "Tu círculo está listo para configurarlo. Invita miembros, revisa solicitudes y manos adicionales, y luego define el orden de pagos antes de comenzar."
+  },
+  "actions": {
+    "startFresh": "Empezar de nuevo",
+    "resume": "Continuar",
+    "openExisting": "Abrir el existente",
+    "ok": "Aceptar",
+    "createCircle": "Crear círculo",
+    "reviewAgain": "Volver y revisar",
+    "continueSetup": "Continuar configuración",
+    "addMember": "Agregar miembro",
+    "back": "Atrás",
+    "continue": "Continuar"
+  },
+  "loading": {
+    "creating": "Creando círculo"
+  },
+  "accessibility": {
+    "goBack": "Volver",
+    "back": "Atrás",
+    "addMember": "Agregar miembro",
+    "removeMember": "Eliminar a {{name}}"
+  },
+  "errors": {
+    "memberNameTitle": "Nombre obligatorio",
+    "memberNameBody": "Ingresa el nombre y apellido del miembro.",
+    "memberPhoneTitle": "Teléfono obligatorio",
+    "memberPhoneBody": "Ingresa un número de teléfono para este miembro.",
+    "organizerDuplicateTitle": "Ya eres quien organiza",
+    "organizerDuplicateBody": "Ya organizas este círculo. Define tu participación en el paso anterior en vez de agregarte como miembro.",
+    "duplicateTitle": "Duplicado",
+    "duplicateBody": "Este miembro ya fue agregado.",
+    "planLimitTitle": "Límite del plan",
+    "circleNameTitle": "Falta el nombre",
+    "circleNameBody": "Dale un nombre a tu círculo.",
+    "amountTitle": "Falta el monto",
+    "amountBody": "Ingresa un monto de aporte válido.",
+    "scheduleTitle": "Falta la frecuencia",
+    "scheduleBody": "Elige con qué frecuencia se harán los aportes.",
+    "addMembersTitle": "Agrega miembros",
+    "cannotCreateTitle": "No se puede crear el círculo",
+    "signInTitle": "Debes iniciar sesión",
+    "signInBody": "Tu sesión no tiene un token de acceso.",
+    "openCircleLimitTitle": "Límite del plan gratis",
+    "openCircleLimitBody": "El plan gratis permite un círculo abierto a la vez. Continúa con tu círculo existente o cambia a Premium.",
+    "createFailedTitle": "No se pudo crear el círculo",
+    "createFailedBody": "No se pudo crear el círculo. Inténtalo de nuevo."
+  },
+  "validation": {
+    "minimumHandsParticipating": "Agrega al menos a otro miembro para que el círculo tenga 2 manos.",
+    "minimumHandsOrganizingOnly": "Agrega al menos a 2 miembros (tú solo organizas).",
+    "premiumCapacity": "Los círculos Premium admiten hasta {{count}} manos participantes.",
+    "freeCapacity": "Los círculos gratis admiten hasta {{count}} manos participantes. Cambia a Premium para tener hasta {{premiumCount}}."
+  }
+}

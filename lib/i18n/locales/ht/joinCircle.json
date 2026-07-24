@@ -1,0 +1,49 @@
+{
+  "backDashboard": "Retounen sou tablodbò a",
+  "title": "Antre nan yon gwoup",
+  "subtitle": "Antre kòd espesyal òganizatè a te pataje pou mande aksè.",
+  "codeLabel": "Kòd gwoup la",
+  "codePlaceholder": "CSX-XXXXXXXX",
+  "codeHint": "Kòd yo sanble ak {{example}}",
+  "lookup": "Chèche gwoup la",
+  "enterCodeTitle": "Antre yon kòd",
+  "enterCodeMessage": "Ekri kòd ou te resevwa nan men òganizatè a.",
+  "notFoundTitle": "Nou pa jwenn gwoup la",
+  "notFoundMessage": "Verifye kòd la epi eseye ankò.",
+  "joinErrorTitle": "Nou pa t kapab antre",
+  "genericError": "Nou pa t kapab fini demann lan. Tanpri eseye ankò.",
+  "organizerBy": "pa {{name}}",
+  "organizerFallback": "Òganizatè",
+  "contribution": "Kontribisyon",
+  "frequency": "Frekans",
+  "members": "Manm",
+  "previewInfo": "Si òganizatè a te deja ajoute telefòn oswa imèl ou, ou ka reklame men pa ou tousuit. Sinon, demann ou ap tann apwobasyon òganizatè a.",
+  "requestAccessibility": "Mande pou antre nan gwoup sa a",
+  "joinCircle": "Antre nan gwoup la",
+  "outcome": {
+    "claimedTitle": "Ou antre!",
+    "claimedMessage": "Men pa ou nan {{circleName}} pare. Ou ka louvri espas gwoup la lè ou pare.",
+    "pendingTitle": "Demann lan voye",
+    "pendingMessage": "Demann ou pou antre nan {{circleName}} ap tann apwobasyon òganizatè a. W ap resevwa yon notifikasyon lè li revize li.",
+    "unknownTitle": "Demann lan soumèt",
+    "unknownMessage": "Demann ou pou {{circleName}} soumèt. Gade gwoup ou yo pou dènye estati a.",
+    "circleFallback": "gwoup sa a"
+  },
+  "backDashboardAction": "Retounen sou tablodbò a",
+  "joinAnother": "Antre nan yon lòt gwoup",
+  "signInRequired": "Ou dwe konekte pou antre nan yon gwoup.",
+  "signIn": "Konekte",
+  "status": {
+    "draft": "Bouyon",
+    "setup": "Preparasyon",
+    "active": "Aktif",
+    "completed": "Fini",
+    "paused": "Poz",
+    "pending": "Ap tann"
+  },
+  "frequencyValue": {
+    "weekly": "Chak semèn",
+    "biweekly": "Chak de semèn",
+    "monthly": "Chak mwa"
+  }
+}

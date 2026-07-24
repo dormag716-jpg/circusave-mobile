@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -18,19 +19,13 @@ import {
   type BackendInvitePreview,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import {
-  joinOutcomeMessage,
-  joinOutcomeTitle,
-  resolveJoinOutcome,
-} from '@/lib/joinOutcome';
+import { formatCurrency } from '@/lib/i18n/formatters';
+import { resolveJoinOutcome } from '@/lib/joinOutcome';
 import { circleWorkspaceHref, inviteJoinHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
-function capitalizeFrequency(f: string | undefined) {
-  return f ? f.charAt(0).toUpperCase() + f.slice(1) : '';
-}
-
 export default function JoinInviteScreen() {
+  const { t, i18n } = useTranslation(['invite', 'joinCircle']);
   const { session, setPostAuthTarget } = useAuthSession();
   const params = useLocalSearchParams<{ id?: string | string[], claimToken?: string | string[] }>();
   const circleId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -51,7 +46,7 @@ export default function JoinInviteScreen() {
 
   async function loadPreview() {
     if (!circleId) {
-      setError('Invalid invite link.');
+      setError(t('invite:unavailableMessage'));
       setLoading(false);
       return;
     }
@@ -63,11 +58,8 @@ export default function JoinInviteScreen() {
       const data = await getPublicInvitePreview(circleId);
       setPreview(data);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load invite details.',
-      );
+      console.error('Unable to load public invite preview.', loadError);
+      setError(t('invite:unavailableMessage'));
     } finally {
       setLoading(false);
     }
@@ -86,11 +78,14 @@ export default function JoinInviteScreen() {
       const outcome = resolveJoinOutcome(result, session?.user?.id);
       const goWorkspace = outcome === 'claimed';
       Alert.alert(
-        joinOutcomeTitle(outcome),
-        joinOutcomeMessage(outcome, preview.name),
+        t(`joinCircle:outcome.${outcome}Title`),
+        t(`joinCircle:outcome.${outcome}Message`, {
+          circleName:
+            preview.name || t('joinCircle:outcome.circleFallback'),
+        }),
         [
           {
-            text: 'OK',
+            text: t('invite:ok'),
             onPress: () =>
               router.replace(
                 goWorkspace
@@ -101,13 +96,8 @@ export default function JoinInviteScreen() {
         ],
       );
     } catch (joinError) {
-      // Rejected / blocked join — surface the backend reason honestly.
-      Alert.alert(
-        'Unable to join',
-        joinError instanceof Error
-          ? joinError.message
-          : 'An unexpected error occurred.',
-      );
+      console.error('Unable to accept circle invitation.', joinError);
+      Alert.alert(t('invite:joinErrorTitle'), t('invite:genericError'));
     } finally {
       setJoining(false);
     }
@@ -118,7 +108,7 @@ export default function JoinInviteScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.statusText}>Loading invite details...</Text>
+          <Text style={styles.statusText}>{t('invite:loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -137,15 +127,15 @@ export default function JoinInviteScreen() {
         </View>
         <View style={styles.statusCard}>
           <FontAwesome name="warning" size={32} color={colors.warning} />
-          <Text style={styles.statusTitle}>Invite unavailable</Text>
+          <Text style={styles.statusTitle}>{t('invite:unavailableTitle')}</Text>
           <Text style={styles.statusText}>
-            {error ?? 'This invite link is invalid or has expired.'}
+            {error ?? t('invite:unavailableMessage')}
           </Text>
           <Pressable
             style={styles.primaryButton}
             onPress={() => router.replace('/(tabs)/dashboard')}
           >
-            <Text style={styles.primaryButtonText}>Go home</Text>
+            <Text style={styles.primaryButtonText}>{t('invite:goHome')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -163,7 +153,7 @@ export default function JoinInviteScreen() {
             style={styles.backButton}
             onPress={() => router.replace('/(tabs)/dashboard')}
             accessibilityRole="button"
-            accessibilityLabel="Back to dashboard"
+            accessibilityLabel={t('invite:backDashboard')}
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
@@ -173,9 +163,13 @@ export default function JoinInviteScreen() {
           <View style={styles.iconCircle}>
             <FontAwesome name="group" size={32} color={colors.primary} />
           </View>
-          <Text style={styles.heroTitle}>You've been invited!</Text>
+          <Text style={styles.heroTitle}>{t('invite:invitedTitle')}</Text>
           <Text style={styles.heroSubtitle}>
-            Join {preview.organizerName}'s savings circle
+            {t('invite:invitedBy', {
+              organizerName:
+                preview.organizerName ||
+                t('joinCircle:organizerFallback'),
+            })}
           </Text>
         </View>
 
@@ -184,15 +178,20 @@ export default function JoinInviteScreen() {
           
           <View style={styles.detailRow}>
             <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Contribution</Text>
+              <Text style={styles.detailLabel}>{t('invite:contribution')}</Text>
               <Text style={styles.detailValue}>
-                ${preview.contributionAmount}
+                {formatInviteAmount(
+                  preview.contributionAmount,
+                  i18n.resolvedLanguage || i18n.language,
+                )}
               </Text>
             </View>
             <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Frequency</Text>
+              <Text style={styles.detailLabel}>{t('invite:frequency')}</Text>
               <Text style={styles.detailValue}>
-                {capitalizeFrequency(preview.frequency)}
+                {t(`invite:frequencyValue.${String(preview.frequency).toLowerCase()}`, {
+                  defaultValue: preview.frequency,
+                })}
               </Text>
             </View>
           </View>
@@ -205,33 +204,35 @@ export default function JoinInviteScreen() {
               disabled={joining}
               onPress={() => void handleJoin()}
               accessibilityRole="button"
+              accessibilityLabel={t('invite:acceptAccessibility', {
+                circleName: preview.name,
+              })}
             >
               <Text style={styles.primaryButtonText}>
-                {joining ? 'Joining...' : 'Accept Invite'}
+                {joining ? t('invite:accepting') : t('invite:accept')}
               </Text>
             </Pressable>
           ) : (
             <View style={styles.loginCard}>
               <Text style={styles.loginText}>
-                Sign in or create an account to join this circle. We'll bring
-                you right back here.
+                {t('invite:loginPrompt')}
               </Text>
               <Pressable
                 style={styles.primaryButton}
                 onPress={() => continueAuth('/login')}
                 accessibilityRole="button"
-                accessibilityLabel="Log in to join"
+                accessibilityLabel={t('invite:loginAccessibility')}
               >
-                <Text style={styles.primaryButtonText}>Log In</Text>
+                <Text style={styles.primaryButtonText}>{t('invite:login')}</Text>
               </Pressable>
               <Pressable
                 style={[styles.primaryButton, styles.secondaryAuthButton]}
                 onPress={() => continueAuth('/create-account')}
                 accessibilityRole="button"
-                accessibilityLabel="Create account to join"
+                accessibilityLabel={t('invite:createAccessibility')}
               >
                 <Text style={styles.secondaryAuthButtonText}>
-                  Create account
+                  {t('invite:createAccount')}
                 </Text>
               </Pressable>
             </View>
@@ -240,6 +241,14 @@ export default function JoinInviteScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatInviteAmount(
+  value: number | string | null | undefined,
+  language: string,
+): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? formatCurrency(amount, language) : '\u2014';
 }
 
 const styles = StyleSheet.create({

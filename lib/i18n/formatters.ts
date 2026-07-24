@@ -35,3 +35,26 @@ export function formatShortDate(value: string, language: string): string {
     day: 'numeric',
   }).format(date);
 }
+
+export function formatOrdinal(position: number, language: string): string {
+  const value = Math.max(0, Math.trunc(position));
+  const normalized = language.split('-')[0] as SupportedLanguage;
+
+  if (normalized === 'es') {
+    return `${value}.º`;
+  }
+  if (normalized === 'ht') {
+    return value === 1 ? '1ye' : `${value}yèm`;
+  }
+
+  const category = new Intl.PluralRules('en-US', { type: 'ordinal' }).select(value);
+  const suffix =
+    category === 'one'
+      ? 'st'
+      : category === 'two'
+        ? 'nd'
+        : category === 'few'
+          ? 'rd'
+          : 'th';
+  return `${value}${suffix}`;
+}

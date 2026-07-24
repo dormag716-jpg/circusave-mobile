@@ -1,0 +1,165 @@
+{
+  "landing": {
+    "loading": "N ap chaje kapasite gwoup la",
+    "title": "Kreye yon nouvo gwoup",
+    "subtitle": "Kreye yon gwoup epay ou fè konfyans ak fanmi oswa zanmi.\nSenp, transparan epi sekirize.",
+    "planNote": "Plan gratis: 1 gwoup ouvè alafwa, nan preparasyon oswa aktif. Fini yon gwoup pou libere plas la, oswa amelyore plan an pou gwoup san limit.",
+    "ledger": "Rejis finansye otoritatif",
+    "trusted": "Sèlman manm ou fè konfyans",
+    "reminders": "Rapèl otomatik",
+    "limitTitle": "Limit plan gratis",
+    "limitMessage": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Fini gwoup ouvè ou a oswa amelyore plan an pou gwoup san limit.",
+    "continueCircle": "Kontinye “{{circleName}}”",
+    "openCircle": "Louvri “{{circleName}}”",
+    "circleFallback": "gwoup ou a",
+    "myCircles": "Ale nan Gwoup mwen yo",
+    "premium": "Gade plan Premium yo",
+    "create": "Kreye nouvo gwoup",
+    "createAccessibility": "Kreye yon nouvo gwoup",
+    "note": "Gratis: 1 gwoup ouvè · Jiska 20 manm · Sa pran anviwon 2 minit"
+  },
+  "steps": {
+    "basics": "Enfòmasyon sou gwoup la",
+    "contribution": "Konfigirasyon kontribisyon",
+    "organizer": "Patisipasyon òganizatè a",
+    "members": "Manm ki planifye",
+    "schedule_preview": "Frekans",
+    "review": "Verifye epi kreye"
+  },
+  "progress": {
+    "step": "Etap {{current}} sou {{total}}"
+  },
+  "draft": {
+    "resumeTitle": "📋 Kontinye gwoup ou a?",
+    "resumeBody": "Ou t ap konfigire “{{circleName}}”. Èske ou vle kontinye kote ou te rete a?",
+    "newCircle": "yon nouvo gwoup"
+  },
+  "basics": {
+    "nameQuestion": "Ki non ou vle bay gwoup sa a?",
+    "description": "Yon gwoup epay se yon gwoup moun ki fè youn lòt konfyans kote chak men aktif kontribye epi yo pran tou pou resevwa tout kòb la.",
+    "namePlaceholder": "pa egzanp, Epay fanmi, Gwoup legliz"
+  },
+  "amount": {
+    "question": "Konbyen chak men ap kontribye?",
+    "description": "Chak men aktif kontribye montan sa a nan chak wonn.",
+    "customPlaceholder": "Oswa antre yon lòt montan"
+  },
+  "organizer": {
+    "question": "Èske ou pral kontribye epi resevwa yon peman nan gwoup sa a?",
+    "participateTitle": "Wi, mwen pral patisipe",
+    "participateBody": "Ou pral kontribye nan chak wonn epi resevwa yon peman.",
+    "organizeOnlyTitle": "Non, mwen pral òganize sèlman",
+    "organizeOnlyBody": "Ou pral jere gwoup la san ou pa kontribye ni resevwa peman.",
+    "handExplanation": "Ou kòmanse avèk Men 1. Y ap fikse pozisyon peman an pita, apre manm yo reklame plas yo epi yo apwouve lòt men yo. Ou kapab mande plis men nan onglet Moun pandan konfigirasyon an."
+  },
+  "members": {
+    "title": "Ajoute lòt moun",
+    "added_one": "{{count}} ajoute",
+    "added_other": "{{count}} ajoute",
+    "description": "Pa ajoute tèt ou isit la. Ou te chwazi patisipasyon ou nan etap anvan an. Chak moun kòmanse avèk Men 1.",
+    "firstName": "Prenon",
+    "firstNamePlaceholder": "Prenon",
+    "lastName": "Siyati",
+    "lastNamePlaceholder": "Siyati",
+    "phone": "Nimewo telefòn",
+    "phonePlaceholder": "(555) 000-0000",
+    "email": "Imèl",
+    "emailPlaceholder": "manm@imel.com",
+    "optional": "(opsyonèl)",
+    "emptyTitle": "Poko gen manm",
+    "emptyParticipating": "Ajoute omwen 1 lòt moun pou gwoup la gen 2 men.",
+    "emptyOrganizingOnly": "Ajoute omwen 2 moun (ou ap òganize sèlman).",
+    "handLabel": "{{name}} · Men {{number}}",
+    "organizer": "Òganizatè",
+    "organizerParticipates": "Òganizatè · patisipe",
+    "plannedMember": "Manm ki planifye"
+  },
+  "schedule": {
+    "question": "Chak konbyen tan kontribisyon yo dwe fèt?",
+    "description": "Frekans sa a ap anrejistre avèk gwoup la. Y ap fini lòd peman an apre yo kreye gwoup la.",
+    "payoutDeferred": "Y ap fikse lòd peman an apre manm yo reklame plas yo epi yo apwouve lòt men yo.",
+    "options": {
+      "weekly": "Chak semèn",
+      "biweekly": "Chak de semèn",
+      "monthly": "Chak mwa"
+    }
+  },
+  "review": {
+    "title": "Verifye bouyon gwoup la",
+    "description": "Sa ap kreye yon bouyon sèlman. Gwoup la pap kòmanse kounye a.",
+    "untitledCircle": "Gwoup san non",
+    "contribution": "Kontribisyon",
+    "frequency": "Frekans",
+    "organizer": "Òganizatè",
+    "participates": "Patisipe",
+    "organizeOnly": "Òganize sèlman",
+    "plannedPeople": "Moun ki planifye",
+    "plannedHands": "Men ki planifye",
+    "estimatedRounds": "Wonn estime",
+    "estimatedPot": "Kòb estime pou chak wonn",
+    "organizingOnlyNote": "Ou ap òganize sèlman, kidonk yo pa konte ou nan moun, men, kantite kòb oswa wonn yo.",
+    "plannedMembers": "Manm ki planifye"
+  },
+  "confirmation": {
+    "title": "Kreye gwoup sa a?",
+    "body": "Y ap kreye gwoup ou a kòm yon bouyon pou ou kapab envite manm, jere demann yo epi apwouve lòt men. Lòd peman an ak demaraj gwoup la ap fèt pita, pa nan etap sa a.",
+    "warningTitle": "Demaraj la se yon lòt etap.",
+    "warningBody": "Lè ou kreye gwoup la, sa pa kòmanse li ni fikse lòd peman an. Kontinye konfigirasyon an nan onglet Moun apre kreyasyon an."
+  },
+  "success": {
+    "title": "Bouyon gwoup la kreye",
+    "body": "Gwoup ou a pare pou konfigirasyon. Envite manm, verifye demann ak lòt men yo, epi fikse lòd peman an anvan ou kòmanse."
+  },
+  "actions": {
+    "startFresh": "Rekòmanse",
+    "resume": "Kontinye",
+    "openExisting": "Louvri sa ki deja la",
+    "ok": "Dakò",
+    "createCircle": "Kreye gwoup la",
+    "reviewAgain": "Tounen verifye",
+    "continueSetup": "Kontinye konfigirasyon",
+    "addMember": "Ajoute manm",
+    "back": "Retounen",
+    "continue": "Kontinye"
+  },
+  "loading": {
+    "creating": "N ap kreye gwoup la"
+  },
+  "accessibility": {
+    "goBack": "Retounen",
+    "back": "Retounen",
+    "addMember": "Ajoute manm",
+    "removeMember": "Retire {{name}}"
+  },
+  "errors": {
+    "memberNameTitle": "Non an obligatwa",
+    "memberNameBody": "Antre prenon ak siyati manm nan.",
+    "memberPhoneTitle": "Telefòn nan obligatwa",
+    "memberPhoneBody": "Antre yon nimewo telefòn pou manm sa a.",
+    "organizerDuplicateTitle": "Ou deja òganizatè a",
+    "organizerDuplicateBody": "Ou deja òganize gwoup sa a. Chwazi patisipasyon ou nan etap anvan an olye ou ajoute tèt ou kòm manm.",
+    "duplicateTitle": "Deja ajoute",
+    "duplicateBody": "Manm sa a deja ajoute.",
+    "planLimitTitle": "Limit plan an",
+    "circleNameTitle": "Non an manke",
+    "circleNameBody": "Bay gwoup ou a yon non.",
+    "amountTitle": "Montan an manke",
+    "amountBody": "Antre yon montan kontribisyon ki valab.",
+    "scheduleTitle": "Frekans lan manke",
+    "scheduleBody": "Chwazi chak konbyen tan kontribisyon yo ap fèt.",
+    "addMembersTitle": "Ajoute manm",
+    "cannotCreateTitle": "Nou pa kapab kreye gwoup la",
+    "signInTitle": "Ou dwe konekte",
+    "signInBody": "Sesyon ou pa gen yon jeton aksè.",
+    "openCircleLimitTitle": "Limit plan gratis la",
+    "openCircleLimitBody": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Kontinye gwoup ou deja genyen an oswa pase nan Premium.",
+    "createFailedTitle": "Nou pa t kapab kreye gwoup la",
+    "createFailedBody": "Nou pa t kapab kreye gwoup la. Tanpri eseye ankò."
+  },
+  "validation": {
+    "minimumHandsParticipating": "Ajoute omwen 1 lòt manm pou gwoup la gen 2 men.",
+    "minimumHandsOrganizingOnly": "Ajoute omwen 2 manm (ou ap òganize sèlman).",
+    "premiumCapacity": "Gwoup Premium yo kapab gen jiska {{count}} men k ap patisipe.",
+    "freeCapacity": "Gwoup gratis yo kapab gen jiska {{count}} men k ap patisipe. Pase nan Premium pou jwenn jiska {{premiumCount}}."
+  }
+}

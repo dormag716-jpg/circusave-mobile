@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "circusave-mobile",
+    "name": "CircuSave",
     "slug": "circusave-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -58,7 +58,8 @@
           "merchantIdentifier": "merchant.com.circusave.mobile",
           "enableGooglePay": true
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true

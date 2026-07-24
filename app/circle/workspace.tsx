@@ -24,6 +24,8 @@ import {
   Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import {
   approveContribution,
@@ -64,21 +66,12 @@ import {
 } from '@/lib/claimInvite';
 import { copyText } from '@/lib/clipboard';
 import {
-  formatHandsPeopleMetrics,
-  handClaimStatusLabel,
   isCircleNotStarted,
   isUnclaimedHand,
-  peopleHandsSectionTitle,
-  peoplePendingSectionTitle,
-  roundCompletedSubtitle,
-  roundCompletedTitle,
-  roundUnstartedSubtitle,
-  roundUnstartedTitle,
 } from '@/lib/circleLifecycleCopy';
 import {
   buildCircleSetupProgress,
   orderedParticipatingHands,
-  setupStepStatusLabel,
   splitWaitlistRequests,
   type SetupStepStatus,
 } from '@/lib/circleSetupProgress';
@@ -106,6 +99,17 @@ import {
   initialsForDisplay,
   validateCurrentPayoutOrder,
 } from '@/lib/peopleWorkspace';
+import { formatCurrency, formatOrdinal } from '@/lib/i18n/formatters';
+import { i18n } from '@/lib/i18n';
+import circleWorkspaceEn from '@/lib/i18n/locales/en/circleWorkspace.json';
+import circleWorkspaceEs from '@/lib/i18n/locales/es/circleWorkspace.json';
+import circleWorkspaceHt from '@/lib/i18n/locales/ht/circleWorkspace.json';
+import peopleEn from '@/lib/i18n/locales/en/people.json';
+import peopleEs from '@/lib/i18n/locales/es/people.json';
+import peopleHt from '@/lib/i18n/locales/ht/people.json';
+import payoutOrderEn from '@/lib/i18n/locales/en/payoutOrder.json';
+import payoutOrderEs from '@/lib/i18n/locales/es/payoutOrder.json';
+import payoutOrderHt from '@/lib/i18n/locales/ht/payoutOrder.json';
 
 type ActiveTab = 'round' | 'chat' | 'people' | 'records';
 
@@ -123,15 +127,27 @@ type PeopleNotice = {
 const tabs: {
   id: ActiveTab;
   icon: ComponentProps<typeof FontAwesome>['name'];
-  label: string;
 }[] = [
-  { id: 'round', icon: 'compass', label: 'Round' },
-  { id: 'chat', icon: 'comments', label: 'Chat' },
-  { id: 'people', icon: 'users', label: 'People' },
-  { id: 'records', icon: 'list-alt', label: 'Records' },
+  { id: 'round', icon: 'compass' },
+  { id: 'chat', icon: 'comments' },
+  { id: 'people', icon: 'users' },
+  { id: 'records', icon: 'list-alt' },
 ];
 
+for (const [language, resources] of Object.entries({
+  en: { circleWorkspace: circleWorkspaceEn, people: peopleEn, payoutOrder: payoutOrderEn },
+  es: { circleWorkspace: circleWorkspaceEs, people: peopleEs, payoutOrder: payoutOrderEs },
+  ht: { circleWorkspace: circleWorkspaceHt, people: peopleHt, payoutOrder: payoutOrderHt },
+})) {
+  for (const [namespace, bundle] of Object.entries(resources)) {
+    if (!i18n.hasResourceBundle(language, namespace)) {
+      i18n.addResourceBundle(language, namespace, bundle, true, true);
+    }
+  }
+}
+
 export default function CircleWorkspaceScreen() {
+  const { t } = useTranslation('circleWorkspace');
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[]; tab?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
@@ -151,7 +167,8 @@ export default function CircleWorkspaceScreen() {
 
   async function loadWorkspace(options?: { silent?: boolean }) {
     if (!token || !circleId) {
-      setError('Missing token or circle ID.');
+      console.error('Circle workspace missing token or circle ID.');
+      setError(t('status.genericError'));
       setLoading(false);
       return;
     }
@@ -164,11 +181,8 @@ export default function CircleWorkspaceScreen() {
     try {
       setCircle(await getCircleDetail(token, circleId));
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load circle.',
-      );
+      console.error('Unable to load circle workspace', loadError);
+      setError(t('status.genericError'));
     } finally {
       if (!options?.silent) {
         setLoading(false);
@@ -213,17 +227,20 @@ export default function CircleWorkspaceScreen() {
             onPress={() => router.replace(myCirclesHref)}
             hitSlop={20}
             accessibilityRole="button"
-            accessibilityLabel="Back to My Circles"
+            accessibilityLabel={t('accessibility.backToCircles')}
           >
             <FontAwesome name="chevron-left" size={28} color={colors.textStrong} />
           </Pressable>
 
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>{circle?.name || 'Circle'}</Text>
+            <Text style={styles.title}>{circle?.name || t('fallbackName')}</Text>
             <Text style={styles.subtitle}>
               {circle
-                ? `Round ${displayRound ?? circle.currentRound} · ${capitalizeFrequency(circle.frequency)}`
-                : 'Loading...'}
+                ? t('headerSummary', {
+                    round: displayRound ?? circle.currentRound,
+                    frequency: localizedFrequency(t, circle.frequency),
+                  })
+                : t('loading')}
             </Text>
           </View>
 
@@ -231,7 +248,7 @@ export default function CircleWorkspaceScreen() {
             onPress={() => router.replace('/(tabs)/dashboard')}
             hitSlop={20}
             accessibilityRole="button"
-            accessibilityLabel="Return to dashboard"
+            accessibilityLabel={t('accessibility.dashboard')}
           >
             <FontAwesome name="home" size={28} color={colors.textStrong} />
           </Pressable>
@@ -241,21 +258,21 @@ export default function CircleWorkspaceScreen() {
           <StatusCard
             icon="spinner"
             loading
-            title="Setting up workspace"
-            text="We're loading the latest circle data from the backend."
+            title={t('status.settingUpTitle')}
+            text={t('status.settingUpBody')}
           />
         ) : error ? (
           <View style={styles.statusCard}>
             <FontAwesome name="warning" size={34} color={colors.warning} />
-            <Text style={styles.statusTitle}>Unable to open circle</Text>
+            <Text style={styles.statusTitle}>{t('status.openErrorTitle')}</Text>
             <Text style={styles.statusText}>{error}</Text>
             <Pressable
               style={styles.retryButton}
               onPress={() => void loadWorkspace()}
               accessibilityRole="button"
-              accessibilityLabel="Retry loading workspace"
+              accessibilityLabel={t('accessibility.retryWorkspace')}
             >
-              <Text style={styles.retryButtonText}>Retry</Text>
+              <Text style={styles.retryButtonText}>{t('status.retry')}</Text>
             </Pressable>
           </View>
         ) : circle && token ? (
@@ -272,8 +289,8 @@ export default function CircleWorkspaceScreen() {
         ) : (
           <StatusCard
             icon="clock-o"
-            title="Workspace pending"
-            text="This circle was created successfully. The full workspace is being prepared in the backend."
+            title={t('status.workspacePendingTitle')}
+            text={t('status.workspacePendingBody')}
           />
         )}
       </ScrollView>
@@ -300,6 +317,7 @@ function WorkspaceContent({
   refreshNonce: number;
   onRoundResolved: (round: number) => void;
 }) {
+  const { t } = useTranslation('circleWorkspace');
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
     null,
@@ -322,11 +340,8 @@ function WorkspaceContent({
       setScheduleData(scheduleResponse);
       setLedgerEntries(ledgerResponse.entries || []);
     } catch (loadError) {
-      setSecondaryError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'The backend did not return the workspace data.',
-      );
+      console.error('Unable to load circle workspace sections', loadError);
+      setSecondaryError(t('status.genericError'));
     } finally {
       setSecondaryLoading(false);
     }
@@ -518,8 +533,8 @@ function WorkspaceContent({
       <StatusCard
         icon="spinner"
         loading
-        title="Checking membership"
-        text="We're verifying backend access for this circle."
+        title={t('status.checkingMembershipTitle')}
+        text={t('status.checkingMembershipBody')}
       />
     );
   }
@@ -781,7 +796,7 @@ function WorkspaceContent({
                 color={selected ? '#fff' : colors.muted}
               />
               <Text style={[styles.tabText, selected && styles.activeTabText]}>
-                {tab.label}
+                {t(`tabs.${tab.id}`)}
               </Text>
             </Pressable>
           );
@@ -796,21 +811,21 @@ function WorkspaceContent({
             {secondaryLoading && isCircleStarted(circle) && !isCircleCompleted(circle) ? (
               <View style={styles.inlineLoading}>
                 <ActivityIndicator color={colors.primary} />
-                <Text style={styles.inlineLoadingText}>Syncing backend data…</Text>
+                <Text style={styles.inlineLoadingText}>{t('status.syncing')}</Text>
               </View>
             ) : null}
             {secondaryError && isCircleStarted(circle) && !isCircleCompleted(circle) ? (
               <View style={styles.inlineErrorBanner}>
                 <FontAwesome name="warning" size={14} color={colors.warning} />
                 <Text style={styles.inlineErrorText}>
-                  Could not refresh: {secondaryError}
+                  {t('status.refreshError')}
                 </Text>
                 <Pressable
                   onPress={() => void loadBackendSections()}
                   accessibilityRole="button"
-                  accessibilityLabel="Retry refresh"
+                  accessibilityLabel={t('accessibility.retryRefresh')}
                 >
-                  <Text style={styles.inlineErrorRetry}>Retry</Text>
+                  <Text style={styles.inlineErrorRetry}>{t('status.retry')}</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -849,28 +864,28 @@ function WorkspaceContent({
           <StatusCard
             icon="spinner"
             loading
-            title="Loading round data"
-            text="Fetching the latest round details from the backend…"
+            title={t('status.roundLoadingTitle')}
+            text={t('status.roundLoadingBody')}
           />
         ) : !scheduleData && secondaryError ? (
           <View style={styles.statusCard}>
             <FontAwesome name="warning" size={34} color={colors.warning} />
-            <Text style={styles.statusTitle}>Unable to load round data</Text>
+            <Text style={styles.statusTitle}>{t('status.roundErrorTitle')}</Text>
             <Text style={styles.statusText}>{secondaryError}</Text>
             <Pressable
               style={styles.retryButton}
               onPress={() => void loadBackendSections()}
               accessibilityRole="button"
-              accessibilityLabel="Retry loading round data"
+              accessibilityLabel={t('accessibility.retryRound')}
             >
-              <Text style={styles.retryButtonText}>Retry</Text>
+              <Text style={styles.retryButtonText}>{t('status.retry')}</Text>
             </Pressable>
           </View>
         ) : (
           <StatusCard
             icon="clock-o"
-            title="Round data unavailable"
-            text="The backend has not returned schedule data for this circle yet."
+            title={t('status.roundUnavailableTitle')}
+            text={t('status.roundUnavailableBody')}
           />
         )
       ) : null}
@@ -973,6 +988,11 @@ function RoundTab({
   paymentInstructions?: string | null;
   isPremium: boolean;
 }) {
+  const { t, i18n: translation } = useTranslation([
+    'circleWorkspace',
+    'people',
+  ]);
+  const language = translation.resolvedLanguage || translation.language;
   const [visibleActionCount, setVisibleActionCount] = useState(5);
   const [showAllPaid, setShowAllPaid] = useState(false);
   const [actionSearch, setActionSearch] = useState('');
@@ -1004,11 +1024,15 @@ function RoundTab({
       currentRoundMembers.length > 0
         ? currentRoundMembers.map(({ member }) => member)
         : (circle.members || []).filter((m) => m.isParticipating !== false);
-    const handMetrics = formatHandsPeopleMetrics({
-      handCount: circle.handCount ?? plannedHands.length,
-      uniqueMemberCount: circle.uniqueMemberCount,
-      fallbackHandCount: plannedHands.length,
-    });
+    const handCount = circle.handCount ?? plannedHands.length;
+    const peopleCount = circle.uniqueMemberCount;
+    const handMetrics =
+      typeof peopleCount === 'number'
+        ? t('people:hands.metrics', {
+            hands: t('people:hands.count', { count: handCount }),
+            people: t('people:hands.peopleCount', { count: peopleCount }),
+          })
+        : t('people:hands.count', { count: handCount });
     const plannedRounds =
       visibleTotalRounds > 0 ? visibleTotalRounds : plannedHands.length;
 
@@ -1039,7 +1063,7 @@ function RoundTab({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
-                {roundUnstartedTitle()}
+                {t('circleWorkspace:setupRound.title')}
               </Text>
               <Text
                 style={{
@@ -1049,7 +1073,7 @@ function RoundTab({
                   lineHeight: 20,
                 }}
               >
-                {roundUnstartedSubtitle()}
+                {t('circleWorkspace:setupRound.subtitle')}
               </Text>
             </View>
           </View>
@@ -1062,7 +1086,7 @@ function RoundTab({
             }}
           >
             <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '700' }}>
-              ROSTER
+              {t('circleWorkspace:setupRound.roster')}
             </Text>
             <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', marginTop: 4 }}>
               {handMetrics}
@@ -1075,8 +1099,9 @@ function RoundTab({
                 lineHeight: 18,
               }}
             >
-              {plannedRounds} planned payout round
-              {plannedRounds === 1 ? '' : 's'} once the organizer starts.
+              {t('circleWorkspace:setupRound.plannedRounds', {
+                count: plannedRounds,
+              })}
             </Text>
           </View>
         </View>
@@ -1098,15 +1123,15 @@ function RoundTab({
             }}
           >
             <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
-              Planned hands
+              {t('circleWorkspace:setupRound.plannedHands')}
             </Text>
             <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>
-              Not active yet
+              {t('circleWorkspace:setupRound.notActive')}
             </Text>
           </View>
           {plannedHands.length === 0 ? (
             <Text style={[styles.helperText, { padding: 16 }]}>
-              No planned hands on this circle yet.
+              {t('circleWorkspace:setupRound.emptyHands')}
             </Text>
           ) : (
             plannedHands.map((member, index) => (
@@ -1132,11 +1157,17 @@ function RoundTab({
                     {member.displayLabel || memberName(member)}
                   </Text>
                   <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-                    Payout position #{index + 1}
+                    {t('circleWorkspace:setupRound.payoutPosition', {
+                      position: formatOrdinal(index + 1, language),
+                    })}
                   </Text>
                 </View>
                 <StatusBadge
-                  label={handClaimStatusLabel(member)}
+                  label={
+                    isUnclaimedHand(member)
+                      ? t('people:hands.awaitingClaim')
+                      : t('people:common.connected')
+                  }
                   tone={isUnclaimedHand(member) ? 'warning' : 'success'}
                 />
               </View>
@@ -1145,10 +1176,11 @@ function RoundTab({
         </View>
 
         <View style={[styles.sectionCard, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
-          <Text style={[styles.sectionTitle, { color: '#1e40af' }]}>Before contributions start</Text>
+          <Text style={[styles.sectionTitle, { color: '#1e40af' }]}>
+            {t('circleWorkspace:setupRound.beforeStartTitle')}
+          </Text>
           <Text style={[styles.sectionSubtitle, { color: '#1e3a8a' }]}>
-            Hands are planned payout positions. After the organizer starts the circle, each
-            participating hand becomes a live contribution obligation for round 1.
+            {t('circleWorkspace:setupRound.beforeStartBody')}
           </Text>
         </View>
       </View>
@@ -1170,7 +1202,7 @@ function RoundTab({
           ]}
         >
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
-            {roundCompletedTitle()}
+            {t('circleWorkspace:completedRound.title')}
           </Text>
           <Text
             style={{
@@ -1180,17 +1212,21 @@ function RoundTab({
               lineHeight: 20,
             }}
           >
-            {roundCompletedSubtitle()}
+            {t('circleWorkspace:completedRound.subtitle')}
           </Text>
           {visibleTotalRounds > 0 ? (
             <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 12 }}>
-              {visibleTotalRounds} round{visibleTotalRounds === 1 ? '' : 's'} in this cycle
+              {t('circleWorkspace:completedRound.roundCount', {
+                count: visibleTotalRounds,
+              })}
             </Text>
           ) : null}
         </View>
         {recipient ? (
           <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Last recorded recipient</Text>
+            <Text style={styles.sectionTitle}>
+              {t('circleWorkspace:completedRound.lastRecipient')}
+            </Text>
             <Text style={styles.sectionSubtitle}>{memberName(recipient)}</Text>
           </View>
         ) : null}
@@ -1770,6 +1806,7 @@ function PeopleTab({
   token: string;
   onRefresh: () => Promise<void>;
 }) {
+  const { t, i18n: translation } = useTranslation(['people', 'payoutOrder']);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [addingHand, setAddingHand] = useState(false);
   const [showHandModal, setShowHandModal] = useState(false);
@@ -1787,6 +1824,11 @@ function PeopleTab({
   const [showUnclaimedReview, setShowUnclaimedReview] = useState(false);
   const [pendingStartConfirmations, setPendingStartConfirmations] = useState<StartCircleConfirmations | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<PeopleNotice | null>(null);
+  const language = translation.resolvedLanguage || translation.language;
+  const formatMoney = useCallback(
+    (value: number) => formatCurrency(value, language),
+    [language],
+  );
   const structureMutationBusy =
     Boolean(approvingId) ||
     Boolean(decliningId) ||
@@ -1794,7 +1836,15 @@ function PeopleTab({
     startingCircle ||
     Boolean(reorderingId);
   const shortCode = circle.circleCode;
-  const waitlist: BackendJoinRequest[] = circle.waitlist ?? [];
+  const waitlist: BackendJoinRequest[] = Array.isArray(circle.waitlist)
+    ? circle.waitlist.filter(
+        (entry): entry is BackendJoinRequest =>
+          Boolean(entry && typeof entry === 'object'),
+      )
+    : [];
+  const turnOrder = Array.isArray(circle.turnOrder)
+    ? circle.turnOrder.filter((id): id is string => typeof id === 'string')
+    : [];
   // People tab structural controls: lifecycle from status/startedAt/isStarted only.
   const lifecyclePhase = getCircleLifecyclePhase(circle);
   const circleNotStarted = lifecyclePhase === 'setup';
@@ -1827,9 +1877,9 @@ function PeopleTab({
     () =>
       orderedParticipatingHands({
         members,
-        turnOrder: circle.turnOrder,
+        turnOrder,
       }),
-    [members, circle.turnOrder],
+    [members, turnOrder],
   );
   const memberGroups = useMemo(
     () => groupCurrentApiHandsForDisplay(members),
@@ -1840,14 +1890,14 @@ function PeopleTab({
     setExpandedMemberKey((prev) => (prev === groupKey ? null : groupKey));
   }, []);
   const payoutOrderValidation = useMemo(
-    () => validateCurrentPayoutOrder(members, circle.turnOrder ?? []),
-    [members, circle.turnOrder],
+    () => validateCurrentPayoutOrder(members, turnOrder),
+    [members, turnOrder],
   );
   async function handleApprove(requestId: string) {
     if (!circleNotStarted || structureMutationBusy) {
       Alert.alert(
-        'Structure locked',
-        'Join and additional-hand requests cannot be approved after the circle has started.',
+        t('requests.structureLockedTitle'),
+        t('requests.structureLockedBody'),
       );
       return;
     }
@@ -1855,11 +1905,12 @@ function PeopleTab({
     try {
       await approveJoinRequest(token, circle.id, requestId);
       await onRefresh();
-      Alert.alert('Approved!', 'The member has been approved and added to the circle.');
+      Alert.alert(t('requests.approvedTitle'), t('requests.approvedBody'));
     } catch (e) {
+      console.error('Unable to approve circle request', e);
       setPeopleNotice({
-        title: 'Request not approved',
-        body: e instanceof Error ? e.message : 'The backend could not approve this request.',
+        title: t('requests.approveErrorTitle'),
+        body: t('errors.generic'),
         tone: 'warning',
       });
     } finally {
@@ -1880,9 +1931,10 @@ function PeopleTab({
       setDeclineTarget(null);
       await onRefresh();
     } catch (error) {
+      console.error('Unable to decline circle request', error);
       Alert.alert(
-        'Unable to decline request',
-        error instanceof Error ? error.message : 'The backend rejected the decline action.',
+        t('requests.declineErrorTitle'),
+        t('errors.generic'),
       );
     } finally {
       setDecliningId(null);
@@ -1902,14 +1954,14 @@ function PeopleTab({
           circleName: circle.name,
           handName: member.displayLabel || memberName(member),
           claimUrl,
+          formatMessage: (values) => t('invite.claimShareMessage', values),
         }),
       });
     } catch (error) {
+      console.error('Unable to share claim invite', error);
       Alert.alert(
-        'Unable to share claim invite',
-        error instanceof Error
-          ? error.message
-          : 'Could not generate a claim link for this hand.',
+        t('errors.claimShareTitle'),
+        t('errors.generic'),
       );
     } finally {
       setSharingClaimId(null);
@@ -1918,7 +1970,7 @@ function PeopleTab({
 
   async function handleCopyCircleCode() {
     if (!shortCode) {
-      Alert.alert('Code unavailable', 'The backend has not provided a circle code.');
+      Alert.alert(t('invite.codeUnavailableTitle'), t('invite.codeUnavailable'));
       return;
     }
     try {
@@ -1926,19 +1978,18 @@ function PeopleTab({
       // (or an on-screen code) so older dev builds do not hard-crash.
       const result = await copyText(shortCode);
       if (result === 'clipboard') {
-        Alert.alert('Code copied', `${shortCode} is ready to paste.`);
+        Alert.alert(t('invite.codeCopiedTitle'), t('invite.codeCopied', { code: shortCode }));
         return;
       }
       if (result === 'share') {
         return;
       }
-      Alert.alert('Circle code', shortCode);
+      Alert.alert(t('invite.codeTitle'), shortCode);
     } catch (error) {
+      console.error('Unable to copy circle code', error);
       Alert.alert(
-        'Unable to copy code',
-        error instanceof Error
-          ? error.message
-          : 'Share the code manually from the invite section.',
+        t('invite.copyErrorTitle'),
+        t('errors.generic'),
       );
     }
   }
@@ -1948,7 +1999,11 @@ function PeopleTab({
       return;
     }
     if (startBlockReason) {
-      setPeopleNotice({ title: 'Circle not ready', body: startBlockReason, tone: 'warning' });
+      setPeopleNotice({
+        title: t('start.notReady'),
+        body: localizeStartBlockReason(t, startBlockReason),
+        tone: 'warning',
+      });
       return;
     }
     promptPayoutOrderReview();
@@ -1989,17 +2044,21 @@ function PeopleTab({
     });
     if (blockReason) {
       setPendingStartConfirmations(null);
-      setPeopleNotice({ title: 'Circle not ready', body: blockReason, tone: 'warning' });
+      setPeopleNotice({
+        title: t('start.notReady'),
+        body: localizeStartBlockReason(t, blockReason),
+        tone: 'warning',
+      });
       return;
     }
     if (!confirmations.confirmPayoutOrder) {
       setPendingStartConfirmations(null);
-      setPeopleNotice({ title: 'Circle not ready', body: 'Confirm the payout order before starting.', tone: 'warning' });
+      setPeopleNotice({ title: t('start.notReady'), body: t('start.confirmPayout'), tone: 'warning' });
       return;
     }
     if (needsUnclaimedConfirm && !confirmations.confirmUnclaimedHands) {
       setPendingStartConfirmations(null);
-      setPeopleNotice({ title: 'Circle not ready', body: 'Confirm you will manage unclaimed hands, or share claim invites first.', tone: 'warning' });
+      setPeopleNotice({ title: t('start.notReady'), body: t('start.confirmUnclaimed'), tone: 'warning' });
       return;
     }
 
@@ -2011,12 +2070,13 @@ function PeopleTab({
       });
       await onRefresh();
       setPendingStartConfirmations(null);
-      setPeopleNotice({ title: 'Circle started', body: 'Contributions are now active and the payout order is locked.', tone: 'success' });
+      setPeopleNotice({ title: t('start.startedTitle'), body: t('start.startedBody'), tone: 'success' });
     } catch (error) {
+      console.error('Unable to start circle', error);
       setPendingStartConfirmations(null);
       setPeopleNotice({
-        title: 'Unable to start circle',
-        body: error instanceof Error ? error.message : 'The backend rejected the start request.',
+        title: t('start.errorTitle'),
+        body: t('errors.generic'),
         tone: 'warning',
       });
     } finally {
@@ -2035,7 +2095,8 @@ function PeopleTab({
       await onRefresh();
       setShowRequestSent(true);
     } catch (e) {
-      Alert.alert('Not available', e instanceof Error ? e.message : 'Could not request additional hand.');
+      console.error('Unable to request additional hand', e);
+      Alert.alert(t('hands.requestErrorTitle'), t('errors.generic'));
     } finally {
       setAddingHand(false);
     }
@@ -2052,11 +2113,10 @@ function PeopleTab({
       setPayoutOrderReviewed(false);
       await onRefresh();
     } catch (error) {
+      console.error('Unable to reorder payout hand', error);
       Alert.alert(
-        'Unable to reorder',
-        error instanceof Error
-          ? error.message
-          : 'Could not update the payout order.',
+        t('payoutOrder:errors.reorderTitle'),
+        t('errors.generic'),
       );
     } finally {
       setReorderingId(null);
@@ -2100,16 +2160,16 @@ function PeopleTab({
 
   const payoutReviewLines = buildPayoutOrderReviewLines({
     members,
-    turnOrder: circle.turnOrder,
+    turnOrder,
   });
   const payoutReviewSheet = (
     <DecisionSheet
       visible={showPayoutReview}
       onClose={() => setShowPayoutReview(false)}
       icon="list-ol"
-      title="Review payout order"
-      body="Confirm every participating hand is in the correct position. The order locks when the circle starts."
-      primaryLabel="Confirm order"
+      title={t('payoutOrder:review.title')}
+      body={t('payoutOrder:review.body')}
+      primaryLabel={t('payoutOrder:review.confirm')}
       onPrimary={() => {
         setShowPayoutReview(false);
         setPayoutOrderReviewed(true);
@@ -2119,10 +2179,14 @@ function PeopleTab({
       <View style={styles.payoutReviewList}>
         {payoutReviewLines.length > 0 ? payoutReviewLines.map((line, index) => (
           <View key={`${line}-${index}`} style={styles.payoutReviewRow}>
-            <View style={styles.payoutReviewPosition}><Text style={styles.payoutReviewPositionText}>{index + 1}</Text></View>
+            <View style={styles.payoutReviewPosition}>
+              <Text style={styles.payoutReviewPositionText}>
+                {formatOrdinal(index + 1, language)}
+              </Text>
+            </View>
             <Text style={styles.payoutReviewName}>{line.replace(/^\d+\.\s*/, '').replace(/^•\s*/, '')}</Text>
           </View>
-        )) : <Text style={styles.helperText}>No payout order is available yet.</Text>}
+        )) : <Text style={styles.helperText}>{t('payoutOrder:review.empty')}</Text>}
       </View>
     </DecisionSheet>
   );
@@ -2139,9 +2203,9 @@ function PeopleTab({
         }}
         icon="times"
         iconTone="warning"
-        title="Decline request?"
-        body={declineTarget ? `Decline the pending request for ${memberName(declineTarget)}? No workspace access or financial hand will be granted.` : ''}
-        primaryLabel="Decline request"
+        title={t('requests.declineTitle')}
+        body={declineTarget ? t('requests.declineBody', { name: memberName(declineTarget) }) : ''}
+        primaryLabel={t('requests.declineAction')}
         onPrimary={() => void confirmDecline()}
         busy={Boolean(decliningId)}
       />
@@ -2150,9 +2214,9 @@ function PeopleTab({
         onClose={() => setShowRequestSent(false)}
         icon="paper-plane"
         iconTone="success"
-        title="Request sent"
-        body="Your additional-hand request is waiting for organizer approval. It will not become active until approved."
-        primaryLabel="Done"
+        title={t('hands.requestSentTitle')}
+        body={t('hands.requestSentBody')}
+        primaryLabel={t('common.done')}
         secondaryLabel={null}
         onPrimary={() => setShowRequestSent(false)}
       />
@@ -2161,9 +2225,9 @@ function PeopleTab({
         onClose={() => setShowUnclaimedReview(false)}
         icon="user-o"
         iconTone="warning"
-        title="Unclaimed hands"
-        body={`${unclaimedHandsForReview.length} planned hand${unclaimedHandsForReview.length === 1 ? '' : 's'} do not have connected workspace members. You can share claim invites first or explicitly manage these positions.`}
-        primaryLabel="I will manage them"
+        title={t('start.unclaimedTitle')}
+        body={t('start.unclaimedBody', { count: unclaimedHandsForReview.length })}
+        primaryLabel={t('start.manage')}
         onPrimary={() => {
           setShowUnclaimedReview(false);
           promptFinalStartConfirm({ unclaimedManagedConfirmed: true });
@@ -2175,7 +2239,7 @@ function PeopleTab({
               <View style={styles.initialsAvatar}><Text style={styles.initialsText}>{initialsForDisplay(memberName(member))}</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.handDetailTitle}>{memberName(member)}</Text>
-                <Text style={styles.handDetailMeta}>No workspace access · Organizer-managed</Text>
+                <Text style={styles.handDetailMeta}>{t('start.managedMeta')}</Text>
               </View>
             </View>
           ))}
@@ -2188,9 +2252,9 @@ function PeopleTab({
         }}
         icon="lock"
         iconTone="warning"
-        title="Start this circle?"
-        body="Starting locks membership, participating hands, and payout order. Contribution obligations begin according to the saved schedule."
-        primaryLabel="Start circle"
+        title={t('start.confirmTitle')}
+        body={t('start.confirmBody')}
+        primaryLabel={t('start.confirmAction')}
         onPrimary={() => {
           if (pendingStartConfirmations) void executeStartCircle(pendingStartConfirmations);
         }}
@@ -2203,7 +2267,7 @@ function PeopleTab({
         iconTone={peopleNotice?.tone ?? 'warning'}
         title={peopleNotice?.title ?? ''}
         body={peopleNotice?.body ?? ''}
-        primaryLabel="Got it"
+        primaryLabel={t('common.gotIt')}
         secondaryLabel={null}
         onPrimary={() => setPeopleNotice(null)}
       />
@@ -2224,14 +2288,14 @@ function PeopleTab({
     async function shareCircleCode() {
       if (!shortCode) {
         Alert.alert(
-          'Code unavailable',
-          'The circle code is not available for sharing right now.',
+          t('invite.codeUnavailableTitle'),
+          t('invite.codeUnavailable'),
         );
         return;
       }
       try {
         await Share.share({
-          message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${shortCode}`,
+          message: t('invite.shareMessage', { code: shortCode }),
         });
       } catch {
         /* cancelled */
@@ -2244,12 +2308,14 @@ function PeopleTab({
           return (
             <View style={styles.setupBody}>
               <View style={styles.setupCodeBlock}>
-                <Text style={styles.setupMicroLabel}>Invite code</Text>
+                <Text style={styles.setupMicroLabel}>{t('invite.code')}</Text>
                 <View style={styles.setupCodeRow}>
                   <Text
                     selectable
                     style={styles.setupCodeValue}
-                    accessibilityLabel={`Invite code ${shortCode || 'unavailable'}`}
+                    accessibilityLabel={t('invite.codeA11y', {
+                      code: shortCode || t('common.unavailable'),
+                    })}
                   >
                     {shortCode || '—'}
                   </Text>
@@ -2259,7 +2325,7 @@ function PeopleTab({
                       disabled={!shortCode}
                       onPress={() => void handleCopyCircleCode()}
                       accessibilityRole="button"
-                      accessibilityLabel="Copy circle code"
+                      accessibilityLabel={t('invite.copy')}
                     >
                       <FontAwesome name="copy" size={15} color={colors.primary} />
                     </Pressable>
@@ -2271,7 +2337,7 @@ function PeopleTab({
                       disabled={!shortCode}
                       onPress={() => void shareCircleCode()}
                       accessibilityRole="button"
-                      accessibilityLabel="Share circle code"
+                      accessibilityLabel={t('invite.share')}
                     >
                       <FontAwesome name="share-alt" size={15} color={colors.primary} />
                     </Pressable>
@@ -2285,10 +2351,10 @@ function PeopleTab({
                 ]}
                 onPress={() => router.push(circleInviteHref(circle.id))}
                 accessibilityRole="button"
-                accessibilityLabel="Invite members"
+                accessibilityLabel={t('invite.inviteMembers')}
               >
                 <FontAwesome name="user-plus" size={15} color="#fff" />
-                <Text style={styles.setupPrimaryBtnText}>Invite members</Text>
+                <Text style={styles.setupPrimaryBtnText}>{t('invite.inviteMembers')}</Text>
               </Pressable>
             </View>
           );
@@ -2297,7 +2363,7 @@ function PeopleTab({
           return (
             <View style={styles.setupBody}>
               {joinRequests.length === 0 ? (
-                <Text style={styles.setupEmpty}>No join requests to review.</Text>
+                <Text style={styles.setupEmpty}>{t('requests.noneJoin')}</Text>
               ) : (
                 <View style={styles.setupList}>
                   {joinRequests.map((entry) => {
@@ -2309,7 +2375,9 @@ function PeopleTab({
                             {m.displayLabel || memberName(m)}
                           </Text>
                           <Text style={styles.setupListSub}>
-                            Join request · {m.phone || 'Pending approval'}
+                            {t('requests.joinMeta', {
+                              detail: m.phone || t('requests.pendingApproval'),
+                            })}
                           </Text>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -2318,9 +2386,9 @@ function PeopleTab({
                             onPress={() => handleDecline(m)}
                             disabled={structureMutationBusy}
                             accessibilityRole="button"
-                            accessibilityLabel={`Decline ${memberName(m)}`}
+                            accessibilityLabel={t('requests.declineA11y', { name: memberName(m) })}
                           >
-                            <Text style={styles.setupGhostBtnText}>Decline</Text>
+                            <Text style={styles.setupGhostBtnText}>{t('common.decline')}</Text>
                           </Pressable>
                           <Pressable
                             style={({ pressed }) => [
@@ -2331,12 +2399,12 @@ function PeopleTab({
                             onPress={() => handleApprove(m.requestId)}
                             disabled={structureMutationBusy}
                             accessibilityRole="button"
-                            accessibilityLabel={`Approve ${memberName(m)}`}
+                            accessibilityLabel={t('requests.approveA11y', { name: memberName(m) })}
                           >
                             {approvingId === m.requestId ? (
                               <ActivityIndicator color="#fff" size="small" />
                             ) : (
-                              <Text style={styles.setupApproveBtnText}>Approve</Text>
+                              <Text style={styles.setupApproveBtnText}>{t('common.approve')}</Text>
                             )}
                           </Pressable>
                         </View>
@@ -2352,8 +2420,7 @@ function PeopleTab({
           return (
             <View style={styles.setupBody}>
               <Text style={styles.setupListHint}>
-                Claimed hands have workspace access. Unclaimed hands may stay as
-                cash-managed positions at Start.
+                {t('setup.claimedHint')}
               </Text>
               <View style={styles.setupList}>
                 {participatingMembers.map((member) => {
@@ -2385,7 +2452,7 @@ function PeopleTab({
                           {member.displayLabel || memberName(member)}
                         </Text>
                         <Text style={styles.setupListSub}>
-                          {unclaimed ? 'Unclaimed · no access' : 'Connected'}
+                          {unclaimed ? t('hands.noAccess') : t('common.connected')}
                         </Text>
                       </View>
                       <SetupStatusBadge
@@ -2404,7 +2471,7 @@ function PeopleTab({
             <View style={styles.setupBody}>
               {additionalHandRequests.length === 0 ? (
                 <Text style={styles.setupEmpty}>
-                  No Hand 2 / Hand 3 requests pending.
+                  {t('hands.nonePending')}
                 </Text>
               ) : (
                 <View style={styles.setupList}>
@@ -2418,7 +2485,7 @@ function PeopleTab({
                             {m.displayLabel || memberName(m)}
                           </Text>
                           <Text style={styles.setupListSub}>
-                            Additional hand · Hand {handNum}
+                            {t('hands.additionalMeta', { number: handNum })}
                           </Text>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -2427,9 +2494,9 @@ function PeopleTab({
                             onPress={() => handleDecline(m)}
                             disabled={structureMutationBusy}
                             accessibilityRole="button"
-                            accessibilityLabel={`Decline additional hand for ${memberName(m)}`}
+                            accessibilityLabel={t('requests.declineExtraA11y', { name: memberName(m) })}
                           >
-                            <Text style={styles.setupGhostBtnText}>Decline</Text>
+                            <Text style={styles.setupGhostBtnText}>{t('common.decline')}</Text>
                           </Pressable>
                           <Pressable
                             style={({ pressed }) => [
@@ -2440,12 +2507,12 @@ function PeopleTab({
                             onPress={() => handleApprove(m.requestId)}
                             disabled={structureMutationBusy}
                             accessibilityRole="button"
-                            accessibilityLabel={`Approve additional hand for ${memberName(m)}`}
+                            accessibilityLabel={t('requests.approveExtraA11y', { name: memberName(m) })}
                           >
                             {approvingId === m.requestId ? (
                               <ActivityIndicator color="#fff" size="small" />
                             ) : (
-                              <Text style={styles.setupApproveBtnText}>Approve</Text>
+                              <Text style={styles.setupApproveBtnText}>{t('common.approve')}</Text>
                             )}
                           </Pressable>
                         </View>
@@ -2465,10 +2532,10 @@ function PeopleTab({
                   onPress={() => setShowHandModal(true)}
                   disabled={structureMutationBusy}
                   accessibilityRole="button"
-                  accessibilityLabel="Request an additional hand"
+                  accessibilityLabel={t('hands.requestA11y')}
                 >
                   <FontAwesome name="plus" size={12} color={colors.primary} />
-                  <Text style={styles.setupGhostBtnText}>Request another hand</Text>
+                  <Text style={styles.setupGhostBtnText}>{t('hands.requestAnother')}</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -2480,30 +2547,30 @@ function PeopleTab({
               <View style={styles.setupMetricsRow}>
                 {[
                   {
-                    label: 'People',
+                    label: t('setup.people'),
                     value: String(progress.structure.peopleCount),
                   },
                   {
-                    label: 'Hands',
+                    label: t('setup.hands'),
                     value: String(progress.structure.handCount),
                   },
                   {
-                    label: 'Est. rounds',
+                    label: t('setup.rounds'),
                     value: String(progress.structure.totalRounds),
                   },
                   {
-                    label: 'Per hand',
-                    value: `$${Math.round(progress.structure.contributionPerHand).toLocaleString()}`,
+                    label: t('setup.perHand'),
+                    value: formatMoney(progress.structure.contributionPerHand),
                   },
                   {
-                    label: 'Est. pot / round',
-                    value: `$${Math.round(progress.structure.potPerRound).toLocaleString()}`,
+                    label: t('setup.potPerRound'),
+                    value: formatMoney(progress.structure.potPerRound),
                   },
                   {
-                    label: 'Organizer',
+                    label: t('setup.organizer'),
                     value: progress.structure.organizerParticipates
-                      ? 'In'
-                      : 'Out',
+                      ? t('setup.in')
+                      : t('setup.out'),
                   },
                 ].map((metric) => (
                   <View key={metric.label} style={styles.setupMetricCell}>
@@ -2519,12 +2586,11 @@ function PeopleTab({
           return (
             <View style={styles.setupBody}>
               <Text style={styles.setupListHint}>
-                Reorder positions. Confirm the order when you start the circle —
-                listing hands does not finalize review.
+                {t('payoutOrder:review.hint')}
               </Text>
               {progress.payoutOrderComplete && !progress.payoutOrderReviewed ? (
                 <Text style={styles.setupNotice}>
-                  Structure complete. Review still required at Start.
+                  {t('payoutOrder:review.stillRequired')}
                 </Text>
               ) : null}
               <View style={styles.setupList}>
@@ -2547,7 +2613,7 @@ function PeopleTab({
                           color: row.inOrder ? colors.primary : '#b45309',
                         }}
                       >
-                        {index + 1}
+                        {formatOrdinal(index + 1, language)}
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
@@ -2557,7 +2623,7 @@ function PeopleTab({
                       </Text>
                       {!row.inOrder ? (
                         <Text style={[styles.setupListSub, { color: '#b45309' }]}>
-                          Missing from order
+                          {t('payoutOrder:review.missing')}
                         </Text>
                       ) : null}
                     </View>
@@ -2567,7 +2633,7 @@ function PeopleTab({
                           onPress={() => void handleReorderHand(row.id, 'up')}
                           disabled={structureMutationBusy}
                           accessibilityRole="button"
-                          accessibilityLabel="Move up"
+                          accessibilityLabel={t('payoutOrder:review.moveUp')}
                           hitSlop={8}
                         >
                           {reorderingId === row.id ? (
@@ -2588,7 +2654,7 @@ function PeopleTab({
                           onPress={() => void handleReorderHand(row.id, 'down')}
                           disabled={structureMutationBusy}
                           accessibilityRole="button"
-                          accessibilityLabel="Move down"
+                          accessibilityLabel={t('payoutOrder:review.moveDown')}
                           hitSlop={8}
                         >
                           <FontAwesome
@@ -2611,13 +2677,14 @@ function PeopleTab({
           return (
             <View style={styles.setupBody}>
               {startBlockReason ? (
-                <Text style={styles.setupNotice}>{startBlockReason}</Text>
+                <Text style={styles.setupNotice}>
+                  {localizeStartBlockReason(t, startBlockReason)}
+                </Text>
               ) : (
                 <Text style={styles.setupListHint}>
-                  Starting locks membership, hands, and payout order
                   {needsUnclaimedConfirm
-                    ? '. You will confirm unclaimed hands first.'
-                    : '.'}
+                    ? t('setup.startBodyUnclaimed')
+                    : t('setup.startBody')}
                 </Text>
               )}
               <Pressable
@@ -2634,7 +2701,7 @@ function PeopleTab({
                 onPress={promptStartCircle}
                 disabled={structureMutationBusy || Boolean(startBlockReason)}
                 accessibilityRole="button"
-                accessibilityLabel="Start circle"
+                accessibilityLabel={t('setup.startTitle')}
                 accessibilityState={{
                   busy: startingCircle,
                   disabled: structureMutationBusy || Boolean(startBlockReason),
@@ -2645,7 +2712,7 @@ function PeopleTab({
                 ) : (
                   <>
                     <FontAwesome name="play" size={14} color="#fff" />
-                    <Text style={styles.setupPrimaryBtnText}>Start Circle</Text>
+                    <Text style={styles.setupPrimaryBtnText}>{t('setup.startAction')}</Text>
                   </>
                 )}
               </Pressable>
@@ -2670,18 +2737,18 @@ function PeopleTab({
             accessibilityState={{ expanded: inviteSectionExpanded }}
             accessibilityLabel={
               inviteSectionExpanded
-                ? 'Collapse invite people'
-                : 'Expand invite people'
+                ? t('invite.collapse')
+                : t('invite.expand')
             }
           >
             <View style={[styles.peopleIconBubble, { backgroundColor: colors.primarySoft }]}>
               <FontAwesome name="user-plus" size={14} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.peopleCardTitle}>Invite people</Text>
+              <Text style={styles.peopleCardTitle}>{t('invite.title')}</Text>
               {!inviteSectionExpanded ? (
                 <Text style={styles.peopleCardSub}>
-                  Share the code or claim links for planned hands
+                  {t('invite.collapsedHint')}
                 </Text>
               ) : null}
             </View>
@@ -2704,9 +2771,9 @@ function PeopleTab({
                     <FontAwesome name="inbox" size={14} color="#B45309" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.peopleCardTitle}>Join requests</Text>
+                    <Text style={styles.peopleCardTitle}>{t('requests.joinTitle')}</Text>
                     <Text style={styles.peopleCardSub}>
-                      {joinRequests.length} waiting · approve to grant a hand
+                      {t('requests.waitingGrant', { count: joinRequests.length })}
                     </Text>
                   </View>
                   <View style={styles.peopleCountPill}>
@@ -2723,9 +2790,9 @@ function PeopleTab({
                     <FontAwesome name="hand-o-up" size={14} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.peopleCardTitle}>Extra hands</Text>
+                    <Text style={styles.peopleCardTitle}>{t('hands.extraTitle')}</Text>
                     <Text style={styles.peopleCardSub}>
-                      Hand 2 / 3 requests for existing members
+                      {t('hands.extraHint')}
                     </Text>
                   </View>
                   <View style={styles.peopleCountPill}>
@@ -2747,29 +2814,35 @@ function PeopleTab({
               <FontAwesome name="users" size={14} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.peopleCardTitle}>Members</Text>
+              <Text style={styles.peopleCardTitle}>{t('hands.membersTitle')}</Text>
               <Text style={styles.peopleCardSub}>
-                Expand to claim, reorder, or inspect hands
+                {t('hands.membersHint')}
               </Text>
             </View>
           </View>
 
           {!payoutOrderValidation.valid ? (
             <View style={styles.validationNotice}>
-              <Text style={styles.validationTitle}>Payout order needs attention</Text>
+              <Text style={styles.validationTitle}>{t('payoutOrder:review.needsAttention')}</Text>
               {payoutOrderValidation.missingHandIds.length ? (
                 <Text style={styles.validationText}>
-                  {payoutOrderValidation.missingHandIds.length} hand(s) missing from order.
+                  {t('payoutOrder:review.missingCount', {
+                    count: payoutOrderValidation.missingHandIds.length,
+                  })}
                 </Text>
               ) : null}
               {payoutOrderValidation.duplicateHandIds.length ? (
                 <Text style={styles.validationText}>
-                  {payoutOrderValidation.duplicateHandIds.length} duplicate position(s).
+                  {t('payoutOrder:review.duplicateCount', {
+                    count: payoutOrderValidation.duplicateHandIds.length,
+                  })}
                 </Text>
               ) : null}
               {payoutOrderValidation.unknownHandIds.length ? (
                 <Text style={styles.validationText}>
-                  {payoutOrderValidation.unknownHandIds.length} unknown position(s).
+                  {t('payoutOrder:review.unknownCount', {
+                    count: payoutOrderValidation.unknownHandIds.length,
+                  })}
                 </Text>
               ) : null}
             </View>
@@ -2785,7 +2858,7 @@ function PeopleTab({
                 expanded={expandedMemberKey === group.key}
                 isLast={groupIndex === memberGroups.length - 1}
                 organizerId={circle.organizerId}
-                turnOrder={circle.turnOrder ?? []}
+                turnOrder={turnOrder}
                 payoutOrderRows={payoutOrderRows}
                 canReorder
                 canShareClaim={(hand) => isUnclaimedHand(hand) && Boolean(token)}
@@ -2802,11 +2875,11 @@ function PeopleTab({
 
         {/* Finish setup + Start Circle */}
         <View style={[styles.peopleCard, styles.peopleStartCard]}>
-          <Text style={styles.setupEyebrow}>Finish setup</Text>
-          <Text style={styles.peopleCardTitle}>Start circle</Text>
+          <Text style={styles.setupEyebrow}>{t('setup.finish')}</Text>
+          <Text style={styles.peopleCardTitle}>{t('setup.startTitle')}</Text>
           <Text style={[styles.peopleCardSub, { marginBottom: 12 }]}>
-            {progress.nextAction ||
-              'Locks membership, hands, and payout order. Contributions begin after start.'}
+            {localizeSetupNextAction(t, progress.nextAction) ||
+              t('setup.nextAction.fallback')}
           </Text>
           {renderSetupStepBody('review_and_start')}
         </View>
@@ -2820,10 +2893,9 @@ function PeopleTab({
           >
             <View style={styles.setupModalOverlay}>
               <View style={styles.setupModalSheet}>
-                <Text style={styles.setupModalTitle}>Add another hand</Text>
+                <Text style={styles.setupModalTitle}>{t('hands.addAnother')}</Text>
                 <Text style={styles.setupModalBody}>
-                  Each hand is a separate contribution and payout slot. The
-                  organizer must explicitly approve the request.
+                  {t('hands.modalBody')}
                 </Text>
                 <Pressable
                   style={styles.setupPrimaryBtn}
@@ -2835,7 +2907,7 @@ function PeopleTab({
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <Text style={styles.setupPrimaryBtnText}>
-                      Request another hand
+                      {t('hands.requestAnother')}
                     </Text>
                   )}
                 </Pressable>
@@ -2843,7 +2915,7 @@ function PeopleTab({
                   style={styles.setupModalCancel}
                   onPress={() => setShowHandModal(false)}
                 >
-                  <Text style={styles.setupModalCancelText}>Cancel</Text>
+                  <Text style={styles.setupModalCancelText}>{t('common.cancel')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -2860,12 +2932,14 @@ function PeopleTab({
       {/* Invite code */}
       <View style={styles.peopleCard}>
         <View style={styles.setupCodeBlock}>
-          <Text style={styles.setupMicroLabel}>Circle invite code</Text>
+          <Text style={styles.setupMicroLabel}>{t('invite.circleCode')}</Text>
           <View style={styles.setupCodeRow}>
             <Text
               selectable
               style={styles.setupCodeValue}
-              accessibilityLabel={`Invite code ${shortCode || 'unavailable'}`}
+              accessibilityLabel={t('invite.codeA11y', {
+                code: shortCode || t('common.unavailable'),
+              })}
             >
               {shortCode || '—'}
             </Text>
@@ -2878,7 +2952,7 @@ function PeopleTab({
                 disabled={!shortCode}
                 onPress={() => void handleCopyCircleCode()}
                 accessibilityRole="button"
-                accessibilityLabel="Copy circle code"
+                accessibilityLabel={t('invite.copy')}
               >
                 <FontAwesome name="copy" size={15} color={colors.text} />
               </Pressable>
@@ -2891,21 +2965,21 @@ function PeopleTab({
                 onPress={async () => {
                   if (!shortCode) {
                     Alert.alert(
-                      'Code unavailable',
-                      'The circle code is not available for sharing right now.',
+                      t('invite.codeUnavailableTitle'),
+                      t('invite.codeUnavailable'),
                     );
                     return;
                   }
                   try {
                     await Share.share({
-                      message: `Join my savings circle on CircuSave!\n\nCode: ${shortCode}\n\nOr use this link: https://app.circusave.com/invite/${shortCode}`,
+                      message: t('invite.shareMessage', { code: shortCode }),
                     });
                   } catch {
                     /* cancelled */
                   }
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Share circle code"
+                accessibilityLabel={t('invite.share')}
               >
                 <FontAwesome name="share-alt" size={15} color={colors.primary} />
               </Pressable>
@@ -2917,10 +2991,10 @@ function PeopleTab({
             style={[styles.setupPrimaryBtn, { marginTop: 12 }]}
             onPress={() => router.push(circleInviteHref(circle.id))}
             accessibilityRole="button"
-            accessibilityLabel="Invite a member"
+            accessibilityLabel={t('invite.inviteMember')}
           >
             <FontAwesome name="user-plus" size={15} color="#fff" />
-            <Text style={styles.setupPrimaryBtnText}>Invite a member</Text>
+            <Text style={styles.setupPrimaryBtnText}>{t('invite.inviteMember')}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -2933,11 +3007,11 @@ function PeopleTab({
               <FontAwesome name="clock-o" size={14} color="#B45309" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.peopleCardTitle}>{peoplePendingSectionTitle()}</Text>
+              <Text style={styles.peopleCardTitle}>{t('requests.pendingTitle')}</Text>
               <Text style={styles.peopleCardSub}>
                 {circleNotStarted
-                  ? `${waitlist.length} waiting for review`
-                  : 'Structure locked — cannot approve after start'}
+                  ? t('requests.waiting', { count: waitlist.length })
+                  : t('requests.structureLocked')}
               </Text>
             </View>
             <View style={styles.peopleCountPill}>
@@ -2958,8 +3032,10 @@ function PeopleTab({
                 <Text style={styles.setupListSub}>
                   {m.isAdditionalHand ||
                   Number(m.handNumber ?? m.hand_number ?? 1) > 1
-                    ? `Extra hand · Hand ${m.handNumber ?? m.hand_number ?? 1}`
-                    : m.phone || 'Join request'}
+                    ? t('hands.extraMeta', {
+                        number: m.handNumber ?? m.hand_number ?? 1,
+                      })
+                    : m.phone || t('requests.joinTitle')}
                 </Text>
               </View>
               {circleNotStarted ? (
@@ -2969,10 +3045,10 @@ function PeopleTab({
                     onPress={() => handleDecline(m)}
                     disabled={structureMutationBusy}
                     accessibilityRole="button"
-                    accessibilityLabel={`Decline ${memberName(m)}`}
+                    accessibilityLabel={t('requests.declineA11y', { name: memberName(m) })}
                   >
                     <Text style={[styles.setupGhostBtnText, { color: colors.text }]}>
-                      Decline
+                      {t('common.decline')}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -2980,17 +3056,17 @@ function PeopleTab({
                     onPress={() => handleApprove(m.requestId)}
                     disabled={structureMutationBusy}
                     accessibilityRole="button"
-                    accessibilityLabel={`Approve ${memberName(m)}`}
+                    accessibilityLabel={t('requests.approveA11y', { name: memberName(m) })}
                   >
                     {approvingId === m.requestId ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                      <Text style={styles.setupApproveBtnText}>Approve</Text>
+                      <Text style={styles.setupApproveBtnText}>{t('common.approve')}</Text>
                     )}
                   </Pressable>
                 </View>
               ) : (
-                <StatusBadge label="Locked" tone="muted" />
+                <StatusBadge label={t('common.locked')} tone="muted" />
               )}
             </View>
           ))}
@@ -3000,9 +3076,9 @@ function PeopleTab({
       {!isOrganizer && showPendingAdditionalHand ? (
         <View style={styles.peopleCard}>
           <View style={styles.validationNotice}>
-            <Text style={styles.validationTitle}>Additional hand pending</Text>
+            <Text style={styles.validationTitle}>{t('hands.pendingTitle')}</Text>
             <Text style={styles.validationText}>
-              Hand {pendingAdditionalHandNumber} is waiting for organizer approval.
+              {t('hands.pendingBody', { number: pendingAdditionalHandNumber })}
             </Text>
           </View>
         </View>
@@ -3015,25 +3091,25 @@ function PeopleTab({
             <FontAwesome name="users" size={14} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.peopleCardTitle}>{peopleHandsSectionTitle()}</Text>
+            <Text style={styles.peopleCardTitle}>{t('hands.title')}</Text>
             <Text style={styles.peopleCardSub}>
-              {formatHandsPeopleMetrics({
+              {formatLocalizedHandsPeople(t, {
                 handCount: circle.handCount ?? members.length,
                 uniqueMemberCount: circle.uniqueMemberCount,
                 fallbackHandCount: members.length,
               })}
-              {circleNotStarted ? ' · Planned' : ' · Live'}
+              {` · ${circleNotStarted ? t('hands.planned') : t('hands.live')}`}
             </Text>
           </View>
         </View>
         {circleNotStarted ? (
           <Text style={[styles.peopleCardSub, { marginBottom: 8 }]}>
-            Planned hands become live contribution positions after start.
+            {t('hands.plannedHint')}
           </Text>
         ) : null}
         {!hasSchedule ? (
           <Text style={[styles.peopleCardSub, { marginBottom: 8 }]}>
-            Payout order is not available yet.
+            {t('payoutOrder:review.unavailable')}
           </Text>
         ) : null}
 
@@ -3047,7 +3123,7 @@ function PeopleTab({
               expanded={expandedMemberKey === group.key}
               isLast={groupIndex === memberGroups.length - 1}
               organizerId={circle.organizerId}
-              turnOrder={circle.turnOrder ?? []}
+              turnOrder={turnOrder}
               payoutOrderRows={payoutOrderRows}
               canReorder={false}
               canShareClaim={(hand) =>
@@ -3058,7 +3134,7 @@ function PeopleTab({
               }
               sharingClaimId={sharingClaimId}
               reorderingId={null}
-              metaExtra={hasSchedule ? ' · See Round for dues' : ''}
+              metaExtra={hasSchedule ? t('hands.seeRound') : ''}
               onToggle={() => toggleMemberExpanded(group.key)}
               onShareClaim={(hand) => void handleShareClaimInvite(hand)}
               onReorder={() => {}}
@@ -3091,11 +3167,10 @@ function PeopleTab({
                   >
                     <FontAwesome name="hand-o-up" size={24} color={colors.primary} />
                   </View>
-                  <Text style={styles.setupModalTitle}>Add another hand</Text>
+                  <Text style={styles.setupModalTitle}>{t('hands.addAnother')}</Text>
                 </View>
                 <Text style={styles.setupModalBody}>
-                  Each hand is a separate contribution and payout slot (max 3). The
-                  organizer must approve Hand 2 / Hand 3 requests.
+                  {t('hands.modalBody')}
                 </Text>
                 <Pressable
                   style={styles.setupPrimaryBtn}
@@ -3107,7 +3182,7 @@ function PeopleTab({
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <Text style={styles.setupPrimaryBtnText}>
-                      Request another hand
+                      {t('hands.requestAnother')}
                     </Text>
                   )}
                 </Pressable>
@@ -3115,7 +3190,7 @@ function PeopleTab({
                   style={styles.setupModalCancel}
                   onPress={() => setShowHandModal(false)}
                 >
-                  <Text style={styles.setupModalCancelText}>Cancel</Text>
+                  <Text style={styles.setupModalCancelText}>{t('common.cancel')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -3128,25 +3203,26 @@ function PeopleTab({
             onPress={() => setShowHandModal(true)}
             disabled={structureMutationBusy}
             accessibilityRole="button"
-            accessibilityLabel="Request an additional hand in this circle"
+            accessibilityLabel={t('hands.requestCircleA11y')}
           >
             <FontAwesome name="plus" size={14} color={colors.primary} />
-            <Text style={styles.peopleDashedBtnText}>Add another hand</Text>
+            <Text style={styles.peopleDashedBtnText}>{t('hands.addAnother')}</Text>
           </Pressable>
         </>
       ) : null}
 
       {showSetupOrganizerActions ? (
         <View style={[styles.peopleCard, styles.peopleStartCard]}>
-          <Text style={styles.peopleCardTitle}>Start circle</Text>
+          <Text style={styles.peopleCardTitle}>{t('setup.startTitle')}</Text>
           {startBlockReason ? (
             <Text style={[styles.peopleCardSub, { marginBottom: 12 }]}>
-              {startBlockReason}
+              {localizeStartBlockReason(t, startBlockReason)}
             </Text>
           ) : (
             <Text style={[styles.peopleCardSub, { marginBottom: 12 }]}>
-              Starting locks membership, hands, and payout order
-              {needsUnclaimedConfirm ? '. You will confirm unclaimed hands first.' : '.'}
+              {needsUnclaimedConfirm
+                ? t('setup.startBodyUnclaimed')
+                : t('setup.startBody')}
             </Text>
           )}
           <Pressable
@@ -3158,7 +3234,7 @@ function PeopleTab({
             onPress={promptStartCircle}
             disabled={structureMutationBusy}
             accessibilityRole="button"
-            accessibilityLabel="Start circle"
+            accessibilityLabel={t('setup.startTitle')}
             accessibilityState={{ busy: startingCircle, disabled: structureMutationBusy }}
           >
             {startingCircle ? (
@@ -3166,7 +3242,7 @@ function PeopleTab({
             ) : (
               <>
                 <FontAwesome name="play" size={14} color="#ffffff" />
-                <Text style={styles.setupPrimaryBtnText}>Start Circle</Text>
+                <Text style={styles.setupPrimaryBtnText}>{t('setup.startAction')}</Text>
               </>
             )}
           </Pressable>
@@ -3215,6 +3291,8 @@ function ExpandableMemberTile({
   onShareClaim: (hand: BackendCircleMember) => void;
   onReorder: (handId: string, move: 'up' | 'down') => void;
 }) {
+  const { t, i18n: translation } = useTranslation(['people', 'payoutOrder']);
+  const language = translation.resolvedLanguage || translation.language;
   const first = hands[0];
   if (!first) {
     return null;
@@ -3238,7 +3316,10 @@ function ExpandableMemberTile({
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded: showDetails }}
-        accessibilityLabel={`${showDetails ? 'Collapse' : 'Expand'} details for ${display}`}
+        accessibilityLabel={t(
+          showDetails ? 'hands.collapseA11y' : 'hands.expandA11y',
+          { name: display },
+        )}
       >
         <View style={styles.initialsAvatar}>
           <Text style={styles.initialsText}>{initialsForDisplay(display)}</Text>
@@ -3250,12 +3331,12 @@ function ExpandableMemberTile({
             </Text>
             {organizer ? (
               <View style={styles.peopleRolePill}>
-                <Text style={styles.peopleRolePillText}>Org</Text>
+                <Text style={styles.peopleRolePillText}>{t('hands.organizerShort')}</Text>
               </View>
             ) : null}
           </View>
           <Text style={styles.compactMemberMeta}>
-            {hands.length} hand{hands.length === 1 ? '' : 's'}
+            {t('hands.count', { count: hands.length })}
             {metaExtra || ''}
           </Text>
         </View>
@@ -3273,7 +3354,7 @@ function ExpandableMemberTile({
                 : styles.peopleAccessPillTextOff,
             ]}
           >
-            {connected ? 'Connected' : 'Unclaimed'}
+            {connected ? t('common.connected') : t('common.unclaimed')}
           </Text>
         </View>
         <FontAwesome
@@ -3317,19 +3398,21 @@ function ExpandableMemberTile({
                       color: orderIndex >= 0 ? colors.primary : '#B45309',
                     }}
                   >
-                    {orderIndex >= 0 ? orderIndex + 1 : '—'}
+                    {orderIndex >= 0 ? formatOrdinal(orderIndex + 1, language) : '—'}
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.handDetailTitle}>
                     {hand.handLabel ||
-                      `Hand ${hand.handNumber ?? hand.hand_number ?? handIndex + 1}`}
+                      t('hands.handLabel', {
+                        number: hand.handNumber ?? hand.hand_number ?? handIndex + 1,
+                      })}
                   </Text>
                   <Text style={styles.handDetailMeta}>
-                    {handClaimStatusLabel(hand)}
+                    {isUnclaimedHand(hand) ? t('hands.awaitingClaim') : t('common.connected')}
                     {orderIndex >= 0
-                      ? ` · Position ${orderIndex + 1}`
-                      : ' · Not in order'}
+                      ? ` · ${t('payoutOrder:review.position', { position: orderIndex + 1 })}`
+                      : ` · ${t('payoutOrder:review.notInOrder')}`}
                   </Text>
                 </View>
                 {share ? (
@@ -3338,12 +3421,12 @@ function ExpandableMemberTile({
                     onPress={() => onShareClaim(hand)}
                     disabled={sharingClaimId === hand.id}
                     accessibilityRole="button"
-                    accessibilityLabel={`Share claim invite for ${memberName(hand)}`}
+                    accessibilityLabel={t('hands.claimA11y', { name: memberName(hand) })}
                   >
                     {sharingClaimId === hand.id ? (
                       <ActivityIndicator size="small" color={colors.primary} />
                     ) : (
-                      <Text style={styles.handClaimAction}>Claim</Text>
+                      <Text style={styles.handClaimAction}>{t('hands.claim')}</Text>
                     )}
                   </Pressable>
                 ) : null}
@@ -3353,7 +3436,9 @@ function ExpandableMemberTile({
                       onPress={() => onReorder(hand.id, 'up')}
                       disabled={Boolean(reorderingId) || payoutRowIndex === 0}
                       accessibilityRole="button"
-                      accessibilityLabel={`Move ${memberName(hand)} up`}
+                      accessibilityLabel={t('payoutOrder:review.moveMemberUp', {
+                        name: memberName(hand),
+                      })}
                       style={{
                         opacity: payoutRowIndex === 0 ? 0.25 : 1,
                         padding: 6,
@@ -3372,7 +3457,9 @@ function ExpandableMemberTile({
                         payoutRowIndex === payoutOrderRows.length - 1
                       }
                       accessibilityRole="button"
-                      accessibilityLabel={`Move ${memberName(hand)} down`}
+                      accessibilityLabel={t('payoutOrder:review.moveMemberDown', {
+                        name: memberName(hand),
+                      })}
                       style={{
                         opacity:
                           payoutRowIndex === payoutOrderRows.length - 1
@@ -3405,25 +3492,26 @@ function BlockedAccessCard({
   circleName: string;
   viewerRole: string;
 }) {
+  const { t } = useTranslation('circleWorkspace');
   const label =
     viewerRole === 'none'
-      ? 'No active membership'
-      : 'Access unavailable';
+      ? t('access.noMembership')
+      : t('access.unavailable');
 
   return (
     <View style={styles.blockedCard}>
       <FontAwesome name="lock" size={34} color={colors.warning} />
       <Text style={styles.blockedTitle}>{label}</Text>
       <Text style={styles.blockedText}>
-        You do not have access to {circleName} with this account.
+        {t('access.message', { circleName })}
       </Text>
       <Pressable
         style={styles.retryButton}
         onPress={() => router.replace(myCirclesHref)}
         accessibilityRole="button"
-        accessibilityLabel="Back to My Circles"
+        accessibilityLabel={t('accessibility.backToCircles')}
       >
-        <Text style={styles.retryButtonText}>Back to My Circles</Text>
+        <Text style={styles.retryButtonText}>{t('access.back')}</Text>
       </Pressable>
     </View>
   );
@@ -3512,16 +3600,23 @@ function SetupStatusBadge({
   status: SetupStepStatus;
   compact?: boolean;
 }) {
+  const { t } = useTranslation('people');
   const tone = setupStatusTone(status);
   const label = compact
     ? status === 'action_required'
-      ? 'Action'
+      ? t('setup.status.action')
       : status === 'waiting'
-        ? 'Waiting'
+        ? t('setup.status.waiting')
         : status === 'complete'
-          ? 'Done'
-          : 'Blocked'
-    : setupStepStatusLabel(status);
+          ? t('setup.status.done')
+          : t('setup.status.blocked')
+    : status === 'action_required'
+      ? t('setup.status.actionRequired')
+      : status === 'waiting'
+        ? t('setup.status.waiting')
+        : status === 'complete'
+          ? t('setup.status.complete')
+          : t('setup.status.blocked');
   return (
     <View
       style={{
@@ -3574,11 +3669,94 @@ function StatusBadge({
 }
 
 function getOrderedMembers(circle: BackendCircleDetail) {
-  return [...circle.members].sort((a, b) => {
-    const posA = circle.turnOrder.indexOf(a.id);
-    const posB = circle.turnOrder.indexOf(b.id);
+  const members = Array.isArray(circle.members)
+    ? circle.members.filter(
+        (member): member is BackendCircleMember =>
+          Boolean(member && typeof member === 'object' && typeof member.id === 'string'),
+      )
+    : [];
+  const turnOrder = Array.isArray(circle.turnOrder)
+    ? circle.turnOrder.filter((id): id is string => typeof id === 'string')
+    : [];
+  return [...members].sort((a, b) => {
+    const posA = turnOrder.indexOf(a.id);
+    const posB = turnOrder.indexOf(b.id);
     return normalizeSortPosition(posA) - normalizeSortPosition(posB);
   });
+}
+
+function localizedFrequency(t: TFunction, value: string): string {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'weekly' || normalized === 'biweekly' || normalized === 'monthly') {
+    return t(`frequency.${normalized}`);
+  }
+  return capitalizeFrequency(value);
+}
+
+function localizeStartBlockReason(t: TFunction, reason: string): string {
+  const keys: Record<string, string> = {
+    'This circle has already been started or completed.': 'start.block.alreadyStarted',
+    'Approve or decline all pending join requests before starting.': 'start.block.pendingJoin',
+    'Approve or decline all pending additional-hand requests before starting.':
+      'start.block.pendingExtra',
+    'A circle needs at least 2 participating hands before it can start.':
+      'start.block.minimumHands',
+    'The payout order must include every participating hand.': 'start.block.payoutOrder',
+  };
+  return keys[reason] ? t(keys[reason]) : t('errors.generic');
+}
+
+function localizeSetupNextAction(t: TFunction, action: string | null): string | null {
+  if (!action) return null;
+  const keys: Record<string, string> = {
+    'Add planned members so the circle has 2 or more hands.':
+      'setup.nextAction.addPlannedMembers',
+    'Refresh the circle and share the invite code when it appears.':
+      'setup.nextAction.refreshInvite',
+    'Approve or decline pending join requests.': 'setup.nextAction.reviewJoins',
+    'Add planned members first.': 'setup.nextAction.addMembersFirst',
+    'Share claim invites for unclaimed hands, or keep them unclaimed for cash management at Start.':
+      'setup.nextAction.shareClaims',
+    'Approve or decline Hand 2 / Hand 3 requests.': 'setup.nextAction.reviewExtraHands',
+    'Add planned members until there are 2 or more hands.': 'setup.nextAction.addTwoHands',
+    'Confirm contribution amount on the circle detail.': 'setup.nextAction.confirmAmount',
+    'Add planned hands before ordering payouts.': 'setup.nextAction.addBeforeOrdering',
+    'Reorder hands so every participating hand appears exactly once.':
+      'setup.nextAction.reorderEveryHand',
+    'Review positions, then confirm the payout order in the Start Circle flow.':
+      'setup.nextAction.confirmPayout',
+    'Complete the payout order structure first.': 'setup.nextAction.completePayout',
+    'Review and confirm payout order, then start the circle.':
+      'setup.nextAction.reviewThenStart',
+    'Start the circle when ready.': 'setup.nextAction.startWhenReady',
+  };
+  return keys[action] ? t(keys[action]) : t('setup.nextAction.fallback');
+}
+
+function formatLocalizedHandsPeople(
+  t: TFunction,
+  input: {
+    handCount?: number | null;
+    memberCount?: number | null;
+    uniqueMemberCount?: number | null;
+    fallbackHandCount?: number;
+  },
+): string {
+  const hands =
+    typeof input.handCount === 'number'
+      ? input.handCount
+      : typeof input.memberCount === 'number'
+        ? input.memberCount
+        : Number(input.fallbackHandCount || 0);
+  const people =
+    typeof input.uniqueMemberCount === 'number' ? input.uniqueMemberCount : null;
+  const handLabel = t('hands.count', { count: hands });
+  return people === null
+    ? handLabel
+    : t('hands.metrics', {
+        hands: handLabel,
+        people: t('hands.peopleCount', { count: people }),
+      });
 }
 
 function normalizeSortPosition(position: number) {

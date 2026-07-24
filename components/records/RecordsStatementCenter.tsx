@@ -54,6 +54,8 @@ type SubjectTarget =
   | { kind: 'user'; userId: string; displayName: string }
   | { kind: 'hand'; handId: string; displayName: string };
 
+type StatementLedgerPreviewEntry = MemberStatementSnapshot['ledger'][number];
+
 function displayMoney(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === '') return 'Unavailable';
   if (value === 'Unavailable') return 'Unavailable';
@@ -90,6 +92,32 @@ function ledgerAmountLabel(entry: BackendLedgerEntry): string {
   if (typeof entry.amount !== 'number') return '';
   const sign = entry.amount < 0 ? '-' : '';
   return `${sign}$${Math.abs(entry.amount).toFixed(2)}`;
+}
+
+function dedupeById<T extends { id: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const entry of entries) {
+    const id = String(entry.id || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(entry);
+  }
+  return unique;
+}
+
+function ledgerRenderKey(
+  entry: Pick<BackendLedgerEntry, 'id' | 'created_at' | 'at'>,
+  index: number,
+): string {
+  return `${entry.id}:${entry.created_at || entry.at || 'no-time'}:${index}`;
+}
+
+function statementLedgerRenderKey(
+  entry: Pick<StatementLedgerPreviewEntry, 'id' | 'at' | 'reference'>,
+  index: number,
+): string {
+  return `${entry.id}:${entry.at || entry.reference || 'no-time'}:${index}`;
 }
 
 function entryMemberName(
@@ -469,8 +497,9 @@ function CircleRecordsPanel({
   members: BackendCircleMember[];
   isPremium: boolean;
 }) {
-  const visibleEntries = isPremium ? entries : entries.slice(0, 10);
-  const hasMore = !isPremium && entries.length > 10;
+  const uniqueEntries = useMemo(() => dedupeById(entries), [entries]);
+  const visibleEntries = isPremium ? uniqueEntries : uniqueEntries.slice(0, 10);
+  const hasMore = !isPremium && uniqueEntries.length > 10;
 
   return (
     <View style={styles.panel}>
@@ -481,19 +510,19 @@ function CircleRecordsPanel({
         <View style={{ flex: 1 }}>
           <Text style={styles.panelTitle}>Circle activity</Text>
           <Text style={styles.panelSub}>
-            {entries.length} ledger event{entries.length === 1 ? '' : 's'}
+            {uniqueEntries.length} ledger event{uniqueEntries.length === 1 ? '' : 's'}
           </Text>
         </View>
       </View>
 
-      {entries.length === 0 ? (
+      {uniqueEntries.length === 0 ? (
         <View style={styles.emptyBlock}>
           <FontAwesome name="book" size={28} color={colors.subtle} />
           <Text style={styles.emptyTitle}>No activity yet</Text>
         </View>
       ) : (
         visibleEntries.map((entry, index) => (
-          <View key={entry.id}>
+          <View key={ledgerRenderKey(entry, index)}>
             <View style={styles.ledgerRow}>
               <View
                 style={[
@@ -851,6 +880,11 @@ function DocumentsPanel({
 }
 
 function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
+  const uniqueLedgerEntries = useMemo(
+    () => dedupeById(snapshot.ledger || []),
+    [snapshot.ledger],
+  );
+
   return (
     <View>
       <View style={styles.previewHero}>
@@ -946,11 +980,11 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
       ))}
 
       <Text style={styles.sectionLabel}>Ledger history</Text>
-      {(snapshot.ledger || []).length === 0 ? (
+      {uniqueLedgerEntries.length === 0 ? (
         <Text style={styles.sectionHint}>No related ledger entries for this period.</Text>
       ) : (
-        snapshot.ledger.slice(0, 50).map((entry) => (
-          <View key={entry.id} style={styles.ledgerPreviewRow}>
+        uniqueLedgerEntries.slice(0, 50).map((entry, index) => (
+          <View key={statementLedgerRenderKey(entry, index)} style={styles.ledgerPreviewRow}>
             <Text style={styles.rowTitle}>{entry.eventType}</Text>
             <Text style={styles.rowMeta}>
               {entry.at || '—'} · R{entry.roundNumber ?? '—'} ·{' '}

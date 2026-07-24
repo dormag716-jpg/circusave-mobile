@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -21,20 +22,13 @@ import {
   type BackendInvitePreview,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import {
-  joinOutcomeMessage,
-  joinOutcomeTitle,
-  resolveJoinOutcome,
-  type JoinOutcome,
-} from '@/lib/joinOutcome';
+import { formatCurrency } from '@/lib/i18n/formatters';
+import { resolveJoinOutcome, type JoinOutcome } from '@/lib/joinOutcome';
 import { dashboardHref } from '@/lib/navigation';
 import { colors, spacing } from '@/lib/theme';
 
-function cap(s: string) {
-  return s ? s[0].toUpperCase() + s.slice(1) : '';
-}
-
 export default function JoinCircleScreen() {
+  const { t, i18n } = useTranslation('joinCircle');
   const { session, setPostAuthTarget } = useAuthSession();
   const token = session?.session.token;
   const viewerUserId = session?.user?.id;
@@ -47,7 +41,7 @@ export default function JoinCircleScreen() {
 
   async function lookup() {
     if (!code.trim()) {
-      Alert.alert('Enter a code', 'Type the code you received from the organizer.');
+      Alert.alert(t('enterCodeTitle'), t('enterCodeMessage'));
       return;
     }
     if (!token) {
@@ -63,11 +57,9 @@ export default function JoinCircleScreen() {
       const { circleId, preview: p } = await resolveCircleCode(token, code);
       setPreview(p);
       setResolvedId(circleId);
-    } catch (e) {
-      Alert.alert(
-        'Circle not found',
-        e instanceof Error ? e.message : 'Check the code and try again.',
-      );
+    } catch (error) {
+      console.error('Unable to resolve circle code.', error);
+      Alert.alert(t('notFoundTitle'), t('notFoundMessage'));
     } finally {
       setResolving(false);
     }
@@ -79,11 +71,9 @@ export default function JoinCircleScreen() {
     try {
       const result = await requestJoin(token, resolvedId);
       setJoinOutcome(resolveJoinOutcome(result, viewerUserId));
-    } catch (e) {
-      Alert.alert(
-        'Could not join',
-        e instanceof Error ? e.message : 'An error occurred.',
-      );
+    } catch (error) {
+      console.error('Unable to request circle membership.', error);
+      Alert.alert(t('joinErrorTitle'), t('genericError'));
     } finally {
       setJoining(false);
     }
@@ -115,7 +105,7 @@ export default function JoinCircleScreen() {
             style={sty.back}
             onPress={() => router.replace(dashboardHref)}
             accessibilityRole="button"
-            accessibilityLabel="Back to dashboard"
+            accessibilityLabel={t('backDashboard')}
           >
             <FontAwesome name="angle-left" size={26} color={colors.primary} />
           </Pressable>
@@ -125,28 +115,28 @@ export default function JoinCircleScreen() {
             <View style={sty.heroIcon}>
               <FontAwesome name="key" size={34} color={colors.primary} />
             </View>
-            <Text style={sty.heroTitle}>Join a Circle</Text>
+            <Text style={sty.heroTitle}>{t('title')}</Text>
             <Text style={sty.heroSub}>
-              Enter the unique code shared by the organizer to request access.
+              {t('subtitle')}
             </Text>
           </View>
 
           {/* Code input */}
           <View style={sty.card}>
-            <Text style={sty.lbl}>CIRCLE CODE</Text>
+            <Text style={sty.lbl}>{t('codeLabel')}</Text>
             <View style={sty.row}>
               <TextInput
                 style={sty.input}
                 value={code}
                 onChangeText={onCode}
-                placeholder="CSX-XXXXXXXX"
+                placeholder={t('codePlaceholder')}
                 placeholderTextColor={colors.subtle}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 returnKeyType="search"
                 onSubmitEditing={lookup}
                 maxLength={16}
-                accessibilityLabel="Circle code"
+                accessibilityLabel={t('codeLabel')}
               />
               <Pressable
                 style={({ pressed }) => [
@@ -157,7 +147,7 @@ export default function JoinCircleScreen() {
                 onPress={lookup}
                 disabled={resolving || !code.trim()}
                 accessibilityRole="button"
-                accessibilityLabel="Look up circle"
+                accessibilityLabel={t('lookup')}
               >
                 {resolving ? (
                   <ActivityIndicator color="#fff" size="small" />
@@ -167,10 +157,7 @@ export default function JoinCircleScreen() {
               </Pressable>
             </View>
             <Text style={sty.hint}>
-              Codes look like{' '}
-              <Text style={{ fontWeight: '800', color: colors.primaryDark }}>
-                CSX-A1B2C3D4
-              </Text>
+              {t('codeHint', { example: 'CSX-A1B2C3D4' })}
             </Text>
           </View>
 
@@ -185,11 +172,20 @@ export default function JoinCircleScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={sty.previewName}>{preview.name}</Text>
                   <Text style={sty.previewOrg}>
-                    by {preview.organizerName ?? preview.organizer_name ?? 'Organizer'}
+                    {t('organizerBy', {
+                      name:
+                        preview.organizerName ??
+                        preview.organizer_name ??
+                        t('organizerFallback'),
+                    })}
                   </Text>
                 </View>
                 <View style={sty.badge}>
-                  <Text style={sty.badgeTxt}>{cap(preview.status ?? 'Active')}</Text>
+                  <Text style={sty.badgeTxt}>
+                    {t(`status.${String(preview.status ?? 'active').toLowerCase()}`, {
+                      defaultValue: String(preview.status ?? 'active'),
+                    })}
+                  </Text>
                 </View>
               </View>
 
@@ -198,9 +194,12 @@ export default function JoinCircleScreen() {
                 <View style={sty.stat}>
                   <FontAwesome name="dollar" size={13} color={colors.primary} />
                   <View style={{ marginLeft: 8 }}>
-                    <Text style={sty.statLbl}>Contribution</Text>
+                    <Text style={sty.statLbl}>{t('contribution')}</Text>
                     <Text style={sty.statVal}>
-                      ${preview.contributionAmount ?? preview.contribution_amount ?? '\u2014'}
+                      {formatPreviewAmount(
+                        preview.contributionAmount ?? preview.contribution_amount,
+                        i18n.resolvedLanguage || i18n.language,
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -208,15 +207,19 @@ export default function JoinCircleScreen() {
                 <View style={sty.stat}>
                   <FontAwesome name="refresh" size={13} color={colors.primary} />
                   <View style={{ marginLeft: 8 }}>
-                    <Text style={sty.statLbl}>Frequency</Text>
-                    <Text style={sty.statVal}>{cap(preview.frequency)}</Text>
+                    <Text style={sty.statLbl}>{t('frequency')}</Text>
+                    <Text style={sty.statVal}>
+                      {t(`frequencyValue.${String(preview.frequency).toLowerCase()}`, {
+                        defaultValue: preview.frequency,
+                      })}
+                    </Text>
                   </View>
                 </View>
                 <View style={sty.divider} />
                 <View style={sty.stat}>
                   <FontAwesome name="users" size={13} color={colors.primary} />
                   <View style={{ marginLeft: 8 }}>
-                    <Text style={sty.statLbl}>Members</Text>
+                    <Text style={sty.statLbl}>{t('members')}</Text>
                     <Text style={sty.statVal}>
                       {preview.membersCount ?? preview.members_count ?? '\u2014'}
                     </Text>
@@ -228,9 +231,7 @@ export default function JoinCircleScreen() {
               <View style={sty.infoBanner}>
                 <FontAwesome name="info-circle" size={14} color="#2563eb" />
                 <Text style={sty.infoTxt}>
-                  If the organizer already added your phone or email, you may
-                  claim your hand right away. Otherwise your request waits for
-                  organizer approval.
+                  {t('previewInfo')}
                 </Text>
               </View>
 
@@ -244,14 +245,14 @@ export default function JoinCircleScreen() {
                 onPress={join}
                 disabled={joining}
                 accessibilityRole="button"
-                accessibilityLabel="Request to join this circle"
+                accessibilityLabel={t('requestAccessibility')}
               >
                 {joining ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
                     <FontAwesome name="hand-o-up" size={18} color="#fff" />
-                    <Text style={sty.joinTxt}>Join Circle</Text>
+                    <Text style={sty.joinTxt}>{t('joinCircle')}</Text>
                   </>
                 )}
               </Pressable>
@@ -279,17 +280,19 @@ export default function JoinCircleScreen() {
                   joinOutcome === 'pending' && sty.pendingTitle,
                 ]}
               >
-                {joinOutcomeTitle(joinOutcome)}
+                {t(`outcome.${joinOutcome}Title`)}
               </Text>
               <Text style={sty.sucTxt}>
-                {joinOutcomeMessage(joinOutcome, preview?.name)}
+                {t(`outcome.${joinOutcome}Message`, {
+                  circleName: preview?.name || t('outcome.circleFallback'),
+                })}
               </Text>
               <Pressable
                 style={sty.doneBtn}
                 onPress={() => router.replace(dashboardHref)}
                 accessibilityRole="button"
               >
-                <Text style={sty.doneTxt}>Back to Dashboard</Text>
+                <Text style={sty.doneTxt}>{t('backDashboardAction')}</Text>
               </Pressable>
               <Pressable
                 style={sty.anotherBtn}
@@ -300,7 +303,7 @@ export default function JoinCircleScreen() {
                   setJoinOutcome(null);
                 }}
               >
-                <Text style={sty.anotherTxt}>Join another circle</Text>
+                <Text style={sty.anotherTxt}>{t('joinAnother')}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -309,7 +312,7 @@ export default function JoinCircleScreen() {
           {!token ? (
             <View style={sty.authNudge}>
               <Text style={sty.authTxt}>
-                You need to be signed in to join a circle.
+                {t('signInRequired')}
               </Text>
               <Pressable
                 style={sty.joinBtn}
@@ -319,7 +322,7 @@ export default function JoinCircleScreen() {
                 }}
                 accessibilityRole="button"
               >
-                <Text style={sty.joinTxt}>Sign In</Text>
+                <Text style={sty.joinTxt}>{t('signIn')}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -327,6 +330,14 @@ export default function JoinCircleScreen() {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function formatPreviewAmount(
+  value: number | string | null | undefined,
+  language: string,
+): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? formatCurrency(amount, language) : '\u2014';
 }
 
 const sty = StyleSheet.create({

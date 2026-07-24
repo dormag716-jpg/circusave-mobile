@@ -1,0 +1,165 @@
+{
+  "landing": {
+    "loading": "Loading circle capacity",
+    "title": "Start a new Circle",
+    "subtitle": "Create a trusted savings group with family or friends.\nSimple, transparent, and secure.",
+    "planNote": "Free plan: 1 open circle at a time (setup or active). Complete a circle to free your slot, or upgrade for unlimited circles.",
+    "ledger": "Authoritative ledger",
+    "trusted": "Trusted members only",
+    "reminders": "Automatic reminders",
+    "limitTitle": "Free plan limit",
+    "limitMessage": "The free plan allows one open circle at a time. Complete your open circle or upgrade for unlimited circles.",
+    "continueCircle": "Continue “{{circleName}}”",
+    "openCircle": "Open “{{circleName}}”",
+    "circleFallback": "your circle",
+    "myCircles": "Go to My Circles",
+    "premium": "View Premium plans",
+    "create": "Create New Circle",
+    "createAccessibility": "Create new circle",
+    "note": "Free: 1 open circle · Up to 20 members · Takes about 2 minutes"
+  },
+  "steps": {
+    "basics": "Circle Basics",
+    "contribution": "Contribution Setup",
+    "organizer": "Organizer Participation",
+    "members": "Planned Members",
+    "schedule_preview": "Schedule",
+    "review": "Review and Create"
+  },
+  "progress": {
+    "step": "Step {{current}} of {{total}}"
+  },
+  "draft": {
+    "resumeTitle": "📋 Resume your circle?",
+    "resumeBody": "You were in the middle of setting up “{{circleName}}”. Would you like to continue where you left off?",
+    "newCircle": "a new circle"
+  },
+  "basics": {
+    "nameQuestion": "What should we call this circle?",
+    "description": "A savings circle is a trusted group where each active hand contributes and takes turns receiving the full pot.",
+    "namePlaceholder": "e.g. Family Savings, Church Group"
+  },
+  "amount": {
+    "question": "How much will each hand contribute?",
+    "description": "Each active hand contributes this amount every round.",
+    "customPlaceholder": "Or enter custom amount"
+  },
+  "organizer": {
+    "question": "Will you contribute and receive a payout in this circle?",
+    "participateTitle": "Yes, I will participate",
+    "participateBody": "You will contribute every round and receive a payout.",
+    "organizeOnlyTitle": "No, I will organize only",
+    "organizeOnlyBody": "You will manage the circle without contributing or receiving a payout.",
+    "handExplanation": "You start with Hand 1. Payout position is set later after members claim spots and any additional hands are approved. You can request more hands from the circle People tab during setup."
+  },
+  "members": {
+    "title": "Add other people",
+    "added_one": "{{count}} added",
+    "added_other": "{{count}} added",
+    "description": "Do not add yourself here. Your participation is set on the previous step. Each person starts with Hand 1.",
+    "firstName": "First Name",
+    "firstNamePlaceholder": "First name",
+    "lastName": "Last Name",
+    "lastNamePlaceholder": "Last name",
+    "phone": "Phone Number",
+    "phonePlaceholder": "(555) 000-0000",
+    "email": "Email",
+    "emailPlaceholder": "member@email.com",
+    "optional": "(optional)",
+    "emptyTitle": "No members yet",
+    "emptyParticipating": "Add at least 1 other person so the circle has 2 hands.",
+    "emptyOrganizingOnly": "Add at least 2 people (you are organizing only).",
+    "handLabel": "{{name}} · Hand {{number}}",
+    "organizer": "Organizer",
+    "organizerParticipates": "Organizer · participates",
+    "plannedMember": "Planned member"
+  },
+  "schedule": {
+    "question": "How often should contributions happen?",
+    "description": "This schedule is saved with the circle. Payout order is completed after creation.",
+    "payoutDeferred": "Payout order will be finalized after members claim their spots and any additional hands are approved.",
+    "options": {
+      "weekly": "Weekly",
+      "biweekly": "Bi-weekly",
+      "monthly": "Monthly"
+    }
+  },
+  "review": {
+    "title": "Review draft circle",
+    "description": "This creates a draft only. You will not start the circle yet.",
+    "untitledCircle": "Untitled Circle",
+    "contribution": "Contribution",
+    "frequency": "Frequency",
+    "organizer": "Organizer",
+    "participates": "Participates",
+    "organizeOnly": "Organize only",
+    "plannedPeople": "Planned people",
+    "plannedHands": "Planned hands",
+    "estimatedRounds": "Estimated rounds",
+    "estimatedPot": "Estimated pot / round",
+    "organizingOnlyNote": "You are organizing only and are not counted in people, hands, pot size, or rounds.",
+    "plannedMembers": "Planned members"
+  },
+  "confirmation": {
+    "title": "Create this circle?",
+    "body": "Your circle will be created as a draft so you can invite members, handle claims, and approve additional hands. Payout order and Start Circle come later — not in this step.",
+    "warningTitle": "Starting is separate.",
+    "warningBody": "Creating the circle does not start it or finalize payout order. Continue setup on the People tab after creation."
+  },
+  "success": {
+    "title": "Draft circle created",
+    "body": "Your circle is ready for setup. Invite members, review claims and additional hands, then finalize payout order before starting."
+  },
+  "actions": {
+    "startFresh": "Start fresh",
+    "resume": "Resume",
+    "openExisting": "Open existing",
+    "ok": "OK",
+    "createCircle": "Create Circle",
+    "reviewAgain": "Go back and review",
+    "continueSetup": "Continue setup",
+    "addMember": "Add Member",
+    "back": "Back",
+    "continue": "Continue"
+  },
+  "loading": {
+    "creating": "Creating circle"
+  },
+  "accessibility": {
+    "goBack": "Go back",
+    "back": "Back",
+    "addMember": "Add member",
+    "removeMember": "Remove {{name}}"
+  },
+  "errors": {
+    "memberNameTitle": "Name required",
+    "memberNameBody": "Enter the member first and last name.",
+    "memberPhoneTitle": "Phone required",
+    "memberPhoneBody": "Enter a phone number for this member.",
+    "organizerDuplicateTitle": "Already the organizer",
+    "organizerDuplicateBody": "You are already the organizer. Choose your participation on the previous step instead of adding yourself as a member.",
+    "duplicateTitle": "Duplicate",
+    "duplicateBody": "Member already added.",
+    "planLimitTitle": "Plan limit",
+    "circleNameTitle": "Name needed",
+    "circleNameBody": "Please give your circle a name.",
+    "amountTitle": "Amount needed",
+    "amountBody": "Enter a valid contribution amount.",
+    "scheduleTitle": "Schedule needed",
+    "scheduleBody": "Choose how often contributions happen.",
+    "addMembersTitle": "Add members",
+    "cannotCreateTitle": "Cannot create circle",
+    "signInTitle": "Sign in required",
+    "signInBody": "Your session is missing an access token.",
+    "openCircleLimitTitle": "Free plan limit",
+    "openCircleLimitBody": "The free plan allows one open circle at a time. Continue your existing circle or upgrade to Premium.",
+    "createFailedTitle": "Unable to create circle",
+    "createFailedBody": "The circle could not be created. Please try again."
+  },
+  "validation": {
+    "minimumHandsParticipating": "Add at least 1 other member so the circle has 2 hands.",
+    "minimumHandsOrganizingOnly": "Add at least 2 members (you are organizing only).",
+    "premiumCapacity": "Premium circles support up to {{count}} participating hands.",
+    "freeCapacity": "Free circles support up to {{count}} participating hands. Upgrade to Premium for up to {{premiumCount}}."
+  }
+}

@@ -103,6 +103,24 @@ export type BackendCircleMember = {
   reliabilityScore?: number;
 };
 
+export type BackendJoinRequest = {
+  id: string;
+  requestId: string;
+  handNumber?: number;
+  hand_number?: number;
+  handLabel?: string;
+  displayLabel?: string;
+  isAdditionalHand?: boolean;
+  is_additional_hand?: boolean;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  name?: string;
+  phone?: string | null;
+  email?: string | null;
+  userId?: string | null;
+};
+
 export type BackendViewerHand = {
   handId: string;
   memberId?: string;
@@ -173,7 +191,7 @@ export type BackendCircleDetail = {
    */
   isStarted?: boolean;
   is_started?: boolean;
-  waitlist?: BackendCircleMember[];
+  waitlist?: BackendJoinRequest[];
   turnOrder: string[];
   userRole?: 'organizer' | 'participant' | null;
   /**
@@ -556,6 +574,38 @@ function errorMessage(payload: unknown, status: number) {
   return `Backend request failed with status ${status}.`;
 }
 
+const DEV_API_LOG_REDACTED = '[redacted]';
+const DEV_API_LOG_SENSITIVE_KEY = /token|auth|password|secret|email|phone|name|user|member|payment|bank|card|account/i;
+
+function redactDevApiLogBody(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactDevApiLogBody);
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => [
+        key,
+        DEV_API_LOG_SENSITIVE_KEY.test(key)
+          ? DEV_API_LOG_REDACTED
+          : redactDevApiLogBody(entryValue),
+      ]),
+    );
+  }
+  return value;
+}
+
+function logDevApiResponse(method: string, url: string, status: number, body: unknown) {
+  if (!__DEV__) {
+    return;
+  }
+  console.log('[CircuSave API]', {
+    method,
+    url,
+    status,
+    body: redactDevApiLogBody(body),
+  });
+}
+
 async function requestJson<T>(
   path: string,
   options: RequestInit & { token?: string } = {},
@@ -573,9 +623,11 @@ async function requestJson<T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
+  const method = (requestOptions.method ?? 'GET').toUpperCase();
+  const url = `${getApiBaseUrl()}${path}`;
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}${path}`, {
+    response = await fetch(url, {
       ...requestOptions,
       headers,
     });
@@ -592,6 +644,8 @@ async function requestJson<T>(
   } catch {
     payload = text;
   }
+
+  logDevApiResponse(method, url, response.status, payload ?? text);
 
   if (!response.ok) {
     throw new ApiError(errorMessage(payload, response.status), response.status);
@@ -1091,10 +1145,21 @@ export function requestJoin(
 export function approveJoinRequest(
   token: string,
   circleId: string,
-  memberId: string,
+  requestId: string,
 ): Promise<unknown> {
-  return requestJson<unknown>(`/groups/${circleId}/members/${memberId}/approve`, {
+  return requestJson<unknown>(`/groups/${circleId}/join-requests/${requestId}/approve`, {
     method: 'POST',
+    token,
+  });
+}
+
+export function declineJoinRequest(
+  token: string,
+  circleId: string,
+  requestId: string,
+): Promise<unknown> {
+  return requestJson<unknown>(`/groups/${circleId}/join-requests/${requestId}`, {
+    method: 'DELETE',
     token,
   });
 }
@@ -1367,5 +1432,3 @@ export function requestAdditionalHand(
     body: JSON.stringify({ additionalHand: true }),
   });
 }
-
-

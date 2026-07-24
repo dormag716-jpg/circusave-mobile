@@ -28,9 +28,21 @@ export function buildClaimInviteShareMessage(input: {
   circleName?: string | null;
   handName?: string | null;
   claimUrl: string;
+  formatMessage?: (values: {
+    circleName: string;
+    handName: string;
+    claimUrl: string;
+  }) => string;
 }): string {
   const circle = String(input.circleName || '').trim() || 'my savings circle';
   const hand = String(input.handName || '').trim() || 'your hand';
+  if (input.formatMessage) {
+    return input.formatMessage({
+      circleName: circle,
+      handName: hand,
+      claimUrl: input.claimUrl,
+    });
+  }
   return (
     `Claim ${hand} in "${circle}" on CircuSave.\n\n` +
     `This link is for your planned payout position:\n${input.claimUrl}`
@@ -42,11 +54,23 @@ export function buildGenericCircleInviteShareMessage(input: {
   circleId: string;
   circleCode?: string | null;
   baseUrl?: string;
+  formatMessage?: (values: {
+    circleName: string;
+    circleCode: string;
+    inviteUrl: string;
+  }) => string;
 }): string {
   const circle = String(input.circleName || '').trim() || 'my savings circle';
   const base = (input.baseUrl || getWebAppBaseUrl()).replace(/\/+$/, '');
   const code = String(input.circleCode || '').trim();
   const link = `${base}/invite/${encodeURIComponent(input.circleId)}`;
+  if (input.formatMessage) {
+    return input.formatMessage({
+      circleName: circle,
+      circleCode: code,
+      inviteUrl: link,
+    });
+  }
   if (code) {
     return (
       `Join my savings circle "${circle}" on CircuSave!\n\n` +

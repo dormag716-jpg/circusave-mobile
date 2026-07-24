@@ -1,0 +1,49 @@
+{
+  "backDashboard": "Volver al panel",
+  "title": "Unirse a un círculo",
+  "subtitle": "Ingresa el código único compartido por el organizador para solicitar acceso.",
+  "codeLabel": "Código del círculo",
+  "codePlaceholder": "CSX-XXXXXXXX",
+  "codeHint": "Los códigos se ven así: {{example}}",
+  "lookup": "Buscar círculo",
+  "enterCodeTitle": "Ingresa un código",
+  "enterCodeMessage": "Escribe el código que recibiste del organizador.",
+  "notFoundTitle": "No se encontró el círculo",
+  "notFoundMessage": "Verifica el código e inténtalo de nuevo.",
+  "joinErrorTitle": "No fue posible unirse",
+  "genericError": "No se pudo completar la solicitud. Inténtalo de nuevo.",
+  "organizerBy": "por {{name}}",
+  "organizerFallback": "Organizador/a",
+  "contribution": "Aporte",
+  "frequency": "Frecuencia",
+  "members": "Miembros",
+  "previewInfo": "Si el organizador ya agregó tu teléfono o correo electrónico, podrás reclamar tu mano de inmediato. De lo contrario, tu solicitud esperará su aprobación.",
+  "requestAccessibility": "Solicitar acceso a este círculo",
+  "joinCircle": "Unirse al círculo",
+  "outcome": {
+    "claimedTitle": "¡Ya estás dentro!",
+    "claimedMessage": "Tu mano en {{circleName}} está lista. Puedes abrir el espacio del círculo cuando quieras.",
+    "pendingTitle": "Solicitud enviada",
+    "pendingMessage": "Tu solicitud para unirte a {{circleName}} espera la aprobación del organizador. Recibirás una notificación cuando la revise.",
+    "unknownTitle": "Solicitud presentada",
+    "unknownMessage": "Se presentó tu solicitud para {{circleName}}. Consulta tus círculos para ver el estado más reciente.",
+    "circleFallback": "este círculo"
+  },
+  "backDashboardAction": "Volver al panel",
+  "joinAnother": "Unirse a otro círculo",
+  "signInRequired": "Debes iniciar sesión para unirte a un círculo.",
+  "signIn": "Iniciar sesión",
+  "status": {
+    "draft": "Borrador",
+    "setup": "Preparación",
+    "active": "Activo",
+    "completed": "Completado",
+    "paused": "Pausado",
+    "pending": "Pendiente"
+  },
+  "frequencyValue": {
+    "weekly": "Semanal",
+    "biweekly": "Cada dos semanas",
+    "monthly": "Mensual"
+  }
+}

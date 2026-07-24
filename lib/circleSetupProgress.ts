@@ -127,12 +127,12 @@ const STEP_TITLES: Record<SetupStepId, string> = {
   review_and_start: 'Review and start',
 };
 
-export function splitWaitlistRequests(waitlist: StartCircleWaitlistLike[] = []): {
-  joinRequests: StartCircleWaitlistLike[];
-  additionalHandRequests: StartCircleWaitlistLike[];
+export function splitWaitlistRequests<T extends StartCircleWaitlistLike>(waitlist: T[] = []): {
+  joinRequests: T[];
+  additionalHandRequests: T[];
 } {
-  const joinRequests: StartCircleWaitlistLike[] = [];
-  const additionalHandRequests: StartCircleWaitlistLike[] = [];
+  const joinRequests: T[] = [];
+  const additionalHandRequests: T[] = [];
   for (const entry of waitlist) {
     if (isAdditionalHandRequest(entry)) {
       additionalHandRequests.push(entry);

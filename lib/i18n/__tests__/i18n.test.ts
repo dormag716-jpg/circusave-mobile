@@ -15,6 +15,11 @@ jest.mock('expo-localization', () => ({
   getLocales: () => [{ languageTag: deviceLanguageTag }],
 }));
 
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => null),
+  setItemAsync: jest.fn(async () => undefined),
+}));
+
 import {
   changeLanguagePreference,
   i18n,

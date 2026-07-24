@@ -1,0 +1,28 @@
+{
+  "review": {
+    "title": "Review payout order",
+    "body": "Confirm every participating hand is in the correct position. The order locks when the circle starts.",
+    "confirm": "Confirm order",
+    "empty": "No payout order is available yet.",
+    "hint": "Reorder positions. Confirm the order when you start the circle — listing hands does not finalize review.",
+    "stillRequired": "Structure complete. Review still required at Start.",
+    "missing": "Missing from order",
+    "needsAttention": "Payout order needs attention",
+    "missingCount_one": "{{count}} hand is missing from the order.",
+    "missingCount_other": "{{count}} hands are missing from the order.",
+    "duplicateCount_one": "{{count}} duplicate position.",
+    "duplicateCount_other": "{{count}} duplicate positions.",
+    "unknownCount_one": "{{count}} unknown position.",
+    "unknownCount_other": "{{count}} unknown positions.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "moveMemberUp": "Move {{name}} up",
+    "moveMemberDown": "Move {{name}} down",
+    "position": "Position {{position}}",
+    "notInOrder": "Not in order",
+    "unavailable": "Payout order is not available yet."
+  },
+  "errors": {
+    "reorderTitle": "Unable to reorder"
+  }
+}

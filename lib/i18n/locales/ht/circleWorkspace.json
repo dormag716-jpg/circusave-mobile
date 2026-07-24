@@ -1,0 +1,67 @@
+{
+  "fallbackName": "Gwoup",
+  "headerSummary": "Wonn {{round}} · {{frequency}}",
+  "loading": "Ap chaje...",
+  "frequency": {
+    "weekly": "Chak semèn",
+    "biweekly": "Chak de semèn",
+    "monthly": "Chak mwa"
+  },
+  "tabs": {
+    "round": "Wonn",
+    "chat": "Konvèsasyon",
+    "people": "Moun",
+    "records": "Dosye"
+  },
+  "accessibility": {
+    "backToCircles": "Retounen nan Gwoup mwen yo",
+    "dashboard": "Retounen nan tablo a",
+    "retryWorkspace": "Eseye chaje espas la ankò",
+    "retryRefresh": "Eseye rafrechi ankò",
+    "retryRound": "Eseye chaje wonn nan ankò"
+  },
+  "status": {
+    "settingUpTitle": "N ap prepare espas la",
+    "settingUpBody": "N ap chaje dènye done gwoup la.",
+    "openErrorTitle": "Nou pa t ka louvri gwoup la",
+    "workspacePendingTitle": "Espas la annatant",
+    "workspacePendingBody": "Gwoup la kreye. Sistèm nan ap prepare tout espas la.",
+    "checkingMembershipTitle": "N ap verifye manm ou",
+    "checkingMembershipBody": "N ap verifye aksè ou nan gwoup sa a.",
+    "syncing": "N ap senkronize done yo…",
+    "refreshError": "Nou pa t ka rafrechi.",
+    "roundLoadingTitle": "N ap chaje done wonn nan",
+    "roundLoadingBody": "N ap pran dènye detay wonn nan…",
+    "roundErrorTitle": "Nou pa t ka chaje done wonn nan",
+    "roundUnavailableTitle": "Done wonn nan pa disponib",
+    "roundUnavailableBody": "Sistèm nan poko bay kalandriye pou gwoup sa a.",
+    "genericError": "Gen yon pwoblèm. Tanpri eseye ankò.",
+    "retry": "Eseye ankò"
+  },
+  "access": {
+    "noMembership": "Pa gen manm aktif",
+    "unavailable": "Aksè pa disponib",
+    "message": "Kont sa a pa gen aksè nan {{circleName}}.",
+    "back": "Retounen nan Gwoup mwen yo"
+  },
+  "setupRound": {
+    "title": "Gwoup la poko kòmanse",
+    "subtitle": "Fini lis manm yo ak lòd peman an anvan ou kòmanse gwoup la. Kontribisyon yo kòmanse apre ou Kòmanse gwoup la.",
+    "roster": "Lis manm",
+    "plannedRounds_one": "{{count}} wonn peman planifye lè òganizatè a kòmanse.",
+    "plannedRounds_other": "{{count}} wonn peman planifye lè òganizatè a kòmanse.",
+    "plannedHands": "Men planifye",
+    "notActive": "Yo poko aktif",
+    "emptyHands": "Gwoup sa a poko gen men planifye.",
+    "payoutPosition": "Pozisyon peman {{position}}",
+    "beforeStartTitle": "Anvan kontribisyon yo kòmanse",
+    "beforeStartBody": "Men yo se pozisyon peman planifye. Lè òganizatè a kòmanse gwoup la, chak men k ap patisipe vin gen yon obligasyon kontribisyon pou wonn 1."
+  },
+  "completedRound": {
+    "title": "Gwoup la fini",
+    "subtitle": "Gwoup sa a fini. Gade ansyen wonn ak rejis yo anba a.",
+    "roundCount_one": "{{count}} wonn nan sik sa a",
+    "roundCount_other": "{{count}} wonn nan sik sa a",
+    "lastRecipient": "Dènye moun ki te resevwa"
+  }
+}

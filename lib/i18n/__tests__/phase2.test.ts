@@ -14,6 +14,11 @@ jest.mock('expo-localization', () => ({
   getLocales: () => [{ languageTag: 'en-US' }],
 }));
 
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => null),
+  setItemAsync: jest.fn(async () => undefined),
+}));
+
 import { formatCurrency, formatShortDate } from '../formatters';
 import { changeLanguagePreference, i18n, initializeI18n } from '../index';
 

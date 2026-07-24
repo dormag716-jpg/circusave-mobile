@@ -16,13 +16,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import { createCircle, getCircleDetail, getCircles } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import {
-  buildOpenCircleCapacity,
-  openCircleLimitMessage,
-} from '@/lib/circleCapacity';
+import { buildOpenCircleCapacity, normalizePlanTier } from '@/lib/circleCapacity';
 import {
   applyDraftDefaults,
   buildCreateCirclePayload,
@@ -30,10 +29,8 @@ import {
   calculateCircleMetrics,
   createMemberDraftId,
   ensureMemberDraftId,
-  handDisplayLabel,
   isOrganizerSelf,
   memberDisplayName,
-  PAYOUT_ORDER_DEFERRED_COPY,
   validateMinimumHands,
   validatePlanCapacity,
   type MemberDraft,
@@ -46,9 +43,10 @@ import { colors, radii, spacing } from '@/lib/theme';
 import { Avatar } from '@/components/Avatar';
 import { DecisionSheet } from '@/components/DecisionSheet';
 import { CREATE_CIRCLE_STEPS } from '@/lib/createCircleFlow';
+import { formatCurrency } from '@/lib/i18n/formatters';
 
 /** Initial wizard: organizer-alone setup only. Payout order is finalized later. */
-const steps = CREATE_CIRCLE_STEPS.map((step) => step.title);
+const steps = CREATE_CIRCLE_STEPS;
 
 const amountPresets = ['$50', '$100', '$200', '$500'] as const;
 const scheduleOptions = ['Weekly', 'Bi-weekly', 'Monthly'] as const;
@@ -65,6 +63,7 @@ const emptyNewMember = (): MemberDraft => ({
 });
 
 export default function CircleSetupWizardScreen() {
+  const { t, i18n: translation } = useTranslation('createCircle');
   const { session } = useAuthSession();
   const { sourceCircleId } = useLocalSearchParams<{ sourceCircleId: string }>();
   const [activeStep, setActiveStep] = useState(0);
@@ -81,7 +80,12 @@ export default function CircleSetupWizardScreen() {
   const [createdCircleId, setCreatedCircleId] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const organizerName = session?.user.name?.trim() || 'Organizer';
+  const organizerName = session?.user.name?.trim() || t('members.organizer');
+  const language = translation.resolvedLanguage || translation.language;
+  const formatMoney = useCallback(
+    (value: number) => formatCurrency(value, language),
+    [language],
+  );
   const organizerIdentity = {
     id: session?.user.id,
     name: session?.user.name,
@@ -181,11 +185,13 @@ export default function CircleSetupWizardScreen() {
           return;
         }
         Alert.alert(
-          '📋 Resume your circle?',
-          `You were in the middle of setting up "${draft.circleName || 'a new circle'}". Would you like to continue where you left off?`,
+          t('draft.resumeTitle'),
+          t('draft.resumeBody', {
+            circleName: draft.circleName || t('draft.newCircle'),
+          }),
           [
             {
-              text: 'Start fresh',
+              text: t('actions.startFresh'),
               style: 'destructive',
               onPress: () => {
                 clearDraft();
@@ -193,7 +199,7 @@ export default function CircleSetupWizardScreen() {
               },
             },
             {
-              text: 'Resume',
+              text: t('actions.resume'),
               onPress: () => {
                 const restored = applyDraftDefaults(draft, steps.length - 1);
                 setActiveStep(restored.activeStep);
@@ -231,15 +237,19 @@ export default function CircleSetupWizardScreen() {
           setCustomAmount(detail.contributionAmount.toString());
         }
 
-        const prefilledMembers: MemberDraft[] = detail.members
+        const sourceMembers = Array.isArray(detail.members) ? detail.members : [];
+        const prefilledMembers: MemberDraft[] = sourceMembers
           .map((m) => {
-            const parts = (m.full_name || m.name || '').trim().split(' ');
+            const sourceMember = m || {};
+            const parts = (sourceMember.full_name || sourceMember.name || '')
+              .trim()
+              .split(' ');
             return ensureMemberDraftId({
               draftId: createMemberDraftId(),
               firstName: parts[0] || '',
               lastName: parts.slice(1).join(' ') || '',
-              email: m.email || '',
-              phone: m.phone || '',
+              email: sourceMember.email || '',
+              phone: sourceMember.phone || '',
               handNumber: 1,
             });
           })
@@ -252,7 +262,8 @@ export default function CircleSetupWizardScreen() {
           );
         setMembers(prefilledMembers);
         setOrganizerParticipates(true);
-      } catch {
+      } catch (error) {
+        console.error('Unable to load source circle for create-circle setup', error);
         // Start fresh on load failure.
       }
     }
@@ -265,17 +276,17 @@ export default function CircleSetupWizardScreen() {
     const normalized = normalizeMemberDraft(newMember);
 
     if (!normalized.firstName || !normalized.lastName) {
-      Alert.alert('Name required', 'Enter the member first and last name.');
+      Alert.alert(t('errors.memberNameTitle'), t('errors.memberNameBody'));
       return;
     }
     if (!normalized.phone) {
-      Alert.alert('Phone required', 'Enter a phone number for this member.');
+      Alert.alert(t('errors.memberPhoneTitle'), t('errors.memberPhoneBody'));
       return;
     }
     if (isOrganizerSelf(normalized, organizerIdentity)) {
       Alert.alert(
-        'Already the organizer',
-        'You are already the organizer. Choose your participation on the previous step instead of adding yourself as a member.',
+        t('errors.organizerDuplicateTitle'),
+        t('errors.organizerDuplicateBody'),
       );
       return;
     }
@@ -287,7 +298,7 @@ export default function CircleSetupWizardScreen() {
             memberDisplayName(normalized).toLowerCase(),
       )
     ) {
-      Alert.alert('Duplicate', 'Member already added.');
+      Alert.alert(t('errors.duplicateTitle'), t('errors.duplicateBody'));
       return;
     }
 
@@ -305,7 +316,7 @@ export default function CircleSetupWizardScreen() {
       session?.user?.role,
     );
     if (capError) {
-      Alert.alert('Plan limit', capError);
+      Alert.alert(t('errors.planLimitTitle'), capacityErrorMessage());
       return;
     }
 
@@ -321,32 +332,32 @@ export default function CircleSetupWizardScreen() {
     if (isSubmitting) return;
 
     if (activeStep === 0 && !circleName.trim()) {
-      Alert.alert('Name needed', 'Please give your circle a name.');
+      Alert.alert(t('errors.circleNameTitle'), t('errors.circleNameBody'));
       return;
     }
     if (activeStep === 1) {
       if (!parseAmount(contributionAmount)) {
-        Alert.alert('Amount needed', 'Enter a valid contribution amount.');
+        Alert.alert(t('errors.amountTitle'), t('errors.amountBody'));
         return;
       }
     }
     if (activeStep === 4) {
       if (!schedule) {
-        Alert.alert('Schedule needed', 'Choose how often contributions happen.');
+        Alert.alert(t('errors.scheduleTitle'), t('errors.scheduleBody'));
         return;
       }
     }
     if (activeStep === 3) {
       const minError = validateMinimumHands(members, organizerParticipates);
       if (minError) {
-        Alert.alert('Add members', minError);
+        Alert.alert(t('errors.addMembersTitle'), minimumHandsMessage());
         return;
       }
     }
     if (isLastStep) {
       const minError = validateMinimumHands(members, organizerParticipates);
       if (minError) {
-        Alert.alert('Cannot create circle', minError);
+        Alert.alert(t('errors.cannotCreateTitle'), minimumHandsMessage());
         return;
       }
       const capError = validatePlanCapacity(
@@ -355,7 +366,7 @@ export default function CircleSetupWizardScreen() {
         session?.user?.role,
       );
       if (capError) {
-        Alert.alert('Plan limit', capError);
+        Alert.alert(t('errors.planLimitTitle'), capacityErrorMessage());
         return;
       }
       setShowConsentModal(true);
@@ -375,7 +386,7 @@ export default function CircleSetupWizardScreen() {
   async function createCircleFromWizard() {
     const token = session?.session.token;
     if (!token) {
-      Alert.alert('Sign in required', 'Your session is missing an access token.');
+      Alert.alert(t('errors.signInTitle'), t('errors.signInBody'));
       return;
     }
 
@@ -391,24 +402,25 @@ export default function CircleSetupWizardScreen() {
         });
         if (openCap.atCapacity) {
           Alert.alert(
-            'Free plan limit',
-            openCircleLimitMessage(openCap),
+            t('errors.openCircleLimitTitle'),
+            t('errors.openCircleLimitBody'),
             openCap.primaryOpenCircleId
               ? [
                   {
-                    text: 'Open existing',
+                    text: t('actions.openExisting'),
                     onPress: () =>
                       router.replace(
                         circleWorkspaceHref(openCap.primaryOpenCircleId!),
                       ),
                   },
-                  { text: 'OK', style: 'cancel' },
+                  { text: t('actions.ok'), style: 'cancel' },
                 ]
-              : [{ text: 'OK' }],
+              : [{ text: t('actions.ok') }],
           );
           return;
         }
-      } catch {
+      } catch (error) {
+        console.error('Unable to check open-circle capacity before creation', error);
         // Server still enforces; continue if list fails.
       }
 
@@ -425,15 +437,23 @@ export default function CircleSetupWizardScreen() {
       clearDraft();
       setCreatedCircleId(createdCircle.id);
     } catch (error) {
-      Alert.alert(
-        'Unable to create circle',
-        error instanceof Error
-          ? error.message
-          : 'The circle could not be created.',
-      );
+      console.error('Unable to create circle from setup wizard', error);
+      Alert.alert(t('errors.createFailedTitle'), t('errors.createFailedBody'));
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function minimumHandsMessage() {
+    return organizerParticipates
+      ? t('validation.minimumHandsParticipating')
+      : t('validation.minimumHandsOrganizingOnly');
+  }
+
+  function capacityErrorMessage() {
+    return normalizePlanTier(session?.user?.role) === 'premium'
+      ? t('validation.premiumCapacity', { count: 50 })
+      : t('validation.freeCapacity', { count: 20, premiumCount: 50 });
   }
 
   function ConsentModal() {
@@ -482,7 +502,7 @@ export default function CircleSetupWizardScreen() {
                   textAlign: 'center',
                 }}
               >
-                Create this circle?
+                {t('confirmation.title')}
               </Text>
               <Text
                 style={{
@@ -493,9 +513,7 @@ export default function CircleSetupWizardScreen() {
                   lineHeight: 22,
                 }}
               >
-                Your circle will be created as a draft so you can invite members,
-                handle claims, and approve additional hands. Payout order and
-                Start Circle come later — not in this step.
+                {t('confirmation.body')}
               </Text>
             </View>
 
@@ -519,9 +537,10 @@ export default function CircleSetupWizardScreen() {
                 style={{ marginTop: 1 }}
               />
               <Text style={{ flex: 1, fontSize: 13, color: '#92400e', lineHeight: 19 }}>
-                <Text style={{ fontWeight: '800' }}>Starting is separate.</Text>{' '}
-                Creating the circle does not start it or finalize payout order.
-                Continue setup on the People tab after creation.
+                <Text style={{ fontWeight: '800' }}>
+                  {t('confirmation.warningTitle')}
+                </Text>{' '}
+                {t('confirmation.warningBody')}
               </Text>
             </View>
 
@@ -543,12 +562,17 @@ export default function CircleSetupWizardScreen() {
                 await createCircleFromWizard();
               }}
               disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isSubmitting ? t('loading.creating') : t('actions.createCircle')
+              }
+              accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>
-                  Create Circle
+                  {t('actions.createCircle')}
                 </Text>
               )}
             </Pressable>
@@ -567,7 +591,7 @@ export default function CircleSetupWizardScreen() {
               onPress={() => setShowConsentModal(false)}
             >
               <Text style={{ color: '#374151', fontSize: 16, fontWeight: '700' }}>
-                Go back and review
+                {t('actions.reviewAgain')}
               </Text>
             </Pressable>
           </View>
@@ -584,9 +608,9 @@ export default function CircleSetupWizardScreen() {
         onClose={() => undefined}
         icon="check"
         iconTone="success"
-        title="Draft circle created"
-        body="Your circle is ready for setup. Invite members, review claims and additional hands, then finalize payout order before starting."
-        primaryLabel="Continue setup"
+        title={t('success.title')}
+        body={t('success.body')}
+        primaryLabel={t('actions.continueSetup')}
         secondaryLabel={null}
         onPrimary={() => {
           if (createdCircleId) {
@@ -609,12 +633,15 @@ export default function CircleSetupWizardScreen() {
                 onPress={goBack}
                 style={styles.backBtn}
                 accessibilityRole="button"
-                accessibilityLabel="Go back"
+                accessibilityLabel={t('accessibility.goBack')}
               >
                 <FontAwesome name="chevron-left" size={22} color={colors.text} />
               </Pressable>
               <Text style={styles.stepCounter}>
-                Step {activeStep + 1} of {steps.length}
+                {t('progress.step', {
+                  current: activeStep + 1,
+                  total: steps.length,
+                })}
               </Text>
             </View>
 
@@ -627,13 +654,15 @@ export default function CircleSetupWizardScreen() {
               />
             </View>
 
-            <Text style={styles.mainTitle}>{steps[activeStep]}</Text>
+            <Text style={styles.mainTitle}>
+              {t(`steps.${steps[activeStep].id}`)}
+            </Text>
 
             <View style={styles.card}>
               {/* STEP 1 — Circle details */}
               {activeStep === 0 ? (
                 <>
-                  <Text style={styles.label}>What should we call this circle?</Text>
+                  <Text style={styles.label}>{t('basics.nameQuestion')}</Text>
                   <Text
                     style={{
                       color: colors.muted,
@@ -642,14 +671,13 @@ export default function CircleSetupWizardScreen() {
                       lineHeight: 20,
                     }}
                   >
-                    A savings circle is a trusted group where each active hand
-                    contributes and takes turns receiving the full pot.
+                    {t('basics.description')}
                   </Text>
                   <TextInput
                     style={styles.input}
                     value={circleName}
                     onChangeText={setCircleName}
-                    placeholder="e.g. Family Savings, Church Group"
+                    placeholder={t('basics.namePlaceholder')}
                     placeholderTextColor={colors.subtle}
                     autoCapitalize="words"
                     returnKeyType="done"
@@ -660,7 +688,7 @@ export default function CircleSetupWizardScreen() {
               {/* STEP 2 — Contribution setup */}
               {activeStep === 1 ? (
                 <>
-                  <Text style={styles.label}>How much will each hand contribute?</Text>
+                  <Text style={styles.label}>{t('amount.question')}</Text>
                   <Text
                     style={{
                       color: colors.muted,
@@ -669,7 +697,7 @@ export default function CircleSetupWizardScreen() {
                       lineHeight: 20,
                     }}
                   >
-                    Each active hand contributes this amount every round.
+                    {t('amount.description')}
                   </Text>
                   <View style={styles.presetRow}>
                     {amountPresets.map((preset) => (
@@ -692,7 +720,7 @@ export default function CircleSetupWizardScreen() {
                               styles.presetActiveText,
                           ]}
                         >
-                          {preset}
+                          {formatMoney(parseAmount(preset) ?? 0)}
                         </Text>
                       </Pressable>
                     ))}
@@ -703,7 +731,7 @@ export default function CircleSetupWizardScreen() {
                     onChangeText={(value) =>
                       setCustomAmount(value.replace(/[^\d.]/g, ''))
                     }
-                    placeholder="Or enter custom amount"
+                    placeholder={t('amount.customPlaceholder')}
                     placeholderTextColor={colors.subtle}
                     keyboardType="decimal-pad"
                   />
@@ -715,7 +743,7 @@ export default function CircleSetupWizardScreen() {
               {activeStep === 2 ? (
                 <>
                   <Text style={styles.label}>
-                    Will you contribute and receive a payout in this circle?
+                    {t('organizer.question')}
                   </Text>
                   <Pressable
                     style={[
@@ -732,7 +760,7 @@ export default function CircleSetupWizardScreen() {
                         organizerParticipates && styles.optionActiveText,
                       ]}
                     >
-                      Yes, I will participate
+                      {t('organizer.participateTitle')}
                     </Text>
                     <Text
                       style={{
@@ -742,7 +770,7 @@ export default function CircleSetupWizardScreen() {
                         color: organizerParticipates ? '#f5f3ff' : colors.muted,
                       }}
                     >
-                      You will contribute every round and receive a payout.
+                      {t('organizer.participateBody')}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -760,7 +788,7 @@ export default function CircleSetupWizardScreen() {
                         !organizerParticipates && styles.optionActiveText,
                       ]}
                     >
-                      No, I will organize only
+                      {t('organizer.organizeOnlyTitle')}
                     </Text>
                     <Text
                       style={{
@@ -770,8 +798,7 @@ export default function CircleSetupWizardScreen() {
                         color: !organizerParticipates ? '#f5f3ff' : colors.muted,
                       }}
                     >
-                      You will manage the circle without contributing or receiving
-                      a payout.
+                      {t('organizer.organizeOnlyBody')}
                     </Text>
                   </Pressable>
                   {organizerParticipates ? (
@@ -783,10 +810,7 @@ export default function CircleSetupWizardScreen() {
                         lineHeight: 18,
                       }}
                     >
-                      You start with Hand 1. Payout position is set later after
-                      members claim spots and any additional hands are approved.
-                      You can request more hands from the circle People tab during
-                      setup.
+                      {t('organizer.handExplanation')}
                     </Text>
                   ) : null}
                 </>
@@ -803,7 +827,7 @@ export default function CircleSetupWizardScreen() {
                       marginBottom: 6,
                     }}
                   >
-                    <Text style={styles.label}>Add other people</Text>
+                    <Text style={styles.label}>{t('members.title')}</Text>
                     {members.length > 0 ? (
                       <View
                         style={{
@@ -816,7 +840,7 @@ export default function CircleSetupWizardScreen() {
                         <Text
                           style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}
                         >
-                          {members.length} added
+                          {t('members.added', { count: members.length })}
                         </Text>
                       </View>
                     ) : null}
@@ -829,8 +853,7 @@ export default function CircleSetupWizardScreen() {
                       lineHeight: 20,
                     }}
                   >
-                    Do not add yourself here. Your participation is set on the
-                    previous step. Each person starts with Hand 1.
+                    {t('members.description')}
                   </Text>
 
                   <View
@@ -846,28 +869,28 @@ export default function CircleSetupWizardScreen() {
                   >
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.fieldLabel}>First Name</Text>
+                        <Text style={styles.fieldLabel}>{t('members.firstName')}</Text>
                         <TextInput
                           style={[styles.input, { backgroundColor: '#fff' }]}
                           value={newMember.firstName}
                           onChangeText={(firstName) =>
                             setNewMember((current) => ({ ...current, firstName }))
                           }
-                          placeholder="First name"
+                          placeholder={t('members.firstNamePlaceholder')}
                           placeholderTextColor={colors.subtle}
                           autoCapitalize="words"
                           returnKeyType="next"
                         />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.fieldLabel}>Last Name</Text>
+                        <Text style={styles.fieldLabel}>{t('members.lastName')}</Text>
                         <TextInput
                           style={[styles.input, { backgroundColor: '#fff' }]}
                           value={newMember.lastName}
                           onChangeText={(lastName) =>
                             setNewMember((current) => ({ ...current, lastName }))
                           }
-                          placeholder="Last name"
+                          placeholder={t('members.lastNamePlaceholder')}
                           placeholderTextColor={colors.subtle}
                           autoCapitalize="words"
                           returnKeyType="next"
@@ -876,14 +899,14 @@ export default function CircleSetupWizardScreen() {
                     </View>
 
                     <View>
-                      <Text style={styles.fieldLabel}>Phone Number</Text>
+                      <Text style={styles.fieldLabel}>{t('members.phone')}</Text>
                       <TextInput
                         style={[styles.input, { backgroundColor: '#fff' }]}
                         value={newMember.phone}
                         onChangeText={(phone) =>
                           setNewMember((current) => ({ ...current, phone }))
                         }
-                        placeholder="(555) 000-0000"
+                        placeholder={t('members.phonePlaceholder')}
                         placeholderTextColor={colors.subtle}
                         keyboardType="phone-pad"
                         returnKeyType="next"
@@ -892,7 +915,7 @@ export default function CircleSetupWizardScreen() {
 
                     <View>
                       <Text style={styles.fieldLabel}>
-                        Email{' '}
+                        {t('members.email')}{' '}
                         <Text
                           style={{
                             color: colors.subtle,
@@ -900,7 +923,7 @@ export default function CircleSetupWizardScreen() {
                             textTransform: 'none',
                           }}
                         >
-                          (optional)
+                          {t('members.optional')}
                         </Text>
                       </Text>
                       <TextInput
@@ -909,7 +932,7 @@ export default function CircleSetupWizardScreen() {
                         onChangeText={(email) =>
                           setNewMember((current) => ({ ...current, email }))
                         }
-                        placeholder="member@email.com"
+                        placeholder={t('members.emailPlaceholder')}
                         placeholderTextColor={colors.subtle}
                         autoCapitalize="none"
                         keyboardType="email-address"
@@ -926,10 +949,10 @@ export default function CircleSetupWizardScreen() {
                       ]}
                       onPress={addMember}
                       accessibilityRole="button"
-                      accessibilityLabel="Add member"
+                      accessibilityLabel={t('accessibility.addMember')}
                     >
                       <FontAwesome name="user-plus" size={16} color="#fff" />
-                      <Text style={styles.addBtnText}>Add Member</Text>
+                      <Text style={styles.addBtnText}>{t('actions.addMember')}</Text>
                     </Pressable>
                   </View>
 
@@ -964,10 +987,10 @@ export default function CircleSetupWizardScreen() {
                                   color: '#111827',
                                 }}
                               >
-                                {handDisplayLabel(
-                                  memberDisplayName(member),
-                                  member.handNumber ?? 1,
-                                )}
+                                {t('members.handLabel', {
+                                  name: memberDisplayName(member),
+                                  number: member.handNumber ?? 1,
+                                })}
                               </Text>
                               <Text
                                 style={{
@@ -994,7 +1017,9 @@ export default function CircleSetupWizardScreen() {
                                 pressed && { opacity: 0.7 },
                               ]}
                               accessibilityRole="button"
-                              accessibilityLabel={`Remove ${memberDisplayName(member)}`}
+                              accessibilityLabel={t('accessibility.removeMember', {
+                                name: memberDisplayName(member),
+                              })}
                             >
                               <FontAwesome name="times" size={12} color="#ef4444" />
                             </Pressable>
@@ -1021,7 +1046,7 @@ export default function CircleSetupWizardScreen() {
                           marginBottom: 4,
                         }}
                       >
-                        No members yet
+                        {t('members.emptyTitle')}
                       </Text>
                       <Text
                         style={{
@@ -1031,8 +1056,8 @@ export default function CircleSetupWizardScreen() {
                         }}
                       >
                         {organizerParticipates
-                          ? 'Add at least 1 other person so the circle has 2 hands.'
-                          : 'Add at least 2 people (you are organizing only).'}
+                          ? t('members.emptyParticipating')
+                          : t('members.emptyOrganizingOnly')}
                       </Text>
                     </View>
                   )}
@@ -1042,9 +1067,9 @@ export default function CircleSetupWizardScreen() {
               {/* STEP 5 — Schedule and deterministic estimate preview */}
               {activeStep === 4 ? (
                 <>
-                  <Text style={styles.label}>How often should contributions happen?</Text>
+                  <Text style={styles.label}>{t('schedule.question')}</Text>
                   <Text style={styles.helperText}>
-                    This schedule is saved with the circle. Payout order is completed after creation.
+                    {t('schedule.description')}
                   </Text>
                   {scheduleOptions.map((option) => (
                     <Pressable
@@ -1055,13 +1080,13 @@ export default function CircleSetupWizardScreen() {
                       accessibilityState={{ selected: schedule === option }}
                     >
                       <Text style={[styles.optionText, schedule === option && styles.optionActiveText]}>
-                        {option}
+                        {scheduleLabel(option, t)}
                       </Text>
                     </Pressable>
                   ))}
 
                   <View style={[styles.infoBox, { marginTop: 16 }]}>
-                    <Text style={styles.infoText}>{PAYOUT_ORDER_DEFERRED_COPY}</Text>
+                    <Text style={styles.infoText}>{t('schedule.payoutDeferred')}</Text>
                   </View>
                 </>
               ) : null}
@@ -1069,7 +1094,7 @@ export default function CircleSetupWizardScreen() {
               {/* STEP 6 — Review draft structure (no payout order finalization) */}
               {isLastStep ? (
                 <View>
-                  <Text style={styles.label}>Review draft circle</Text>
+                  <Text style={styles.label}>{t('review.title')}</Text>
                   <Text
                     style={{
                       color: colors.muted,
@@ -1078,43 +1103,52 @@ export default function CircleSetupWizardScreen() {
                       lineHeight: 20,
                     }}
                   >
-                    This creates a draft only. You will not start the circle yet.
+                    {t('review.description')}
                   </Text>
 
                   <View style={styles.reviewSummaryCard}>
                     <View style={styles.reviewSummaryHeader}>
                       <Text style={styles.reviewSummaryName}>
-                        {circleName || 'Untitled Circle'}
+                        {circleName || t('review.untitledCircle')}
                       </Text>
                       <View style={styles.reviewSummaryBadge}>
-                        <Text style={styles.reviewSummaryBadgeText}>{schedule}</Text>
+                        <Text style={styles.reviewSummaryBadgeText}>
+                          {scheduleLabel(schedule, t)}
+                        </Text>
                       </View>
                     </View>
 
                     <View style={styles.metricsGrid}>
                       <MetricCell
-                        label="Contribution"
+                        label={t('review.contribution')}
                         value={formatMoney(metrics.contributionPerHand)}
                       />
-                      <MetricCell label="Frequency" value={schedule} />
                       <MetricCell
-                        label="Organizer"
-                        value={organizerParticipates ? 'Participates' : 'Organize only'}
+                        label={t('review.frequency')}
+                        value={scheduleLabel(schedule, t)}
                       />
                       <MetricCell
-                        label="Planned people"
+                        label={t('review.organizer')}
+                        value={
+                          organizerParticipates
+                            ? t('review.participates')
+                            : t('review.organizeOnly')
+                        }
+                      />
+                      <MetricCell
+                        label={t('review.plannedPeople')}
                         value={String(metrics.people)}
                       />
                       <MetricCell
-                        label="Planned hands"
+                        label={t('review.plannedHands')}
                         value={String(metrics.totalHands)}
                       />
                       <MetricCell
-                        label="Estimated rounds"
+                        label={t('review.estimatedRounds')}
                         value={String(metrics.rounds)}
                       />
                       <MetricCell
-                        label="Estimated pot / round"
+                        label={t('review.estimatedPot')}
                         value={formatMoney(metrics.potSize)}
                       />
                     </View>
@@ -1127,8 +1161,7 @@ export default function CircleSetupWizardScreen() {
                           lineHeight: 17,
                         }}
                       >
-                        You are organizing only and are not counted in people, hands,
-                        pot size, or rounds.
+                        {t('review.organizingOnlyNote')}
                       </Text>
                     ) : null}
                   </View>
@@ -1152,12 +1185,12 @@ export default function CircleSetupWizardScreen() {
                         fontWeight: '600',
                       }}
                     >
-                      {PAYOUT_ORDER_DEFERRED_COPY}
+                      {t('schedule.payoutDeferred')}
                     </Text>
                   </View>
 
                   <Text style={[styles.label, { marginTop: 16 }]}>
-                    Planned members
+                    {t('review.plannedMembers')}
                   </Text>
                   <ScrollView
                     style={{ maxHeight: 360, marginHorizontal: -4, paddingHorizontal: 4 }}
@@ -1177,12 +1210,23 @@ export default function CircleSetupWizardScreen() {
                           )}
                         </View>
                         <View style={styles.reviewMemberInfo}>
-                          <Text style={styles.reviewMemberName}>{row.label}</Text>
-                          <Text style={styles.reviewMemberSub}>{row.roleLabel}</Text>
+                          <Text style={styles.reviewMemberName}>
+                            {t('members.handLabel', {
+                              name: row.name,
+                              number: row.handNumber,
+                            })}
+                          </Text>
+                          <Text style={styles.reviewMemberSub}>
+                            {row.isOrganizer
+                              ? t('members.organizerParticipates')
+                              : row.phone || t('members.plannedMember')}
+                          </Text>
                         </View>
                         {row.isOrganizer ? (
                           <View style={styles.organizerBadge}>
-                            <Text style={styles.organizerBadgeText}>Organizer</Text>
+                            <Text style={styles.organizerBadgeText}>
+                              {t('members.organizer')}
+                            </Text>
                           </View>
                         ) : null}
                       </View>
@@ -1197,8 +1241,9 @@ export default function CircleSetupWizardScreen() {
                 style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
                 onPress={goBack}
                 accessibilityRole="button"
+                accessibilityLabel={t('accessibility.back')}
               >
-                <Text style={styles.backText}>Back</Text>
+                <Text style={styles.backText}>{t('actions.back')}</Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [
@@ -1209,13 +1254,20 @@ export default function CircleSetupWizardScreen() {
                 onPress={goNext}
                 disabled={isSubmitting}
                 accessibilityRole="button"
+                accessibilityLabel={
+                  isSubmitting
+                    ? t('loading.creating')
+                    : isLastStep
+                      ? t('actions.createCircle')
+                      : t('actions.continue')
+                }
                 accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
               >
                 {isSubmitting ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text style={styles.nextText}>
-                    {isLastStep ? 'Create Circle' : 'Continue'}
+                    {isLastStep ? t('actions.createCircle') : t('actions.continue')}
                   </Text>
                 )}
               </Pressable>
@@ -1249,14 +1301,16 @@ function requireAmount(value: string) {
   return amount;
 }
 
-function formatMoney(amount: number) {
-  return `$${Math.round(amount).toLocaleString()}`;
-}
-
 function scheduleToFrequency(value: string): 'weekly' | 'biweekly' | 'monthly' {
   if (value === 'Bi-weekly') return 'biweekly';
   if (value === 'Monthly') return 'monthly';
   return 'weekly';
+}
+
+function scheduleLabel(value: string, t: TFunction<'createCircle'>) {
+  if (value === 'Bi-weekly') return t('schedule.options.biweekly');
+  if (value === 'Monthly') return t('schedule.options.monthly');
+  return t('schedule.options.weekly');
 }
 
 function todayIsoDate() {

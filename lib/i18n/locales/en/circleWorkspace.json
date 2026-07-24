@@ -1,0 +1,67 @@
+{
+  "fallbackName": "Circle",
+  "headerSummary": "Round {{round}} · {{frequency}}",
+  "loading": "Loading...",
+  "frequency": {
+    "weekly": "Weekly",
+    "biweekly": "Bi-weekly",
+    "monthly": "Monthly"
+  },
+  "tabs": {
+    "round": "Round",
+    "chat": "Chat",
+    "people": "People",
+    "records": "Records"
+  },
+  "accessibility": {
+    "backToCircles": "Back to My Circles",
+    "dashboard": "Return to dashboard",
+    "retryWorkspace": "Retry loading workspace",
+    "retryRefresh": "Retry refresh",
+    "retryRound": "Retry loading round data"
+  },
+  "status": {
+    "settingUpTitle": "Setting up workspace",
+    "settingUpBody": "We're loading the latest circle data from the backend.",
+    "openErrorTitle": "Unable to open circle",
+    "workspacePendingTitle": "Workspace pending",
+    "workspacePendingBody": "This circle was created successfully. The full workspace is being prepared in the backend.",
+    "checkingMembershipTitle": "Checking membership",
+    "checkingMembershipBody": "We're verifying backend access for this circle.",
+    "syncing": "Syncing backend data…",
+    "refreshError": "Could not refresh.",
+    "roundLoadingTitle": "Loading round data",
+    "roundLoadingBody": "Fetching the latest round details from the backend…",
+    "roundErrorTitle": "Unable to load round data",
+    "roundUnavailableTitle": "Round data unavailable",
+    "roundUnavailableBody": "The backend has not returned schedule data for this circle yet.",
+    "genericError": "Something went wrong. Please try again.",
+    "retry": "Retry"
+  },
+  "access": {
+    "noMembership": "No active membership",
+    "unavailable": "Access unavailable",
+    "message": "You do not have access to {{circleName}} with this account.",
+    "back": "Back to My Circles"
+  },
+  "setupRound": {
+    "title": "Circle not started",
+    "subtitle": "Complete membership and payout order before starting the circle. Contributions begin after Start Circle.",
+    "roster": "Roster",
+    "plannedRounds_one": "{{count}} planned payout round once the organizer starts.",
+    "plannedRounds_other": "{{count}} planned payout rounds once the organizer starts.",
+    "plannedHands": "Planned hands",
+    "notActive": "Not active yet",
+    "emptyHands": "No planned hands on this circle yet.",
+    "payoutPosition": "Payout position {{position}}",
+    "beforeStartTitle": "Before contributions start",
+    "beforeStartBody": "Hands are planned payout positions. After the organizer starts the circle, each participating hand becomes a live contribution obligation for round 1."
+  },
+  "completedRound": {
+    "title": "Circle completed",
+    "subtitle": "This circle has finished. Review historical rounds and records below.",
+    "roundCount_one": "{{count}} round in this cycle",
+    "roundCount_other": "{{count}} rounds in this cycle",
+    "lastRecipient": "Last recorded recipient"
+  }
+}

@@ -31,4 +31,32 @@ describe('claimInvite', () => {
     expect(message).toMatch(/CSX-ABC/);
     expect(message).toMatch(/invite\/c1/);
   });
+
+  test('localized formatters preserve circle, hand, code, and claim identifiers', () => {
+    const claimUrl = buildClaimInviteUrl(
+      'circle-id',
+      'claim-token',
+      'https://circusave.com',
+    );
+    const claimMessage = buildClaimInviteShareMessage({
+      circleName: 'Familia',
+      handName: 'Ana · Mano 2',
+      claimUrl,
+      formatMessage: ({ circleName, handName, claimUrl: url }) =>
+        `${circleName}|${handName}|${url}`,
+    });
+    const genericMessage = buildGenericCircleInviteShareMessage({
+      circleName: 'Familia',
+      circleId: 'circle-id',
+      circleCode: 'CSX-ABC',
+      baseUrl: 'https://circusave.com',
+      formatMessage: ({ circleName, circleCode, inviteUrl }) =>
+        `${circleName}|${circleCode}|${inviteUrl}`,
+    });
+
+    expect(claimMessage).toContain('circle-id');
+    expect(claimMessage).toContain('claim-token');
+    expect(genericMessage).toContain('CSX-ABC');
+    expect(genericMessage).toContain('circle-id');
+  });
 });

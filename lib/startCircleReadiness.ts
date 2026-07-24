@@ -15,6 +15,7 @@ export type StartCircleMemberLike = {
 
 export type StartCircleWaitlistLike = {
   id?: string;
+  requestId?: string;
   userId?: string | null;
   handNumber?: number;
   hand_number?: number;

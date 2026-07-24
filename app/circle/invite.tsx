@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +34,7 @@ import { isCircleSetupState, getCircleLifecyclePhase } from '@/lib/startCircleRe
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function InviteMemberScreen() {
+  const { t } = useTranslation('invite');
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
@@ -50,7 +52,7 @@ export default function InviteMemberScreen() {
 
   async function loadInviteData() {
     if (!token || !circleId) {
-      setError('Missing token or circle ID.');
+      setError(t('organizer.missingContext'));
       setLoading(false);
       return;
     }
@@ -62,11 +64,8 @@ export default function InviteMemberScreen() {
       const circleResponse = await getCircleDetail(token, circleId);
       setCircle(circleResponse);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load invite details.',
-      );
+      console.error('Unable to load organizer invite details.', loadError);
+      setError(t('organizer.loadError'));
     } finally {
       setLoading(false);
     }
@@ -93,7 +92,7 @@ export default function InviteMemberScreen() {
 
   async function sendInvite() {
     if (!token || !circle) {
-      Alert.alert('Invite unavailable', 'Circle details are not loaded yet.');
+      Alert.alert(t('unavailableTitle'), t('organizer.circleMissing'));
       return;
     }
 
@@ -103,22 +102,28 @@ export default function InviteMemberScreen() {
     const trimmedContact = contact.trim();
 
     if (!firstName) {
-      Alert.alert('Full name required', 'Enter the person you want to invite.');
+      Alert.alert(
+        t('organizer.fullNameRequiredTitle'),
+        t('organizer.fullNameRequiredMessage'),
+      );
       return;
     }
 
     if (!trimmedContact) {
-      Alert.alert('Contact required', 'Enter a phone number or email address.');
+      Alert.alert(
+        t('organizer.contactRequiredTitle'),
+        t('organizer.contactRequiredMessage'),
+      );
       return;
     }
 
     const capacity = circle.rosterCapacity;
     if (capacity?.atCapacity || (capacity?.remainingHands ?? 1) <= 0) {
       Alert.alert(
-        'Plan limit reached',
+        t('organizer.planLimitTitle'),
         capacity?.tier === 'premium'
-          ? `This premium circle already has ${capacity.maxHands ?? 50} participating hands.`
-          : `Free circles support up to ${capacity?.maxHands ?? 20} participating hands. Upgrade to Premium for up to 50.`,
+          ? t('organizer.premiumLimit', { count: capacity.maxHands ?? 50 })
+          : t('organizer.freeLimit', { count: capacity?.maxHands ?? 20 }),
       );
       return;
     }
@@ -135,15 +140,14 @@ export default function InviteMemberScreen() {
       setFullName('');
       setContact('');
       Alert.alert(
-        'Planned hand added',
-        'This hand is on the roster. Share their claim invite so they can connect their account.',
+        t('organizer.plannedAddedTitle'),
+        t('organizer.plannedAddedMessage'),
       );
     } catch (inviteError) {
+      console.error('Unable to add planned circle hand.', inviteError);
       Alert.alert(
-        'Unable to add member',
-        inviteError instanceof Error
-          ? inviteError.message
-          : 'The backend rejected the invite request.',
+        t('organizer.addErrorTitle'),
+        t('genericError'),
       );
     } finally {
       setSubmitting(false);
@@ -158,13 +162,21 @@ export default function InviteMemberScreen() {
           circleName: circle.name,
           circleId: circle.id,
           circleCode: circle.circleCode,
+          formatMessage: ({ circleName, circleCode, inviteUrl }) =>
+            circleCode
+              ? t('organizer.genericShareWithCode', {
+                  circleName,
+                  circleCode,
+                  inviteUrl,
+                })
+              : t('organizer.genericShareWithoutCode', {
+                  circleName,
+                  inviteUrl,
+                }),
         }),
       });
     } catch {
-      Alert.alert(
-        'Unable to share link',
-        'An error occurred while trying to open the share menu.',
-      );
+      Alert.alert(t('organizer.shareErrorTitle'), t('organizer.shareErrorMessage'));
     }
   }
 
@@ -183,16 +195,23 @@ export default function InviteMemberScreen() {
       await Share.share({
         message: buildClaimInviteShareMessage({
           circleName: circle.name,
-          handName: member.displayLabel || memberName(member),
+          handName:
+            member.displayLabel ||
+            memberName(member, t('organizer.unavailableFallback')),
           claimUrl,
+          formatMessage: ({ circleName, handName, claimUrl: url }) =>
+            t('organizer.claimShareMessage', {
+              circleName,
+              handName,
+              claimUrl: url,
+            }),
         }),
       });
     } catch (shareError) {
+      console.error('Unable to share planned-hand claim invite.', shareError);
       Alert.alert(
-        'Unable to share claim invite',
-        shareError instanceof Error
-          ? shareError.message
-          : 'Could not generate a claim link for this hand.',
+        t('organizer.claimShareErrorTitle'),
+        t('organizer.claimShareErrorMessage'),
       );
     } finally {
       setSharingClaimId(null);
@@ -204,7 +223,7 @@ export default function InviteMemberScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.statusText}>Loading invite details...</Text>
+          <Text style={styles.statusText}>{t('loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -215,17 +234,17 @@ export default function InviteMemberScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <FontAwesome name="warning" size={32} color={colors.warning} />
-          <Text style={styles.statusTitle}>Invite unavailable</Text>
+          <Text style={styles.statusTitle}>{t('unavailableTitle')}</Text>
           <Text style={styles.statusText}>
-            {error ?? 'The backend did not return this circle.'}
+            {error ?? t('organizer.circleMissing')}
           </Text>
           <Pressable
             style={styles.primaryButton}
             onPress={() => void loadInviteData()}
             accessibilityRole="button"
-            accessibilityLabel="Retry invite details"
+            accessibilityLabel={t('retryAccessibility')}
           >
-            <Text style={styles.primaryButtonText}>Retry</Text>
+            <Text style={styles.primaryButtonText}>{t('retry')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -242,19 +261,19 @@ export default function InviteMemberScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <FontAwesome name="lock" size={32} color={colors.muted} />
-          <Text style={styles.statusTitle}>Roster locked</Text>
+          <Text style={styles.statusTitle}>{t('organizer.rosterLocked')}</Text>
           <Text style={styles.statusText}>
             {phase === 'completed'
-              ? 'This circle is completed. Membership and payout order cannot be changed.'
-              : 'Membership, additional positions, and payout order are locked after the circle starts. New hands cannot be added.'}
+              ? t('organizer.completedLocked')
+              : t('organizer.startedLocked')}
           </Text>
           <Pressable
             style={styles.primaryButton}
             onPress={() => router.replace(circleWorkspaceHref(circle.id))}
             accessibilityRole="button"
-            accessibilityLabel="Back to circle workspace"
+            accessibilityLabel={t('organizer.backWorkspaceAccessibility')}
           >
-            <Text style={styles.primaryButtonText}>Back to workspace</Text>
+            <Text style={styles.primaryButtonText}>{t('organizer.backWorkspace')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -273,12 +292,12 @@ export default function InviteMemberScreen() {
             style={styles.backButton}
             onPress={() => router.replace(circleWorkspaceHref(circle.id))}
             accessibilityRole="button"
-            accessibilityLabel="Back to circle workspace"
+            accessibilityLabel={t('organizer.backWorkspaceAccessibility')}
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
           <View style={styles.headerCopy}>
-            <Text style={styles.kicker}>Invite hands</Text>
+            <Text style={styles.kicker}>{t('organizer.kicker')}</Text>
             <Text style={styles.title}>{circle.name}</Text>
           </View>
         </View>
@@ -287,25 +306,24 @@ export default function InviteMemberScreen() {
           style={styles.shareHeroCard}
           onPress={() => void handleShareGenericLink()}
           accessibilityRole="button"
-          accessibilityLabel="Share circle invite link"
+          accessibilityLabel={t('organizer.shareCircleAccessibility')}
         >
           <View style={styles.shareHeroIcon}>
             <FontAwesome name="share-alt" size={24} color={colors.primary} />
           </View>
           <View style={styles.shareHeroContent}>
-            <Text style={styles.shareHeroTitle}>Share circle invite</Text>
+            <Text style={styles.shareHeroTitle}>{t('organizer.shareCircle')}</Text>
             <Text style={styles.shareHeroText}>
-              Code or general link — unmatched joiners go to pending requests
+              {t('organizer.shareCircleSubtitle')}
             </Text>
           </View>
         </Pressable>
 
         {unclaimedHands.length > 0 ? (
           <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>Claim invites by hand</Text>
+            <Text style={styles.sectionTitle}>{t('organizer.claimTitle')}</Text>
             <Text style={styles.sectionSubtitle}>
-              Each unclaimed hand has its own secure claim link. Share the right
-              link so the person attaches to that payout position.
+              {t('organizer.claimSubtitle')}
             </Text>
             <View style={styles.claimList}>
               {unclaimedHands.map((member, index) => (
@@ -315,10 +333,11 @@ export default function InviteMemberScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.claimName} numberOfLines={1}>
-                      {member.displayLabel || memberName(member)}
+                      {member.displayLabel ||
+                        memberName(member, t('organizer.unavailableFallback'))}
                     </Text>
                     <Text style={styles.claimMeta}>
-                      Awaiting claim
+                      {t('organizer.awaitingClaim')}
                       {member.phone ? ` · ${member.phone}` : ''}
                       {member.email && !member.phone ? ` · ${member.email}` : ''}
                     </Text>
@@ -331,7 +350,12 @@ export default function InviteMemberScreen() {
                     disabled={sharingClaimId === member.id}
                     onPress={() => void handleShareClaimInvite(member)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Share claim invite for ${memberName(member)}`}
+                    accessibilityLabel={t('organizer.shareClaimAccessibility', {
+                      name: memberName(
+                        member,
+                        t('organizer.unavailableFallback'),
+                      ),
+                    })}
                   >
                     {sharingClaimId === member.id ? (
                       <ActivityIndicator color={colors.primary} size="small" />
@@ -342,7 +366,9 @@ export default function InviteMemberScreen() {
                           size={13}
                           color={colors.primary}
                         />
-                        <Text style={styles.claimShareText}>Share claim</Text>
+                        <Text style={styles.claimShareText}>
+                          {t('organizer.shareClaim')}
+                        </Text>
                       </>
                     )}
                   </Pressable>
@@ -353,11 +379,10 @@ export default function InviteMemberScreen() {
         ) : (
           <View style={[styles.formCard, { backgroundColor: '#f0fdf4' }]}>
             <Text style={[styles.sectionTitle, { color: '#166534' }]}>
-              All hands claimed
+              {t('organizer.allClaimed')}
             </Text>
             <Text style={[styles.sectionSubtitle, { color: '#15803d' }]}>
-              Every planned hand is connected to a CircuSave account. You can
-              still share the circle code for new join requests.
+              {t('organizer.allClaimedSubtitle')}
             </Text>
           </View>
         )}
@@ -368,7 +393,7 @@ export default function InviteMemberScreen() {
               <FontAwesome name="lock" size={32} color={colors.warning} />
             </View>
             <Text style={[styles.sectionTitle, { textAlign: 'center' }]}>
-              Hand limit reached
+              {t('organizer.handLimit')}
             </Text>
             <Text
               style={[
@@ -376,36 +401,34 @@ export default function InviteMemberScreen() {
                 { textAlign: 'center', marginBottom: 24 },
               ]}
             >
-              Free accounts are limited to 20 hands per circle. Upgrade to
-              Premium to add more.
+              {t('organizer.handLimitMessage')}
             </Text>
             <Pressable
               style={styles.primaryButton}
               onPress={() => router.push('/subscription')}
             >
-              <Text style={styles.primaryButtonText}>View Plans</Text>
+              <Text style={styles.primaryButtonText}>{t('organizer.viewPlans')}</Text>
             </Pressable>
           </View>
         ) : (
           <>
             <View style={styles.formCard}>
-              <Text style={styles.sectionTitle}>Add a planned hand</Text>
+              <Text style={styles.sectionTitle}>{t('organizer.addPlannedTitle')}</Text>
               <Text style={styles.sectionSubtitle}>
-                Creates an unclaimed roster position. Share their claim invite
-                after saving.
+                {t('organizer.addPlannedSubtitle')}
               </Text>
               <View style={styles.formSpacer} />
               <Field
-                label="Full name"
+                label={t('organizer.fullName')}
                 value={fullName}
                 onChangeText={setFullName}
-                placeholder="Enter member name"
+                placeholder={t('organizer.fullNamePlaceholder')}
               />
               <Field
-                label="Phone or email"
+                label={t('organizer.contact')}
                 value={contact}
                 onChangeText={setContact}
-                placeholder="Phone number or email"
+                placeholder={t('organizer.contactPlaceholder')}
                 keyboardType="email-address"
               />
             </View>
@@ -415,10 +438,10 @@ export default function InviteMemberScreen() {
               disabled={submitting}
               onPress={() => void sendInvite()}
               accessibilityRole="button"
-              accessibilityLabel="Add planned hand"
+              accessibilityLabel={t('organizer.addPlanned')}
             >
               <Text style={styles.primaryButtonText}>
-                {submitting ? 'Saving...' : 'Add planned hand'}
+                {submitting ? t('organizer.saving') : t('organizer.addPlanned')}
               </Text>
             </Pressable>
           </>
@@ -428,8 +451,11 @@ export default function InviteMemberScreen() {
   );
 }
 
-function memberName(member: BackendCircleMember | undefined) {
-  return member?.full_name || member?.name || 'Unavailable';
+function memberName(
+  member: BackendCircleMember | undefined,
+  fallback: string,
+) {
+  return member?.full_name || member?.name || fallback;
 }
 
 function Field({
