@@ -31,7 +31,10 @@ import {
 import { isOrganizer } from '@/lib/permissions';
 import { colors, spacing } from '@/lib/theme';
 import type { BackendCircleSummary } from '@/lib/types';
-import { isSetupCircleStatus } from '@/lib/circleSummary';
+import {
+  getViewerPayoutPosition,
+  isSetupCircleStatus,
+} from '@/lib/circleSummary';
 
 type ListItem =
   | { type: 'header'; id: string; title: string; count: number }
@@ -473,7 +476,7 @@ function CircleCard({
 
   const totalRounds = detail?.members?.length ?? circle.memberCount;
   const viewerPosition =
-    detail && userId ? getViewerPosition(detail, userId) : null;
+    detail && userId ? getViewerPayoutPosition(detail, userId) : null;
 
   return (
     <Pressable
@@ -607,18 +610,6 @@ function EmptyState() {
       </Text>
     </View>
   );
-}
-
-function getViewerPosition(detail: BackendCircleDetail, userId: string) {
-  const ordered = [...detail.members].sort((a, b) => {
-    const posA = detail.turnOrder.indexOf(a.id);
-    const posB = detail.turnOrder.indexOf(b.id);
-    const nA = posA === -1 ? 9999 : posA;
-    const nB = posB === -1 ? 9999 : posB;
-    return nA - nB;
-  });
-  const viewer = ordered.find((m) => m.userId === userId);
-  return viewer ? ordered.indexOf(viewer) + 1 : null;
 }
 
 const styles = StyleSheet.create({
