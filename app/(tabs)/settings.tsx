@@ -46,8 +46,8 @@ export default function SettingsScreen() {
     }, []),
   );
 
-  const displayName = session?.user.name ?? 'Settings';
-  const email = session?.user.email ?? 'Connected to backend session';
+  const displayName = session?.user.name ?? t('settings:title');
+  const email = session?.user.email ?? t('settings:connectedSession');
   const reliabilityScore = session?.user.reliabilityScore !== undefined 
     ? `${session.user.reliabilityScore}%` 
     : '--%';
@@ -72,52 +72,54 @@ export default function SettingsScreen() {
               
               <View style={styles.reliabilityBadge}>
                 <FontAwesome name="shield" size={12} color={colors.success} style={{ marginRight: 6 }} />
-                <Text style={styles.reliabilityText}>Reliability Score: {reliabilityScore}</Text>
+                <Text style={styles.reliabilityText}>
+                  {t('settings:reliabilityScore', { score: reliabilityScore })}
+                </Text>
               </View>
             </View>
           </View>
         </View>
 
         {/* Section: Financial */}
-        <Text style={styles.sectionTitle}>Financial & Payments</Text>
+        <Text style={styles.sectionTitle}>{t('settings:financialPayments')}</Text>
         <View style={styles.sectionContainer}>
           <MenuItem
             icon="bank"
-            title="Automated Payments"
-            subtitle={accounts.length > 0 ? "Bank account linked" : "Connect your bank account"}
-            badge={accounts.length > 0 ? "CONNECTED" : undefined}
+            title={t('settings:automatedPayments')}
+            subtitle={accounts.length > 0 ? t('settings:bankLinked') : t('settings:connectBank')}
+            badge={accounts.length > 0 ? t('settings:connected') : undefined}
             onPress={() => router.push('/automated-payments')}
             isFirst
           />
           <MenuItem
             icon="credit-card"
-            title="Payment Preferences"
+            title={t('settings:paymentPreferences')}
             subtitle="CashApp, Venmo, PayPal"
             onPress={() => router.push('/payment-preferences')}
           />
           <MenuItem
             icon="history"
-            title="Completed Circles"
-            subtitle="View your past savings groups"
+            title={t('settings:completedCircles')}
+            subtitle={t('settings:completedCirclesSubtitle')}
             onPress={() => router.push('/completed-circles')}
             isLast
           />
         </View>
 
         {/* Section: Account & Security */}
-        <Text style={styles.sectionTitle}>Account & Security</Text>
+        <Text style={styles.sectionTitle}>{t('settings:accountSecurity')}</Text>
         <View style={styles.sectionContainer}>
           <MenuItem
             icon="lock"
-            title="Security"
-            subtitle="Password, recovery, and devices"
+            title={t('settings:security')}
+            subtitle={t('settings:securitySubtitle')}
             onPress={() => router.push('/security')}
             isFirst
           />
           <MenuItem
             icon="star-o"
-            title="Subscription"
-            subtitle="View plans and upgrade options"
+            title={t('settings:subscription')}
+            subtitle={t('settings:subscriptionSubtitle')}
             onPress={() => router.push('/subscription')}
             isLast
           />
@@ -139,20 +141,23 @@ export default function SettingsScreen() {
           />
           <MenuItem
             icon="globe"
-            title="Cultural Terminology"
-            subtitle={`Currently using terms for: ${market.toUpperCase()}`}
+            title={t('settings:culturalTerminology')}
+            subtitle={t('settings:currentTerminology', { market: market.toUpperCase() })}
             onPress={() => setModalVisible(true)}
           />
           <MenuItem
             icon="bell-o"
-            title="Test Notification"
-            subtitle="Schedule a local confirmation"
+            title={t('settings:testNotification')}
+            subtitle={t('settings:testNotificationSubtitle')}
             onPress={async () => {
               const result = await scheduleTestNotification('test');
               if (result.ok) {
-                Alert.alert('Scheduled', 'Test notification will appear in 2 seconds.');
+                Alert.alert(t('settings:scheduled'), t('settings:scheduledMessage'));
               } else {
-                Alert.alert('Notifications unavailable', result.reason);
+                Alert.alert(
+                  t('settings:notificationsUnavailable'),
+                  t('settings:genericFailure'),
+                );
               }
             }}
             isLast
@@ -160,19 +165,19 @@ export default function SettingsScreen() {
         </View>
 
         {/* Section: Support */}
-        <Text style={styles.sectionTitle}>Support & About</Text>
+        <Text style={styles.sectionTitle}>{t('settings:supportAbout')}</Text>
         <View style={styles.sectionContainer}>
           <MenuItem
             icon="question-circle-o"
-            title="Help & Support"
-            subtitle="FAQs, contact support"
+            title={t('settings:helpSupport')}
+            subtitle={t('settings:helpSupportSubtitle')}
             onPress={() => router.push('/support')}
             isFirst
           />
           <MenuItem
             icon="file-text-o"
-            title="Legal & Policies"
-            subtitle="Terms, privacy, disclosures, and how money moves"
+            title={t('settings:legalPolicies')}
+            subtitle={t('settings:legalPoliciesSubtitle')}
             onPress={() => router.push('/legal' as Href)}
             isLast
           />
@@ -184,19 +189,31 @@ export default function SettingsScreen() {
             styles.signOutButton,
             pressed && styles.signOutButtonPressed
           ]}
-          onPress={async () => {
-            try {
-              await signOut();
-            } catch (e) {}
-            router.replace('/login');
-          }}
+          onPress={() =>
+            Alert.alert(t('settings:signOutTitle'), t('settings:signOutMessage'), [
+              { text: t('settings:cancel'), style: 'cancel' },
+              {
+                text: t('settings:signOut'),
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await signOut();
+                  } finally {
+                    router.replace('/login');
+                  }
+                },
+              },
+            ])
+          }
+          accessibilityRole="button"
+          accessibilityLabel={t('settings:signOut')}
         >
           <FontAwesome name="sign-out" size={20} color="#EF4444" style={{ marginRight: 8 }} />
-          <Text style={styles.signOutText}>Sign Out</Text>
+          <Text style={styles.signOutText}>{t('settings:signOut')}</Text>
         </Pressable>
 
         {/* Version */}
-        <Text style={styles.version}>CircuSave v1.0.0 â€¢ Build 2026.06</Text>
+        <Text style={styles.version}>CircuSave v1.0.0 - Build 2026.06</Text>
 
         {/* Cultural Terminology Modal */}
         <Modal
@@ -208,13 +225,18 @@ export default function SettingsScreen() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Terminology</Text>
-                <Pressable onPress={() => setModalVisible(false)} hitSlop={20}>
+                <Text style={styles.modalTitle}>{t('settings:selectTerminology')}</Text>
+                <Pressable
+                  onPress={() => setModalVisible(false)}
+                  hitSlop={20}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('settings:closeTerminology')}
+                >
                   <FontAwesome name="times" size={24} color={colors.muted} />
                 </Pressable>
               </View>
               <Text style={styles.modalDescription}>
-                Choose your cultural terminology. This changes what we call savings groups across the app.
+                {t('settings:terminologyDescription')}
               </Text>
               
               <ScrollView showsVerticalScrollIndicator={false}>
@@ -281,6 +303,8 @@ function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
         pressed && styles.menuItemPressed
       ]} 
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${subtitle}`}
     >
       <View style={styles.menuIconContainer}>
         <FontAwesome name={icon} size={20} color={colors.primary} />

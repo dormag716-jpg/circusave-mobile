@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import {
   getCircleDetail,
@@ -21,7 +22,7 @@ import {
   type BackendRoundSnapshot,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import { useMarket } from '@/lib/market';
+import { formatCurrency, formatShortDate } from '@/lib/i18n/formatters';
 import {
   circleWorkspaceHref,
   contributionHref,
@@ -42,7 +43,7 @@ const DETAIL_LIMIT = 5;
 
 export default function DashboardScreen() {
   const { session } = useAuthSession();
-  const { t } = useMarket();
+  const { t, i18n } = useTranslation('dashboard');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [circleDetails, setCircleDetails] = useState<
@@ -56,8 +57,17 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const token = session?.session.token;
   const userId = session?.user.id;
-  const displayName = session?.user.name ?? 'Member';
-  const firstName = displayName.split(' ')[0] || 'Member';
+  const displayName = session?.user.name ?? t('memberFallback');
+  const firstName = displayName.split(' ')[0] || t('memberFallback');
+  const formatMoney = useCallback(
+    (amount: number) => formatCurrency(amount, i18n.resolvedLanguage || i18n.language),
+    [i18n.language, i18n.resolvedLanguage],
+  );
+  const formatPayoutLabel = useCallback(
+    (value?: string | null) =>
+      formatPayoutDateLabel(value, i18n.resolvedLanguage || i18n.language, t),
+    [i18n.language, i18n.resolvedLanguage, t],
+  );
 
   const activeCircles = useMemo(
     () => circles.filter((circle) => circle.status === 'active'),
@@ -99,7 +109,7 @@ export default function DashboardScreen() {
   const loadDashboard = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!token) {
-        setError('Your session is missing an access token. Sign in again.');
+        setError(t('sessionMissing'));
         setSummary(null);
         setCircles([]);
         setCircleDetails({});
@@ -151,12 +161,8 @@ export default function DashboardScreen() {
         setCircles(nextCircles);
         setCircleDetails(detailsMap);
         setCircleSchedules(schedulesMap);
-      } catch (loadError) {
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'Unable to load your dashboard.',
-        );
+      } catch {
+        setError(t('loadError'));
         setSummary(null);
         setCircles([]);
         setCircleDetails({});
@@ -165,7 +171,7 @@ export default function DashboardScreen() {
         setLoading(false);
       }
     },
-    [token],
+    [t, token],
   );
 
   useFocusEffect(
@@ -200,7 +206,7 @@ export default function DashboardScreen() {
         <View style={styles.greeting}>
           <View style={styles.welcomeRow}>
             <Text style={styles.welcome}>
-              {getGreeting()}, {firstName} 👋
+              {getGreeting(t)}, {firstName} 👋
             </Text>
             <View
               style={[
@@ -209,46 +215,16 @@ export default function DashboardScreen() {
               ]}
             >
               <Text style={styles.roleBadgeText}>
-                {userIsOrganizer ? 'Organizer' : 'Member'}
+                {userIsOrganizer ? t('organizer') : t('member')}
               </Text>
             </View>
           </View>
           <Text style={styles.subtitle}>
             {userIsOrganizer
-              ? `Here's what's happening with the ${t('circles').toLowerCase()} you manage`
-              : `Here's what's happening with your ${t('circles').toLowerCase()}`}
+              ? t('organizerSubtitle')
+              : t('memberSubtitle')}
           </Text>
         </View>
-
-        {setupCircles.length > 0 ? (
-          <View style={styles.setupSection}>
-            <View style={styles.setupSectionHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.setupSectionTitle}>Continue setup</Text>
-                <Text style={styles.setupSectionSubtitle}>Your draft circles are saved and waiting for setup.</Text>
-              </View>
-              <Pressable onPress={() => router.push(myCirclesHref)} accessibilityRole="button" accessibilityLabel="View all circles in setup">
-                <Text style={styles.setupSectionLink}>View all</Text>
-              </Pressable>
-            </View>
-            {setupCircles.slice(0, 3).map((circle) => (
-              <Pressable
-                key={circle.id}
-                style={({ pressed }) => [styles.setupCircleRow, pressed && styles.pressed]}
-                onPress={() => router.push(circleWorkspaceHref(circle.id, 'people'))}
-                accessibilityRole="button"
-                accessibilityLabel={`Continue setup for ${circle.name}`}
-              >
-                <View style={styles.setupCircleIcon}><FontAwesome name="wrench" size={15} color={colors.primary} /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.setupCircleName}>{circle.name}</Text>
-                  <Text style={styles.setupCircleMeta}>Draft · Continue in People</Text>
-                </View>
-                <FontAwesome name="chevron-right" size={13} color={colors.muted} />
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
 
         {activeCircles.length > 0 ? (
           <ScrollView
@@ -266,7 +242,7 @@ export default function DashboardScreen() {
               const detail = circleDetails[circle.id];
               const schedule = circleSchedules[circle.id];
               const payoutDate = resolvePayoutDate(circle, schedule, detail);
-              const payoutLabel = formatPayoutDateLabel(payoutDate);
+              const payoutLabel = formatPayoutLabel(payoutDate);
               return (
                 <Pressable
                   key={circle.id}
@@ -276,24 +252,30 @@ export default function DashboardScreen() {
                   ]}
                   onPress={() => router.push(circleWorkspaceHref(circle.id))}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open ${circle.name}${
-                    payoutLabel ? `, payout ${payoutLabel}` : ''
-                  }`}
+                  accessibilityLabel={t('openCircleAccessibility', {
+                    circleName: circle.name,
+                    payout: payoutLabel
+                      ? t('payoutAccessibility', { payout: payoutLabel })
+                      : '',
+                  })}
                 >
                   <Text style={styles.heroSub}>{circle.name}</Text>
-                  <Text style={styles.heroLabel}>In the Pot</Text>
+                  <Text style={styles.heroLabel}>{t('inPot')}</Text>
                   <Text style={styles.heroAmount}>{formatMoney(potTotal)}</Text>
                   <View style={styles.heroFooterRow}>
                     <View style={{ flex: 1, paddingRight: 8 }}>
                       <Text style={styles.heroFooterText}>
-                        Contribution: {formatMoney(circle.contributionAmount)}
+                        {t('contribution', {
+                          amount: formatMoney(circle.contributionAmount),
+                        })}
                       </Text>
                       <Text style={styles.heroPayoutDate}>
-                        Payout date:{' '}
-                        {payoutLabel || 'Not scheduled yet'}
+                        {t('payoutDate', {
+                          date: payoutLabel || t('notScheduled'),
+                        })}
                       </Text>
                     </View>
-                    <Text style={styles.heroTapHint}>Tap to open</Text>
+                    <Text style={styles.heroTapHint}>{t('tapToOpen')}</Text>
                   </View>
                 </Pressable>
               );
@@ -302,12 +284,10 @@ export default function DashboardScreen() {
         ) : (
           <View style={styles.heroCard}>
             <Text style={styles.heroLabel}>
-              No active {t('circles').toLowerCase()}
+              {t('noActiveCircles')}
             </Text>
             <Text style={styles.heroSub}>
-              {setupCircles.length > 0
-                ? 'Finish setup on a draft circle above — Free includes 1 open circle at a time.'
-                : `Create or join a ${t('circle').toLowerCase()} to get started. Free: 1 open circle at a time.`}
+              {t('noActiveDescription')}
             </Text>
           </View>
         )}
@@ -317,10 +297,10 @@ export default function DashboardScreen() {
             <View style={{ flex: 1, paddingRight: 12 }}>
               <View style={[styles.actionCardHeader, { marginBottom: 4 }]}>
                 <FontAwesome name="exclamation-circle" size={18} color={colors.primaryDark} />
-                <Text style={styles.payDueTitle}>Contribution Due</Text>
+                <Text style={styles.payDueTitle}>{t('contributionDue')}</Text>
               </View>
               <Text style={[styles.payDueSubtitle, { marginTop: 0 }]}>
-                Next payment for {firstDueCircle.name} is ready.
+                {t('nextPaymentReady', { circleName: firstDueCircle.name })}
               </Text>
             </View>
             <Pressable
@@ -333,9 +313,9 @@ export default function DashboardScreen() {
                 router.push(contributionHref(firstDueCircle.id))
               }
               accessibilityRole="button"
-              accessibilityLabel="Pay your part"
+              accessibilityLabel={t('payYourPart')}
             >
-              <Text style={styles.payDueButtonText}>Pay Now</Text>
+              <Text style={styles.payDueButtonText}>{t('payNow')}</Text>
               <FontAwesome name="arrow-right" size={12} color="#ffffff" />
             </Pressable>
           </View>
@@ -346,12 +326,13 @@ export default function DashboardScreen() {
             <View style={{ flex: 1, paddingRight: 12 }}>
               <View style={[styles.actionCardHeader, { marginBottom: 4 }]}>
                 <FontAwesome name="check-circle" size={18} color="#B45309" />
-                <Text style={styles.reviewTitle}>Payments to review</Text>
+                <Text style={styles.reviewTitle}>{t('paymentsToReview')}</Text>
               </View>
               <Text style={[styles.reviewSubtitle, { marginTop: 0 }]}>
-                {reviewCount === 1
-                  ? `1 payment waiting in ${firstReviewTarget.circle.name}`
-                  : `${reviewCount} payments waiting for review`}
+                {t('paymentWaiting', {
+                  count: reviewCount,
+                  circleName: firstReviewTarget.circle.name,
+                })}
               </Text>
             </View>
             <Pressable
@@ -366,9 +347,9 @@ export default function DashboardScreen() {
                 )
               }
               accessibilityRole="button"
-              accessibilityLabel="Review payments"
+              accessibilityLabel={t('reviewPayments')}
             >
-              <Text style={styles.reviewButtonText}>Review</Text>
+              <Text style={styles.reviewButtonText}>{t('review')}</Text>
               <FontAwesome name="arrow-right" size={12} color="#ffffff" />
             </Pressable>
           </View>
@@ -377,16 +358,16 @@ export default function DashboardScreen() {
         {error ? (
           <View style={styles.errorCard}>
             <View style={styles.errorCopy}>
-              <Text style={styles.errorTitle}>Dashboard data unavailable</Text>
+              <Text style={styles.errorTitle}>{t('dataUnavailable')}</Text>
               <Text style={styles.errorText}>{error}</Text>
             </View>
             <Pressable
               style={styles.retryButton}
               onPress={() => void loadDashboard()}
               accessibilityRole="button"
-              accessibilityLabel="Retry dashboard"
+              accessibilityLabel={t('retryDashboard')}
             >
-              <Text style={styles.retryText}>Retry</Text>
+              <Text style={styles.retryText}>{t('retry')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -394,18 +375,18 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <StatCard
             icon="clock-o"
-            value={getNextPayoutLabel(summary?.upcomingPayout?.payoutDate)}
-            label={recipientName ? `${recipientName} receives` : 'Next Payout'}
+            value={getNextPayoutLabel(summary?.upcomingPayout?.payoutDate, t)}
+            label={recipientName ? t('receives', { name: recipientName }) : t('nextPayout')}
             color={colors.success}
           />
           <StatCard
             icon="users"
             value={String(summary?.activeCircles ?? activeCircles.length)}
-            label={`Active ${t('circles')}`}
+            label={t('activeCircles')}
             color={colors.primary}
             detail={
               userIsOrganizer
-                ? `You manage these ${t('circles').toLowerCase()}`
+                ? t('manageCircles')
                 : undefined
             }
           />
@@ -413,13 +394,13 @@ export default function DashboardScreen() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Active {t('circles')}</Text>
+            <Text style={styles.sectionTitle}>{t('activeCircles')}</Text>
             <Pressable
               onPress={() => router.push(myCirclesHref)}
               accessibilityRole="button"
-              accessibilityLabel={`See all active ${t('circles').toLowerCase()}`}
+              accessibilityLabel={t('seeAllActive')}
             >
-              <Text style={styles.seeAll}>See all</Text>
+              <Text style={styles.seeAll}>{t('seeAll')}</Text>
             </Pressable>
           </View>
 
@@ -440,7 +421,7 @@ export default function DashboardScreen() {
                 const circleRecipientName = getCurrentRecipientName(detail);
                 const schedule = circleSchedules[circle.id];
                 const payoutDate = resolvePayoutDate(circle, schedule, detail);
-                const formattedPayoutDate = formatPayoutDateLabel(payoutDate);
+                const formattedPayoutDate = formatPayoutLabel(payoutDate);
                 const circleIsOrganizer = isOrganizer(circle.userRole);
 
                 return (
@@ -454,7 +435,10 @@ export default function DashboardScreen() {
                       router.push(circleWorkspaceHref(circle.id))
                     }
                     accessibilityRole="button"
-                    accessibilityLabel={`Open ${circle.name}`}
+                    accessibilityLabel={t('openCircleAccessibility', {
+                      circleName: circle.name,
+                      payout: '',
+                    })}
                   >
                     <View style={styles.circleHeader}>
                       <Text style={styles.circleName}>{circle.name}</Text>
@@ -465,9 +449,15 @@ export default function DashboardScreen() {
                       </View>
                     </View>
                     <Text style={styles.circleMeta}>
-                      {capitalize(circle.frequency)} • Round{' '}
-                      {formatRound(currentRoundNumber)}
-                      {totalRounds ? ` of ${totalRounds}` : ''}
+                      {t('roundProgress', {
+                        frequency: t(`frequency.${circle.frequency}`, {
+                          defaultValue: circle.frequency,
+                        }),
+                        round: formatRound(currentRoundNumber),
+                        total: totalRounds
+                          ? t('roundTotal', { total: totalRounds })
+                          : '',
+                      })}
                     </Text>
                     {isViewerRecipient ? (
                       <View style={{ alignItems: 'flex-start' }}>
@@ -477,7 +467,7 @@ export default function DashboardScreen() {
                             { color: colors.success, fontWeight: '900' },
                           ]}
                         >
-                          ✨ It's your turn this round
+                          {t('yourTurn')}
                         </Text>
                         <Text
                           style={[
@@ -485,23 +475,27 @@ export default function DashboardScreen() {
                             { marginTop: 2, color: colors.success },
                           ]}
                         >
-                          Payout date:{' '}
-                          {formattedPayoutDate || 'Not scheduled yet'}
+                          {t('payoutDate', {
+                            date: formattedPayoutDate || t('notScheduled'),
+                          })}
                         </Text>
                       </View>
                     ) : (
                       <View style={{ alignItems: 'flex-start' }}>
                         <Text style={styles.recipient}>
-                          Next: {circleRecipientName ?? 'Unavailable'}
+                          {t('nextRecipient', {
+                            name: circleRecipientName ?? t('unavailable'),
+                          })}
                         </Text>
                         <Text style={[styles.circleMeta, { marginTop: 2 }]}>
-                          Payout date:{' '}
-                          {formattedPayoutDate || 'Not scheduled yet'}
+                          {t('payoutDate', {
+                            date: formattedPayoutDate || t('notScheduled'),
+                          })}
                         </Text>
                       </View>
                     )}
                     {circleIsOrganizer ? (
-                      <Text style={styles.manageLabel}>Manage as Organizer</Text>
+                      <Text style={styles.manageLabel}>{t('manageAsOrganizer')}</Text>
                     ) : null}
                   </Pressable>
                 );
@@ -510,9 +504,9 @@ export default function DashboardScreen() {
           ) : (
             <View style={styles.emptyCard}>
               <FontAwesome name="users" size={28} color={colors.muted} />
-              <Text style={styles.emptyTitle}>No active circles yet</Text>
+              <Text style={styles.emptyTitle}>{t('emptyActiveTitle')}</Text>
               <Text style={styles.emptyText}>
-                Create your first savings circle to get started.
+                {t('emptyActiveDescription')}
               </Text>
             </View>
           )}
@@ -526,10 +520,10 @@ export default function DashboardScreen() {
             ]}
             onPress={() => router.push(createCircleHref)}
             accessibilityRole="button"
-            accessibilityLabel="Create new circle"
+            accessibilityLabel={t('createNewCircle')}
           >
             <FontAwesome name="plus" size={20} color="#ffffff" />
-            <Text style={styles.actionText}>New Circle</Text>
+            <Text style={styles.actionText}>{t('newCircle')}</Text>
           </Pressable>
 
           <Pressable
@@ -540,10 +534,10 @@ export default function DashboardScreen() {
             ]}
             onPress={() => router.push(joinCircleHref)}
             accessibilityRole="button"
-            accessibilityLabel="Join a circle with code"
+            accessibilityLabel={t('joinWithCode')}
           >
             <FontAwesome name="key" size={18} color={colors.primary} />
-            <Text style={styles.secondaryActionText}>Join by Code</Text>
+            <Text style={styles.secondaryActionText}>{t('joinByCode')}</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -642,14 +636,17 @@ function StatCard({
   );
 }
 
-function getGreeting() {
+function getGreeting(t: (key: string, options?: Record<string, unknown>) => string) {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return t('greetingMorning');
+  if (hour < 18) return t('greetingAfternoon');
+  return t('greetingEvening');
 }
 
-function getNextPayoutLabel(payoutDate?: string) {
+function getNextPayoutLabel(
+  payoutDate: string | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
   if (!payoutDate) {
     return '—';
   }
@@ -663,7 +660,7 @@ function getNextPayoutLabel(payoutDate?: string) {
     0,
     Math.ceil((payoutTime - Date.now()) / (24 * 60 * 60 * 1000)),
   );
-  return days === 0 ? 'Today' : `In ${days} ${days === 1 ? 'day' : 'days'}`;
+  return days === 0 ? t('today') : t('daysUntil', { count: days });
 }
 
 /** Prefer authoritative schedule/nextPayout date for the current round. */
@@ -697,17 +694,21 @@ function resolvePayoutDate(
   return due ? String(due) : null;
 }
 
-function formatPayoutDateLabel(payoutDate?: string | null): string {
+function formatPayoutDateLabel(
+  payoutDate: string | null | undefined,
+  language: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   if (!payoutDate) {
     return '';
   }
 
-  const short = formatShortDueDate(payoutDate);
+  const short = formatShortDate(payoutDate, language);
   if (!short) {
     return '';
   }
 
-  const relative = getNextPayoutLabel(payoutDate);
+  const relative = getNextPayoutLabel(payoutDate, t);
   if (relative && relative !== '—') {
     return `${short} (${relative})`;
   }
@@ -726,37 +727,6 @@ function getCurrentRecipientName(circle: BackendCircleDetail | null | undefined)
   return recipient?.full_name || recipient?.name || null;
 }
 
-function formatShortDueDate(dueDateStr?: string | null) {
-  if (!dueDateStr) {
-    return '';
-  }
-
-  const parts = dueDateStr.split('-');
-  if (parts.length >= 3) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    const m = parseInt(parts[1], 10);
-    const d = parseInt(parts[2], 10);
-    if (m >= 1 && m <= 12 && !Number.isNaN(d)) {
-      return `${months[m - 1]} ${d}`;
-    }
-  }
-
-  return dueDateStr;
-}
-
 function formatProgress(progress?: number) {
   return typeof progress === 'number' && Number.isFinite(progress)
     ? `${Math.max(0, Math.min(100, Math.round(progress)))}%`
@@ -767,74 +737,7 @@ function formatRound(round?: number) {
   return typeof round === 'number' && Number.isFinite(round) ? round : '—';
 }
 
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function capitalize(value: string) {
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
-}
-
 const styles = StyleSheet.create({
-  setupSection: {
-    backgroundColor: colors.card,
-    borderColor: colors.cardBorder,
-    borderRadius: 18,
-    borderWidth: 1,
-    marginBottom: 20,
-    padding: 16,
-  },
-  setupSectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  setupSectionTitle: {
-    color: colors.textStrong,
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  setupSectionSubtitle: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: 3,
-  },
-  setupSectionLink: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  setupCircleRow: {
-    alignItems: 'center',
-    borderTopColor: colors.cardBorder,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    minHeight: 62,
-    paddingVertical: 10,
-  },
-  setupCircleIcon: {
-    alignItems: 'center',
-    backgroundColor: colors.primarySoft,
-    borderRadius: 18,
-    height: 36,
-    justifyContent: 'center',
-    marginRight: 11,
-    width: 36,
-  },
-  setupCircleName: {
-    color: colors.textStrong,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  setupCircleMeta: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: 3,
-  },
   screen: {
     flex: 1,
     backgroundColor: colors.background,

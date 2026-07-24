@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -24,9 +25,11 @@ export function useDeviceLock() {
 }
 
 export function DeviceLockProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation('deviceLock');
   const [isLockEnabled, setIsLockEnabled] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [lockError, setLockError] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
@@ -48,6 +51,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const authenticate = async () => {
+    setLockError(null);
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
@@ -59,12 +63,15 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
       }
 
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Unlock CircuSave',
-        fallbackLabel: 'Use Passcode',
+        promptMessage: t('unlockPrompt'),
+        fallbackLabel: t('usePasscode'),
+        cancelLabel: t('cancel'),
       });
 
       if (result.success) {
         setIsLocked(false);
+      } else {
+        setLockError(t('failed'));
       }
     } catch {
       // If biometric API fails for any reason, fail open so the user isn't locked out
@@ -90,7 +97,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
     return () => {
       subscription.remove();
     };
-  }, [isLockEnabled]);
+  }, [isLockEnabled, t]);
 
   const setLockEnabled = async (enabled: boolean) => {
     try {
@@ -114,12 +121,18 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
             <View style={styles.iconCircle}>
               <FontAwesome name="lock" size={48} color={colors.primary} />
             </View>
-            <Text style={styles.title}>App Locked</Text>
+            <Text style={styles.title}>{t('appLocked')}</Text>
             <Text style={styles.subtitle}>
-              Verify your identity to access your savings circles.
+              {t('verifyIdentity')}
             </Text>
-            <Pressable style={styles.unlockButton} onPress={() => void authenticate()}>
-              <Text style={styles.unlockButtonText}>Unlock App</Text>
+            {lockError ? <Text style={styles.errorText}>{lockError}</Text> : null}
+            <Pressable
+              style={styles.unlockButton}
+              onPress={() => void authenticate()}
+              accessibilityRole="button"
+              accessibilityLabel={t('unlockApp')}
+            >
+              <Text style={styles.unlockButtonText}>{t('unlockApp')}</Text>
             </Pressable>
           </View>
         </SafeAreaView>
@@ -164,6 +177,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     marginBottom: 32,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   unlockButton: {
     backgroundColor: colors.primary,

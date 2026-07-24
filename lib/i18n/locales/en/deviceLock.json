@@ -1,0 +1,15 @@
+{
+  "unlockPrompt": "Unlock CircuSave",
+  "usePasscode": "Use Passcode",
+  "useFingerprint": "Use fingerprint",
+  "useFaceId": "Use Face ID",
+  "appLocked": "App Locked",
+  "verifyIdentity": "Verify your identity to access your savings circles.",
+  "unlockApp": "Unlock App",
+  "tryAgain": "Try again",
+  "cancel": "Cancel",
+  "unavailable": "Device authentication unavailable",
+  "failed": "Authentication failed",
+  "setupTitle": "Device lock",
+  "setupDescription": "Require your device authentication when CircuSave opens."
+}

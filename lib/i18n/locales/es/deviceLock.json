@@ -1,0 +1,15 @@
+{
+  "unlockPrompt": "Desbloquear CircuSave",
+  "usePasscode": "Usar código del dispositivo",
+  "useFingerprint": "Usar huella digital",
+  "useFaceId": "Usar Face ID",
+  "appLocked": "Aplicación bloqueada",
+  "verifyIdentity": "Verifica tu identidad para acceder a tus círculos de ahorro.",
+  "unlockApp": "Desbloquear aplicación",
+  "tryAgain": "Intentar de nuevo",
+  "cancel": "Cancelar",
+  "unavailable": "La autenticación del dispositivo no está disponible",
+  "failed": "La autenticación falló",
+  "setupTitle": "Bloqueo del dispositivo",
+  "setupDescription": "Solicita la autenticación del dispositivo al abrir CircuSave."
+}

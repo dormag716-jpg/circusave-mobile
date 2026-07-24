@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -28,6 +29,7 @@ import { postAuthHrefFromUrl } from '@/lib/navigation';
 import { colors, shadows, spacing } from '@/lib/theme';
 
 export default function LoginScreen() {
+  const { t } = useTranslation('auth');
   const passwordInputRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,22 +60,22 @@ export default function LoginScreen() {
     Keyboard.dismiss();
 
     if (!normalizedEmail) {
-      Alert.alert('Missing email', 'Email is required.');
+      Alert.alert(t('login.missingEmailTitle'), t('login.missingEmailMessage'));
       return;
     }
 
     if (!recoveryMode && !password) {
-      Alert.alert('Missing password', 'Password is required.');
+      Alert.alert(t('login.missingPasswordTitle'), t('login.missingPasswordMessage'));
       return;
     }
 
     if (recoveryMode && otpRequested && !resetVerified && otpCode.length < 6) {
-      Alert.alert('Missing code', 'Enter the 6-digit recovery code.');
+      Alert.alert(t('login.missingCodeTitle'), t('login.missingCodeMessage'));
       return;
     }
 
     if (recoveryMode && resetVerified && password.length < 8) {
-      Alert.alert('Weak password', 'New password must be at least 8 characters.');
+      Alert.alert(t('login.weakPasswordTitle'), t('login.weakPasswordMessage'));
       return;
     }
 
@@ -96,8 +98,8 @@ export default function LoginScreen() {
 
         setOtpRequested(true);
         Alert.alert(
-          'Recovery code sent',
-          'If the account exists, check your email for the reset code.',
+          t('login.codeSentTitle'),
+          t('login.codeSentMessage'),
         );
         return;
       }
@@ -110,7 +112,7 @@ export default function LoginScreen() {
         setResetToken(result.resetToken);
         setResetVerified(true);
         setPassword('');
-        Alert.alert('Code verified', 'Now choose a new password.');
+        Alert.alert(t('login.codeVerifiedTitle'), t('login.codeVerifiedMessage'));
         return;
       }
 
@@ -120,11 +122,11 @@ export default function LoginScreen() {
 
       await resetPassword({ resetToken, newPassword: password });
       setRecovery(false);
-      Alert.alert('Password reset', 'Sign in with your new password.');
-    } catch (error) {
+      Alert.alert(t('login.passwordResetTitle'), t('login.passwordResetMessage'));
+    } catch {
       Alert.alert(
-        'Unable to continue',
-        error instanceof Error ? error.message : 'The request could not be completed.',
+        t('common.genericErrorTitle'),
+        t('common.genericErrorMessage'),
       );
     } finally {
       setIsSubmitting(false);
@@ -148,23 +150,24 @@ export default function LoginScreen() {
               <FontAwesome name="users" size={42} color="#ffffff" />
             </View>
             <Text style={styles.appName}>CircuSave</Text>
-            <Text style={styles.tagline}>Save together. Get paid faster.</Text>
+            <Text style={styles.tagline}>{t('login.tagline')}</Text>
           </View>
 
           <View style={styles.card}>
             <Text style={styles.welcome}>
-              {recoveryMode ? 'Recover access' : 'Welcome back'}
+              {recoveryMode ? t('login.recoverAccess') : t('login.welcomeBack')}
             </Text>
             <Text style={styles.subtitle}>
               {recoveryMode
-                ? 'Verify your email to choose a new password.'
-                : 'Sign in to access your circles.'}
+                ? t('login.recoverySubtitle')
+                : t('login.signInSubtitle')}
             </Text>
 
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{t('common.email')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="you@example.com"
+              placeholder={t('login.emailPlaceholder')}
+              accessibilityLabel={t('common.email')}
               placeholderTextColor={colors.subtle}
               value={email}
               onChangeText={setEmail}
@@ -179,11 +182,12 @@ export default function LoginScreen() {
 
             {!recoveryMode && (
               <>
-                <Text style={styles.label}>Password</Text>
+                <Text style={styles.label}>{t('common.password')}</Text>
                 <TextInput
                   ref={passwordInputRef}
                   style={styles.input}
-                  placeholder="Your password"
+                  placeholder={t('login.passwordPlaceholder')}
+                  accessibilityLabel={t('common.password')}
                   placeholderTextColor={colors.subtle}
                   value={password}
                   onChangeText={setPassword}
@@ -197,10 +201,11 @@ export default function LoginScreen() {
 
             {recoveryMode && otpRequested && !resetVerified && (
               <>
-                <Text style={styles.label}>6-digit recovery code</Text>
+                <Text style={styles.label}>{t('login.recoveryCode')}</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="123456"
+                  placeholder={t('login.recoveryCodePlaceholder')}
+                  accessibilityLabel={t('login.recoveryCode')}
                   placeholderTextColor={colors.subtle}
                   value={otpCode}
                   onChangeText={(text) => setOtpCode(text.replace(/\D/g, '').slice(0, 6))}
@@ -213,11 +218,12 @@ export default function LoginScreen() {
 
             {recoveryMode && resetVerified && (
               <>
-                <Text style={styles.label}>New password</Text>
+                <Text style={styles.label}>{t('login.newPassword')}</Text>
                 <TextInput
                   ref={passwordInputRef}
                   style={styles.input}
-                  placeholder="8+ characters"
+                  placeholder={t('login.newPasswordPlaceholder')}
+                  accessibilityLabel={t('login.newPassword')}
                   placeholderTextColor={colors.subtle}
                   value={password}
                   onChangeText={setPassword}
@@ -231,7 +237,7 @@ export default function LoginScreen() {
 
             <Pressable style={styles.forgotPassword} onPress={() => setRecovery(!recoveryMode)}>
               <Text style={styles.forgotText}>
-                {recoveryMode ? 'Back to sign in' : 'Forgot password?'}
+                {recoveryMode ? t('login.backToSignIn') : t('login.forgotPassword')}
               </Text>
             </Pressable>
 
@@ -241,18 +247,27 @@ export default function LoginScreen() {
               disabled={isSubmitting}
               accessibilityRole="button"
               accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
+              accessibilityLabel={
+                !recoveryMode
+                  ? t('login.signIn')
+                  : !otpRequested
+                    ? t('login.sendRecoveryCode')
+                    : resetVerified
+                      ? t('login.resetPassword')
+                      : t('login.verifyRecoveryCode')
+              }
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
                 <Text style={styles.signInText}>
                   {!recoveryMode
-                    ? 'Sign In'
+                    ? t('login.signIn')
                     : !otpRequested
-                      ? 'Send Recovery Code'
+                      ? t('login.sendRecoveryCode')
                       : resetVerified
-                        ? 'Reset Password'
-                        : 'Verify Recovery Code'}
+                        ? t('login.resetPassword')
+                        : t('login.verifyRecoveryCode')}
                 </Text>
               )}
             </Pressable>
@@ -263,16 +278,16 @@ export default function LoginScreen() {
                 style={styles.createAccount}
               >
                 <Text style={styles.createAccountText}>
-                  Don&apos;t have an account?{' '}
-                  <Text style={styles.link}>Create one</Text>
+                  {t('login.noAccount')}{' '}
+                  <Text style={styles.link}>{t('login.createOne')}</Text>
                 </Text>
               </Pressable>
             )}
           </View>
 
           <View style={styles.trustRow}>
-            <TrustBadge icon="lock" label="Secure ledger" />
-            <TrustBadge icon="users" label="Invite-only" />
+            <TrustBadge icon="lock" label={t('login.secureLedger')} />
+            <TrustBadge icon="users" label={t('login.inviteOnly')} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

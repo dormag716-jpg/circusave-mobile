@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Linking from 'expo-linking';
 import { router, type Href } from 'expo-router';
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -30,13 +31,18 @@ const LEGAL_FUNDS_HREF = '/legal/how-money-moves' as Href;
 const LEGAL_ECONSENT_HREF = '/legal/electronic-consent' as Href;
 
 export default function CreateAccountScreen() {
+  const { t } = useTranslation('auth');
+  const lastNameInputRef = useRef<TextInput>(null);
   const emailInputRef = useRef<TextInput>(null);
   const phoneInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
-  const [fullName, setFullName] = useState('');
+  const confirmPasswordInputRef = useRef<TextInput>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTermsAndPrivacy, setAcceptedTermsAndPrivacy] = useState(false);
   const [acceptedFundsDisclosure, setAcceptedFundsDisclosure] = useState(false);
   const [acceptedElectronicConsent, setAcceptedElectronicConsent] = useState(false);
@@ -58,20 +64,34 @@ export default function CreateAccountScreen() {
     Keyboard.dismiss();
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!fullName.trim() || !normalizedEmail || !password) {
-      Alert.alert('Missing information', 'Full name, email, and password are required.');
+    if (
+      !firstName.trim() ||
+      !lastName.trim() ||
+      !normalizedEmail ||
+      !password ||
+      !confirmPassword
+    ) {
+      Alert.alert(
+        t('create.missingInfoTitle'),
+        t('create.missingInfoMessage'),
+      );
       return;
     }
 
     if (password.length < 8) {
-      Alert.alert('Weak password', 'Password must be at least 8 characters.');
+      Alert.alert(t('create.weakPasswordTitle'), t('create.weakPasswordMessage'));
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert(t('create.passwordMismatchTitle'), t('create.passwordMismatchMessage'));
       return;
     }
 
     if (!hasAcceptedRequiredPolicies) {
       Alert.alert(
-        'Review required agreements',
-        'You must accept the required agreements and disclosures before creating your account.',
+        t('create.agreementsTitle'),
+        t('create.agreementsMessage'),
       );
       return;
     }
@@ -80,7 +100,7 @@ export default function CreateAccountScreen() {
 
     try {
       const result = await register({
-        name: fullName.trim(),
+        name: `${firstName.trim()} ${lastName.trim()}`,
         email: normalizedEmail,
         phone: phone.trim(),
         password,
@@ -97,10 +117,10 @@ export default function CreateAccountScreen() {
         setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
       }
       await setAuthenticatedSession(result);
-    } catch (error) {
+    } catch {
       Alert.alert(
-        'Unable to create account',
-        error instanceof Error ? error.message : 'The request could not be completed.',
+        t('create.createErrorTitle'),
+        t('common.genericErrorMessage'),
       );
     } finally {
       setIsSubmitting(false);
@@ -121,38 +141,103 @@ export default function CreateAccountScreen() {
         >
           <Pressable style={styles.backButton} onPress={() => router.back()} hitSlop={12}>
             <FontAwesome name="chevron-left" size={18} color={colors.primary} />
-            <Text style={styles.backText}>Sign in</Text>
+            <Text style={styles.backText}>{t('create.backToSignIn')}</Text>
           </Pressable>
 
           <View style={styles.header}>
             <View style={styles.logo}>
               <FontAwesome name="user-plus" size={36} color="#ffffff" />
             </View>
-            <Text style={styles.title}>Create your account</Text>
+            <Text style={styles.title}>{t('create.title')}</Text>
             <Text style={styles.subtitle}>
-              Start saving with family and friends you trust.
+              {t('create.subtitle')}
             </Text>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Full name</Text>
+          <View style={styles.guideCard}>
+            <View style={styles.guideIcon}>
+              <FontAwesome name="magic" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.guideContent}>
+              <Text style={styles.guideEyebrow}>{t('create.guideEyebrow')}</Text>
+              <Text style={styles.guideTitle}>{t('create.guideTitle')}</Text>
+              <Text style={styles.guideText}>
+                {t('create.guideText')}
+              </Text>
+              <View style={styles.guideSteps}>
+                <View style={styles.guideStep}>
+                  <View style={styles.guideStepNumber}>
+                    <Text style={styles.guideStepNumberText}>1</Text>
+                  </View>
+                  <Text style={styles.guideStepText}>{t('create.profile')}</Text>
+                </View>
+                <View style={styles.guideDivider} />
+                <View style={styles.guideStep}>
+                  <View style={styles.guideStepNumber}>
+                    <Text style={styles.guideStepNumberText}>2</Text>
+                  </View>
+                  <Text style={styles.guideStepText}>{t('create.security')}</Text>
+                </View>
+                <View style={styles.guideDivider} />
+                <View style={styles.guideStep}>
+                  <View style={styles.guideStepNumber}>
+                    <Text style={styles.guideStepNumberText}>3</Text>
+                  </View>
+                  <Text style={styles.guideStepText}>{t('create.review')}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIcon}>
+                <FontAwesome name="user" size={16} color={colors.primary} />
+              </View>
+              <View style={styles.sectionHeading}>
+                <Text style={styles.sectionEyebrow}>{t('create.step', { number: 1 })}</Text>
+                <Text style={styles.sectionTitle}>{t('create.aboutTitle')}</Text>
+              </View>
+            </View>
+            <Text style={styles.sectionDescription}>
+              {t('create.aboutDescription')}
+            </Text>
+
+            <Text style={styles.label}>{t('create.firstName')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Your full name"
+              placeholder={t('create.firstNamePlaceholder')}
+              accessibilityLabel={t('create.firstName')}
               placeholderTextColor={colors.subtle}
-              value={fullName}
-              onChangeText={setFullName}
+              value={firstName}
+              onChangeText={setFirstName}
               autoCapitalize="words"
-              autoComplete="name"
+              autoComplete="given-name"
+              returnKeyType="next"
+              onSubmitEditing={() => lastNameInputRef.current?.focus()}
+            />
+
+            <Text style={styles.label}>{t('create.lastName')}</Text>
+            <TextInput
+              ref={lastNameInputRef}
+              style={styles.input}
+              placeholder={t('create.lastNamePlaceholder')}
+              accessibilityLabel={t('create.lastName')}
+              placeholderTextColor={colors.subtle}
+              value={lastName}
+              onChangeText={setLastName}
+              autoCapitalize="words"
+              autoComplete="family-name"
               returnKeyType="next"
               onSubmitEditing={() => emailInputRef.current?.focus()}
             />
 
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{t('common.email')}</Text>
             <TextInput
               ref={emailInputRef}
               style={styles.input}
-              placeholder="you@example.com"
+              placeholder={t('login.emailPlaceholder')}
+              accessibilityLabel={t('common.email')}
               placeholderTextColor={colors.subtle}
               value={email}
               onChangeText={setEmail}
@@ -163,11 +248,15 @@ export default function CreateAccountScreen() {
               onSubmitEditing={() => phoneInputRef.current?.focus()}
             />
 
-            <Text style={styles.label}>Phone number (optional)</Text>
+            <Text style={styles.label}>
+              {t('common.phoneNumber')}{' '}
+              <Text style={styles.optionalLabel}>{t('common.optional')}</Text>
+            </Text>
             <TextInput
               ref={phoneInputRef}
               style={styles.input}
-              placeholder="+1 415 555 0123"
+              placeholder={t('create.phonePlaceholder')}
+              accessibilityLabel={t('common.phoneNumber')}
               placeholderTextColor={colors.subtle}
               value={phone}
               onChangeText={setPhone}
@@ -176,33 +265,77 @@ export default function CreateAccountScreen() {
               returnKeyType="next"
               onSubmitEditing={() => passwordInputRef.current?.focus()}
             />
+          </View>
 
-            <Text style={styles.label}>Password</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIcon}>
+                <FontAwesome name="lock" size={16} color={colors.primary} />
+              </View>
+              <View style={styles.sectionHeading}>
+                <Text style={styles.sectionEyebrow}>{t('create.step', { number: 2 })}</Text>
+                <Text style={styles.sectionTitle}>{t('create.securityTitle')}</Text>
+              </View>
+            </View>
+            <Text style={styles.sectionDescription}>
+              {t('create.securityDescription')}
+            </Text>
+
+            <Text style={styles.label}>{t('common.password')}</Text>
             <TextInput
               ref={passwordInputRef}
               style={styles.input}
-              placeholder="At least 8 characters"
+              placeholder={t('create.passwordPlaceholder')}
+              accessibilityLabel={t('common.password')}
               placeholderTextColor={colors.subtle}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
               autoComplete="new-password"
+              returnKeyType="next"
+              onSubmitEditing={() => confirmPasswordInputRef.current?.focus()}
+            />
+
+            <Text style={styles.label}>{t('create.confirmPassword')}</Text>
+            <TextInput
+              ref={confirmPasswordInputRef}
+              style={styles.input}
+              placeholder={t('create.confirmPasswordPlaceholder')}
+              accessibilityLabel={t('create.confirmPassword')}
+              placeholderTextColor={colors.subtle}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              autoComplete="new-password"
               returnKeyType="done"
               onSubmitEditing={() => void handleCreateAccount()}
             />
+          </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIcon}>
+                <FontAwesome name="check-circle" size={17} color={colors.primary} />
+              </View>
+              <View style={styles.sectionHeading}>
+                <Text style={styles.sectionEyebrow}>{t('create.step', { number: 3 })}</Text>
+                <Text style={styles.sectionTitle}>{t('create.reviewTitle')}</Text>
+              </View>
+            </View>
+            <Text style={styles.sectionDescription}>
+              {t('create.reviewDescription')}
+            </Text>
 
             <View style={styles.legalBlock}>
-              <Text style={styles.legalHeading}>Required agreements</Text>
-
               <LegalCheckbox
                 checked={acceptedTermsAndPrivacy}
                 onCheckedChange={setAcceptedTermsAndPrivacy}
-                accessibilityLabel="I agree to the Terms of Service and acknowledge the Privacy Policy"
+                accessibilityLabel={t('create.termsAccessibility')}
                 segments={[
-                  { type: 'text', text: 'I agree to the ' },
-                  { type: 'link', text: 'Terms of Service', href: LEGAL_TERMS_HREF },
-                  { type: 'text', text: ' and acknowledge the ' },
-                  { type: 'link', text: 'Privacy Policy', href: LEGAL_PRIVACY_HREF },
+                  { type: 'text', text: t('create.termsPrefix') },
+                  { type: 'link', text: t('create.terms'), href: LEGAL_TERMS_HREF },
+                  { type: 'text', text: t('create.privacyConnector') },
+                  { type: 'link', text: t('create.privacy'), href: LEGAL_PRIVACY_HREF },
                   { type: 'text', text: '.' },
                 ]}
               />
@@ -210,16 +343,15 @@ export default function CreateAccountScreen() {
               <LegalCheckbox
                 checked={acceptedFundsDisclosure}
                 onCheckedChange={setAcceptedFundsDisclosure}
-                accessibilityLabel="I understand that CircuSave is a digital savings-circle coordination and recordkeeping platform and does not hold member contribution funds"
+                accessibilityLabel={t('create.fundsAccessibility')}
                 segments={[
                   {
                     type: 'text',
-                    text:
-                      'I understand that CircuSave is a digital savings-circle coordination and recordkeeping platform. CircuSave does not hold, store, pool, invest, or use member contribution funds. ',
+                    text: t('create.fundsDisclosure'),
                   },
                   {
                     type: 'link',
-                    text: 'Learn how money moves',
+                    text: t('create.moneyMoves'),
                     href: LEGAL_FUNDS_HREF,
                   },
                   { type: 'text', text: '.' },
@@ -229,16 +361,15 @@ export default function CreateAccountScreen() {
               <LegalCheckbox
                 checked={acceptedElectronicConsent}
                 onCheckedChange={setAcceptedElectronicConsent}
-                accessibilityLabel="I consent to receive required agreements, notices, disclosures, and records electronically"
+                accessibilityLabel={t('create.electronicAccessibility')}
                 segments={[
                   {
                     type: 'text',
-                    text:
-                      'I consent to receive required agreements, notices, disclosures, and records electronically. Review the ',
+                    text: t('create.electronicConsentPrefix'),
                   },
                   {
                     type: 'link',
-                    text: 'Electronic Consent',
+                    text: t('create.electronicConsent'),
                     href: LEGAL_ECONSENT_HREF,
                   },
                   { type: 'text', text: '.' },
@@ -255,16 +386,17 @@ export default function CreateAccountScreen() {
                 busy: isSubmitting,
                 disabled: createDisabled,
               }}
+              accessibilityLabel={t('create.createAccount')}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.primaryButtonText}>Create Account</Text>
+                <Text style={styles.primaryButtonText}>{t('create.createAccount')}</Text>
               )}
             </Pressable>
 
             <Text style={styles.note}>
-              You can review these policies at any time in Settings → Legal & Policies.
+              {t('create.legalNote')}
             </Text>
           </View>
         </ScrollView>
@@ -292,7 +424,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   backText: { color: colors.primary, fontSize: 15, fontWeight: '800' },
-  header: { alignItems: 'center', marginBottom: 28, marginTop: 20 },
+  header: { alignItems: 'center', marginBottom: 22, marginTop: 20 },
   logo: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -316,13 +448,110 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  card: {
+  guideCard: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    borderRadius: 22,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 14,
+    marginBottom: 16,
+    padding: 18,
+  },
+  guideIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+    ...shadows.small,
+  },
+  guideContent: { flex: 1 },
+  guideEyebrow: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+  guideTitle: {
+    color: colors.textStrong,
+    fontSize: 19,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+  guideText: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 5,
+  },
+  guideSteps: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginTop: 14,
+  },
+  guideStep: { alignItems: 'center', flexDirection: 'row', gap: 5 },
+  guideStepNumber: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    height: 20,
+    justifyContent: 'center',
+    width: 20,
+  },
+  guideStepNumberText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
+  guideStepText: { color: colors.text, fontSize: 12, fontWeight: '800' },
+  guideDivider: {
+    backgroundColor: colors.primaryBorder,
+    flex: 1,
+    height: 1,
+    marginHorizontal: 7,
+  },
+  sectionCard: {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
-    borderRadius: 28,
+    borderRadius: 24,
     borderWidth: 1,
-    padding: 24,
-    ...shadows.medium,
+    marginBottom: 16,
+    padding: 20,
+    ...shadows.small,
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  sectionIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 13,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  sectionHeading: { flex: 1 },
+  sectionEyebrow: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+  sectionTitle: {
+    color: colors.textStrong,
+    fontSize: 19,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  sectionDescription: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+    marginTop: 12,
   },
   label: {
     color: colors.text,
@@ -331,6 +560,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 12,
   },
+  optionalLabel: { color: colors.muted, fontWeight: '600' },
   input: {
     backgroundColor: colors.background,
     borderColor: colors.cardBorder,
@@ -342,21 +572,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   legalBlock: {
-    borderColor: colors.cardBorder,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginTop: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  legalHeading: {
-    color: colors.textStrong,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    marginBottom: 4,
-    marginTop: 4,
-    textTransform: 'uppercase',
+    marginTop: 8,
   },
   primaryButton: {
     alignItems: 'center',

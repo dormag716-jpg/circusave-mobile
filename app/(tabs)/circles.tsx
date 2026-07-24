@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import {
   deleteAllSetupDrafts,
@@ -20,6 +21,7 @@ import {
   type BackendCircleDetail,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { formatCurrency } from '@/lib/i18n/formatters';
 import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
 import {
   circleWorkspaceHref,
@@ -36,6 +38,7 @@ type ListItem =
   | { type: 'circle'; id: string; circle: BackendCircleSummary };
 
 export default function CirclesScreen() {
+  const { t } = useTranslation('circles');
   const { session } = useAuthSession();
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +80,7 @@ export default function CirclesScreen() {
       items.push({
         type: 'header',
         id: 'header-setup',
-        title: 'In setup',
+        title: t('inSetup'),
         count: setupCircles.length,
       });
       for (const circle of setupCircles) {
@@ -89,7 +92,7 @@ export default function CirclesScreen() {
       items.push({
         type: 'header',
         id: 'header-active',
-        title: 'Active Circles',
+        title: t('activeCircles'),
         count: activeCircles.length,
       });
       for (const circle of activeCircles) {
@@ -98,11 +101,11 @@ export default function CirclesScreen() {
     }
 
     return items;
-  }, [activeCircles, setupCircles, hasAnyCircles]);
+  }, [activeCircles, setupCircles, hasAnyCircles, t]);
 
   const loadCircles = useCallback(async () => {
     if (!token) {
-      setError('Your session is missing an access token. Sign in again.');
+      setError(t('sessionMissing'));
       setLoading(false);
       return;
     }
@@ -129,16 +132,12 @@ export default function CirclesScreen() {
         }
       });
       setCircleDetails(detailsMap);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load your circles.',
-      );
+    } catch {
+      setError(t('loadError'));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [t, token]);
 
   useFocusEffect(
     useCallback(() => {
@@ -159,14 +158,12 @@ export default function CirclesScreen() {
       return;
     }
     Alert.alert(
-      'Delete all setup circles?',
-      `This permanently removes ${organizerSetupCircles.length} setup/draft circle${
-        organizerSetupCircles.length === 1 ? '' : 's'
-      } you organize. Active and completed circles are not affected. This cannot be undone.`,
+      t('deleteAllTitle'),
+      t('deleteAllMessage', { count: organizerSetupCircles.length }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Delete permanently',
+          text: t('deletePermanently'),
           style: 'destructive',
           onPress: () => void purgeAllSetup(),
         },
@@ -181,17 +178,15 @@ export default function CirclesScreen() {
       const result = await deleteAllSetupDrafts(token);
       await loadCircles();
       Alert.alert(
-        'Setup circles removed',
+        t('setupRemovedTitle'),
         result.deletedCount > 0
-          ? `Permanently deleted ${result.deletedCount} setup circle${
-              result.deletedCount === 1 ? '' : 's'
-            }.`
-          : 'No deletable setup circles were found (they may have already been removed).',
+          ? t('setupRemoved', { count: result.deletedCount })
+          : t('nothingRemoved'),
       );
-    } catch (err) {
+    } catch {
       Alert.alert(
-        'Unable to delete setup circles',
-        err instanceof Error ? err.message : 'Please try again.',
+        t('deleteSetupError'),
+        t('tryAgain'),
       );
     } finally {
       setPurgingSetup(false);
@@ -201,21 +196,21 @@ export default function CirclesScreen() {
   async function confirmDeleteOneSetup(circle: BackendCircleSummary) {
     if (!token) return;
     Alert.alert(
-      'Delete this setup circle?',
-      `“${circle.name}” will be permanently deleted. This cannot be undone.`,
+      t('deleteOneTitle'),
+      t('deleteOneMessage', { circleName: circle.name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('delete'),
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteCircle(token, circle.id);
               await loadCircles();
-            } catch (err) {
+            } catch {
               Alert.alert(
-                'Unable to delete',
-                err instanceof Error ? err.message : 'Please try again.',
+                t('deleteErrorTitle'),
+                t('tryAgain'),
               );
             }
           },
@@ -235,15 +230,15 @@ export default function CirclesScreen() {
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.title}>My Circles</Text>
+                <Text style={styles.title}>{t('myCircles')}</Text>
                 <Text style={styles.subtitle}>
-                  Your savings groups — setup and active.
+                  {t('subtitle')}
                 </Text>
                 {!openCap.unlimited ? (
                   <Text style={styles.freePlanHint}>
-                    Free plan: 1 open circle at a time
+                    {t('freePlan')}
                     {openCap.usedOpenCircles > 0
-                      ? ` · ${openCap.usedOpenCircles} open`
+                      ? t('openCount', { count: openCap.usedOpenCircles })
                       : ''}
                   </Text>
                 ) : null}
@@ -253,13 +248,15 @@ export default function CirclesScreen() {
                     onPress={confirmPurgeAllSetup}
                     disabled={purgingSetup}
                     accessibilityRole="button"
-                    accessibilityLabel="Delete all setup circles permanently"
+                    accessibilityLabel={t('deleteAllAccessibility')}
                   >
                     {purgingSetup ? (
                       <ActivityIndicator color={colors.danger} size="small" />
                     ) : (
                       <Text style={styles.purgeSetupBtnText}>
-                        Delete all setup ({organizerSetupCircles.length})
+                        {t('deleteAllSetup', {
+                          count: organizerSetupCircles.length,
+                        })}
                       </Text>
                     )}
                   </Pressable>
@@ -273,10 +270,10 @@ export default function CirclesScreen() {
                 }, pressed && { opacity: 0.7 }]}
                 onPress={() => router.push('/join-circle')}
                 accessibilityRole="button"
-                accessibilityLabel="Join circle by code"
+                accessibilityLabel={t('joinByCodeAccessibility')}
               >
                 <FontAwesome name="key" size={13} color={colors.primary} />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>Join by Code</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>{t('joinByCode')}</Text>
               </Pressable>
             </View>
           </View>
@@ -285,20 +282,20 @@ export default function CirclesScreen() {
           loading ? (
             <View style={styles.centerCard}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={styles.centerText}>Loading circles…</Text>
+              <Text style={styles.centerText}>{t('loading')}</Text>
             </View>
           ) : error ? (
             <View style={styles.centerCard}>
               <FontAwesome name="warning" size={32} color={colors.warning} />
-              <Text style={styles.emptyTitle}>Unable to load circles</Text>
+              <Text style={styles.emptyTitle}>{t('loadErrorTitle')}</Text>
               <Text style={styles.emptySubtitle}>{error}</Text>
               <Pressable
                 style={styles.retryButton}
                 onPress={() => void loadCircles()}
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading circles"
+                accessibilityLabel={t('retryCircles')}
               >
-                <Text style={styles.retryButtonText}>Retry</Text>
+                <Text style={styles.retryButtonText}>{t('retry')}</Text>
               </Pressable>
             </View>
           ) : (
@@ -339,12 +336,12 @@ export default function CirclesScreen() {
               ]}
               onPress={() => router.push(completedCirclesHref)}
               accessibilityRole="button"
-              accessibilityLabel="View completed circles"
+              accessibilityLabel={t('viewCompletedAccessibility')}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.completedLinkTitle}>Completed circles</Text>
+                <Text style={styles.completedLinkTitle}>{t('completedCircles')}</Text>
                 <Text style={styles.completedLinkSubtitle}>
-                  View finished groups and restart one if you want.
+                  {t('completedDescription')}
                 </Text>
               </View>
               <FontAwesome name="chevron-right" size={16} color={colors.muted} />
@@ -361,7 +358,7 @@ export default function CirclesScreen() {
                 accessibilityRole="button"
               >
                 <Text style={[styles.howItWorksTitle, { marginBottom: 0 }]}>
-                  How joining works
+                  {t('joiningTitle')}
                 </Text>
                 <FontAwesome
                   name={howItWorksExpanded ? 'chevron-up' : 'chevron-down'}
@@ -378,10 +375,10 @@ export default function CirclesScreen() {
                     </View>
                     <View style={styles.stepContent}>
                       <Text style={styles.stepTitle}>
-                        Get the invite link from the organizer
+                        {t('joinStep1Title')}
                       </Text>
                       <Text style={styles.stepDescription}>
-                        The organizer shares a unique link to join their circle.
+                        {t('joinStep1Description')}
                       </Text>
                     </View>
                   </View>
@@ -391,9 +388,9 @@ export default function CirclesScreen() {
                       <Text style={styles.stepNumberText}>2</Text>
                     </View>
                     <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>Open the link & Log In</Text>
+                      <Text style={styles.stepTitle}>{t('joinStep2Title')}</Text>
                       <Text style={styles.stepDescription}>
-                        Tap the link and log into your account (or sign up).
+                        {t('joinStep2Description')}
                       </Text>
                     </View>
                   </View>
@@ -403,9 +400,9 @@ export default function CirclesScreen() {
                       <Text style={styles.stepNumberText}>3</Text>
                     </View>
                     <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>Tap Join</Text>
+                      <Text style={styles.stepTitle}>{t('joinStep3Title')}</Text>
                       <Text style={styles.stepDescription}>
-                        You will instantly be added to the circle roster.
+                        {t('joinStep3Description')}
                       </Text>
                     </View>
                   </View>
@@ -415,10 +412,9 @@ export default function CirclesScreen() {
                       <Text style={styles.stepNumberText}>4</Text>
                     </View>
                     <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>Access your workspace</Text>
+                      <Text style={styles.stepTitle}>{t('joinStep4Title')}</Text>
                       <Text style={styles.stepDescription}>
-                        Track contributions, see payouts, and know when it's
-                        your turn!
+                        {t('joinStep4Description')}
                       </Text>
                     </View>
                   </View>
@@ -445,8 +441,8 @@ export default function CirclesScreen() {
         accessibilityRole="button"
         accessibilityLabel={
           openCap.atCapacity
-            ? 'Continue your open circle'
-            : 'Create circle'
+            ? t('continueOpenCircle')
+            : t('createCircle')
         }
       >
         <FontAwesome
@@ -470,6 +466,7 @@ function CircleCard({
   userId?: string;
   onDeleteSetup?: () => void;
 }) {
+  const { t, i18n } = useTranslation('circles');
   const userIsOrganizer = isOrganizer(circle.userRole);
   const isSetup = isSetupCircleStatus(circle.status);
   const progress = circle.currentRoundProgress?.percentConfirmed ?? 0;
@@ -484,7 +481,9 @@ function CircleCard({
       onPress={() => router.push(circleWorkspaceHref(circle.id))}
       accessibilityRole="button"
       accessibilityLabel={
-        isSetup ? `Continue setup for ${circle.name}` : `Open ${circle.name}`
+        isSetup
+          ? t('continueSetupFor', { circleName: circle.name })
+          : t('openCircle', { circleName: circle.name })
       }
     >
       <View style={styles.cardHeader}>
@@ -493,39 +492,46 @@ function CircleCard({
             <Text style={styles.circleName}>{circle.name}</Text>
             {isSetup ? (
               <View style={styles.setupTag}>
-                <Text style={styles.setupTagText}>Setup</Text>
+                <Text style={styles.setupTagText}>{t('setup')}</Text>
               </View>
             ) : null}
             {userIsOrganizer ? (
               <View style={styles.organizerTag}>
-                <Text style={styles.organizerTagText}>Organizer</Text>
+                <Text style={styles.organizerTagText}>{t('organizer')}</Text>
               </View>
             ) : null}
           </View>
           {isSetup ? (
             <>
               <Text style={styles.circleMeta}>
-                {capitalize(circle.status)} • {circle.memberCount}{' '}
-                {circle.memberCount === 1 ? 'member' : 'members'} •{' '}
-                {formatMoney(circle.contributionAmount)}
+                {t(`status.${circle.status}`, { defaultValue: circle.status })} •{' '}
+                {t('memberCount', { count: circle.memberCount })} •{' '}
+                {formatCurrency(
+                  circle.contributionAmount,
+                  i18n.resolvedLanguage || i18n.language,
+                )}
               </Text>
               {onDeleteSetup ? (
                 <Pressable
                   style={styles.cardDeleteBtn}
                   onPress={onDeleteSetup}
                   accessibilityRole="button"
-                  accessibilityLabel={`Delete setup circle ${circle.name}`}
+                  accessibilityLabel={t('deleteSetupAccessibility', {
+                    circleName: circle.name,
+                  })}
                 >
                   <FontAwesome name="trash-o" size={14} color={colors.danger} />
-                  <Text style={styles.cardDeleteBtnText}>Delete permanently</Text>
+                  <Text style={styles.cardDeleteBtnText}>{t('deletePermanently')}</Text>
                 </Pressable>
               ) : null}
             </>
           ) : (
             <>
               <Text style={styles.circleMeta}>
-                {capitalize(circle.frequency)} • Round {circle.currentRound} of{' '}
-                {totalRounds}
+                {t(`frequency.${circle.frequency}`, {
+                  defaultValue: circle.frequency,
+                })}{' '}
+                • {t('round', { current: circle.currentRound, total: totalRounds })}
               </Text>
               {viewerPosition ? (
                 <Text
@@ -536,7 +542,7 @@ function CircleCard({
                     marginTop: 4,
                   }}
                 >
-                  Your position: #{viewerPosition}
+                  {t('yourPosition', { position: viewerPosition })}
                 </Text>
               ) : null}
             </>
@@ -555,8 +561,10 @@ function CircleCard({
                 marginTop: 6,
               }}
             >
-              {circle.currentRoundProgress?.confirmedCount ?? 0} of {totalRounds}{' '}
-              confirmed
+              {t('confirmed', {
+                confirmed: circle.currentRoundProgress?.confirmedCount ?? 0,
+                total: totalRounds,
+              })}
             </Text>
           </View>
         ) : null}
@@ -564,20 +572,23 @@ function CircleCard({
 
       <View style={styles.detailsRow}>
         <View style={styles.detail}>
-          <Text style={styles.detailLabel}>Contribution</Text>
+          <Text style={styles.detailLabel}>{t('contributionLabel')}</Text>
           <Text style={styles.detailValue}>
-            {formatMoney(circle.contributionAmount)}
+            {formatCurrency(
+              circle.contributionAmount,
+              i18n.resolvedLanguage || i18n.language,
+            )}
           </Text>
         </View>
         <View style={styles.detail}>
-          <Text style={styles.detailLabel}>Members</Text>
+          <Text style={styles.detailLabel}>{t('members')}</Text>
           <Text style={styles.detailValue}>{circle.memberCount}</Text>
         </View>
       </View>
 
       <View style={styles.openButton}>
         <Text style={styles.openButtonText}>
-          {isSetup ? 'Continue setup' : 'Open Circle'}
+          {isSetup ? t('continueSetup') : t('openCircleButton')}
         </Text>
         <FontAwesome name="arrow-right" size={18} color="#ffffff" />
       </View>
@@ -586,12 +597,13 @@ function CircleCard({
 }
 
 function EmptyState() {
+  const { t } = useTranslation('circles');
   return (
     <View style={styles.emptyState}>
       <FontAwesome name="users" size={80} color={colors.muted} />
-      <Text style={styles.emptyTitle}>No circles yet</Text>
+      <Text style={styles.emptyTitle}>{t('emptyTitle')}</Text>
       <Text style={styles.emptySubtitle}>
-        Create a savings group or join one with an invite link.
+        {t('emptyDescription')}
       </Text>
     </View>
   );
@@ -607,19 +619,6 @@ function getViewerPosition(detail: BackendCircleDetail, userId: string) {
   });
   const viewer = ordered.find((m) => m.userId === userId);
   return viewer ? ordered.indexOf(viewer) + 1 : null;
-}
-
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function capitalize(value: string) {
-  if (value === 'biweekly') return 'Bi-weekly';
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
 const styles = StyleSheet.create({

@@ -1,5 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Redirect, router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,6 +9,7 @@ import { colors, radii, shadows, spacing } from '@/lib/theme';
 
 export default function Index() {
   const { status } = useAuthSession();
+  const { t } = useTranslation('auth');
 
   if (status === 'loading') {
     return (
@@ -34,9 +36,9 @@ export default function Index() {
             <FontAwesome name="users" size={48} color="#ffffff" />
           </View>
           <Text style={styles.appName}>CircuSave</Text>
-          <Text style={styles.headline}>Save together. Grow together.</Text>
+          <Text style={styles.headline}>{t('landing.headline')}</Text>
           <Text style={styles.subhead}>
-            Create trusted savings circles, track contributions, and keep every round organized.
+            {t('landing.subhead')}
           </Text>
         </View>
 
@@ -45,21 +47,21 @@ export default function Index() {
             <View style={styles.benefitIconWrapper}>
               <FontAwesome name="line-chart" size={20} color={colors.primary} />
             </View>
-            <Text style={styles.benefitTitle}>Track Contributions</Text>
+            <Text style={styles.benefitTitle}>{t('landing.trackContributions')}</Text>
           </View>
 
           <View style={styles.benefitCard}>
             <View style={styles.benefitIconWrapper}>
               <FontAwesome name="money" size={20} color={colors.primary} />
             </View>
-            <Text style={styles.benefitTitle}>Organize Payouts</Text>
+            <Text style={styles.benefitTitle}>{t('landing.organizePayouts')}</Text>
           </View>
 
           <View style={styles.benefitCard}>
             <View style={styles.benefitIconWrapper}>
               <FontAwesome name="bell" size={20} color={colors.primary} />
             </View>
-            <Text style={styles.benefitTitle}>Stay Notified</Text>
+            <Text style={styles.benefitTitle}>{t('landing.stayNotified')}</Text>
           </View>
         </View>
 
@@ -68,15 +70,17 @@ export default function Index() {
             style={styles.primaryButton} 
             onPress={() => router.push('/create-account')}
             accessibilityRole="button"
+            accessibilityLabel={t('landing.getStarted')}
           >
-            <Text style={styles.primaryButtonText}>Get Started</Text>
+            <Text style={styles.primaryButtonText}>{t('landing.getStarted')}</Text>
           </Pressable>
           <Pressable 
             style={styles.secondaryButton} 
             onPress={() => router.push('/login')}
             accessibilityRole="button"
+            accessibilityLabel={t('landing.signIn')}
           >
-            <Text style={styles.secondaryButtonText}>Sign In</Text>
+            <Text style={styles.secondaryButtonText}>{t('landing.signIn')}</Text>
           </Pressable>
         </View>
       </ScrollView>

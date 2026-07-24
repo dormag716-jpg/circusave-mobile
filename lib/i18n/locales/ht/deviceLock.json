@@ -1,0 +1,15 @@
+{
+  "unlockPrompt": "Debloke CircuSave",
+  "usePasscode": "Itilize kòd aparèy la",
+  "useFingerprint": "Itilize anprent",
+  "useFaceId": "Itilize Face ID",
+  "appLocked": "Aplikasyon an bloke",
+  "verifyIdentity": "Verifye idantite ou pou jwenn aksè ak gwoup epay ou yo.",
+  "unlockApp": "Debloke aplikasyon an",
+  "tryAgain": "Eseye ankò",
+  "cancel": "Anile",
+  "unavailable": "Otantifikasyon aparèy la pa disponib",
+  "failed": "Otantifikasyon an echwe",
+  "setupTitle": "Blokaj aparèy",
+  "setupDescription": "Mande otantifikasyon aparèy ou lè CircuSave louvri."
+}
