@@ -1,0 +1,11 @@
+{
+  "preferences": "Preferans",
+  "language": "Lang",
+  "languageSubtitle": "Chwazi lang CircuSave itilize",
+  "languageScreenTitle": "Lang",
+  "languageScreenDescription": "Chwazi yon lang oswa kite CircuSave itilize lang telefòn ou.",
+  "usePhoneLanguage": "Itilize lang telefòn nan",
+  "currentPhoneLanguage": "Kounye a li itilize {{language}}",
+  "languageSaveErrorTitle": "Lang lan pa chanje",
+  "languageSaveErrorMessage": "CircuSave pa t kapab sove preferans lang ou. Tanpri eseye ankò."
+}

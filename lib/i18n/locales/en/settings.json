@@ -1,0 +1,11 @@
+{
+  "preferences": "Preferences",
+  "language": "Language",
+  "languageSubtitle": "Choose the language used by CircuSave",
+  "languageScreenTitle": "Language",
+  "languageScreenDescription": "Choose a language or let CircuSave follow your phone language.",
+  "usePhoneLanguage": "Use phone language",
+  "currentPhoneLanguage": "Currently using {{language}}",
+  "languageSaveErrorTitle": "Language not changed",
+  "languageSaveErrorMessage": "CircuSave could not save your language preference. Please try again."
+}

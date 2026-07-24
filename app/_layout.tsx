@@ -6,12 +6,13 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 
 import { DeviceLockProvider } from '@/components/DeviceLock';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
+import { initializeI18n } from '@/lib/i18n';
 import { MarketProvider } from '@/lib/market';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
@@ -29,6 +30,7 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const [i18nReady, setI18nReady] = useState(false);
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
@@ -40,7 +42,25 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
+    let active = true;
+
+    void initializeI18n()
+      .catch((initializationError) => {
+        console.error('Unable to initialize localization.', initializationError);
+      })
+      .finally(() => {
+        if (active) {
+          setI18nReady(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loaded && i18nReady) {
       SplashScreen.hideAsync();
       // Set up the foreground notification handler once fonts are ready.
       // Fire-and-forget — notification failure must never crash the app.
@@ -62,9 +82,9 @@ export default function RootLayout() {
         subPromise.then((sub) => sub?.remove()).catch(() => {});
       };
     }
-  }, [loaded]);
+  }, [i18nReady, loaded]);
 
-  if (!loaded) {
+  if (!loaded || !i18nReady) {
     return null;
   }
 
@@ -131,6 +151,7 @@ function AuthenticatedStack() {
       <Stack.Screen name="automated-payments" options={{ headerShown: false }} />
       <Stack.Screen name="subscription" options={{ headerShown: false }} />
       <Stack.Screen name="security" options={{ headerShown: false }} />
+      <Stack.Screen name="language" options={{ headerShown: false }} />
       <Stack.Screen name="legal/index" options={{ headerShown: false }} />
       <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
       <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />

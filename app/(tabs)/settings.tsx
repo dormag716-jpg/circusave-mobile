@@ -1,27 +1,50 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, type Href } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { router, type Href, useFocusEffect } from 'expo-router';
+import { useCallback, useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
 
 import { useAuthSession } from '@/lib/authContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
+import { readLanguagePreference } from '@/lib/i18n/language-storage';
+import {
+  LANGUAGE_OPTIONS,
+  type LanguagePreference,
+} from '@/lib/i18n/types';
 import { scheduleTestNotification } from '@/lib/notifications';
 import { useMarket, type MarketType } from '@/lib/market';
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function SettingsScreen() {
+  const { i18n, t } = useTranslation(['settings', 'navigation']);
   const { session, signOut } = useAuthSession();
   const { market, setMarket } = useMarket();
   const [modalVisible, setModalVisible] = useState(false);
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
+  const [languagePreference, setLanguagePreference] =
+    useState<LanguagePreference>('system');
 
   useEffect(() => {
     if (!session?.session.token) return;
     getLinkedAccounts(session.session.token).then(setAccounts).catch(console.error);
   }, [session?.session.token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void readLanguagePreference().then((preference) => {
+        if (active) {
+          setLanguagePreference(preference);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const displayName = session?.user.name ?? 'Settings';
   const email = session?.user.email ?? 'Connected to backend session';
@@ -101,14 +124,24 @@ export default function SettingsScreen() {
         </View>
 
         {/* Section: Preferences */}
-        <Text style={styles.sectionTitle}>Preferences</Text>
+        <Text style={styles.sectionTitle}>{t('settings:preferences')}</Text>
         <View style={styles.sectionContainer}>
+          <MenuItem
+            icon="language"
+            title={t('settings:language')}
+            subtitle={getLanguagePreferenceLabel(
+              languagePreference,
+              i18n.resolvedLanguage || i18n.language,
+              t('settings:usePhoneLanguage'),
+            )}
+            onPress={() => router.push('/language')}
+            isFirst
+          />
           <MenuItem
             icon="globe"
             title="Cultural Terminology"
             subtitle={`Currently using terms for: ${market.toUpperCase()}`}
             onPress={() => setModalVisible(true)}
-            isFirst
           />
           <MenuItem
             icon="bell-o"
@@ -209,6 +242,24 @@ export default function SettingsScreen() {
 
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function getLanguagePreferenceLabel(
+  preference: LanguagePreference,
+  currentLanguage: string,
+  systemLabel: string,
+) {
+  if (preference === 'system') {
+    const currentLabel =
+      LANGUAGE_OPTIONS.find((option) => option.value === currentLanguage)?.label ??
+      LANGUAGE_OPTIONS[1].label;
+    return `${systemLabel} · ${currentLabel}`;
+  }
+
+  return (
+    LANGUAGE_OPTIONS.find((option) => option.value === preference)?.label ??
+    LANGUAGE_OPTIONS[1].label
   );
 }
 
@@ -479,4 +530,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   }
 });
-
