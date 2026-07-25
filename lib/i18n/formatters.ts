@@ -84,14 +84,17 @@ export function formatOrdinal(position: number, language: string): string {
     return value === 1 ? '1ye' : `${value}yèm`;
   }
 
-  const category = new Intl.PluralRules('en-US', { type: 'ordinal' }).select(value);
+  const lastTwoDigits = value % 100;
+  const lastDigit = value % 10;
   const suffix =
-    category === 'one'
-      ? 'st'
-      : category === 'two'
-        ? 'nd'
-        : category === 'few'
-          ? 'rd'
-          : 'th';
+    lastTwoDigits >= 11 && lastTwoDigits <= 13
+      ? 'th'
+      : lastDigit === 1
+        ? 'st'
+        : lastDigit === 2
+          ? 'nd'
+          : lastDigit === 3
+            ? 'rd'
+            : 'th';
   return `${value}${suffix}`;
 }
