@@ -1,0 +1,50 @@
+{
+  "title": "Rejis",
+  "records": "Dosye sèk la",
+  "activity": "Aktivite sèk la",
+  "eventCount_one": "{{count}} evènman nan rejis la",
+  "eventCount_other": "{{count}} evènman nan rejis la",
+  "date": "Dat",
+  "type": "Kalite",
+  "description": "Deskripsyon",
+  "amount": "Montan",
+  "balance": "Balans",
+  "actor": "Moun ki fè aksyon an",
+  "round": "Tou {{round}}",
+  "empty": "Pa gen aktivite nan rejis la",
+  "loading": "Y ap chaje rejis la…",
+  "error": "Rejis la pa disponib",
+  "rowUnavailable": "Antre rejis la pa disponib",
+  "unknownEvent": "Aktivite nan rejis la",
+  "unknownActor": "Moun nan pa konnen",
+  "filters": {
+    "all": "Tout",
+    "contributions": "Kontribisyon",
+    "payouts": "Peman",
+    "adjustments": "Ajisteman"
+  },
+  "events": {
+    "contribution": "Kontribisyon",
+    "contribution_submitted": "Kontribisyon soumèt",
+    "contribution_confirmed": "Kontribisyon konfime",
+    "contribution_rejected": "Kontribisyon rejte",
+    "contribution_missed": "Kontribisyon rate",
+    "payout": "Peman",
+    "payout_released": "Peman livre",
+    "payout_completed": "Peman fini",
+    "adjustment": "Ajisteman",
+    "refund": "Ranbousman",
+    "fee": "Frè"
+  },
+  "statuses": {
+    "pending": "Annatant",
+    "confirmed": "Konfime",
+    "rejected": "Rejte",
+    "completed": "Fini"
+  },
+  "upgradeTitle": "Debloke tout istorik la",
+  "upgradeBody_one": "{{count}} lòt aktivite kache nan plan gratis la.",
+  "upgradeBody_other": "{{count}} lòt aktivite kache nan plan gratis la.",
+  "upgradeAction": "Pase nan Premium",
+  "rowA11y": "{{type}}, {{amount}}, {{date}}"
+}

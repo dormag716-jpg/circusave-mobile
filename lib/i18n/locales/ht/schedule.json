@@ -1,0 +1,17 @@
+{
+  "title": "Kalandriye",
+  "payoutDate": "Dat peman",
+  "dueDate": "Dat limit kontribisyon",
+  "position": "Pozisyon peman",
+  "recipient": "Moun k ap resevwa a",
+  "hand": "Men",
+  "completed": "Tou ki fini",
+  "current": "Tou aktyèl la",
+  "upcoming": "Tou k ap vini",
+  "empty": "Pa gen kalandriye disponib",
+  "notFinalized": "Kalandriye a poko finalize",
+  "loading": "Y ap chaje kalandriye a…",
+  "error": "Kalandriye a pa disponib",
+  "rowUnavailable": "Antre kalandriye a pa disponib",
+  "rowA11y": "Tou {{round}}, {{status}}, peman {{date}}"
+}

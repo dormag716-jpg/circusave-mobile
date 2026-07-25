@@ -1,6 +1,12 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+import { i18n } from './i18n';
+import {
+  notificationCopy,
+  type NotificationType,
+} from './i18n/financial-presentation';
+
 export type NotificationResult =
   | { ok: true; token: string }
   | { ok: true; token: null }
@@ -29,7 +35,7 @@ export async function initializeNotifications(): Promise<NotificationResult> {
   // Ensure Android channel exists before handler is set
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'CircuSave updates',
+      name: i18n.t('notifications:channel'),
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#10B981',
@@ -143,11 +149,32 @@ export async function scheduleLocalNotification(input: {
  * Shows a friendly message in Expo Go instead of crashing.
  */
 export async function scheduleTestNotification(circleId: string): Promise<NotificationResult> {
+  const copy = notificationCopy('payment_confirmed', {}, i18n.t);
   return scheduleLocalNotification({
-    title: 'CircuSave',
-    body: 'Your contribution was confirmed! ✅',
+    title: copy.title,
+    body: copy.body,
     data: { screen: 'workspace', circleId },
     seconds: 2,
+  });
+}
+
+export async function scheduleFinancialNotification(input: {
+  type: NotificationType | string;
+  circleId: string;
+  data?: { name?: string; round?: number | string; circle?: string };
+  seconds?: number;
+}): Promise<NotificationResult> {
+  const copy = notificationCopy(input.type, input.data || {}, i18n.t);
+  return scheduleLocalNotification({
+    title: copy.title,
+    body: copy.body,
+    data: {
+      ...input.data,
+      type: input.type,
+      screen: 'workspace',
+      circleId: input.circleId,
+    },
+    seconds: input.seconds,
   });
 }
 

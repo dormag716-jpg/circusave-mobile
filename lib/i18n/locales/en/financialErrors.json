@@ -1,0 +1,15 @@
+{
+  "generic": "Something went wrong. Please try again.",
+  "loadContribution": "Unable to load contribution details.",
+  "submitContribution": "The contribution could not be submitted.",
+  "stripePayment": "Unable to complete the Stripe payment.",
+  "confirmContribution": "The contribution could not be confirmed.",
+  "recordPayment": "The payment could not be recorded.",
+  "rejectContribution": "The contribution could not be rejected.",
+  "sendReminder": "The reminder could not be sent.",
+  "releasePayout": "The payout could not be released.",
+  "loadRound": "Unable to load round details.",
+  "loadLedger": "Unable to load ledger activity.",
+  "loadActivity": "Unable to load activity.",
+  "malformedRow": "This record is unavailable."
+}

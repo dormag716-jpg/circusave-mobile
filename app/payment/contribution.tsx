@@ -14,6 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { useStripe } from '@stripe/stripe-react-native';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
 
@@ -24,14 +26,24 @@ import {
   submitContribution,
   type BackendCircleDetail,
   type BackendCircleMember,
-  type BackendRoundContribution,
   type BackendRoundSnapshot,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
+import {
+  contributionStatusLabel,
+  contributionTotal,
+} from '@/lib/i18n/financial-presentation';
+import { formatCurrency } from '@/lib/i18n/formatters';
 
 export default function ContributionPaymentScreen() {
+  const { t, i18n } = useTranslation([
+    'contributions',
+    'financialErrors',
+    'createCircle',
+    'people',
+  ]);
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
@@ -50,7 +62,8 @@ export default function ContributionPaymentScreen() {
 
   async function loadContribution() {
     if (!token || !circleId) {
-      setError('Missing token or circle ID.');
+      console.error('Contribution screen missing token or circle ID.');
+      setError(t('contributions:unavailableBody'));
       setLoading(false);
       return;
     }
@@ -65,11 +78,8 @@ export default function ContributionPaymentScreen() {
       setCircle(circleResponse);
       setSnapshot(scheduleResponse);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load contribution details.',
-      );
+      console.error('Unable to load contribution details', loadError);
+      setError(t('financialErrors:loadContribution'));
     } finally {
       setLoading(false);
     }
@@ -79,11 +89,14 @@ export default function ContributionPaymentScreen() {
     void loadContribution();
   }, [circleId, token]);
 
-  const viewerHands = findViewerHands(circle, userId, snapshot);
+  const viewerHands = findViewerHands(circle, userId, snapshot, t);
   const amountPerHand = circle?.contributionAmount ?? 0;
   const totalOwedPerRound =
-    circle?.viewerContributionSummary?.totalOwedPerRound ??
-    amountPerHand * viewerHands.length;
+    contributionTotal({
+      amountPerHand,
+      handCount: viewerHands.length,
+      serverTotal: circle?.viewerContributionSummary?.totalOwedPerRound,
+    });
   const recipient = findRecipient(circle, snapshot);
   const currentRound =
     snapshot?.currentRoundSummary?.roundNumber ??
@@ -100,18 +113,17 @@ export default function ContributionPaymentScreen() {
       ? selectedHandId
       : dueHands[0]?.id ?? viewerHands[0]?.id ?? null;
   const activeHand = viewerHands.find((h) => h.id === activeHandId);
-  const statusLabel = contributionStatusLabel(
-    activeHand
-      ? { memberId: activeHand.id, round: currentRound ?? 0, status: activeHand.status }
-      : undefined,
-  );
+  const statusLabel = contributionStatusLabel(activeHand?.status, t);
   const canSubmit = Boolean(
     activeHand && ['due', 'missed', 'rejected'].includes(activeHand.status),
   );
 
   async function handleSubmitContribution() {
     if (!token || !circle || !activeHand) {
-      Alert.alert('Contribution unavailable', 'Unable to identify your hand.');
+      Alert.alert(
+        t('contributions:alerts.unavailableTitle'),
+        t('contributions:alerts.handMissing'),
+      );
       return;
     }
 
@@ -119,21 +131,20 @@ export default function ContributionPaymentScreen() {
     try {
       await submitContribution(token, circle.id, activeHand.id);
       Alert.alert(
-        'Contribution submitted',
-        `${activeHand.label}: payment is waiting for organizer confirmation.`,
+        t('contributions:submittedTitle'),
+        t('contributions:submittedBody', { hand: activeHand.label }),
         [
           {
-            text: 'OK',
+            text: t('contributions:alerts.ok'),
             onPress: () => void loadContribution(),
           },
         ],
       );
     } catch (submitError) {
+      console.error('Unable to submit contribution', submitError);
       Alert.alert(
-        'Unable to submit contribution',
-        submitError instanceof Error
-          ? submitError.message
-          : 'The backend rejected the contribution.',
+        t('contributions:alerts.submitFailedTitle'),
+        t('financialErrors:submitContribution'),
       );
     } finally {
       setSubmitting(false);
@@ -169,12 +180,21 @@ export default function ContributionPaymentScreen() {
       }
 
       Alert.alert(
-        'Payment successful',
-        `${activeHand.label}: payment processed and awaits server confirmation.`,
-        [{ text: 'OK', onPress: () => void loadContribution() }],
+        t('contributions:paymentSuccessTitle'),
+        t('contributions:paymentSuccessBody', { hand: activeHand.label }),
+        [
+          {
+            text: t('contributions:alerts.ok'),
+            onPress: () => void loadContribution(),
+          },
+        ],
       );
     } catch (err: any) {
-      Alert.alert('Payment Failed', err.message || 'Unable to complete Stripe payment.');
+      console.error('Unable to complete Stripe contribution payment', err);
+      Alert.alert(
+        t('contributions:alerts.paymentFailedTitle'),
+        t('financialErrors:stripePayment'),
+      );
     } finally {
       setPayingStripe(false);
     }
@@ -185,7 +205,7 @@ export default function ContributionPaymentScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.statusText}>Loading contribution details...</Text>
+          <Text style={styles.statusText}>{t('contributions:loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -196,17 +216,21 @@ export default function ContributionPaymentScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <FontAwesome name="warning" size={32} color={colors.warning} />
-          <Text style={styles.statusTitle}>Contribution unavailable</Text>
+          <Text style={styles.statusTitle}>
+            {t('contributions:unavailableTitle')}
+          </Text>
           <Text style={styles.statusText}>
-            {error ?? 'The backend did not return this circle.'}
+            {error ?? t('contributions:unavailableBody')}
           </Text>
           <Pressable
             style={styles.primaryButton}
             onPress={() => void loadContribution()}
             accessibilityRole="button"
-            accessibilityLabel="Retry contribution"
+            accessibilityLabel={t('contributions:retry')}
           >
-            <Text style={styles.primaryButtonText}>Retry</Text>
+            <Text style={styles.primaryButtonText}>
+              {t('contributions:retry')}
+            </Text>
           </Pressable>
           {circleId ? (
             <Pressable
@@ -216,7 +240,7 @@ export default function ContributionPaymentScreen() {
               ]}
               onPress={() => router.replace(circleWorkspaceHref(circleId))}
               accessibilityRole="button"
-              accessibilityLabel="Back to workspace"
+              accessibilityLabel={t('contributions:backToWorkspace')}
             >
               <Text
                 style={[
@@ -224,7 +248,7 @@ export default function ContributionPaymentScreen() {
                   { color: colors.primaryDark },
                 ]}
               >
-                Back to workspace
+                {t('contributions:backToWorkspace')}
               </Text>
             </Pressable>
           ) : null}
@@ -241,37 +265,52 @@ export default function ContributionPaymentScreen() {
             style={styles.backButton}
             onPress={() => router.replace(circleWorkspaceHref(circle.id))}
             accessibilityRole="button"
-            accessibilityLabel="Back to circle workspace"
+            accessibilityLabel={t('contributions:backToWorkspace')}
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
           <View>
-            <Text style={styles.kicker}>Pay Contribution</Text>
+            <Text style={styles.kicker}>{t('contributions:title')}</Text>
             <Text style={styles.title}>{circle.name}</Text>
           </View>
         </View>
 
         <View style={styles.amountCard}>
           <Text style={styles.amountLabel}>
-            {viewerHands.length > 1 ? 'Total Due This Round' : 'Contribution Due'}
+            {viewerHands.length > 1
+              ? t('contributions:totalDue')
+              : t('contributions:contributionDue')}
           </Text>
           <Text style={styles.amountText}>
-            {formatMoney(
+            {formatCurrency(
               dueHands.length > 0
                 ? amountPerHand * dueHands.length
                 : totalOwedPerRound,
+              i18n.resolvedLanguage || i18n.language,
             )}
           </Text>
           <Text style={styles.amountBody}>
             {viewerHands.length > 1
-              ? `${formatMoney(amountPerHand)} per hand · ${viewerHands.length} hands · Round ${formatRound(currentRound)}`
-              : `${capitalize(circle.frequency)} contribution for Round ${formatRound(currentRound)}`}
+              ? t('contributions:perHandSummary', {
+                  amount: formatCurrency(
+                    amountPerHand,
+                    i18n.resolvedLanguage || i18n.language,
+                  ),
+                  count: viewerHands.length,
+                  round: formatRound(currentRound),
+                })
+              : t('contributions:frequencySummary', {
+                  frequency: frequencyLabel(circle.frequency, t),
+                  round: formatRound(currentRound),
+                })}
           </Text>
         </View>
 
         {viewerHands.length > 0 ? (
           <View style={styles.reviewCard}>
-            <Text style={styles.reviewTitle}>Your hands</Text>
+            <Text style={styles.reviewTitle}>
+              {t('contributions:yourHands')}
+            </Text>
             {viewerHands.map((hand) => {
               const selected = hand.id === activeHandId;
               const due = ['due', 'missed', 'rejected'].includes(hand.status);
@@ -285,16 +324,18 @@ export default function ContributionPaymentScreen() {
                   ]}
                   onPress={() => setSelectedHandId(hand.id)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Select ${hand.label}`}
+                  accessibilityLabel={t('contributions:selectHand', {
+                    name: hand.label,
+                  })}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.handTitle}>{hand.label}</Text>
                     <Text style={styles.handMeta}>
-                      {formatMoney(amountPerHand)} · {contributionStatusLabel({
-                        memberId: hand.id,
-                        round: currentRound ?? 0,
-                        status: hand.status,
-                      })}
+                      {formatCurrency(
+                        amountPerHand,
+                        i18n.resolvedLanguage || i18n.language,
+                      )}{' '}
+                      · {contributionStatusLabel(hand.status, t)}
                     </Text>
                   </View>
                   {selected ? (
@@ -304,7 +345,7 @@ export default function ContributionPaymentScreen() {
               );
             })}
             <Text style={styles.handHint}>
-              Pay one hand at a time. Paying one hand never covers another.
+              {t('contributions:handPaymentNotice')}
             </Text>
           </View>
         ) : null}
@@ -314,32 +355,44 @@ export default function ContributionPaymentScreen() {
             <FontAwesome name="user" size={18} color={colors.primary} />
           </View>
           <View style={styles.cardCopy}>
-            <Text style={styles.cardLabel}>Recipient</Text>
-            <Text style={styles.cardTitle}>{memberName(recipient)}</Text>
+            <Text style={styles.cardLabel}>
+              {t('contributions:recipient')}
+            </Text>
+            <Text style={styles.cardTitle}>
+              {memberName(recipient, t('contributions:statusLabels.unavailable'))}
+            </Text>
             <Text style={styles.cardBody}>
-              Round {formatRound(currentRound)} payout recipient
+              {t('contributions:recipientDescription', {
+                round: formatRound(currentRound),
+              })}
             </Text>
           </View>
         </View>
 
         <View style={styles.reviewCard}>
-          <Text style={styles.reviewTitle}>Review</Text>
-          <ReviewRow label="Circle" value={circle.name} />
-          <ReviewRow label="Round" value={formatRound(currentRound)} />
+          <Text style={styles.reviewTitle}>{t('contributions:review')}</Text>
+          <ReviewRow label={t('contributions:circle')} value={circle.name} />
           <ReviewRow
-            label="Selected hand"
+            label={t('contributions:round')}
+            value={formatRound(currentRound)}
+          />
+          <ReviewRow
+            label={t('contributions:selectedHand')}
             value={activeHand?.label ?? '—'}
           />
           <ReviewRow
-            label="Amount for hand"
-            value={formatMoney(amountPerHand)}
+            label={t('contributions:amountForHand')}
+            value={formatCurrency(
+              amountPerHand,
+              i18n.resolvedLanguage || i18n.language,
+            )}
           />
-          <ReviewRow label="Status" value={statusLabel} />
+          <ReviewRow label={t('contributions:status')} value={statusLabel} />
         </View>
 
         {viewerHands.length === 0 ? (
           <Text style={styles.unavailableText}>
-            Your active hands were not found for this circle.
+            {t('contributions:handsUnavailable')}
           </Text>
         ) : null}
 
@@ -354,7 +407,9 @@ export default function ContributionPaymentScreen() {
             accessibilityRole="button"
           >
             <Text style={styles.primaryButtonText}>
-              {payingStripe ? 'Processing...' : 'Pay with Stripe'}
+              {payingStripe
+                ? t('contributions:processing')
+                : t('contributions:payWithStripe')}
             </Text>
           </Pressable>
         ) : null}
@@ -367,10 +422,16 @@ export default function ContributionPaymentScreen() {
           disabled={!canSubmit || payingStripe || submitting}
           onPress={() => void handleSubmitContribution()}
           accessibilityRole="button"
-          accessibilityLabel="Submit contribution"
+          accessibilityLabel={t('contributions:submitA11y')}
         >
           <Text style={isStripeSupported ? styles.secondaryButtonText : styles.primaryButtonText}>
-            {submitting ? 'Submitting...' : isStripeSupported ? 'Confirm Manual Payment' : (canSubmit ? 'Submit Contribution' : statusLabel)}
+            {submitting
+              ? t('contributions:submitting')
+              : isStripeSupported
+                ? t('contributions:confirmManual')
+                : canSubmit
+                  ? t('contributions:submit')
+                  : statusLabel}
           </Text>
         </Pressable>
       </ScrollView>
@@ -389,6 +450,7 @@ function findViewerHands(
   circle: BackendCircleDetail | null,
   userId?: string,
   snapshot?: BackendRoundSnapshot | null,
+  t?: TFunction,
 ): ViewerHandRow[] {
   if (!circle || !userId) {
     return [];
@@ -397,7 +459,7 @@ function findViewerHands(
   const fromDetail =
     circle.viewerHands && circle.viewerHands.length > 0
       ? circle.viewerHands
-      : circle.members.filter((member) => member.userId === userId);
+      : (circle.members || []).filter((member) => member.userId === userId);
 
   const multi = fromDetail.length > 1;
   return fromDetail
@@ -406,12 +468,11 @@ function findViewerHands(
       const base =
         member.displayLabel ||
         member.full_name ||
-        member.name ||
-        'Your hand';
-      const label =
-        multi && !String(base).includes('Hand')
-          ? `${base} · Hand ${handNumber}`
-          : base;
+        member.name;
+      const handLabel =
+        t?.('people:hands.handLabel', { number: handNumber }) ||
+        String(handNumber);
+      const label = base ? (multi ? `${base} · ${handLabel}` : base) : handLabel;
       const contribution = snapshot?.contributions?.find(
         (entry) => entry.memberId === member.id,
       );
@@ -433,38 +494,26 @@ function findRecipient(
     snapshot?.currentRoundSummary?.recipientMemberId ??
     snapshot?.roundWorkspace?.currentRecipientMemberId ??
     circle?.currentRoundSummary?.recipientMemberId;
-  return circle?.members.find((member) => member.id === recipientId);
+  return (circle?.members || []).find((member) => member.id === recipientId);
 }
 
-function contributionStatusLabel(contribution?: BackendRoundContribution) {
-  const status = String(contribution?.status || 'unavailable').toLowerCase();
-  if (status === 'due') return 'Due';
-  if (status === 'submitted') return 'Pending organizer confirmation';
-  if (status === 'confirmed') return 'Confirmed';
-  if (status === 'late') return 'Submitted late';
-  if (status === 'missed') return 'Missed';
-  if (status === 'rejected') return 'Rejected';
-  return 'Unavailable';
-}
-
-function memberName(member: BackendCircleMember | undefined) {
-  return member?.full_name || member?.name || 'Unavailable';
-}
-
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
+function memberName(member: BackendCircleMember | undefined, fallback: string) {
+  return member?.full_name || member?.name || fallback;
 }
 
 function formatRound(round?: number) {
   return typeof round === 'number' && Number.isFinite(round) ? String(round) : '-';
 }
 
-function capitalize(value: string) {
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+function frequencyLabel(value: string, t: TFunction) {
+  const normalized = value.toLowerCase().replace(/[-_\s]/g, '');
+  const key =
+    normalized === 'biweekly'
+      ? 'biweekly'
+      : normalized === 'monthly'
+        ? 'monthly'
+        : 'weekly';
+  return t(`createCircle:frequency.options.${key}`);
 }
 
 function ReviewRow({ label, value }: { label: string; value: string }) {

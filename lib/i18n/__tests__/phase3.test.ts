@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 const asyncStorageValues = new Map<string, string>();
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -55,6 +58,18 @@ describe('Phase 3 circle workspace localization', () => {
     async (language) => {
       await changeLanguagePreference(language);
 
+      const namespaces = [
+        'createCircle',
+        'joinCircle',
+        'invite',
+        'circleWorkspace',
+        'people',
+        'payoutOrder',
+      ];
+      for (const namespace of namespaces) {
+        expect(i18n.hasResourceBundle(language, namespace)).toBe(true);
+      }
+
       for (const key of [
         'createCircle:landing.title',
         'joinCircle:title',
@@ -67,6 +82,21 @@ describe('Phase 3 circle workspace localization', () => {
       }
     },
   );
+
+  test('workspace route performs no resource-store work during module load', () => {
+    const routeSource = readFileSync(
+      resolve(__dirname, '../../../app/circle/workspace.tsx'),
+      'utf8',
+    );
+
+    expect(routeSource).toContain('export default function CircleWorkspaceScreen()');
+    expect(routeSource).toContain("useTranslation('circleWorkspace')");
+    expect(routeSource).toContain("'people'");
+    expect(routeSource).toContain("'payoutOrder'");
+    expect(routeSource).not.toContain('hasResourceBundle');
+    expect(routeSource).not.toContain('addResourceBundle');
+    expect(routeSource).not.toContain('@/lib/i18n/locales/');
+  });
 
   test('missing Phase 3 keys fall back to English', async () => {
     i18n.addResource(

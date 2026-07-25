@@ -44,6 +44,7 @@ import {
   type BackendLedgerEntry,
   type BackendRoundContribution,
   type BackendRoundSnapshot,
+  type BackendScheduleRound,
   type BackendWalletSnapshot,
   requestPositionSwap,
   getMemberAccessToken,
@@ -99,17 +100,17 @@ import {
   initialsForDisplay,
   validateCurrentPayoutOrder,
 } from '@/lib/peopleWorkspace';
-import { formatCurrency, formatOrdinal } from '@/lib/i18n/formatters';
-import { i18n } from '@/lib/i18n';
-import circleWorkspaceEn from '@/lib/i18n/locales/en/circleWorkspace.json';
-import circleWorkspaceEs from '@/lib/i18n/locales/es/circleWorkspace.json';
-import circleWorkspaceHt from '@/lib/i18n/locales/ht/circleWorkspace.json';
-import peopleEn from '@/lib/i18n/locales/en/people.json';
-import peopleEs from '@/lib/i18n/locales/es/people.json';
-import peopleHt from '@/lib/i18n/locales/ht/people.json';
-import payoutOrderEn from '@/lib/i18n/locales/en/payoutOrder.json';
-import payoutOrderEs from '@/lib/i18n/locales/es/payoutOrder.json';
-import payoutOrderHt from '@/lib/i18n/locales/ht/payoutOrder.json';
+import {
+  contributionStatusLabel,
+  roundStatusLabel,
+} from '@/lib/i18n/financial-presentation';
+import {
+  formatCurrency,
+  formatDateTime as formatLocalizedDate,
+  formatOrdinal,
+  formatPercentage,
+  formatRelativeDate,
+} from '@/lib/i18n/formatters';
 
 type ActiveTab = 'round' | 'chat' | 'people' | 'records';
 
@@ -133,18 +134,6 @@ const tabs: {
   { id: 'people', icon: 'users' },
   { id: 'records', icon: 'list-alt' },
 ];
-
-for (const [language, resources] of Object.entries({
-  en: { circleWorkspace: circleWorkspaceEn, people: peopleEn, payoutOrder: payoutOrderEn },
-  es: { circleWorkspace: circleWorkspaceEs, people: peopleEs, payoutOrder: payoutOrderEs },
-  ht: { circleWorkspace: circleWorkspaceHt, people: peopleHt, payoutOrder: payoutOrderHt },
-})) {
-  for (const [namespace, bundle] of Object.entries(resources)) {
-    if (!i18n.hasResourceBundle(language, namespace)) {
-      i18n.addResourceBundle(language, namespace, bundle, true, true);
-    }
-  }
-}
 
 export default function CircleWorkspaceScreen() {
   const { t } = useTranslation('circleWorkspace');
@@ -317,7 +306,14 @@ function WorkspaceContent({
   refreshNonce: number;
   onRoundResolved: (round: number) => void;
 }) {
-  const { t } = useTranslation('circleWorkspace');
+  const { t, i18n: translation } = useTranslation([
+    'circleWorkspace',
+    'contributions',
+    'rounds',
+    'schedule',
+    'financialErrors',
+  ]);
+  const language = translation.resolvedLanguage || translation.language;
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
     null,
@@ -412,6 +408,7 @@ function WorkspaceContent({
           ledgerEntries,
           member.id,
           currentRoundNumber,
+          t,
         ),
       };
     });
@@ -460,6 +457,7 @@ function WorkspaceContent({
     ledgerEntries,
     viewerMember?.id,
     currentRoundNumber,
+    t,
   );
   const viewerPayoutPosition = viewerMember
     ? orderedMembers.findIndex((m) => m.id === viewerMember.id) + 1
@@ -494,22 +492,24 @@ function WorkspaceContent({
         )
       : null;
 
-  const displayAllConfirmed =
-    expectedContributionsCount > 0 &&
-    visibleConfirmedCount >= expectedContributionsCount;
-
   const backendPayoutReady = roundWorkspace?.readyForPayout === true;
   const payoutReleased = roundWorkspace?.payoutReleased === true;
 
-  const displayPayoutReady =
-    payoutReleased || backendPayoutReady || displayAllConfirmed;
+  const displayPayoutReady = payoutReleased || backendPayoutReady;
 
   const displayRoundStatus =
     payoutReleased
-      ? `Payout sent to ${recipient ? (recipient.full_name || recipient.name) : 'recipient'}`
+      ? t('rounds:payoutSent', {
+          name: recipient
+            ? recipient.full_name || recipient.name
+            : t('rounds:recipient'),
+        })
       : displayPayoutReady
-        ? 'All contributions confirmed'
-        : formatRoundStatus(roundWorkspace?.currentRoundStatus || circle.status);
+        ? t('rounds:allConfirmed')
+        : roundStatusLabel(
+            roundWorkspace?.currentRoundStatus || circle.status,
+            t,
+          );
   // ────────────────────────────────────────────────────────────────────────
 
   const canReviewContributions =
@@ -560,9 +560,10 @@ function WorkspaceContent({
         await Promise.all([onReload(), loadBackendSections()]);
         return;
       }
+      console.error('Unable to confirm contribution', confirmError);
       Alert.alert(
-        'Unable to confirm contribution',
-        message || 'The backend rejected the confirmation request.',
+        t('contributions:alerts.confirmFailedTitle'),
+        t('financialErrors:confirmContribution'),
       );
     } finally {
       setActionMemberId(null);
@@ -584,19 +585,18 @@ function WorkspaceContent({
         if (!message.includes('already has confirmed pot funding recorded')) {
           await Promise.all([onReload(), loadBackendSections()]);
           Alert.alert(
-            'Payment recorded',
-            'Payment was recorded as submitted, but could not be auto-confirmed. Use Confirm Receipt when ready.',
+            t('contributions:alerts.recordedTitle'),
+            t('contributions:alerts.recordedPending'),
           );
           return;
         }
       }
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (markPaidError) {
+      console.error('Unable to record payment', markPaidError);
       Alert.alert(
-        'Unable to record payment',
-        markPaidError instanceof Error
-          ? markPaidError.message
-          : 'The backend rejected the record-payment request.',
+        t('contributions:alerts.recordFailedTitle'),
+        t('financialErrors:recordPayment'),
       );
     } finally {
       setActionMemberId(null);
@@ -606,15 +606,19 @@ function WorkspaceContent({
   async function handleReleasePayout(isManual = false) {
     if (!recipientId || typeof payoutAmount !== 'number') {
       Alert.alert(
-        'Payout unavailable',
-        'The backend did not provide a payout recipient and amount.',
+        t('rounds:status.unknown'),
+        t('financialErrors:releasePayout'),
       );
       return;
     }
 
     const recipient = orderedMembers.find(m => m.id === recipientId);
     if (!recipient) {
-      Alert.alert('Error', 'Recipient not found in members list.');
+      console.error('Payout recipient membership was not found', {
+        circleId: circle.id,
+        recipientId,
+      });
+      Alert.alert(t('rounds:status.unknown'), t('financialErrors:releasePayout'));
       return;
     }
 
@@ -626,22 +630,24 @@ function WorkspaceContent({
         });
         await Promise.all([onReload(), loadBackendSections()]);
       } catch (releaseError) {
+        console.error('Unable to release payout', releaseError);
         Alert.alert(
-          'Unable to release payout',
-          releaseError instanceof Error
-            ? releaseError.message
-            : 'The backend rejected the payout release.',
+          t('financialErrors:releasePayout'),
+          t('financialErrors:generic'),
         );
       }
     };
 
     const promptConfirmRelease = () => {
       Alert.alert(
-        'Confirm Payout',
-        'Did you successfully send the payment?',
+        t('rounds:payout.confirmTitle'),
+        t('rounds:payout.confirmBody'),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Yes, Mark Paid', onPress: executeBackendRelease }
+          { text: t('contributions:alerts.cancel'), style: 'cancel' },
+          {
+            text: t('rounds:payout.markPaid'),
+            onPress: executeBackendRelease,
+          },
         ]
       );
     };
@@ -691,20 +697,24 @@ function WorkspaceContent({
     }
 
     buttons.push({
-      text: 'Mark as Paid Manually',
+      text: t('rounds:payout.markPaidManually'),
       onPress: promptConfirmRelease
     });
 
     buttons.push({
-      text: 'Cancel',
+      text: t('contributions:alerts.cancel'),
       style: 'cancel'
     });
 
-    const recipientName = recipient.full_name || recipient.name || 'the recipient';
+    const recipientName =
+      recipient.full_name || recipient.name || t('rounds:recipient');
 
     Alert.alert(
-      'Release Payout',
-      `How would you like to send the $${payoutAmount} payout to ${recipientName}?`,
+      t('rounds:payout.release'),
+      t('rounds:payout.methodBody', {
+        amount: formatCurrency(payoutAmount, language),
+        name: recipientName,
+      }),
       buttons
     );
   }
@@ -714,13 +724,19 @@ function WorkspaceContent({
     action: 'reject' | 'remind-sms' | 'remind-whatsapp' | 'remind-app',
   ) {
     if (action === 'remind-sms' && member.phone) {
-      const message = `Hey ${memberName(member)}, just a friendly reminder about your contribution for ${circle.name}! Let me know if you need any help.`;
+      const message = t('contributions:reminderMessage', {
+        name: memberName(member),
+        circle: circle.name,
+      });
       void Linking.openURL(`sms:${member.phone}?body=${encodeURIComponent(message)}`);
       return;
     }
     
     if (action === 'remind-whatsapp' && member.phone) {
-      const message = `Hey ${memberName(member)}, just a friendly reminder about your contribution for ${circle.name}! Let me know if you need any help.`;
+      const message = t('contributions:reminderMessage', {
+        name: memberName(member),
+        circle: circle.name,
+      });
       const numericPhone = member.phone.replace(/[^0-9]/g, '');
       void Linking.openURL(`https://wa.me/${numericPhone}?text=${encodeURIComponent(message)}`);
       return;
@@ -732,16 +748,27 @@ function WorkspaceContent({
         await rejectContribution(token, circle.id, member.id);
       } else {
         await sendContributionReminder(token, circle.id, member.id);
-        Alert.alert('Reminder Sent', `An app notification has been sent to ${memberName(member)}.`);
+        Alert.alert(
+          t('contributions:alerts.reminderSentTitle'),
+          t('contributions:alerts.reminderSentBody', {
+            name: memberName(member),
+          }),
+        );
       }
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (actionError) {
       const isReject = action === 'reject';
-      Alert.alert(
+      console.error(
         isReject ? 'Unable to reject contribution' : 'Unable to send reminder',
-        actionError instanceof Error
-          ? actionError.message
-          : `The backend rejected the ${isReject ? 'contribution' : 'reminder'} action.`,
+        actionError,
+      );
+      Alert.alert(
+        isReject
+          ? t('contributions:alerts.rejectFailedTitle')
+          : t('contributions:alerts.reminderFailedTitle'),
+        isReject
+          ? t('financialErrors:rejectContribution')
+          : t('financialErrors:sendReminder'),
       );
     } finally {
       setActionMemberId(null);
@@ -751,8 +778,10 @@ function WorkspaceContent({
   function handleRemindPress(member: BackendCircleMember) {
     if (member.phone) {
       Alert.alert(
-        'Send Reminder',
-        `How would you like to remind ${memberName(member)}?`,
+        t('contributions:alerts.sendReminderTitle'),
+        t('contributions:alerts.sendReminderBody', {
+          name: memberName(member),
+        }),
         [
           {
             text: 'SMS',
@@ -763,11 +792,11 @@ function WorkspaceContent({
             onPress: () => void runMemberAction(member, 'remind-whatsapp'),
           },
           {
-            text: 'App Notification',
+            text: t('contributions:alerts.appNotification'),
             onPress: () => void runMemberAction(member, 'remind-app'),
           },
           {
-            text: 'Cancel',
+            text: t('contributions:alerts.cancel'),
             style: 'cancel',
           },
         ]
@@ -848,6 +877,7 @@ function WorkspaceContent({
               payoutAmount={payoutAmount}
               payoutReleased={payoutReleased}
               recipient={recipient}
+              schedule={scheduleData?.schedule || []}
               totalMembers={expectedContributionsCount}
               totalRoundsCount={totalRoundsCount}
               visibleConfirmedCount={visibleConfirmedCount}
@@ -919,6 +949,7 @@ function WorkspaceContent({
           ledgerEntries={ledgerEntries}
           isPremium={isPremium}
           circleName={circle.name}
+          wallet={roundWallet}
         />
       ) : null}
     </View>
@@ -945,6 +976,7 @@ function RoundTab({
   payoutAmount,
   payoutReleased,
   recipient,
+  schedule,
   totalMembers,
   totalRoundsCount,
   visibleConfirmedCount,
@@ -978,6 +1010,7 @@ function RoundTab({
   payoutAmount?: number;
   payoutReleased: boolean;
   recipient?: BackendCircleMember;
+  schedule: BackendScheduleRound[];
   totalMembers: number;
   totalRoundsCount: number;
   visibleConfirmedCount: number;
@@ -991,6 +1024,12 @@ function RoundTab({
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
     'people',
+    'contributions',
+    'rounds',
+    'schedule',
+    'financialErrors',
+    'createCircle',
+    'ledger',
   ]);
   const language = translation.resolvedLanguage || translation.language;
   const [visibleActionCount, setVisibleActionCount] = useState(5);
@@ -1270,8 +1309,12 @@ function RoundTab({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
-                Round {currentRoundNumber}
-                {visibleTotalRounds > 0 ? ` of ${visibleTotalRounds}` : ''}
+                {visibleTotalRounds > 0
+                  ? t('rounds:number', {
+                      current: currentRoundNumber,
+                      total: visibleTotalRounds,
+                    })
+                  : t('rounds:numberOnly', { current: currentRoundNumber })}
               </Text>
               <Text
                 style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}
@@ -1288,10 +1331,10 @@ function RoundTab({
                     marginTop: 4,
                   }}
                 >
-                  Payout {formatDate(dueDate)}
-                  {formatRelativeDays(dueDate)
-                    ? ` · ${formatRelativeDays(dueDate)}`
-                    : ''}
+                  {t('rounds:payoutDate', {
+                    date: formatLocalizedDate(dueDate, language),
+                  })}{' '}
+                  · {formatRelativeDate(dueDate, language)}
                 </Text>
               ) : null}
             </View>
@@ -1330,10 +1373,10 @@ function RoundTab({
               }}
             >
               {payoutReleased
-                ? 'Released'
+                ? t('rounds:status.released')
                 : displayPayoutReady
-                  ? 'Ready'
-                  : 'Collecting'}
+                  ? t('rounds:status.ready')
+                  : t('rounds:status.collecting')}
             </Text>
           </View>
         </View>
@@ -1352,8 +1395,8 @@ function RoundTab({
                 }}
               >
                 {isViewerRecipient
-                  ? 'You receive this round'
-                  : 'Payout recipient'}
+                  ? t('rounds:viewerRecipient')
+                  : t('rounds:recipient')}
               </Text>
               <Text
                 style={{
@@ -1373,7 +1416,7 @@ function RoundTab({
                   marginTop: 4,
                 }}
               >
-                Pot amount
+                {t('rounds:potAmount')}
               </Text>
               <Text
                 style={{
@@ -1383,7 +1426,9 @@ function RoundTab({
                   marginTop: -2,
                 }}
               >
-                {formatOptionalMoney(payoutAmount)}
+                {typeof payoutAmount === 'number'
+                  ? formatCurrency(payoutAmount, language)
+                  : t('contributions:statusLabels.unavailable')}
               </Text>
             </View>
           </View>
@@ -1406,10 +1451,13 @@ function RoundTab({
             }}
           >
             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
-              Progress
+              {t('rounds:progress')}
             </Text>
             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
-              {visibleConfirmedCount} of {expectedContributionsCount} confirmed
+              {t('rounds:confirmedCount', {
+                confirmed: visibleConfirmedCount,
+                total: expectedContributionsCount,
+              })}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -1432,7 +1480,7 @@ function RoundTab({
               />
             </View>
             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>
-              {Math.round(visibleProgress || 0)}%
+              {formatPercentage(visibleProgress || 0, language)}
             </Text>
           </View>
         </View>
@@ -1441,18 +1489,26 @@ function RoundTab({
       {/* Members only: report own payment. Organizers manage everyone below. */}
       {!canReviewContributions && viewerMember ? (
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>My contribution</Text>
+          <Text style={styles.sectionTitle}>
+            {t('contributions:workspace.myContribution')}
+          </Text>
           <Text style={styles.sectionSubtitle}>
             {memberCanSubmitContribution
-              ? `Your ${formatMoney(circle.contributionAmount)} contribution is due this round.`
+              ? t('contributions:workspace.dueBody', {
+                  amount: formatCurrency(circle.contributionAmount, language),
+                })
               : viewerContributionStatus.raw === 'confirmed'
-                ? 'Your contribution for this round is confirmed.'
+                ? t('contributions:workspace.confirmedBody')
                 : viewerContributionStatus.raw === 'submitted' ||
                     viewerContributionStatus.raw === 'late'
-                  ? 'Your payment is waiting for the organizer to confirm.'
-                  : `Status: ${viewerContributionStatus.label}`}
+                  ? t('contributions:workspace.pendingBody')
+                  : t('contributions:workspace.statusBody', {
+                      status: viewerContributionStatus.label,
+                    })}
             {viewerPayoutPosition
-              ? ` · Your payout turn is #${viewerPayoutPosition}.`
+              ? ` · ${t('contributions:workspace.payoutTurn', {
+                  position: formatOrdinal(viewerPayoutPosition, language),
+                })}`
               : ''}
           </Text>
 
@@ -1465,11 +1521,11 @@ function RoundTab({
                 style={{ marginBottom: 6 }}
               />
               <Text style={styles.paymentInstructionsTitle}>
-                Where to send your payment
+                {t('contributions:workspace.instructionsTitle')}
               </Text>
               <Text style={styles.paymentInstructionsText}>
                 {paymentInstructions ??
-                  'Contact the organizer for payment details.'}
+                  t('contributions:workspace.instructionsFallback')}
               </Text>
             </View>
           ) : null}
@@ -1480,10 +1536,10 @@ function RoundTab({
               <FontAwesome name="clock-o" size={20} color={colors.warning} />
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.pendingConfirmationTitle}>
-                  Payment reported
+                  {t('contributions:workspace.reportedTitle')}
                 </Text>
                 <Text style={styles.pendingConfirmationText}>
-                  Waiting for the organizer to confirm receipt.
+                  {t('contributions:workspace.reportedBody')}
                 </Text>
               </View>
             </View>
@@ -1492,9 +1548,11 @@ function RoundTab({
               style={styles.primaryButton}
               onPress={() => router.push(contributionHref(circle.id))}
               accessibilityRole="button"
-              accessibilityLabel="I Sent It"
+              accessibilityLabel={t('contributions:workspace.sentAction')}
             >
-              <Text style={styles.primaryButtonText}>I Sent It ✓</Text>
+              <Text style={styles.primaryButtonText}>
+                {t('contributions:workspace.sentAction')} ✓
+              </Text>
             </Pressable>
           ) : (
             <StatusBadge
@@ -1505,17 +1563,18 @@ function RoundTab({
         </View>
       ) : null}
 
-      {/* Release Payout is gated on backend permission only — display state
-          (displayPayoutReady / displayAllConfirmed) must never unlock this. */}
+      {/* Release Payout remains gated on backend permission and readiness. */}
       {canReleasePayout && isPremium ? (
         <Pressable
           style={styles.payoutButton}
           onPress={() => onReleasePayout(false)}
           accessibilityRole="button"
-          accessibilityLabel="Release payout"
+          accessibilityLabel={t('rounds:payout.release')}
         >
           <FontAwesome name="money" size={18} color="#fff" />
-          <Text style={styles.payoutButtonText}>Release Payout</Text>
+          <Text style={styles.payoutButtonText}>
+            {t('rounds:payout.release')}
+          </Text>
         </Pressable>
       ) : canReleasePayout && !isPremium ? (
         <View style={{ width: '100%' }}>
@@ -1523,32 +1582,40 @@ function RoundTab({
             style={[styles.payoutButton, { backgroundColor: '#6366f1' }]}
             onPress={() => router.push('/subscription')}
             accessibilityRole="button"
-            accessibilityLabel="Upgrade to Premium"
+            accessibilityLabel={t('ledger:upgradeAction')}
           >
             <FontAwesome name="star" size={18} color="#fff" />
-            <Text style={styles.payoutButtonText}>Premium: 1-Tap Payout</Text>
+            <Text style={styles.payoutButtonText}>
+              {t('rounds:payout.premium')}
+            </Text>
           </Pressable>
           <Pressable
             style={{ marginTop: 16, paddingVertical: 12, alignItems: 'center' }}
             onPress={() => onReleasePayout(true)}
             accessibilityRole="button"
-            accessibilityLabel="Mark Paid Manually"
+            accessibilityLabel={t('rounds:payout.markPaidManually')}
           >
-            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>Mark as Paid Manually</Text>
+            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>
+              {t('rounds:payout.markPaidManually')}
+            </Text>
           </Pressable>
         </View>
       ) : displayPayoutReady && !payoutReleased ? (
         <Text style={[styles.helperText, { marginTop: 8, textAlign: 'center' }]}>
-          The round appears fully confirmed. Waiting for backend payout permission.
+          {t('rounds:payout.waitingPermission')}
         </Text>
       ) : null}
 
       <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20, marginBottom: 16 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 12 }}>
-          <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>Who has paid</Text>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
+            {t('contributions:workspace.whoPaid')}
+          </Text>
           <Pressable onPress={() => setShowAllPaid(!showAllPaid)}>
             <Text style={{ color: '#6b37cf', fontSize: 14, fontWeight: '800' }}>
-              {showAllPaid ? 'Show less' : 'View all'}
+              {showAllPaid
+                ? t('contributions:workspace.showLess')
+                : t('contributions:workspace.viewAll')}
             </Text>
           </Pressable>
         </View>
@@ -1571,15 +1638,15 @@ function RoundTab({
           if (status.raw === 'confirmed') {
             badgeColor = '#dcfce7';
             textColor = '#166534';
-            badgeText = 'Confirmed';
+            badgeText = t('contributions:statusLabels.confirmed');
           } else if (status.raw === 'submitted' || status.raw === 'late') {
             badgeColor = '#fef3c7';
             textColor = '#92400e';
-            badgeText = 'Submitted';
+            badgeText = t('contributions:statusLabels.submitted');
           } else {
             badgeColor = '#f3f4f6';
             textColor = '#4b5563';
-            badgeText = 'Pending';
+            badgeText = t('contributions:statusLabels.pending');
             icon = <FontAwesome name="clock-o" size={12} color="#4b5563" style={{ marginRight: 4 }} />;
           }
 
@@ -1595,7 +1662,9 @@ function RoundTab({
                   <Avatar name={memberName(member)} size={40} />
                 </View>
                 <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberName(member)}</Text>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', marginRight: 16 }}>{formatMoney(circle.contributionAmount)}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', marginRight: 16 }}>
+                  {formatCurrency(circle.contributionAmount, language)}
+                </Text>
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: badgeColor, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
                   {icon}
@@ -1613,7 +1682,9 @@ function RoundTab({
                         onPress={() => onApprove(member)}
                       >
                         <FontAwesome name="check-circle-o" size={14} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Confirm</Text>
+                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
+                          {t('contributions:workspace.confirm')}
+                        </Text>
                       </Pressable>
                       <Pressable
                         style={{ flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ef4444', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
@@ -1621,7 +1692,9 @@ function RoundTab({
                         onPress={() => onReject(member)}
                       >
                         <FontAwesome name="times-circle-o" size={14} color="#ef4444" />
-                        <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '800' }}>Reject</Text>
+                        <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '800' }}>
+                          {t('contributions:workspace.reject')}
+                        </Text>
                       </Pressable>
                     </>
                   ) : canMarkPaid ? (
@@ -1632,7 +1705,9 @@ function RoundTab({
                         onPress={() => onMarkPaid(member)}
                       >
                         <FontAwesome name="check-circle-o" size={14} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Record Paid</Text>
+                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
+                          {t('contributions:workspace.recordPaid')}
+                        </Text>
                       </Pressable>
                       {canRemindMembers ? (
                         <Pressable
@@ -1641,7 +1716,9 @@ function RoundTab({
                           onPress={() => onRemind(member)}
                         >
                           <FontAwesome name="bell-o" size={14} color="#4b5563" />
-                          <Text style={{ color: '#4b5563', fontSize: 13, fontWeight: '800' }}>Remind</Text>
+                          <Text style={{ color: '#4b5563', fontSize: 13, fontWeight: '800' }}>
+                            {t('contributions:workspace.remind')}
+                          </Text>
                         </Pressable>
                       ) : null}
                     </>
@@ -1676,16 +1753,16 @@ function RoundTab({
           accessibilityState={{ expanded: roundDetailsExpanded }}
           accessibilityLabel={
             roundDetailsExpanded
-              ? 'Collapse round details'
-              : 'Expand round details'
+              ? t('rounds:collapseDetails')
+              : t('rounds:expandDetails')
           }
         >
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.roundDetailsTitle}>Round details</Text>
+            <Text style={styles.roundDetailsTitle}>{t('rounds:details')}</Text>
             <Text style={styles.roundDetailsSummary} numberOfLines={2}>
               {roundDetailsExpanded
-                ? 'Tap to hide'
-                : 'Tap for frequency, pot size, and turn order'}
+                ? t('rounds:hideDetails')
+                : t('rounds:showDetails')}
             </Text>
           </View>
           <FontAwesome
@@ -1700,59 +1777,113 @@ function RoundTab({
           <View style={{ paddingBottom: 8 }}>
             <RoundDetailRow
               icon="refresh"
-              label="Frequency"
-              value={capitalizeFrequency(circle.frequency) || '—'}
+              label={t('rounds:frequency')}
+              value={frequencyDisplayLabel(circle.frequency, t)}
             />
             <RoundDetailRow
               icon="dollar"
-              label="Contribution per hand"
-              value={`${formatMoney(circle.contributionAmount)} every ${
-                capitalizeFrequency(circle.frequency)?.toLowerCase() || 'round'
-              }`}
+              label={t('rounds:contributionPerHand')}
+              value={t('rounds:contributionFrequency', {
+                amount: formatCurrency(circle.contributionAmount, language),
+                frequency: frequencyDisplayLabel(circle.frequency, t),
+              })}
             />
             <RoundDetailRow
               icon="users"
-              label="Participating hands"
+              label={t('people:hands.title')}
               value={
                 expectedContributionsCount > 0
-                  ? `${expectedContributionsCount} hand${
-                      expectedContributionsCount === 1 ? '' : 's'
-                    } this cycle`
-                  : 'Unknown'
+                  ? t('rounds:participatingHands', {
+                      count: expectedContributionsCount,
+                    })
+                  : t('rounds:unknown')
               }
             />
             <RoundDetailRow
               icon="money"
-              label="Full pot (all hands)"
+              label={t('rounds:fullPot')}
               value={
-                potTarget != null ? formatMoney(potTarget) : '—'
+                potTarget != null ? formatCurrency(potTarget, language) : '—'
               }
             />
             {viewerPayoutPosition ? (
               <RoundDetailRow
                 icon="list-ol"
-                label="Your payout turn"
-                value={`Position #${viewerPayoutPosition} of ${
-                  visibleTotalRounds || expectedContributionsCount || '—'
-                }`}
+                label={t('rounds:yourPayoutTurn')}
+                value={t('rounds:positionOf', {
+                  position: formatOrdinal(viewerPayoutPosition, language),
+                  total:
+                    visibleTotalRounds || expectedContributionsCount || '—',
+                })}
                 last
               />
             ) : (
               <RoundDetailRow
                 icon="info-circle"
-                label="Cycle length"
+                label={t('rounds:cycleLength')}
                 value={
                   visibleTotalRounds > 0
-                    ? `${visibleTotalRounds} round${
-                        visibleTotalRounds === 1 ? '' : 's'
-                      }`
-                    : 'Set by participating hands'
+                    ? t('rounds:roundCount', { count: visibleTotalRounds })
+                    : t('rounds:setByHands')
                 }
                 last
               />
             )}
           </View>
         ) : null}
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>{t('schedule:title')}</Text>
+        {schedule.length === 0 ? (
+          <Text style={styles.sectionSubtitle}>
+            {t('schedule:empty')}
+          </Text>
+        ) : (
+          schedule.map((round, index) => {
+            const payoutDate = round.payoutDate || round.payout_date;
+            const status =
+              round.round < currentRoundNumber
+                ? t('schedule:completed')
+                : round.round === currentRoundNumber
+                  ? t('schedule:current')
+                  : t('schedule:upcoming');
+            const recipientName =
+              round.recipientName ||
+              round.recipient_name ||
+              t('contributions:statusLabels.unavailable');
+            return (
+              <View
+                key={round.id || `round-${round.round}`}
+                style={[
+                  styles.roundDetailRow,
+                  index === schedule.length - 1 && { borderBottomWidth: 0 },
+                ]}
+                accessibilityLabel={t('schedule:rowA11y', {
+                  round: round.round,
+                  status,
+                  date: payoutDate
+                    ? formatLocalizedDate(payoutDate, language)
+                    : t('schedule:notFinalized'),
+                })}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.roundDetailLabel}>
+                    {t('rounds:numberOnly', { current: round.round })} · {status}
+                  </Text>
+                  <Text style={styles.roundDetailValue}>
+                    {recipientName}
+                  </Text>
+                </View>
+                <Text style={styles.roundDetailValue}>
+                  {payoutDate
+                    ? formatLocalizedDate(payoutDate, language)
+                    : t('schedule:notFinalized')}
+                </Text>
+              </View>
+            );
+          })
+        )}
       </View>
     </View>
   );
@@ -3783,21 +3914,36 @@ function contributionStatus(
   ledgerEntries: BackendLedgerEntry[] = [],
   memberId?: string,
   roundNumber?: number,
+  t?: TFunction,
 ): ContributionStatusView {
   const raw = String(contribution?.status || 'due').toLowerCase();
   if (
     raw !== 'confirmed' &&
     hasConfirmedFundingRecord(wallet, ledgerEntries, memberId, roundNumber)
   ) {
-    return { label: 'Confirmed', raw: 'confirmed' };
+    return {
+      label: t
+        ? contributionStatusLabel('confirmed', t)
+        : 'Confirmed',
+      raw: 'confirmed',
+    };
   }
-  if (raw === 'confirmed') return { label: 'Confirmed', raw };
-  if (raw === 'submitted') return { label: 'Submitted', raw };
-  if (raw === 'late') return { label: 'Late', raw };
-  if (raw === 'missed') return { label: 'Missed', raw };
-  if (raw === 'rejected') return { label: 'Rejected', raw };
-  if (raw === 'pending') return { label: 'Waiting', raw };
-  return { label: 'Due', raw: 'due' };
+  const canonical = [
+    'confirmed',
+    'submitted',
+    'late',
+    'missed',
+    'rejected',
+    'pending',
+  ].includes(raw)
+    ? raw
+    : 'due';
+  return {
+    label: t
+      ? contributionStatusLabel(canonical, t)
+      : capitalizeFrequency(canonical),
+    raw: canonical,
+  };
 }
 
 function hasConfirmedFundingRecord(
@@ -4010,6 +4156,17 @@ function capitalizeFrequency(value: string) {
   if (!value) return '';
   if (value === 'biweekly') return 'Bi-weekly';
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
+function frequencyDisplayLabel(value: string, t: TFunction) {
+  const normalized = value.toLowerCase().replace(/[-_\s]/g, '');
+  const key =
+    normalized === 'biweekly'
+      ? 'biweekly'
+      : normalized === 'monthly'
+        ? 'monthly'
+        : 'weekly';
+  return t(`createCircle:frequency.options.${key}`);
 }
 
 function statusTone(raw: string): 'muted' | 'soft' | 'ready' | 'success' | 'warning' {

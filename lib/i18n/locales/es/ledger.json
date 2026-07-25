@@ -1,0 +1,50 @@
+{
+  "title": "Libro mayor",
+  "records": "Registros del círculo",
+  "activity": "Actividad del círculo",
+  "eventCount_one": "{{count}} evento del libro mayor",
+  "eventCount_other": "{{count}} eventos del libro mayor",
+  "date": "Fecha",
+  "type": "Tipo",
+  "description": "Descripción",
+  "amount": "Monto",
+  "balance": "Saldo",
+  "actor": "Actor",
+  "round": "Ronda {{round}}",
+  "empty": "No hay actividad en el libro mayor",
+  "loading": "Cargando el libro mayor…",
+  "error": "Libro mayor no disponible",
+  "rowUnavailable": "Entrada del libro mayor no disponible",
+  "unknownEvent": "Actividad del libro mayor",
+  "unknownActor": "Actor desconocido",
+  "filters": {
+    "all": "Todo",
+    "contributions": "Contribuciones",
+    "payouts": "Pagos",
+    "adjustments": "Ajustes"
+  },
+  "events": {
+    "contribution": "Contribución",
+    "contribution_submitted": "Contribución enviada",
+    "contribution_confirmed": "Contribución confirmada",
+    "contribution_rejected": "Contribución rechazada",
+    "contribution_missed": "Contribución no pagada",
+    "payout": "Pago",
+    "payout_released": "Pago entregado",
+    "payout_completed": "Pago completado",
+    "adjustment": "Ajuste",
+    "refund": "Reembolso",
+    "fee": "Cargo"
+  },
+  "statuses": {
+    "pending": "Pendiente",
+    "confirmed": "Confirmada",
+    "rejected": "Rechazada",
+    "completed": "Completado"
+  },
+  "upgradeTitle": "Desbloquea el historial completo",
+  "upgradeBody_one": "{{count}} actividad adicional está oculta en el plan gratuito.",
+  "upgradeBody_other": "{{count}} actividades adicionales están ocultas en el plan gratuito.",
+  "upgradeAction": "Mejorar a Premium",
+  "rowA11y": "{{type}}, {{amount}}, {{date}}"
+}

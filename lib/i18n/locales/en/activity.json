@@ -1,0 +1,33 @@
+{
+  "title": "Activity",
+  "subtitle": "All contributions and payouts",
+  "filters": {
+    "all": "All",
+    "contributions": "Contributions",
+    "payouts": "Payouts"
+  },
+  "loading": "Loading verified activity…",
+  "unavailableTitle": "Activity unavailable",
+  "retry": "Try again",
+  "retryA11y": "Retry activity",
+  "emptyTitle": "No activity yet",
+  "emptyBody": "Confirmed contributions and payouts will appear here.",
+  "unknownMember": "Unknown member",
+  "unknownEvent": "Circle activity was updated.",
+  "events": {
+    "contribution_submitted": "{{name}} submitted a contribution for Round {{round}}.",
+    "contribution_confirmed": "Your contribution was confirmed.",
+    "contribution_rejected": "A contribution was rejected.",
+    "payout_released": "{{name}} received the Round {{round}} payout.",
+    "payout_completed": "Payout completed.",
+    "round_started": "Round {{round}} is now active.",
+    "payment_review_required": "Payment review required."
+  },
+  "meta": "{{circle}} · Round {{round}}",
+  "unlockTitle": "Unlock full history",
+  "unlockBody": "Upgrade to Premium to view your complete contribution and payout history.",
+  "upgrade": "Upgrade to Premium",
+  "export": "Export full history",
+  "exportUnavailableTitle": "Export not available yet",
+  "exportUnavailableBody": "Full history export will be available when the backend export endpoint is connected."
+}

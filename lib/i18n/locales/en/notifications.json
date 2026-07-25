@@ -1,0 +1,51 @@
+{
+  "channel": "CircuSave updates",
+  "fallback": {
+    "title": "CircuSave update",
+    "body": "Open CircuSave to view the latest update."
+  },
+  "contribution_due": {
+    "title": "Contribution due",
+    "body": "Your contribution for Round {{round}} is due."
+  },
+  "contribution_overdue": {
+    "title": "Contribution overdue",
+    "body": "Your contribution for Round {{round}} is overdue."
+  },
+  "payment_submitted": {
+    "title": "Payment submitted",
+    "body": "Your payment is waiting for organizer review."
+  },
+  "payment_confirmed": {
+    "title": "Payment confirmed",
+    "body": "Your contribution was confirmed."
+  },
+  "payment_rejected": {
+    "title": "Payment rejected",
+    "body": "Your contribution needs attention."
+  },
+  "organizer_review_required": {
+    "title": "Payment review required",
+    "body": "{{name}} submitted a payment for review."
+  },
+  "payout_ready": {
+    "title": "Payout ready",
+    "body": "The Round {{round}} payout is ready for release."
+  },
+  "payout_completed": {
+    "title": "Payout completed",
+    "body": "The Round {{round}} payout was completed."
+  },
+  "round_started": {
+    "title": "Round started",
+    "body": "Round {{round}} is now active."
+  },
+  "next_round_started": {
+    "title": "Next round started",
+    "body": "Round {{round}} is now active."
+  },
+  "circle_completed": {
+    "title": "Circle completed",
+    "body": "{{circle}} has completed all rounds."
+  }
+}

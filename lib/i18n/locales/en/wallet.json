@@ -1,0 +1,25 @@
+{
+  "title": "Wallet",
+  "history": "Transaction history",
+  "incoming": "Incoming",
+  "outgoing": "Outgoing",
+  "empty": "No transactions",
+  "loading": "Loading wallet…",
+  "error": "Wallet unavailable",
+  "rowUnavailable": "Transaction unavailable",
+  "types": {
+    "contribution": "Contribution payment",
+    "payout": "Payout received",
+    "refund": "Refund",
+    "fee": "Fee",
+    "unknown": "Wallet transaction"
+  },
+  "statuses": {
+    "pending": "Pending",
+    "posted": "Completed",
+    "completed": "Completed",
+    "failed": "Failed",
+    "unknown": "Status unavailable"
+  },
+  "transactionA11y": "{{type}}, {{status}}, {{amount}}"
+}

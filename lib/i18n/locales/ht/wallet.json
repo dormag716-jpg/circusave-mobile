@@ -1,0 +1,25 @@
+{
+  "title": "Bous",
+  "history": "Istorik tranzaksyon",
+  "incoming": "K ap antre",
+  "outgoing": "K ap soti",
+  "empty": "Pa gen tranzaksyon",
+  "loading": "Y ap chaje bous la…",
+  "error": "Bous la pa disponib",
+  "rowUnavailable": "Tranzaksyon an pa disponib",
+  "types": {
+    "contribution": "Peman kontribisyon",
+    "payout": "Peman resevwa",
+    "refund": "Ranbousman",
+    "fee": "Frè",
+    "unknown": "Tranzaksyon bous"
+  },
+  "statuses": {
+    "pending": "Annatant",
+    "posted": "Fini",
+    "completed": "Fini",
+    "failed": "Echwe",
+    "unknown": "Estati a pa disponib"
+  },
+  "transactionA11y": "{{type}}, {{status}}, {{amount}}"
+}

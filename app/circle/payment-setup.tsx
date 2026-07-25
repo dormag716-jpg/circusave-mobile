@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { getCircleDetail, updateCircleSettings } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
@@ -29,6 +30,7 @@ const EXAMPLES = [
 ];
 
 export default function PaymentSetupScreen() {
+  const { t } = useTranslation(['contributions', 'financialErrors']);
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId) ? params.circleId[0] : params.circleId;
@@ -65,7 +67,10 @@ export default function PaymentSetupScreen() {
     if (!circleId) return;
     const trimmed = instructions.trim();
     if (!trimmed) {
-      Alert.alert('Instructions required', 'Please enter how members should pay you.');
+      Alert.alert(
+        t('contributions:paymentSetup.requiredTitle'),
+        t('contributions:paymentSetup.requiredBody'),
+      );
       return;
     }
 
@@ -77,7 +82,11 @@ export default function PaymentSetupScreen() {
       try {
         await updateCircleSettings(token, circleId, { paymentInstructions: trimmed });
       } catch (err) {
-        Alert.alert('Error', 'Failed to save payment instructions to the circle.');
+        console.error('Unable to save circle payment instructions', err);
+        Alert.alert(
+          t('contributions:paymentSetup.saveFailedTitle'),
+          t('financialErrors:generic'),
+        );
         setSaving(false);
         return;
       }
@@ -85,9 +94,14 @@ export default function PaymentSetupScreen() {
 
     setSaving(false);
     Alert.alert(
-      'Saved!',
-      'Payment instructions saved to your circle.',
-      [{ text: 'Done', onPress: () => router.replace(circleWorkspaceHref(circleId)) }],
+      t('contributions:paymentSetup.savedTitle'),
+      t('contributions:paymentSetup.savedBody'),
+      [
+        {
+          text: t('contributions:paymentSetup.done'),
+          onPress: () => router.replace(circleWorkspaceHref(circleId)),
+        },
+      ],
     );
   }
 
@@ -118,12 +132,17 @@ export default function PaymentSetupScreen() {
               style={styles.backButton}
               onPress={() => circleId && router.replace(circleWorkspaceHref(circleId))}
               hitSlop={20}
+              accessibilityLabel={t('contributions:paymentSetup.backA11y')}
             >
               <FontAwesome name="angle-left" size={28} color={colors.primaryDark} />
             </Pressable>
             <View style={styles.headerCopy}>
-              <Text style={styles.kicker}>Payment Setup</Text>
-              <Text style={styles.title}>{circleName || 'Circle'}</Text>
+              <Text style={styles.kicker}>
+                {t('contributions:paymentSetup.title')}
+              </Text>
+              <Text style={styles.title}>
+                {circleName || t('contributions:paymentSetup.circleFallback')}
+              </Text>
             </View>
           </View>
 
@@ -133,18 +152,21 @@ export default function PaymentSetupScreen() {
               <FontAwesome name="info-circle" size={20} color={colors.primary} />
             </View>
             <Text style={styles.explainerText}>
-              Tell your members exactly where to send money. This will appear on their "My Next Action" card so they can pay you without asking.
+              {t('contributions:paymentSetup.explainer')}
             </Text>
           </View>
 
           {/* Input */}
           <View style={styles.formCard}>
-            <Text style={styles.fieldLabel}>How should members pay you?</Text>
+            <Text style={styles.fieldLabel}>
+              {t('contributions:paymentSetup.fieldLabel')}
+            </Text>
             <TextInput
               style={styles.textInput}
               value={instructions}
               onChangeText={setInstructions}
-              placeholder="e.g. Zelle: organizer@email.com"
+              placeholder={t('contributions:paymentSetup.placeholder')}
+              accessibilityLabel={t('contributions:paymentSetup.inputA11y')}
               placeholderTextColor={colors.muted}
               multiline
               numberOfLines={3}
@@ -156,7 +178,9 @@ export default function PaymentSetupScreen() {
 
           {/* Examples */}
           <View style={styles.examplesCard}>
-            <Text style={styles.examplesTitle}>Quick fill examples</Text>
+            <Text style={styles.examplesTitle}>
+              {t('contributions:paymentSetup.examples')}
+            </Text>
             {EXAMPLES.map((ex) => (
               <Pressable
                 key={ex.label}
@@ -182,7 +206,9 @@ export default function PaymentSetupScreen() {
             ) : (
               <>
                 <FontAwesome name="check" size={16} color="#fff" />
-                <Text style={styles.saveButtonText}>Save Instructions</Text>
+                <Text style={styles.saveButtonText}>
+                  {t('contributions:paymentSetup.save')}
+                </Text>
               </>
             )}
           </Pressable>

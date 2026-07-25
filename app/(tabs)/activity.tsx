@@ -12,9 +12,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { getActivity, getCircleDetail } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { activityEventSentence } from '@/lib/i18n/financial-presentation';
+import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 import type { BackendActivity } from '@/lib/types';
@@ -22,6 +25,7 @@ import type { BackendActivity } from '@/lib/types';
 type ActivityFilter = 'all' | 'contributions' | 'payouts';
 
 export default function ActivityScreen() {
+  const { t } = useTranslation(['activity', 'financialErrors']);
   const { session } = useAuthSession();
   const [activeFilter, setActiveFilter] = useState<ActivityFilter>('all');
   const [entries, setEntries] = useState<BackendActivity[]>([]);
@@ -34,7 +38,8 @@ export default function ActivityScreen() {
 
   const loadActivity = useCallback(async (isRefresh = false) => {
     if (!token) {
-      setError('Your session is missing an access token. Sign in again.');
+      console.error('Activity screen missing access token.');
+      setError(t('financialErrors:loadActivity'));
       setLoading(false);
       setRefreshing(false);
       return;
@@ -59,7 +64,10 @@ export default function ActivityScreen() {
       for (const detail of details) {
         if (detail && detail.members) {
           for (const member of detail.members) {
-            const name = member.full_name || member.name || 'Unknown member';
+            const name =
+              member.full_name ||
+              member.name ||
+              t('activity:unknownMember');
             newMemberMap[member.id] = name;
             if (member.userId) {
               newMemberMap[member.userId] = name;
@@ -69,11 +77,8 @@ export default function ActivityScreen() {
       }
       setMemberMap(newMemberMap);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load activity.',
-      );
+      console.error('Unable to load activity', loadError);
+      setError(t('financialErrors:loadActivity'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -101,7 +106,9 @@ export default function ActivityScreen() {
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <FlatList
         data={visibleEntries}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) =>
+          item.id || `${item.type || 'activity'}:${item.createdAt || index}`
+        }
         contentContainerStyle={[styles.content, { paddingBottom: 40 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -114,23 +121,23 @@ export default function ActivityScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.header}>
-              <Text style={styles.title}>Activity</Text>
-              <Text style={styles.subtitle}>All contributions and payouts</Text>
+              <Text style={styles.title}>{t('activity:title')}</Text>
+              <Text style={styles.subtitle}>{t('activity:subtitle')}</Text>
             </View>
 
             <View style={styles.filterRow}>
               <FilterPill
-                label="All"
+                label={t('activity:filters.all')}
                 active={activeFilter === 'all'}
                 onPress={() => setActiveFilter('all')}
               />
               <FilterPill
-                label="Contributions"
+                label={t('activity:filters.contributions')}
                 active={activeFilter === 'contributions'}
                 onPress={() => setActiveFilter('contributions')}
               />
               <FilterPill
-                label="Payouts"
+                label={t('activity:filters.payouts')}
                 active={activeFilter === 'payouts'}
                 onPress={() => setActiveFilter('payouts')}
               />
@@ -145,28 +152,29 @@ export default function ActivityScreen() {
           loading && !refreshing ? (
             <View style={styles.statusCard}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={styles.statusText}>Loading verified activity…</Text>
+              <Text style={styles.statusText}>{t('activity:loading')}</Text>
             </View>
           ) : error ? (
             <View style={styles.statusCard}>
-              <Text style={styles.statusTitle}>Activity unavailable</Text>
+              <Text style={styles.statusTitle}>
+                {t('activity:unavailableTitle')}
+              </Text>
               <Text style={styles.statusText}>{error}</Text>
               <Pressable
                 style={styles.retryButton}
                 onPress={() => void loadActivity()}
                 accessibilityRole="button"
-                accessibilityLabel="Retry activity"
+                accessibilityLabel={t('activity:retryA11y')}
               >
-                <Text style={styles.retryButtonText}>Try again</Text>
+                <Text style={styles.retryButtonText}>{t('activity:retry')}</Text>
               </Pressable>
             </View>
           ) : (
             <View style={styles.emptyState}>
               <FontAwesome name="clock-o" size={60} color={colors.muted} />
-              <Text style={styles.emptyTitle}>No activity yet</Text>
+              <Text style={styles.emptyTitle}>{t('activity:emptyTitle')}</Text>
               <Text style={styles.emptyText}>
-                Contributions and payouts will appear here once they are
-                confirmed.
+                {t('activity:emptyBody')}
               </Text>
             </View>
           )
@@ -185,24 +193,35 @@ export default function ActivityScreen() {
               {hasMore ? (
                 <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center' }}>
                   <FontAwesome name="lock" size={24} color="#6b37cf" style={{ marginBottom: 8 }} />
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', textAlign: 'center' }}>Unlock Full History</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', textAlign: 'center' }}>
+                    {t('activity:unlockTitle')}
+                  </Text>
                   <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
-                    Upgrade to Premium to view your complete contribution and payout history.
+                    {t('activity:unlockBody')}
                   </Text>
                   <Pressable
                     style={{ backgroundColor: '#6b37cf', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, width: '100%', alignItems: 'center' }}
                     onPress={() => router.push('/subscription')}
                   >
-                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>Upgrade to Premium</Text>
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>
+                      {t('activity:upgrade')}
+                    </Text>
                   </Pressable>
                 </View>
               ) : (
                 <Pressable
                   style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
-                  onPress={() => Alert.alert('Export not available yet', 'Full history export will be available when the backend export endpoint is connected.')}
+                  onPress={() =>
+                    Alert.alert(
+                      t('activity:exportUnavailableTitle'),
+                      t('activity:exportUnavailableBody'),
+                    )
+                  }
                 >
                   <FontAwesome name="download" size={14} color="#6b37cf" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#6b37cf', fontSize: 15, fontWeight: '800' }}>Export Full History</Text>
+                  <Text style={{ color: '#6b37cf', fontSize: 15, fontWeight: '800' }}>
+                    {t('activity:export')}
+                  </Text>
                 </Pressable>
               )}
             </View>
@@ -214,6 +233,8 @@ export default function ActivityScreen() {
 }
 
 function ActivityCard({ entry, memberMap }: { entry: BackendActivity; memberMap: Record<string, string> }) {
+  const { t, i18n } = useTranslation('activity');
+  const language = i18n.resolvedLanguage || i18n.language;
   const isContribution = entry.type.includes('contribution');
   const isPayout = entry.type.includes('payout');
   
@@ -232,6 +253,10 @@ function ActivityCard({ entry, memberMap }: { entry: BackendActivity; memberMap:
   }
 
   const memberName = getResolvedMemberName(entry, memberMap);
+  const sentence = activityEventSentence(entry, t, {
+    name: memberName || undefined,
+    round: entry.round,
+  });
 
   return (
     <Pressable
@@ -251,25 +276,28 @@ function ActivityCard({ entry, memberMap }: { entry: BackendActivity; memberMap:
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>{entry.title}</Text>
-        <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
-          {memberName ? `${memberName} • ` : ''}
-          {entry.circleName}
-          {entry.round ? ` • Round ${entry.round}` : ''}
+        <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>
+          {sentence}
         </Text>
-        {entry.message ? (
-          <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 4 }}>{entry.message}</Text>
-        ) : null}
+        <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
+          {entry.round
+            ? t('activity:meta', {
+                circle: entry.circleName,
+                round: entry.round,
+              })
+            : entry.circleName}
+        </Text>
       </View>
 
       <View style={{ alignItems: 'flex-end', marginLeft: 12 }}>
         {entry.amount !== null ? (
           <Text style={{ fontSize: 16, fontWeight: '900', color }}>
-            {prefix}{formatMoney(entry.amount)}
+            {prefix}
+            {formatCurrency(entry.amount, language, 'USD', 2)}
           </Text>
         ) : null}
         <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, fontWeight: '600' }}>
-          {formatDate(entry.createdAt)}
+          {formatDateTime(entry.createdAt, language)}
         </Text>
       </View>
     </Pressable>
@@ -321,25 +349,6 @@ function FilterPill({
       </Text>
     </Pressable>
   );
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-}
-
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
 
 const styles = StyleSheet.create({

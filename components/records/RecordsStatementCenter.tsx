@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import {
   ApiError,
@@ -30,6 +31,7 @@ import {
   getStatementDocuments,
   type BackendCircleMember,
   type BackendLedgerEntry,
+  type BackendWalletSnapshot,
   type MemberStatementIndexRow,
   type MemberStatementSnapshot,
   type MemberStatementsIndex,
@@ -37,6 +39,15 @@ import {
   type StatementPeriodInput,
 } from '@/lib/api';
 import { getInitials } from '@/lib/initials';
+import {
+  ledgerEventLabel,
+  walletStatusLabel,
+  walletTransactionLabel,
+} from '@/lib/i18n/financial-presentation';
+import {
+  formatCurrency,
+  formatRelativeDate,
+} from '@/lib/i18n/formatters';
 import { colors, radii, spacing } from '@/lib/theme';
 
 type RecordsSegment = 'circle' | 'statements' | 'documents';
@@ -48,6 +59,7 @@ type Props = {
   ledgerEntries: BackendLedgerEntry[];
   isPremium: boolean;
   circleName?: string;
+  wallet?: BackendWalletSnapshot;
 };
 
 type SubjectTarget =
@@ -75,11 +87,6 @@ function formatRelativeDays(value?: string | null): string {
   return date.toLocaleDateString();
 }
 
-function ledgerTitle(entry: BackendLedgerEntry): string {
-  const type = String(entry.event_type || entry.type || 'activity').replace(/_/g, ' ');
-  return type.charAt(0).toUpperCase() + type.slice(1);
-}
-
 function ledgerIconColor(entry: BackendLedgerEntry): string {
   const t = String(entry.event_type || entry.type || '');
   if (t.includes('payout')) return colors.success;
@@ -88,10 +95,10 @@ function ledgerIconColor(entry: BackendLedgerEntry): string {
   return colors.muted;
 }
 
-function ledgerAmountLabel(entry: BackendLedgerEntry): string {
+function ledgerAmountLabel(entry: BackendLedgerEntry, language: string): string {
   if (typeof entry.amount !== 'number') return '';
   const sign = entry.amount < 0 ? '-' : '';
-  return `${sign}$${Math.abs(entry.amount).toFixed(2)}`;
+  return `${sign}${formatCurrency(Math.abs(entry.amount), language, 'USD', 2)}`;
 }
 
 function dedupeById<T extends { id: string }>(entries: T[]): T[] {
@@ -160,6 +167,7 @@ export function RecordsStatementCenter({
   ledgerEntries,
   isPremium,
   circleName,
+  wallet,
 }: Props) {
   const [segment, setSegment] = useState<RecordsSegment>('statements');
   const [index, setIndex] = useState<MemberStatementsIndex | null>(null);
@@ -371,6 +379,7 @@ export function RecordsStatementCenter({
           entries={ledgerEntries}
           members={members}
           isPremium={isPremium}
+          wallet={wallet}
         />
       ) : null}
 
@@ -492,11 +501,15 @@ function CircleRecordsPanel({
   entries,
   members,
   isPremium,
+  wallet,
 }: {
   entries: BackendLedgerEntry[];
   members: BackendCircleMember[];
   isPremium: boolean;
+  wallet?: BackendWalletSnapshot;
 }) {
+  const { t, i18n } = useTranslation(['ledger', 'wallet']);
+  const language = i18n.resolvedLanguage || i18n.language;
   const uniqueEntries = useMemo(() => dedupeById(entries), [entries]);
   const visibleEntries = isPremium ? uniqueEntries : uniqueEntries.slice(0, 10);
   const hasMore = !isPremium && uniqueEntries.length > 10;
@@ -508,9 +521,9 @@ function CircleRecordsPanel({
           <FontAwesome name="line-chart" size={18} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.panelTitle}>Circle activity</Text>
+          <Text style={styles.panelTitle}>{t('ledger:activity')}</Text>
           <Text style={styles.panelSub}>
-            {uniqueEntries.length} ledger event{uniqueEntries.length === 1 ? '' : 's'}
+            {t('ledger:eventCount', { count: uniqueEntries.length })}
           </Text>
         </View>
       </View>
@@ -518,7 +531,7 @@ function CircleRecordsPanel({
       {uniqueEntries.length === 0 ? (
         <View style={styles.emptyBlock}>
           <FontAwesome name="book" size={28} color={colors.subtle} />
-          <Text style={styles.emptyTitle}>No activity yet</Text>
+          <Text style={styles.emptyTitle}>{t('ledger:empty')}</Text>
         </View>
       ) : (
         visibleEntries.map((entry, index) => (
@@ -533,17 +546,24 @@ function CircleRecordsPanel({
                 <FontAwesome name="circle" size={10} color={ledgerIconColor(entry)} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>{ledgerTitle(entry)}</Text>
+                <Text style={styles.rowTitle}>
+                  {ledgerEventLabel(entry, t)}
+                </Text>
                 <Text style={styles.rowMeta}>
                   {entryMemberName(entry, members)}
                   {entryMemberName(entry, members) ? ' · ' : ''}
-                  Round {entry.round || '—'} ·{' '}
-                  {formatRelativeDays(entry.created_at || entry.at)}
+                  {t('ledger:round', { round: entry.round || '—' })} ·{' '}
+                  {entry.created_at || entry.at
+                    ? formatRelativeDate(
+                        entry.created_at || entry.at || '',
+                        language,
+                      )
+                    : '—'}
                 </Text>
               </View>
               {typeof entry.amount === 'number' ? (
                 <Text style={[styles.rowAmount, { color: ledgerIconColor(entry) }]}>
-                  {ledgerAmountLabel(entry)}
+                  {ledgerAmountLabel(entry, language)}
                 </Text>
               ) : null}
             </View>
@@ -555,18 +575,71 @@ function CircleRecordsPanel({
       {hasMore ? (
         <View style={styles.upgradeBox}>
           <FontAwesome name="lock" size={20} color={colors.primary} />
-          <Text style={styles.upgradeTitle}>Unlock full history</Text>
+          <Text style={styles.upgradeTitle}>{t('ledger:upgradeTitle')}</Text>
           <Text style={styles.upgradeBody}>
-            {entries.length - 10} more activities are hidden on free tier.
+            {t('ledger:upgradeBody', { count: entries.length - 10 })}
           </Text>
           <Pressable
             style={styles.primaryBtn}
             onPress={() => router.push('/subscription')}
           >
-            <Text style={styles.primaryBtnText}>Upgrade to Premium</Text>
+            <Text style={styles.primaryBtnText}>
+              {t('ledger:upgradeAction')}
+            </Text>
           </Pressable>
         </View>
       ) : null}
+
+      <View style={styles.panelHeader}>
+        <View style={styles.iconBubble}>
+          <FontAwesome name="credit-card" size={18} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.panelTitle}>{t('wallet:history')}</Text>
+          <Text style={styles.panelSub}>{t('wallet:title')}</Text>
+        </View>
+      </View>
+      {!wallet?.txns?.length ? (
+        <View style={styles.emptyBlock}>
+          <FontAwesome name="exchange" size={28} color={colors.subtle} />
+          <Text style={styles.emptyTitle}>{t('wallet:empty')}</Text>
+        </View>
+      ) : (
+        wallet.txns.map((transaction, index) => {
+          const amount =
+            typeof transaction.amount === 'number'
+              ? transaction.amount
+              : typeof transaction.amountCents === 'number'
+                ? transaction.amountCents / 100
+                : null;
+          const type = walletTransactionLabel(transaction, t);
+          const status = walletStatusLabel(transaction.status, t);
+          return (
+            <View
+              key={transaction.id || `transaction-${index}`}
+              style={styles.ledgerRow}
+              accessibilityLabel={t('wallet:transactionA11y', {
+                type,
+                status,
+                amount:
+                  amount == null
+                    ? t('wallet:rowUnavailable')
+                    : formatCurrency(amount, language, 'USD', 2),
+              })}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>{type}</Text>
+                <Text style={styles.rowMeta}>{status}</Text>
+              </View>
+              <Text style={styles.rowAmount}>
+                {amount == null
+                  ? '—'
+                  : formatCurrency(amount, language, 'USD', 2)}
+              </Text>
+            </View>
+          );
+        })
+      )}
     </View>
   );
 }

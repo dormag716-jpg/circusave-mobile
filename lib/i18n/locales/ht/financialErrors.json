@@ -1,0 +1,15 @@
+{
+  "generic": "Gen yon pwoblèm. Tanpri eseye ankò.",
+  "loadContribution": "Nou pa kapab chaje detay kontribisyon yo.",
+  "submitContribution": "Nou pa kapab soumèt kontribisyon an.",
+  "stripePayment": "Nou pa kapab fini peman Stripe la.",
+  "confirmContribution": "Nou pa kapab konfime kontribisyon an.",
+  "recordPayment": "Nou pa kapab anrejistre peman an.",
+  "rejectContribution": "Nou pa kapab rejte kontribisyon an.",
+  "sendReminder": "Nou pa kapab voye rapèl la.",
+  "releasePayout": "Nou pa kapab livre peman an.",
+  "loadRound": "Nou pa kapab chaje detay tou a.",
+  "loadLedger": "Nou pa kapab chaje aktivite rejis la.",
+  "loadActivity": "Nou pa kapab chaje aktivite yo.",
+  "malformedRow": "Dosye sa a pa disponib."
+}

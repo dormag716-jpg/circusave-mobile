@@ -1,0 +1,15 @@
+{
+  "generic": "Ocurrió un error. Inténtalo de nuevo.",
+  "loadContribution": "No se pudieron cargar los detalles de la contribución.",
+  "submitContribution": "No se pudo enviar la contribución.",
+  "stripePayment": "No se pudo completar el pago con Stripe.",
+  "confirmContribution": "No se pudo confirmar la contribución.",
+  "recordPayment": "No se pudo registrar el pago.",
+  "rejectContribution": "No se pudo rechazar la contribución.",
+  "sendReminder": "No se pudo enviar el recordatorio.",
+  "releasePayout": "No se pudo entregar el pago.",
+  "loadRound": "No se pudieron cargar los detalles de la ronda.",
+  "loadLedger": "No se pudo cargar la actividad del libro mayor.",
+  "loadActivity": "No se pudo cargar la actividad.",
+  "malformedRow": "Este registro no está disponible."
+}

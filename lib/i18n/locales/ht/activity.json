@@ -1,0 +1,33 @@
+{
+  "title": "Aktivite",
+  "subtitle": "Tout kontribisyon ak peman yo",
+  "filters": {
+    "all": "Tout",
+    "contributions": "Kontribisyon",
+    "payouts": "Peman"
+  },
+  "loading": "Y ap chaje aktivite verifye yo…",
+  "unavailableTitle": "Aktivite yo pa disponib",
+  "retry": "Eseye ankò",
+  "retryA11y": "Rechaje aktivite yo",
+  "emptyTitle": "Poko gen aktivite",
+  "emptyBody": "Kontribisyon ak peman ki konfime yo ap parèt isit la.",
+  "unknownMember": "Manm enkoni",
+  "unknownEvent": "Aktivite sèk la mete ajou.",
+  "events": {
+    "contribution_submitted": "{{name}} soumèt yon kontribisyon pou tou {{round}}.",
+    "contribution_confirmed": "Kontribisyon pa ou a konfime.",
+    "contribution_rejected": "Yo rejte yon kontribisyon.",
+    "payout_released": "{{name}} resevwa peman tou {{round}} la.",
+    "payout_completed": "Peman an fini.",
+    "round_started": "Tou {{round}} aktif kounye a.",
+    "payment_review_required": "Yon revizyon peman nesesè."
+  },
+  "meta": "{{circle}} · Tou {{round}}",
+  "unlockTitle": "Debloke tout istorik la",
+  "unlockBody": "Pase nan Premium pou wè tout istorik kontribisyon ak peman pa ou.",
+  "upgrade": "Pase nan Premium",
+  "export": "Ekspòte tout istorik la",
+  "exportUnavailableTitle": "Ekspòtasyon an poko disponib",
+  "exportUnavailableBody": "Ekspòtasyon tout istorik la ap disponib lè sèvis sèvè a konekte."
+}

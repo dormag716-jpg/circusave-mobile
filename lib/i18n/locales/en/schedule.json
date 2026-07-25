@@ -1,0 +1,17 @@
+{
+  "title": "Schedule",
+  "payoutDate": "Payout date",
+  "dueDate": "Contribution due date",
+  "position": "Payout position",
+  "recipient": "Recipient",
+  "hand": "Hand",
+  "completed": "Completed round",
+  "current": "Current round",
+  "upcoming": "Upcoming round",
+  "empty": "No schedule available",
+  "notFinalized": "Schedule not finalized",
+  "loading": "Loading schedule…",
+  "error": "Schedule unavailable",
+  "rowUnavailable": "Schedule entry unavailable",
+  "rowA11y": "Round {{round}}, {{status}}, payout {{date}}"
+}

@@ -1,0 +1,51 @@
+{
+  "channel": "Mizajou CircuSave",
+  "fallback": {
+    "title": "Mizajou CircuSave",
+    "body": "Louvri CircuSave pou wè dènye mizajou a."
+  },
+  "contribution_due": {
+    "title": "Kontribisyon pou peye",
+    "body": "Kontribisyon pa ou pou tou {{round}} dwe peye."
+  },
+  "contribution_overdue": {
+    "title": "Kontribisyon anreta",
+    "body": "Kontribisyon pa ou pou tou {{round}} anreta."
+  },
+  "payment_submitted": {
+    "title": "Peman soumèt",
+    "body": "Peman pa ou a ap tann revizyon òganizatè a."
+  },
+  "payment_confirmed": {
+    "title": "Peman konfime",
+    "body": "Kontribisyon pa ou a konfime."
+  },
+  "payment_rejected": {
+    "title": "Peman rejte",
+    "body": "Kontribisyon pa ou bezwen atansyon."
+  },
+  "organizer_review_required": {
+    "title": "Revizyon peman nesesè",
+    "body": "{{name}} soumèt yon peman pou revizyon."
+  },
+  "payout_ready": {
+    "title": "Peman pare",
+    "body": "Peman tou {{round}} la pare pou livre."
+  },
+  "payout_completed": {
+    "title": "Peman fini",
+    "body": "Peman tou {{round}} la fini."
+  },
+  "round_started": {
+    "title": "Tou a kòmanse",
+    "body": "Tou {{round}} aktif kounye a."
+  },
+  "next_round_started": {
+    "title": "Pwochen tou a kòmanse",
+    "body": "Tou {{round}} aktif kounye a."
+  },
+  "circle_completed": {
+    "title": "Sèk la fini",
+    "body": "{{circle}} fini tout tou yo."
+  }
+}

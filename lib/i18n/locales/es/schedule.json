@@ -1,0 +1,17 @@
+{
+  "title": "Calendario",
+  "payoutDate": "Fecha de pago",
+  "dueDate": "Fecha límite de contribución",
+  "position": "Posición de pago",
+  "recipient": "Beneficiario",
+  "hand": "Mano",
+  "completed": "Ronda completada",
+  "current": "Ronda actual",
+  "upcoming": "Próxima ronda",
+  "empty": "No hay calendario disponible",
+  "notFinalized": "El calendario no está finalizado",
+  "loading": "Cargando calendario…",
+  "error": "Calendario no disponible",
+  "rowUnavailable": "Entrada del calendario no disponible",
+  "rowA11y": "Ronda {{round}}, {{status}}, pago {{date}}"
+}

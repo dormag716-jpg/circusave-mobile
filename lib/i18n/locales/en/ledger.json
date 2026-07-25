@@ -1,0 +1,50 @@
+{
+  "title": "Ledger",
+  "records": "Circle records",
+  "activity": "Circle activity",
+  "eventCount_one": "{{count}} ledger event",
+  "eventCount_other": "{{count}} ledger events",
+  "date": "Date",
+  "type": "Type",
+  "description": "Description",
+  "amount": "Amount",
+  "balance": "Balance",
+  "actor": "Actor",
+  "round": "Round {{round}}",
+  "empty": "No ledger activity",
+  "loading": "Loading ledger…",
+  "error": "Ledger unavailable",
+  "rowUnavailable": "Ledger entry unavailable",
+  "unknownEvent": "Ledger activity",
+  "unknownActor": "Unknown actor",
+  "filters": {
+    "all": "All",
+    "contributions": "Contributions",
+    "payouts": "Payouts",
+    "adjustments": "Adjustments"
+  },
+  "events": {
+    "contribution": "Contribution",
+    "contribution_submitted": "Contribution submitted",
+    "contribution_confirmed": "Contribution confirmed",
+    "contribution_rejected": "Contribution rejected",
+    "contribution_missed": "Contribution missed",
+    "payout": "Payout",
+    "payout_released": "Payout released",
+    "payout_completed": "Payout completed",
+    "adjustment": "Adjustment",
+    "refund": "Refund",
+    "fee": "Fee"
+  },
+  "statuses": {
+    "pending": "Pending",
+    "confirmed": "Confirmed",
+    "rejected": "Rejected",
+    "completed": "Completed"
+  },
+  "upgradeTitle": "Unlock full history",
+  "upgradeBody_one": "{{count}} more activity is hidden on the free tier.",
+  "upgradeBody_other": "{{count}} more activities are hidden on the free tier.",
+  "upgradeAction": "Upgrade to Premium",
+  "rowA11y": "{{type}}, {{amount}}, {{date}}"
+}
