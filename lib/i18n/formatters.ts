@@ -51,6 +51,44 @@ export function formatDateTime(value: string, language: string): string {
   }).format(date);
 }
 
+/**
+ * Manual relative-day labels when Intl.RelativeTimeFormat is unavailable
+ * (common on Hermes / React Native). Mirrors numeric:'auto' day units.
+ */
+function formatRelativeDateFallback(days: number, language: string): string {
+  const code = language.split('-')[0] as SupportedLanguage;
+  const lang: SupportedLanguage =
+    code === 'es' || code === 'ht' || code === 'en' ? code : 'en';
+
+  if (days === 0) {
+    if (lang === 'es') return 'hoy';
+    if (lang === 'ht') return 'jodi a';
+    return 'today';
+  }
+  if (days === 1) {
+    if (lang === 'es') return 'mañana';
+    if (lang === 'ht') return 'demen';
+    return 'tomorrow';
+  }
+  if (days === -1) {
+    if (lang === 'es') return 'ayer';
+    if (lang === 'ht') return 'yè';
+    return 'yesterday';
+  }
+
+  const count = Math.abs(days);
+  if (days > 1) {
+    if (lang === 'es') return `dentro de ${count} días`;
+    if (lang === 'ht') return `nan ${count} jou`;
+    return `in ${count} days`;
+  }
+
+  // days < -1
+  if (lang === 'es') return `hace ${count} días`;
+  if (lang === 'ht') return `${count} jou pase`;
+  return `${count} days ago`;
+}
+
 export function formatRelativeDate(
   value: string,
   language: string,
@@ -61,9 +99,25 @@ export function formatRelativeDate(
     return value;
   }
   const days = Math.round((date.getTime() - now.getTime()) / 86_400_000);
-  return new Intl.RelativeTimeFormat(getFormattingLocale(language), {
-    numeric: 'auto',
-  }).format(days, 'day');
+
+  const RelativeTimeFormatCtor = (
+    typeof Intl !== 'undefined'
+      ? (Intl as typeof Intl & {
+          RelativeTimeFormat?: new (
+            locales?: string | string[],
+            options?: Intl.RelativeTimeFormatOptions,
+          ) => Intl.RelativeTimeFormat;
+        }).RelativeTimeFormat
+      : undefined
+  );
+
+  if (typeof RelativeTimeFormatCtor === 'function') {
+    return new RelativeTimeFormatCtor(getFormattingLocale(language), {
+      numeric: 'auto',
+    }).format(days, 'day');
+  }
+
+  return formatRelativeDateFallback(days, language);
 }
 
 export function formatPercentage(value: number, language: string): string {
