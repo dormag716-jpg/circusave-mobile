@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { getCircleDetail, updateCircleSettings } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { circleWorkspaceHref } from '@/lib/navigation';
+import { saveCirclePaymentInstructions } from '@/lib/paymentSetupSave';
 import { colors, radii, spacing } from '@/lib/theme';
 
 const EXAMPLES = [
@@ -65,44 +66,58 @@ export default function PaymentSetupScreen() {
 
   async function handleSave() {
     if (!circleId) return;
-    const trimmed = instructions.trim();
-    if (!trimmed) {
-      Alert.alert(
-        t('contributions:paymentSetup.requiredTitle'),
-        t('contributions:paymentSetup.requiredBody'),
-      );
-      return;
-    }
 
     setSaving(true);
-    let backendSaved = false;
+    try {
+      const result = await saveCirclePaymentInstructions({
+        token,
+        circleId,
+        instructions,
+        updateCircleSettings,
+      });
 
-    // Try saving to backend
-    if (token) {
-      try {
-        await updateCircleSettings(token, circleId, { paymentInstructions: trimmed });
-      } catch (err) {
-        console.error('Unable to save circle payment instructions', err);
+      if (result.status === 'empty_instructions') {
+        Alert.alert(
+          t('contributions:paymentSetup.requiredTitle'),
+          t('contributions:paymentSetup.requiredBody'),
+        );
+        return;
+      }
+
+      if (result.status === 'missing_token') {
         Alert.alert(
           t('contributions:paymentSetup.saveFailedTitle'),
           t('financialErrors:generic'),
         );
-        setSaving(false);
         return;
       }
-    }
 
-    setSaving(false);
-    Alert.alert(
-      t('contributions:paymentSetup.savedTitle'),
-      t('contributions:paymentSetup.savedBody'),
-      [
-        {
-          text: t('contributions:paymentSetup.done'),
-          onPress: () => router.replace(circleWorkspaceHref(circleId)),
-        },
-      ],
-    );
+      if (result.status === 'error') {
+        console.error(
+          'Unable to save circle payment instructions',
+          result.error,
+        );
+        Alert.alert(
+          t('contributions:paymentSetup.saveFailedTitle'),
+          t('financialErrors:generic'),
+        );
+        return;
+      }
+
+      // Success only after updateCircleSettings resolved.
+      Alert.alert(
+        t('contributions:paymentSetup.savedTitle'),
+        t('contributions:paymentSetup.savedBody'),
+        [
+          {
+            text: t('contributions:paymentSetup.done'),
+            onPress: () => router.replace(circleWorkspaceHref(circleId)),
+          },
+        ],
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
