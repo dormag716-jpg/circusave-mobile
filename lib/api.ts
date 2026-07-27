@@ -1330,9 +1330,9 @@ export async function getLinkedAccounts(token: string): Promise<BackendLinkedAcc
 export function updateUserProfile(
   token: string,
   payload: { name?: string; cashtag?: string; venmoHandle?: string; paypalEmail?: string }
-): Promise<{ user: AuthUser; session: AuthSession }> {
-  return requestJson<{ user: AuthUser; session: AuthSession }>('/auth/me', {
-    method: 'PUT',
+): Promise<AuthUser> {
+  return requestJson<AuthUser>('/auth/me', {
+    method: 'PATCH',
     token,
     body: JSON.stringify(payload),
   });
