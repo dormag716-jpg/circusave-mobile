@@ -559,6 +559,30 @@ function readString(value: unknown) {
   return String(value ?? '').trim();
 }
 
+/**
+ * Copy optional nullable string fields from a backend user payload without
+ * inventing empty strings. Absent keys stay undefined; explicit null stays null.
+ */
+function readOptionalNullableString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null | undefined {
+  if (!(key in record)) {
+    return undefined;
+  }
+  const value = record[key];
+  if (value === null) {
+    return null;
+  }
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return undefined;
+}
+
 function errorMessage(payload: unknown, status: number) {
   if (typeof payload === 'string' && payload.trim()) {
     return payload.trim();
@@ -661,6 +685,9 @@ function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthRes
 
   const user = payload.user;
   const session = payload.session;
+  const cashtag = readOptionalNullableString(user, 'cashtag');
+  const venmoHandle = readOptionalNullableString(user, 'venmoHandle');
+  const paypalEmail = readOptionalNullableString(user, 'paypalEmail');
   const normalized: AuthResponse = {
     user: {
       id: readString(user.id),
@@ -672,6 +699,9 @@ function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthRes
       preferredMarket: readString(
         user.preferredMarket ?? user.preferred_market ?? user.market,
       ) || undefined,
+      ...(cashtag !== undefined ? { cashtag } : {}),
+      ...(venmoHandle !== undefined ? { venmoHandle } : {}),
+      ...(paypalEmail !== undefined ? { paypalEmail } : {}),
     },
     session: {
       id: readString(session.id),
