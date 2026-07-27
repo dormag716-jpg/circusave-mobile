@@ -1289,7 +1289,6 @@ export async function createPaymentIntent(
   token: string,
   circleId: string,
   roundNumber: number,
-  amount: number,
   memberId?: string,
 ): Promise<{
   clientSecret: string;
@@ -1311,8 +1310,6 @@ export async function createPaymentIntent(
     body: JSON.stringify({
       circleId,
       roundNumber,
-      // Server derives authoritative amount; amount kept for older backends.
-      amount: Math.round(amount * 100),
       memberId: memberId || undefined,
       handId: memberId || undefined,
     }),

@@ -159,7 +159,6 @@ export default function ContributionPaymentScreen() {
         token,
         circle.id,
         currentRound,
-        circle.contributionAmount,
         activeHand.id,
       );
 
