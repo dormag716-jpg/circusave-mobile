@@ -13,5 +13,10 @@
   "loading": "Cargando calendario…",
   "error": "Calendario no disponible",
   "rowUnavailable": "Entrada del calendario no disponible",
-  "rowA11y": "Ronda {{round}}, {{status}}, pago {{date}}"
+  "rowA11y": "Ronda {{round}}, {{status}}, pago {{date}}",
+  "expand": "Expandir calendario",
+  "collapse": "Contraer calendario",
+  "show_one": "Toca para ver {{count}} ronda",
+  "show_other": "Toca para ver {{count}} rondas",
+  "hide": "Toca para ocultar"
 }

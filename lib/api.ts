@@ -231,6 +231,16 @@ export type BackendInvitePreview = {
   status?: string;
 };
 
+export type BackendWaitlistPreview = BackendInvitePreview & {
+  userRole: 'waitlist';
+  requestStatus: 'pending';
+  requestId: string;
+  handNumber: number;
+  isAdditionalHand: boolean;
+};
+
+export type BackendJoinResult = BackendCircleDetail | BackendWaitlistPreview;
+
 export type BackendRoundContribution = {
   confirmedAt?: string | null;
   memberId: string;
@@ -1164,8 +1174,8 @@ export function requestJoin(
   token: string,
   circleId: string,
   claimToken?: string,
-): Promise<BackendCircleDetail> {
-  return requestJson<BackendCircleDetail>(`/groups/${circleId}/join`, {
+): Promise<BackendJoinResult> {
+  return requestJson<BackendJoinResult>(`/groups/${circleId}/join`, {
     method: 'POST',
     token,
     body: claimToken ? JSON.stringify({ claimToken }) : undefined,
@@ -1356,19 +1366,11 @@ export async function getChatMessages(circleId: string, token: string): Promise<
   });
 }
 
-export async function sendChatMessage(circleId: string, token: string, text: string, senderName: string, senderId: string): Promise<void> {
+export async function sendChatMessage(circleId: string, token: string, text: string): Promise<void> {
   return requestJson<void>(`/groups/${circleId}/chat`, {
     method: 'POST',
     token,
     body: JSON.stringify({ text }),
-  });
-}
-
-export async function requestPositionSwap(circleId: string, token: string, targetMemberId: string): Promise<void> {
-  return requestJson<void>(`/groups/${circleId}/swaps`, {
-    method: 'POST',
-    token,
-    body: JSON.stringify({ targetMemberId }),
   });
 }
 

@@ -46,7 +46,6 @@ import {
   type BackendRoundSnapshot,
   type BackendScheduleRound,
   type BackendWalletSnapshot,
-  requestPositionSwap,
   getMemberAccessToken,
   reorderPayoutTurn,
   requestAdditionalHand,
@@ -370,14 +369,6 @@ function WorkspaceContent({
 
   const { messages, sendMessage, sending } = useChat(circle.id);
 
-  const handleRequestSwap = async (targetMemberId: string) => {
-    try {
-      await requestPositionSwap(circle.id, token, targetMemberId);
-      Alert.alert('Swap Requested', 'A request has been sent to the member.');
-    } catch (err) {
-      Alert.alert('Swap Failed', 'Could not send swap request.');
-    }
-  };
   const circleUserRole = String(circle.userRole ?? 'none');
   const workspaceViewerRole = String(viewerRole ?? 'none');
   
@@ -1074,10 +1065,12 @@ function RoundTab({
   const [actionSearch, setActionSearch] = useState('');
   // Always start collapsed; only open when the user taps (reference terms, not live status).
   const [roundDetailsExpanded, setRoundDetailsExpanded] = useState(false);
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
 
   useEffect(() => {
     // New round or circle → keep details closed until needed.
     setRoundDetailsExpanded(false);
+    setScheduleExpanded(false);
   }, [circle.id, currentRoundNumber]);
 
   // All display values arrive pre-normalized from WorkspaceContent.
@@ -1932,57 +1925,105 @@ function RoundTab({
         ) : null}
       </View>
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t('schedule:title')}</Text>
-        {schedule.length === 0 ? (
-          <Text style={styles.sectionSubtitle}>
-            {t('schedule:empty')}
-          </Text>
-        ) : (
-          schedule.map((round, index) => {
-            const payoutDate = round.payoutDate || round.payout_date;
-            const status =
-              round.round < currentRoundNumber
-                ? t('schedule:completed')
-                : round.round === currentRoundNumber
-                  ? t('schedule:current')
-                  : t('schedule:upcoming');
-            const recipientName =
-              round.recipientName ||
-              round.recipient_name ||
-              t('contributions:statusLabels.unavailable');
-            return (
-              <View
-                key={round.id || `round-${round.round}`}
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            padding: 0,
+            overflow: 'hidden',
+            backgroundColor: '#fff',
+            borderRadius: 20,
+          },
+        ]}
+      >
+        <Pressable
+          style={styles.roundDetailsHeader}
+          onPress={() => setScheduleExpanded((open) => !open)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: scheduleExpanded }}
+          accessibilityLabel={
+            scheduleExpanded
+              ? t('schedule:collapse')
+              : t('schedule:expand')
+          }
+        >
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.roundDetailsTitle}>{t('schedule:title')}</Text>
+            <Text style={styles.roundDetailsSummary} numberOfLines={2}>
+              {scheduleExpanded
+                ? t('schedule:hide')
+                : schedule.length === 0
+                  ? t('schedule:empty')
+                  : t('schedule:show', { count: schedule.length })}
+            </Text>
+          </View>
+          <FontAwesome
+            name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
+            size={13}
+            color={colors.subtle}
+            style={{ marginLeft: 10 }}
+          />
+        </Pressable>
+
+        {scheduleExpanded ? (
+          <View style={{ paddingBottom: 8 }}>
+            {schedule.length === 0 ? (
+              <Text
                 style={[
-                  styles.roundDetailRow,
-                  index === schedule.length - 1 && { borderBottomWidth: 0 },
+                  styles.sectionSubtitle,
+                  { paddingHorizontal: 16, paddingBottom: 12 },
                 ]}
-                accessibilityLabel={t('schedule:rowA11y', {
-                  round: round.round,
-                  status,
-                  date: payoutDate
-                    ? formatLocalizedDate(payoutDate, language)
-                    : t('schedule:notFinalized'),
-                })}
               >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.roundDetailLabel}>
-                    {t('rounds:numberOnly', { current: round.round })} · {status}
-                  </Text>
-                  <Text style={styles.roundDetailValue}>
-                    {recipientName}
-                  </Text>
-                </View>
-                <Text style={styles.roundDetailValue}>
-                  {payoutDate
-                    ? formatLocalizedDate(payoutDate, language)
-                    : t('schedule:notFinalized')}
-                </Text>
-              </View>
-            );
-          })
-        )}
+                {t('schedule:empty')}
+              </Text>
+            ) : (
+              schedule.map((round, index) => {
+                const payoutDate = round.payoutDate || round.payout_date;
+                const status =
+                  round.round < currentRoundNumber
+                    ? t('schedule:completed')
+                    : round.round === currentRoundNumber
+                      ? t('schedule:current')
+                      : t('schedule:upcoming');
+                const recipientName =
+                  round.recipientName ||
+                  round.recipient_name ||
+                  t('contributions:statusLabels.unavailable');
+                return (
+                  <View
+                    key={round.id || `round-${round.round}`}
+                    style={[
+                      styles.roundDetailRow,
+                      index === schedule.length - 1 && { borderBottomWidth: 0 },
+                    ]}
+                    accessibilityLabel={t('schedule:rowA11y', {
+                      round: round.round,
+                      status,
+                      date: payoutDate
+                        ? formatLocalizedDate(payoutDate, language)
+                        : t('schedule:notFinalized'),
+                    })}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.roundDetailLabel}>
+                        {t('rounds:numberOnly', { current: round.round })} ·{' '}
+                        {status}
+                      </Text>
+                      <Text style={styles.roundDetailValue}>
+                        {recipientName}
+                      </Text>
+                    </View>
+                    <Text style={styles.roundDetailValue}>
+                      {payoutDate
+                        ? formatLocalizedDate(payoutDate, language)
+                        : t('schedule:notFinalized')}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -2047,7 +2088,7 @@ function PeopleTab({
   const [payoutOrderReviewed, setPayoutOrderReviewed] = useState(false);
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const [expandedMemberKey, setExpandedMemberKey] = useState<string | null>(null);
-  const [inviteSectionExpanded, setInviteSectionExpanded] = useState(true);
+  const [inviteSectionExpanded, setInviteSectionExpanded] = useState(false);
   const [showPayoutReview, setShowPayoutReview] = useState(false);
   const [declineTarget, setDeclineTarget] = useState<BackendJoinRequest | null>(null);
   const [showRequestSent, setShowRequestSent] = useState(false);

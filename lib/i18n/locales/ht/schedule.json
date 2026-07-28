@@ -13,5 +13,10 @@
   "loading": "Y ap chaje kalandriye a…",
   "error": "Kalandriye a pa disponib",
   "rowUnavailable": "Antre kalandriye a pa disponib",
-  "rowA11y": "Tou {{round}}, {{status}}, peman {{date}}"
+  "rowA11y": "Tou {{round}}, {{status}}, peman {{date}}",
+  "expand": "Elaji kalandriye a",
+  "collapse": "Fèmen kalandriye a",
+  "show_one": "Tape pou wè {{count}} tou",
+  "show_other": "Tape pou wè {{count}} tou",
+  "hide": "Tape pou kache"
 }

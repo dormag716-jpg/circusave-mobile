@@ -48,7 +48,7 @@ export function useChat(circleId: string) {
     setMessages(prev => [...prev, optimisticMessage]);
     
     try {
-      await sendChatMessage(circleId, session.session.token, text, session.user.name, session.user.id);
+      await sendChatMessage(circleId, session.session.token, text);
       await fetchMessages();
     } catch (e) {
       console.error('Failed to send message', e);
