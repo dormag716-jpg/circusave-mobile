@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { getActivity, getCircleDetail } from '@/lib/api';
+import { shouldLoadActivity } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { activityEventSentence } from '@/lib/i18n/financial-presentation';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
@@ -26,7 +27,7 @@ type ActivityFilter = 'all' | 'contributions' | 'payouts';
 
 export default function ActivityScreen() {
   const { t } = useTranslation(['activity', 'financialErrors']);
-  const { session } = useAuthSession();
+  const { session, status } = useAuthSession();
   const [activeFilter, setActiveFilter] = useState<ActivityFilter>('all');
   const [entries, setEntries] = useState<BackendActivity[]>([]);
   const [memberMap, setMemberMap] = useState<Record<string, string>>({});
@@ -37,9 +38,9 @@ export default function ActivityScreen() {
   const isPremium = session?.user?.role?.toLowerCase() === 'premium';
 
   const loadActivity = useCallback(async (isRefresh = false) => {
-    if (!token) {
-      console.error('Activity screen missing access token.');
-      setError(t('financialErrors:loadActivity'));
+    const accessToken = String(token ?? '').trim();
+    // Logout / unauthenticated transition: quiet no-op (not a user-facing error).
+    if (!shouldLoadActivity({ status, token: accessToken })) {
       setLoading(false);
       setRefreshing(false);
       return;
@@ -52,12 +53,12 @@ export default function ActivityScreen() {
     }
     setError(null);
     try {
-      const response = await getActivity(token);
+      const response = await getActivity(accessToken);
       setEntries(response.items);
 
       const circleIds = Array.from(new Set(response.items.map(e => e.circleId).filter(Boolean)));
       const details = await Promise.all(
-        circleIds.map(id => getCircleDetail(token, id).catch(() => null))
+        circleIds.map(id => getCircleDetail(accessToken, id).catch(() => null))
       );
       
       const newMemberMap: Record<string, string> = {};
@@ -83,7 +84,7 @@ export default function ActivityScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token]);
+  }, [status, token, t]);
 
   useEffect(() => {
     void loadActivity();
