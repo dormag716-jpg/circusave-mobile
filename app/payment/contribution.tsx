@@ -29,6 +29,7 @@ import {
   type BackendCircleMember,
   type BackendRoundSnapshot,
 } from '@/lib/api';
+import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
@@ -46,7 +47,7 @@ export default function ContributionPaymentScreen() {
     'createCircle',
     'people',
   ]);
-  const { session } = useAuthSession();
+  const { session, status } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
@@ -63,8 +64,13 @@ export default function ContributionPaymentScreen() {
   const stripe = useStripe();
 
   async function loadContribution() {
-    if (!token || !circleId) {
-      console.error('Contribution screen missing token or circle ID.');
+    const accessToken = String(token ?? '').trim();
+    // Logout / unauthenticated: quiet no-op (no payment error, no PI).
+    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+      setLoading(false);
+      return;
+    }
+    if (!circleId) {
       setError(t('contributions:unavailableBody'));
       setLoading(false);
       return;
@@ -74,8 +80,8 @@ export default function ContributionPaymentScreen() {
     setError(null);
     try {
       const [circleResponse, scheduleResponse] = await Promise.all([
-        getCircleDetail(token, circleId),
-        getCircleSchedule(token, circleId),
+        getCircleDetail(accessToken, circleId),
+        getCircleSchedule(accessToken, circleId),
       ]);
       setCircle(circleResponse);
       setSnapshot(scheduleResponse);
@@ -89,7 +95,7 @@ export default function ContributionPaymentScreen() {
 
   useEffect(() => {
     void loadContribution();
-  }, [circleId, token]);
+  }, [circleId, token, status]);
 
   const viewerHands = findViewerHands(circle, userId, snapshot, t);
   const amountPerHand = circle?.contributionAmount ?? 0;
@@ -131,7 +137,11 @@ export default function ContributionPaymentScreen() {
   const canSubmit = backendCanSubmit && handDue;
 
   async function handleSubmitContribution() {
-    if (!token || !circle || !activeHand) {
+    const accessToken = String(token ?? '').trim();
+    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+      return;
+    }
+    if (!accessToken || !circle || !activeHand) {
       Alert.alert(
         t('contributions:alerts.unavailableTitle'),
         t('contributions:alerts.handMissing'),
@@ -148,7 +158,7 @@ export default function ContributionPaymentScreen() {
 
     setSubmitting(true);
     try {
-      await submitContribution(token, circle.id, activeHand.id);
+      await submitContribution(accessToken, circle.id, activeHand.id);
       Alert.alert(
         t('contributions:submittedTitle'),
         t('contributions:submittedBody', { hand: activeHand.label }),
@@ -174,7 +184,11 @@ export default function ContributionPaymentScreen() {
   }
 
   async function handleStripePayment() {
-    if (!token || !circle || !activeHand || currentRound == null) return;
+    const accessToken = String(token ?? '').trim();
+    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+      return;
+    }
+    if (!accessToken || !circle || !activeHand || currentRound == null) return;
     if (!backendCanSubmit) {
       Alert.alert(
         t('contributions:alerts.paymentFailedTitle'),
@@ -185,7 +199,7 @@ export default function ContributionPaymentScreen() {
     setPayingStripe(true);
     try {
       const { clientSecret } = await createPaymentIntent(
-        token,
+        accessToken,
         circle.id,
         currentRound,
         activeHand.id,

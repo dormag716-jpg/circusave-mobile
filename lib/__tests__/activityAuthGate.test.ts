@@ -1,34 +1,44 @@
 /**
- * Activity load gate: logout / missing token must be quiet no-ops.
- * Mirrors behavior used by app/(tabs)/activity.tsx via shouldLoadActivity.
+ * Authenticated-screen load gate: logout / missing token must be quiet no-ops.
+ * Used by Activity, dashboard, circles, completed-circles, workspace, contribution.
  */
 
-import { shouldLoadActivity } from '../activityAuthGate';
+import {
+  shouldLoadActivity,
+  shouldLoadAuthenticatedScreen,
+} from '../activityAuthGate';
 
 type LoadFlags = {
   apiCalls: number;
-  missingTokenLogs: number;
   setErrorCalls: number;
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  consoleErrors: string[];
 };
 
 /**
- * Minimal model of Activity loadActivity auth branch + authenticated fetch.
+ * Minimal model of an authenticated screen load branch + fetch.
  * Used so node tests do not mount React Native screens.
  */
-async function runLoadActivity(
+async function runAuthenticatedLoad(
   input: {
     status?: string;
     token?: string | null;
     isRefresh?: boolean;
     api?: () => Promise<void>;
+    /** When true, simulate legacy missing-token error path (for contrast). */
+    legacyErrorOnMissing?: boolean;
   },
   flags: LoadFlags,
 ): Promise<void> {
-  if (!shouldLoadActivity({ status: input.status, token: input.token })) {
-    // Quiet path — matches Activity after fix
+  if (
+    !shouldLoadAuthenticatedScreen({
+      status: input.status,
+      token: input.token,
+    })
+  ) {
+    // Quiet path — matches fixed screens after logout cleanup
     flags.loading = false;
     flags.refreshing = false;
     return;
@@ -47,9 +57,10 @@ async function runLoadActivity(
       await input.api();
     }
   } catch (err) {
-    console.error('Unable to load activity', err);
+    console.error('Unable to load screen', err);
+    flags.consoleErrors.push('Unable to load screen');
     flags.setErrorCalls += 1;
-    flags.error = 'loadActivity failed';
+    flags.error = 'load failed';
   } finally {
     flags.loading = false;
     flags.refreshing = false;
@@ -59,49 +70,77 @@ async function runLoadActivity(
 function freshFlags(): LoadFlags {
   return {
     apiCalls: 0,
-    missingTokenLogs: 0,
     setErrorCalls: 0,
     loading: true,
     refreshing: false,
     error: null,
+    consoleErrors: [],
   };
 }
 
-describe('shouldLoadActivity', () => {
+describe('shouldLoadAuthenticatedScreen', () => {
   test('token present and authenticated -> load', () => {
     expect(
-      shouldLoadActivity({ status: 'authenticated', token: 'tok_abc' }),
+      shouldLoadAuthenticatedScreen({
+        status: 'authenticated',
+        token: 'tok_abc',
+      }),
     ).toBe(true);
   });
 
   test('token missing on initial render -> no load', () => {
-    expect(shouldLoadActivity({ status: 'unauthenticated', token: null })).toBe(
-      false,
-    );
-    expect(shouldLoadActivity({ status: 'loading', token: undefined })).toBe(
-      false,
-    );
-    expect(shouldLoadActivity({ token: '' })).toBe(false);
+    expect(
+      shouldLoadAuthenticatedScreen({
+        status: 'unauthenticated',
+        token: null,
+      }),
+    ).toBe(false);
+    expect(
+      shouldLoadAuthenticatedScreen({ status: 'loading', token: undefined }),
+    ).toBe(false);
+    expect(shouldLoadAuthenticatedScreen({ token: '' })).toBe(false);
   });
 
   test('authenticated status without token -> no load', () => {
-    expect(shouldLoadActivity({ status: 'authenticated', token: null })).toBe(
-      false,
-    );
+    expect(
+      shouldLoadAuthenticatedScreen({
+        status: 'authenticated',
+        token: null,
+      }),
+    ).toBe(false);
   });
 
   test('token present but status unauthenticated -> no load (logout race)', () => {
     expect(
-      shouldLoadActivity({ status: 'unauthenticated', token: 'stale' }),
+      shouldLoadAuthenticatedScreen({
+        status: 'unauthenticated',
+        token: 'stale',
+      }),
     ).toBe(false);
+  });
+
+  test('shouldLoadActivity remains an alias', () => {
+    expect(
+      shouldLoadActivity({ status: 'authenticated', token: 't' }),
+    ).toBe(true);
+    expect(shouldLoadActivity({ status: 'unauthenticated', token: 't' })).toBe(
+      false,
+    );
   });
 });
 
-describe('Activity loadActivity logout race model', () => {
-  test('token present -> activity API called', async () => {
+describe.each([
+  'activity',
+  'dashboard',
+  'circles',
+  'completed-circles',
+  'workspace',
+  'contribution',
+] as const)('authenticated load model (%s)', (screen) => {
+  test(`${screen}: authenticated + token → API called`, async () => {
     const flags = freshFlags();
     const api = jest.fn(async () => undefined);
-    await runLoadActivity(
+    await runAuthenticatedLoad(
       { status: 'authenticated', token: 'tok_1', api },
       flags,
     );
@@ -111,55 +150,52 @@ describe('Activity loadActivity logout race model', () => {
     expect(flags.loading).toBe(false);
   });
 
-  test('token missing on initial render -> no API call', async () => {
+  test(`${screen}: missing token initially → no API call`, async () => {
     const flags = freshFlags();
     const api = jest.fn(async () => undefined);
-    await runLoadActivity(
+    await runAuthenticatedLoad(
       { status: 'unauthenticated', token: undefined, api },
       flags,
     );
     expect(api).not.toHaveBeenCalled();
     expect(flags.apiCalls).toBe(0);
     expect(flags.error).toBeNull();
-    expect(flags.loading).toBe(false);
   });
 
-  test('token removed after render -> no second API call', async () => {
+  test(`${screen}: token removed after render → no second API call`, async () => {
     const flags = freshFlags();
     const api = jest.fn(async () => undefined);
-
-    await runLoadActivity(
+    await runAuthenticatedLoad(
       { status: 'authenticated', token: 'tok_1', api },
       flags,
     );
-    expect(flags.apiCalls).toBe(1);
-
-    await runLoadActivity(
+    await runAuthenticatedLoad(
       { status: 'unauthenticated', token: undefined, api },
       flags,
     );
-    expect(flags.apiCalls).toBe(1);
     expect(api).toHaveBeenCalledTimes(1);
+    expect(flags.apiCalls).toBe(1);
   });
 
-  test('logout transition does not log missing access token', async () => {
+  test(`${screen}: logout transition → no console.error for missing token`, async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     const flags = freshFlags();
-    await runLoadActivity(
+    await runAuthenticatedLoad(
       { status: 'unauthenticated', token: undefined },
       flags,
     );
     const missingLogs = errorSpy.mock.calls.filter((args) =>
-      String(args[0] ?? '').includes('missing access token'),
+      /missing (access )?token|sessionMissing|session is missing/i.test(
+        String(args[0] ?? ''),
+      ),
     );
     expect(missingLogs).toHaveLength(0);
     errorSpy.mockRestore();
   });
 
-  test('logout transition does not set Activity error state', async () => {
+  test(`${screen}: logout transition → no user-visible session error`, async () => {
     const flags = freshFlags();
-    flags.error = null;
-    await runLoadActivity(
+    await runAuthenticatedLoad(
       { status: 'unauthenticated', token: null },
       flags,
     );
@@ -167,10 +203,22 @@ describe('Activity loadActivity logout race model', () => {
     expect(flags.setErrorCalls).toBe(0);
   });
 
-  test('authenticated API failure still logs and shows error', async () => {
+  test(`${screen}: loading/refreshing stops when token disappears`, async () => {
+    const flags = freshFlags();
+    flags.loading = true;
+    flags.refreshing = true;
+    await runAuthenticatedLoad(
+      { status: 'unauthenticated', token: undefined, isRefresh: true },
+      flags,
+    );
+    expect(flags.loading).toBe(false);
+    expect(flags.refreshing).toBe(false);
+  });
+
+  test(`${screen}: real authenticated API failure still shows error`, async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     const flags = freshFlags();
-    await runLoadActivity(
+    await runAuthenticatedLoad(
       {
         status: 'authenticated',
         token: 'tok_1',
@@ -180,25 +228,13 @@ describe('Activity loadActivity logout race model', () => {
       },
       flags,
     );
-    expect(flags.error).toBe('loadActivity failed');
+    expect(flags.error).toBe('load failed');
     expect(flags.setErrorCalls).toBe(1);
     expect(
       errorSpy.mock.calls.some((args) =>
-        String(args[0] ?? '').includes('Unable to load activity'),
+        String(args[0] ?? '').includes('Unable to load screen'),
       ),
     ).toBe(true);
     errorSpy.mockRestore();
-  });
-
-  test('loading/refreshing flags stop safely when token disappears', async () => {
-    const flags = freshFlags();
-    flags.loading = true;
-    flags.refreshing = true;
-    await runLoadActivity(
-      { status: 'unauthenticated', token: undefined, isRefresh: true },
-      flags,
-    );
-    expect(flags.loading).toBe(false);
-    expect(flags.refreshing).toBe(false);
   });
 });

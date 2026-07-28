@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, FlatList, StyleSheet, Text, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
+import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { isOrganizer } from '@/lib/permissions';
@@ -12,15 +13,16 @@ import { colors, radii, spacing } from '@/lib/theme';
 import type { BackendCircleSummary } from '@/lib/types';
 
 export default function CompletedCirclesScreen() {
-  const { session } = useAuthSession();
+  const { session, status } = useAuthSession();
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const token = session?.session.token;
 
   const loadCircles = useCallback(async () => {
-    if (!token) {
-      setError('Your session is missing an access token.');
+    const accessToken = String(token ?? '').trim();
+    // Logout / unauthenticated: quiet no-op (not a session error).
+    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
       setLoading(false);
       return;
     }
@@ -28,14 +30,14 @@ export default function CompletedCirclesScreen() {
     setLoading(true);
     setError(null);
     try {
-      const allCircles = await getCircles(token);
+      const allCircles = await getCircles(accessToken);
       setCircles(allCircles.filter((c) => c.status === 'completed'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load completed circles.');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [status, token]);
 
   useFocusEffect(
     useCallback(() => {

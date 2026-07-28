@@ -21,6 +21,7 @@ import {
   type BackendCircleDetail,
   type BackendRoundSnapshot,
 } from '@/lib/api';
+import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency, formatShortDate } from '@/lib/i18n/formatters';
 import {
@@ -51,7 +52,7 @@ const REVIEW_STATUSES = new Set(['submitted', 'late']);
 const DETAIL_LIMIT = 5;
 
 export default function DashboardScreen() {
-  const { session } = useAuthSession();
+  const { session, status } = useAuthSession();
   const { t, i18n } = useTranslation('dashboard');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
@@ -123,13 +124,11 @@ export default function DashboardScreen() {
 
   const loadDashboard = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (!token) {
-        setError(t('sessionMissing'));
-        setSummary(null);
-        setCircles([]);
-        setCircleDetails({});
-        setCircleSchedules({});
+      const accessToken = String(token ?? '').trim();
+      // Logout / unauthenticated: quiet no-op (not sessionMissing).
+      if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
         setLoading(false);
+        setRefreshing(false);
         return;
       }
 
@@ -140,8 +139,8 @@ export default function DashboardScreen() {
 
       try {
         const [nextSummary, nextCircles] = await Promise.all([
-          getDashboardSummary(token),
-          getCircles(token),
+          getDashboardSummary(accessToken),
+          getCircles(accessToken),
         ]);
         const nextActiveCircles = nextCircles.filter((circle) =>
           isActiveCircleStatus(circle.status, circle.pot_status),
@@ -150,11 +149,13 @@ export default function DashboardScreen() {
 
         const [details, schedules] = await Promise.all([
           Promise.all(
-            toLoad.map((c) => getCircleDetail(token, c.id).catch(() => null)),
+            toLoad.map((c) =>
+              getCircleDetail(accessToken, c.id).catch(() => null),
+            ),
           ),
           Promise.all(
             toLoad.map((c) =>
-              getCircleSchedule(token, c.id).catch(() => null),
+              getCircleSchedule(accessToken, c.id).catch(() => null),
             ),
           ),
         ]);
@@ -186,7 +187,7 @@ export default function DashboardScreen() {
         setLoading(false);
       }
     },
-    [t, token],
+    [status, t, token],
   );
 
   useFocusEffect(

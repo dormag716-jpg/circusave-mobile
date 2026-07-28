@@ -20,6 +20,7 @@ import {
   getCircleDetail,
   type BackendCircleDetail,
 } from '@/lib/api';
+import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
@@ -47,7 +48,7 @@ type ListItem =
 
 export default function CirclesScreen() {
   const { t } = useTranslation('circles');
-  const { session } = useAuthSession();
+  const { session, status } = useAuthSession();
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -159,8 +160,9 @@ export default function CirclesScreen() {
   ]);
 
   const loadCircles = useCallback(async () => {
-    if (!token) {
-      setError(t('sessionMissing'));
+    const accessToken = String(token ?? '').trim();
+    // Logout / unauthenticated: quiet no-op (not sessionMissing).
+    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
       setLoading(false);
       return;
     }
@@ -169,7 +171,7 @@ export default function CirclesScreen() {
     setError(null);
 
     try {
-      const summaries = await getCircles(token);
+      const summaries = await getCircles(accessToken);
       setCircles(summaries);
 
       const detailTargets = summaries.filter((c) => {
@@ -182,7 +184,9 @@ export default function CirclesScreen() {
         );
       });
       const details = await Promise.all(
-        detailTargets.map((c) => getCircleDetail(token, c.id).catch(() => null)),
+        detailTargets.map((c) =>
+          getCircleDetail(accessToken, c.id).catch(() => null),
+        ),
       );
 
       const detailsMap: Record<string, BackendCircleDetail> = {};
@@ -198,7 +202,7 @@ export default function CirclesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [t, token]);
+  }, [status, t, token]);
 
   useFocusEffect(
     useCallback(() => {

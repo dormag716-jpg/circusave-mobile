@@ -1,9 +1,9 @@
 /**
- * Auth readiness for Activity screen loads.
+ * Auth readiness for authenticated screens (Activity, dashboard, circles, etc.).
  * Logout / unauthenticated transitions are normal — not load errors.
  */
 
-export type ActivityAuthStatus =
+export type AuthLoadStatus =
   | 'loading'
   | 'authenticated'
   | 'unauthenticated'
@@ -12,12 +12,15 @@ export type ActivityAuthStatus =
   | null
   | undefined;
 
+/** @deprecated Prefer AuthLoadStatus */
+export type ActivityAuthStatus = AuthLoadStatus;
+
 /**
- * True only when the screen should call authenticated Activity APIs.
+ * True only when a screen should call authenticated APIs.
  * Missing token or non-authenticated status → quiet skip (no error, no fetch).
  */
-export function shouldLoadActivity(input: {
-  status?: ActivityAuthStatus;
+export function shouldLoadAuthenticatedScreen(input: {
+  status?: AuthLoadStatus;
   token?: string | null;
 }): boolean {
   const token = String(input.token ?? '').trim();
@@ -30,4 +33,12 @@ export function shouldLoadActivity(input: {
     return false;
   }
   return true;
+}
+
+/** Alias used by Activity screen (backward compatible). */
+export function shouldLoadActivity(input: {
+  status?: AuthLoadStatus;
+  token?: string | null;
+}): boolean {
+  return shouldLoadAuthenticatedScreen(input);
 }

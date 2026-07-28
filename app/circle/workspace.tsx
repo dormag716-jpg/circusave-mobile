@@ -54,6 +54,7 @@ import {
 } from '@/lib/api';
 import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
+import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import {
   circleInviteHref,
@@ -142,7 +143,7 @@ const tabs: {
 
 export default function CircleWorkspaceScreen() {
   const { t } = useTranslation('circleWorkspace');
-  const { session } = useAuthSession();
+  const { session, status } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[]; tab?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
@@ -160,8 +161,15 @@ export default function CircleWorkspaceScreen() {
   const [resolvedRound, setResolvedRound] = useState<number | null>(null);
 
   async function loadWorkspace(options?: { silent?: boolean }) {
-    if (!token || !circleId) {
-      console.error('Circle workspace missing token or circle ID.');
+    const accessToken = String(token ?? '').trim();
+    // Logout / unauthenticated: quiet no-op (do not console.error or generic error).
+    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    if (!circleId) {
+      // Authenticated but missing route id — real navigation problem.
       setError(t('status.genericError'));
       setLoading(false);
       return;
@@ -173,7 +181,7 @@ export default function CircleWorkspaceScreen() {
     setError(null);
 
     try {
-      setCircle(await getCircleDetail(token, circleId));
+      setCircle(await getCircleDetail(accessToken, circleId));
     } catch (loadError) {
       console.error('Unable to load circle workspace', loadError);
       setError(t('status.genericError'));
@@ -186,7 +194,7 @@ export default function CircleWorkspaceScreen() {
 
   useEffect(() => {
     void loadWorkspace();
-  }, [circleId, token]);
+  }, [circleId, token, status]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
