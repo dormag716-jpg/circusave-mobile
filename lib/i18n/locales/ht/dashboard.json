@@ -49,8 +49,12 @@
   "joinWithCode": "Antre nan yon gwoup avèk yon kòd",
   "joinByCode": "Antre ak kòd",
   "today": "Jodi a",
+  "tomorrow": "Demen",
   "daysUntil_one": "Nan {{count}} jou",
   "daysUntil_other": "Nan {{count}} jou",
+  "daysOverdue_one": "1 jou an reta",
+  "daysOverdue_other": "{{count}} jou an reta",
+  "noUpcomingPayout": "Pa gen pèman k ap vini",
   "frequency": {
     "weekly": "Chak semèn",
     "biweekly": "Chak de semèn",

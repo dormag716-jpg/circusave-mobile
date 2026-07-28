@@ -49,8 +49,12 @@
   "joinWithCode": "Join a circle with code",
   "joinByCode": "Join by Code",
   "today": "Today",
+  "tomorrow": "Tomorrow",
   "daysUntil_one": "In {{count}} day",
   "daysUntil_other": "In {{count}} days",
+  "daysOverdue_one": "1 day overdue",
+  "daysOverdue_other": "{{count}} days overdue",
+  "noUpcomingPayout": "No upcoming payout",
   "frequency": {
     "weekly": "Weekly",
     "biweekly": "Bi-weekly",

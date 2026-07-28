@@ -24,6 +24,11 @@ import {
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency, formatShortDate } from '@/lib/i18n/formatters';
 import {
+  formatPayoutDateWithRelative,
+  relativePayoutLabel,
+  resolveCircleRoundPayoutDate,
+} from '@/lib/dashboardPayoutDates';
+import {
   circleWorkspaceHref,
   contributionHref,
   createCircleHref,
@@ -69,7 +74,11 @@ export default function DashboardScreen() {
   );
   const formatPayoutLabel = useCallback(
     (value?: string | null) =>
-      formatPayoutDateLabel(value, i18n.resolvedLanguage || i18n.language, t),
+      formatPayoutDateWithRelative(
+        value,
+        (iso) => formatShortDate(iso, i18n.resolvedLanguage || i18n.language),
+        t,
+      ),
     [i18n.language, i18n.resolvedLanguage, t],
   );
 
@@ -109,9 +118,8 @@ export default function DashboardScreen() {
   const firstReviewTarget = reviewTargets[0];
   const firstDueCircle = personalDueCircles[0];
 
-  const firstCircle = activeCircles[0];
-  const firstDetail = firstCircle ? circleDetails[firstCircle.id] : null;
-  const recipientName = getCurrentRecipientName(firstDetail);
+  /** Global next future-or-today payout — only from dashboard summary (not first circle). */
+  const upcomingPayout = summary?.upcomingPayout ?? null;
 
   const loadDashboard = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -382,8 +390,18 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <StatCard
             icon="clock-o"
-            value={getNextPayoutLabel(summary?.upcomingPayout?.payoutDate, t)}
-            label={recipientName ? t('receives', { name: recipientName }) : t('nextPayout')}
+            value={
+              upcomingPayout?.payoutDate
+                ? relativePayoutLabel(upcomingPayout.payoutDate, t)
+                : '—'
+            }
+            label={
+              upcomingPayout?.recipientName
+                ? t('receives', { name: upcomingPayout.recipientName })
+                : upcomingPayout
+                  ? upcomingPayout.circleName || t('nextPayout')
+                  : t('noUpcomingPayout')
+            }
             color={colors.success}
           />
           <StatCard
@@ -651,37 +669,17 @@ function getGreeting(t: (key: string, options?: Record<string, unknown>) => stri
   return t('greetingEvening');
 }
 
-function getNextPayoutLabel(
-  payoutDate: string | undefined,
-  t: (key: string, options?: Record<string, unknown>) => string,
-) {
-  if (!payoutDate) {
-    return '—';
-  }
-
-  const payoutTime = Date.parse(payoutDate);
-  if (!Number.isFinite(payoutTime)) {
-    return '—';
-  }
-
-  const days = Math.max(
-    0,
-    Math.ceil((payoutTime - Date.now()) / (24 * 60 * 60 * 1000)),
-  );
-  return days === 0 ? t('today') : t('daysUntil', { count: days });
-}
-
-/** Prefer authoritative schedule/nextPayout date for the current round. */
+/**
+ * Per-circle **current/open-round payout target** (not global upcomingPayout).
+ *
+ * Field order: nextPayout.payoutDate → schedule current-round payoutDate →
+ * currentRoundSummary.dueDate. May be overdue while upcomingPayout is later.
+ */
 function resolvePayoutDate(
   circle: BackendCircleSummary,
   schedule?: BackendRoundSnapshot | null,
   detail?: BackendCircleDetail | null,
 ): string | null {
-  const fromSummary = circle.nextPayout?.payoutDate;
-  if (fromSummary) {
-    return fromSummary;
-  }
-
   const roundNumber =
     schedule?.roundWorkspace?.currentRoundNumber ??
     schedule?.currentRound ??
@@ -693,34 +691,12 @@ function resolvePayoutDate(
     (row) => Number(row.round) === Number(roundNumber),
   );
   const fromSchedule = match?.payoutDate || match?.payout_date;
-  if (fromSchedule) {
-    return String(fromSchedule);
-  }
 
-  // Fallback only: some payloads put the round target date on dueDate.
-  const due = detail?.currentRoundSummary?.dueDate;
-  return due ? String(due) : null;
-}
-
-function formatPayoutDateLabel(
-  payoutDate: string | null | undefined,
-  language: string,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  if (!payoutDate) {
-    return '';
-  }
-
-  const short = formatShortDate(payoutDate, language);
-  if (!short) {
-    return '';
-  }
-
-  const relative = getNextPayoutLabel(payoutDate, t);
-  if (relative && relative !== '—') {
-    return `${short} (${relative})`;
-  }
-  return short;
+  return resolveCircleRoundPayoutDate({
+    nextPayoutDate: circle.nextPayout?.payoutDate,
+    schedulePayoutDate: fromSchedule != null ? String(fromSchedule) : null,
+    currentRoundDueDate: detail?.currentRoundSummary?.dueDate,
+  });
 }
 
 function getCurrentRecipientName(circle: BackendCircleDetail | null | undefined) {
