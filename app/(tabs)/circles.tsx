@@ -32,7 +32,12 @@ import { isOrganizer } from '@/lib/permissions';
 import { colors, spacing } from '@/lib/theme';
 import type { BackendCircleSummary } from '@/lib/types';
 import {
+  circleLifecycleBadgeLabel,
+  getCircleListLifecycle,
   getViewerPayoutPosition,
+  isActiveCircleStatus,
+  isClosedCircleStatus,
+  isPausedCircleStatus,
   isSetupCircleStatus,
 } from '@/lib/circleSummary';
 
@@ -55,14 +60,29 @@ export default function CirclesScreen() {
   const userId = session?.user?.id;
 
   const activeCircles = useMemo(
-    () => circles.filter((circle) => circle.status === 'active'),
+    () =>
+      circles.filter((circle) =>
+        isActiveCircleStatus(circle.status, circle.pot_status),
+      ),
     [circles],
   );
   const setupCircles = useMemo(
     () => circles.filter((circle) => isSetupCircleStatus(circle.status)),
     [circles],
   );
-  const hasAnyCircles = activeCircles.length > 0 || setupCircles.length > 0;
+  const pausedCircles = useMemo(
+    () => circles.filter((circle) => isPausedCircleStatus(circle.status)),
+    [circles],
+  );
+  const closedCircles = useMemo(
+    () => circles.filter((circle) => isClosedCircleStatus(circle.status)),
+    [circles],
+  );
+  const hasAnyCircles =
+    activeCircles.length > 0 ||
+    setupCircles.length > 0 ||
+    pausedCircles.length > 0 ||
+    closedCircles.length > 0;
   const openCap = useMemo(
     () =>
       buildOpenCircleCapacity({
@@ -103,8 +123,40 @@ export default function CirclesScreen() {
       }
     }
 
+    // Paused / closed are never folded into Active (P0.5.3).
+    if (pausedCircles.length > 0) {
+      items.push({
+        type: 'header',
+        id: 'header-paused',
+        title: t('status.paused', { defaultValue: 'Paused' }),
+        count: pausedCircles.length,
+      });
+      for (const circle of pausedCircles) {
+        items.push({ type: 'circle', id: circle.id, circle });
+      }
+    }
+
+    if (closedCircles.length > 0) {
+      items.push({
+        type: 'header',
+        id: 'header-closed',
+        title: t('status.closed', { defaultValue: 'Closed' }),
+        count: closedCircles.length,
+      });
+      for (const circle of closedCircles) {
+        items.push({ type: 'circle', id: circle.id, circle });
+      }
+    }
+
     return items;
-  }, [activeCircles, setupCircles, hasAnyCircles, t]);
+  }, [
+    activeCircles,
+    setupCircles,
+    pausedCircles,
+    closedCircles,
+    hasAnyCircles,
+    t,
+  ]);
 
   const loadCircles = useCallback(async () => {
     if (!token) {
@@ -120,9 +172,15 @@ export default function CirclesScreen() {
       const summaries = await getCircles(token);
       setCircles(summaries);
 
-      const detailTargets = summaries.filter(
-        (c) => c.status === 'active' || isSetupCircleStatus(c.status),
-      );
+      const detailTargets = summaries.filter((c) => {
+        const lifecycle = getCircleListLifecycle(c.status, c.pot_status);
+        return (
+          lifecycle === 'active' ||
+          lifecycle === 'setup' ||
+          lifecycle === 'paused' ||
+          lifecycle === 'closed'
+        );
+      });
       const details = await Promise.all(
         detailTargets.map((c) => getCircleDetail(token, c.id).catch(() => null)),
       );
@@ -472,6 +530,11 @@ function CircleCard({
   const { t, i18n } = useTranslation('circles');
   const userIsOrganizer = isOrganizer(circle.userRole);
   const isSetup = isSetupCircleStatus(circle.status);
+  const lifecycle = getCircleListLifecycle(circle.status, circle.pot_status);
+  const isPaused = lifecycle === 'paused';
+  const isClosed = lifecycle === 'closed';
+  const isLiveActive = lifecycle === 'active';
+  const badgeLabel = circleLifecycleBadgeLabel(circle.status, circle.pot_status);
   const progress = circle.currentRoundProgress?.percentConfirmed ?? 0;
 
   const totalRounds = detail?.members?.length ?? circle.memberCount;
@@ -497,7 +560,37 @@ function CircleCard({
               <View style={styles.setupTag}>
                 <Text style={styles.setupTagText}>{t('setup')}</Text>
               </View>
-            ) : null}
+            ) : (
+              <View
+                style={[
+                  styles.setupTag,
+                  isPaused
+                    ? { backgroundColor: '#ffedd5' }
+                    : isClosed
+                      ? { backgroundColor: '#e5e7eb' }
+                      : isLiveActive
+                        ? { backgroundColor: '#dcfce7' }
+                        : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.setupTagText,
+                    {
+                      color: isPaused
+                        ? '#9a3412'
+                        : isClosed
+                          ? '#374151'
+                          : isLiveActive
+                            ? '#166534'
+                            : colors.primary,
+                    },
+                  ]}
+                >
+                  {t(`status.${lifecycle}`, { defaultValue: badgeLabel })}
+                </Text>
+              </View>
+            )}
             {userIsOrganizer ? (
               <View style={styles.organizerTag}>
                 <Text style={styles.organizerTagText}>{t('organizer')}</Text>
@@ -535,6 +628,9 @@ function CircleCard({
                   defaultValue: circle.frequency,
                 })}{' '}
                 • {t('round', { current: circle.currentRound, total: totalRounds })}
+                {isPaused || isClosed
+                  ? ` • ${t(`status.${lifecycle}`, { defaultValue: badgeLabel })}`
+                  : ''}
               </Text>
               {viewerPosition ? (
                 <Text
@@ -551,7 +647,7 @@ function CircleCard({
             </>
           )}
         </View>
-        {!isSetup ? (
+        {!isSetup && isLiveActive ? (
           <View style={{ alignItems: 'center' }}>
             <View style={styles.progressRing}>
               <Text style={styles.progressText}>{progress}%</Text>

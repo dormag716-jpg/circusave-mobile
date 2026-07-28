@@ -20,6 +20,7 @@ import type { TFunction } from 'i18next';
 const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
 
 import {
+  ApiError,
   createPaymentIntent,
   getCircleDetail,
   getCircleSchedule,
@@ -30,6 +31,7 @@ import {
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { circleWorkspaceHref } from '@/lib/navigation';
+import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
 import { colors, radii, spacing } from '@/lib/theme';
 import {
   contributionStatusLabel,
@@ -114,12 +116,29 @@ export default function ContributionPaymentScreen() {
       : dueHands[0]?.id ?? viewerHands[0]?.id ?? null;
   const activeHand = viewerHands.find((h) => h.id === activeHandId);
   const statusLabel = contributionStatusLabel(activeHand?.status, t);
-  const canSubmit = Boolean(
-    activeHand && ['due', 'missed', 'rejected'].includes(activeHand.status),
+  // Backend schedule/detail permissions are authoritative for financial submit.
+  // Missing flags default false — never invent allow from role or local status alone.
+  const backendCanSubmit = canShowBackendGatedAction(
+    snapshot?.roundWorkspace?.viewerPermissions?.canSubmitOwnContribution ??
+      (circle as BackendCircleDetail & {
+        viewerPermissions?: { canSubmitOwnContribution?: boolean };
+      } | null)?.viewerPermissions?.canSubmitOwnContribution,
   );
+  const handDue =
+    Boolean(activeHand) &&
+    ['due', 'missed', 'rejected'].includes(String(activeHand?.status || ''));
+  // Pattern: backend true AND local hand-due condition (never reverse).
+  const canSubmit = backendCanSubmit && handDue;
 
   async function handleSubmitContribution() {
     if (!token || !circle || !activeHand) {
+      Alert.alert(
+        t('contributions:alerts.unavailableTitle'),
+        t('contributions:alerts.handMissing'),
+      );
+      return;
+    }
+    if (!backendCanSubmit) {
       Alert.alert(
         t('contributions:alerts.unavailableTitle'),
         t('contributions:alerts.handMissing'),
@@ -144,7 +163,10 @@ export default function ContributionPaymentScreen() {
       console.error('Unable to submit contribution', submitError);
       Alert.alert(
         t('contributions:alerts.submitFailedTitle'),
-        t('financialErrors:submitContribution'),
+        financialClientErrorMessage(
+          submitError,
+          t('financialErrors:submitContribution'),
+        ),
       );
     } finally {
       setSubmitting(false);
@@ -153,6 +175,13 @@ export default function ContributionPaymentScreen() {
 
   async function handleStripePayment() {
     if (!token || !circle || !activeHand || currentRound == null) return;
+    if (!backendCanSubmit) {
+      Alert.alert(
+        t('contributions:alerts.paymentFailedTitle'),
+        t('financialErrors:stripePayment'),
+      );
+      return;
+    }
     setPayingStripe(true);
     try {
       const { clientSecret } = await createPaymentIntent(
@@ -192,7 +221,7 @@ export default function ContributionPaymentScreen() {
       console.error('Unable to complete Stripe contribution payment', err);
       Alert.alert(
         t('contributions:alerts.paymentFailedTitle'),
-        t('financialErrors:stripePayment'),
+        financialClientErrorMessage(err, t('financialErrors:stripePayment')),
       );
     } finally {
       setPayingStripe(false);
@@ -483,6 +512,20 @@ function findViewerHands(
       };
     })
     .sort((a, b) => a.handNumber - b.handNumber);
+}
+
+/** Prefer backend lifecycle messages (e.g. 409) over generic financial copy. */
+function financialClientErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.message.trim()) {
+    return error.message.trim();
+  }
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    if (message && message.toLowerCase() !== 'something went wrong') {
+      return message;
+    }
+  }
+  return fallback;
 }
 
 function findRecipient(

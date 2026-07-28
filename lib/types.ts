@@ -59,7 +59,19 @@ export type CircleMembership = {
 
 export type LocalTestUser = UserIdentity;
 
-export type CircleStatus = 'forming' | 'active' | 'completed' | 'paused';
+/**
+ * Mobile circle lifecycle statuses.
+ * Includes draft/closed for backend parity; setup aliases map via helpers.
+ * Do not invent cancelled unless the backend supports it.
+ */
+export type CircleStatus =
+  | 'draft'
+  | 'forming'
+  | 'setup'
+  | 'active'
+  | 'paused'
+  | 'closed'
+  | 'completed';
 
 export type ContributionStatus = 'due' | 'pending' | 'confirmed' | 'missed';
 

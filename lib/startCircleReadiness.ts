@@ -37,7 +37,17 @@ export type StartCircleDetailLike = {
   pot_status?: string | null;
 };
 
-export type CircleLifecyclePhase = 'setup' | 'active' | 'completed';
+/**
+ * Product-facing workspace phase.
+ * Distinct from raw status aliases (draft/setup/forming → setup).
+ * Never maps paused or closed into active.
+ */
+export type CircleLifecyclePhase =
+  | 'setup'
+  | 'active'
+  | 'paused'
+  | 'closed'
+  | 'completed';
 
 export type StartCircleConfirmations = {
   confirmPayoutOrder: boolean;
@@ -57,6 +67,27 @@ function normalizeStatus(status: string | null | undefined): string {
 }
 
 /**
+ * Backend capability flags are authoritative for financial UI.
+ * Missing / undefined / false → not granted (never default financial to true).
+ */
+export function isBackendPermissionGranted(
+  value: boolean | null | undefined,
+): boolean {
+  return value === true;
+}
+
+/**
+ * Financial action visibility: backend must grant; local may only further restrict.
+ * Local logic must never turn a backend false into true.
+ */
+export function canShowBackendGatedAction(
+  backendPermission: boolean | null | undefined,
+  localCondition: boolean = true,
+): boolean {
+  return isBackendPermissionGranted(backendPermission) && Boolean(localCondition);
+}
+
+/**
  * Whether the circle has started (live or completed past start).
  * Prefer API `isStarted` when present; otherwise status + startedAt only.
  * Never uses schedule, contributions, pot totals, or member counts.
@@ -72,11 +103,18 @@ export function isCircleStarted(circle: StartCircleDetailLike): boolean {
     return true;
   }
   const status = normalizeStatus(circle.status);
-  return status === 'active' || status === 'completed';
+  return (
+    status === 'active' ||
+    status === 'completed' ||
+    status === 'paused' ||
+    status === 'closed'
+  );
 }
 
 export function isCircleCompleted(circle: StartCircleDetailLike): boolean {
-  return normalizeStatus(circle.status) === 'completed';
+  const status = normalizeStatus(circle.status);
+  const pot = normalizeStatus(circle.pot_status);
+  return status === 'completed' || pot === 'completed';
 }
 
 /** True only while the circle has not started (draft/setup). */
@@ -85,26 +123,58 @@ export function isCircleNotStarted(circle: StartCircleDetailLike): boolean {
 }
 
 /**
- * Single phase for Round / People tabs.
- * - setup: draft (or legacy setup/forming) and not started
- * - active: started and not completed
- * - completed: status completed
+ * Single phase for Round / People / list presentation.
+ * - setup: draft / setup / forming (and not started)
+ * - active: status active (or started draft legacy with start marker)
+ * - paused / closed / completed: distinct read-only product states
  */
 export function getCircleLifecyclePhase(
   circle: StartCircleDetailLike,
 ): CircleLifecyclePhase {
   const status = normalizeStatus(circle.status);
-  if (status === 'completed') {
+  const pot = normalizeStatus(circle.pot_status);
+
+  if (status === 'completed' || pot === 'completed') {
     return 'completed';
   }
-  // Non-product states: never treat as setup (no Start / structural edits).
-  if (status === 'paused' || status === 'closed') {
+  if (status === 'paused') {
+    return 'paused';
+  }
+  if (status === 'closed') {
+    return 'closed';
+  }
+  if (status === 'active') {
     return 'active';
   }
+  // Setup aliases: draft / setup / forming (and empty).
+  if (
+    status === 'draft' ||
+    status === 'setup' ||
+    status === 'forming' ||
+    !status
+  ) {
+    // Legacy: start marker without status flip still means live, not setup.
+    if (
+      circle.startedAt ||
+      circle.isStarted === true ||
+      circle.is_started === true
+    ) {
+      return 'active';
+    }
+    return 'setup';
+  }
+  // Unknown statuses: prefer start marker over treating as setup.
   if (isCircleStarted(circle)) {
     return 'active';
   }
   return 'setup';
+}
+
+/** Read-only product states that keep workspace viewable without financial actions. */
+export function isReadOnlyLifecyclePhase(
+  phase: CircleLifecyclePhase,
+): boolean {
+  return phase === 'paused' || phase === 'closed' || phase === 'completed';
 }
 
 /**

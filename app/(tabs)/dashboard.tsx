@@ -33,7 +33,11 @@ import {
 import { isOrganizer } from '@/lib/permissions';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 import type { BackendCircleSummary, DashboardSummary } from '@/lib/types';
-import { isSetupCircleStatus } from '@/lib/circleSummary';
+import {
+  isActiveCircleStatus,
+  isSetupCircleStatus,
+} from '@/lib/circleSummary';
+import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
 
 type IconName = ComponentProps<typeof FontAwesome>['name'];
 
@@ -70,7 +74,10 @@ export default function DashboardScreen() {
   );
 
   const activeCircles = useMemo(
-    () => circles.filter((circle) => circle.status === 'active'),
+    () =>
+      circles.filter((circle) =>
+        isActiveCircleStatus(circle.status, circle.pot_status),
+      ),
     [circles],
   );
   const setupCircles = useMemo(
@@ -128,8 +135,8 @@ export default function DashboardScreen() {
           getDashboardSummary(token),
           getCircles(token),
         ]);
-        const nextActiveCircles = nextCircles.filter(
-          (circle) => circle.status === 'active',
+        const nextActiveCircles = nextCircles.filter((circle) =>
+          isActiveCircleStatus(circle.status, circle.pot_status),
         );
         const toLoad = nextActiveCircles.slice(0, DETAIL_LIMIT);
 
@@ -579,7 +586,12 @@ function deriveContributionActions(
       (contribution) => contribution.round === currentRound,
     );
 
-    if (viewerMemberIds.length > 0) {
+    const perms = schedule.roundWorkspace?.viewerPermissions;
+    // Backend financial flags are authoritative — never OR with local role.
+    const canSubmit = canShowBackendGatedAction(perms?.canSubmitOwnContribution);
+    const canReview = canShowBackendGatedAction(perms?.canApproveContributions);
+
+    if (canSubmit && viewerMemberIds.length > 0) {
       // Due if any of the user's hands still need payment this round.
       const hasDueHand = viewerMemberIds.some((memberId) => {
         const viewerContribution = contributionsForRound.find(
@@ -594,10 +606,6 @@ function deriveContributionActions(
         personalDueCircles.push(circle);
       }
     }
-
-    const canReview =
-      schedule.roundWorkspace?.viewerPermissions?.canApproveContributions ===
-        true || isOrganizer(circle.userRole);
 
     if (canReview) {
       const pendingReview = contributionsForRound.filter((contribution) =>

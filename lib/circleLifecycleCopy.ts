@@ -22,11 +22,14 @@ export type LifecycleMemberLike = {
 };
 
 export {
+  canShowBackendGatedAction,
   getCircleLifecyclePhase,
+  isBackendPermissionGranted,
   isCircleNotStarted,
   isCircleSetupState,
   isCircleStarted,
   isCircleCompleted,
+  isReadOnlyLifecyclePhase,
 } from './startCircleReadiness';
 
 export type { CircleLifecyclePhase, StartCircleDetailLike } from './startCircleReadiness';
@@ -53,6 +56,22 @@ export function roundCompletedTitle(): string {
 
 export function roundCompletedSubtitle(): string {
   return 'This circle has finished. Review historical rounds and records below.';
+}
+
+export function roundPausedTitle(): string {
+  return 'Status: Paused';
+}
+
+export function roundPausedSubtitle(): string {
+  return 'This circle is temporarily paused. Contributions and payouts are disabled until it resumes.';
+}
+
+export function roundClosedTitle(): string {
+  return 'Status: Closed';
+}
+
+export function roundClosedSubtitle(): string {
+  return 'This circle is closed. Financial and membership actions are no longer available. Records remain viewable.';
 }
 
 export function peopleHandsSectionTitle(): string {

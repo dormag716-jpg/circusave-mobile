@@ -5,6 +5,10 @@ import {
   isUnclaimedHand,
   peopleHandsSectionTitle,
   peoplePendingSectionTitle,
+  roundClosedSubtitle,
+  roundClosedTitle,
+  roundPausedSubtitle,
+  roundPausedTitle,
   roundUnstartedSubtitle,
   roundUnstartedTitle,
 } from '../circleLifecycleCopy';
@@ -61,6 +65,37 @@ describe('authoritative lifecycle phase', () => {
     ).toBe(false);
   });
 
+  test('paused is paused phase — not active', () => {
+    const circle = {
+      status: 'paused',
+      startedAt: '2026-08-01T00:00:00Z',
+      isStarted: true,
+    };
+    expect(getCircleLifecyclePhase(circle)).toBe('paused');
+    expect(getCircleLifecyclePhase(circle)).not.toBe('active');
+    expect(isCircleNotStarted(circle)).toBe(false);
+    expect(
+      canShowStartCircleAction({ isOrganizer: true, circle }),
+    ).toBe(false);
+  });
+
+  test('closed is closed phase — not active', () => {
+    const circle = {
+      status: 'closed',
+      startedAt: '2026-08-01T00:00:00Z',
+      isStarted: true,
+    };
+    expect(getCircleLifecyclePhase(circle)).toBe('closed');
+    expect(getCircleLifecyclePhase(circle)).not.toBe('active');
+    expect(
+      canShowStartCircleAction({ isOrganizer: true, circle }),
+    ).toBe(false);
+  });
+
+  test('forming remains setup phase', () => {
+    expect(getCircleLifecyclePhase({ status: 'forming' })).toBe('setup');
+  });
+
   test('phase ignores schedule-like fields if accidentally present', () => {
     const draft = {
       status: 'draft',
@@ -81,6 +116,13 @@ describe('authoritative lifecycle phase', () => {
   test('round pre-start copy', () => {
     expect(roundUnstartedTitle()).toMatch(/not started/i);
     expect(roundUnstartedSubtitle()).toMatch(/before starting/i);
+  });
+
+  test('paused and closed read-only copy', () => {
+    expect(roundPausedTitle()).toMatch(/paused/i);
+    expect(roundPausedSubtitle()).toMatch(/disabled|paused/i);
+    expect(roundClosedTitle()).toMatch(/closed/i);
+    expect(roundClosedSubtitle()).toMatch(/closed|no longer/i);
   });
 });
 

@@ -69,6 +69,10 @@ import { copyText } from '@/lib/clipboard';
 import {
   isCircleNotStarted,
   isUnclaimedHand,
+  roundClosedSubtitle,
+  roundClosedTitle,
+  roundPausedSubtitle,
+  roundPausedTitle,
 } from '@/lib/circleLifecycleCopy';
 import {
   buildCircleSetupProgress,
@@ -79,6 +83,7 @@ import {
 import {
   buildPayoutOrderReviewLines,
   buildStartCircleConfirmations,
+  canShowBackendGatedAction,
   canShowStartCircleAction,
   getCircleLifecyclePhase,
   getStartCircleBlockReason,
@@ -512,20 +517,29 @@ function WorkspaceContent({
           );
   // ────────────────────────────────────────────────────────────────────────
 
-  const canReviewContributions =
-    viewerPermissions?.canApproveContributions === true;
+  // Financial UI: backend viewerPermissions are authoritative (P0.5.2/P0.5.3).
+  // Missing flags default false. Local conditions may only further restrict.
+  const canReviewContributions = canShowBackendGatedAction(
+    viewerPermissions?.canApproveContributions,
+  );
+  const canRejectContributions = canShowBackendGatedAction(
+    // Prefer explicit reject flag when present; fall back to approve (same lifecycle).
+    (viewerPermissions as { canRejectContributions?: boolean } | undefined)
+      ?.canRejectContributions ?? viewerPermissions?.canApproveContributions,
+  );
   // Release Payout is strictly backend-gated — display state alone must never
   // enable this button.
-  const canReleasePayout =
-    viewerPermissions?.canReleasePayout === true &&
-    backendPayoutReady &&
-    !payoutReleased;
-  const canRemindMembers = viewerPermissions?.canRemindMembers === true;
-  const canSubmitOwnContribution =
-    viewerPermissions?.canSubmitOwnContribution === true;
-  const memberCanSubmitContribution =
-    canSubmitOwnContribution &&
-    ['due', 'missed', 'rejected'].includes(viewerContributionStatus.raw);
+  const canReleasePayout = canShowBackendGatedAction(
+    viewerPermissions?.canReleasePayout,
+    backendPayoutReady && !payoutReleased,
+  );
+  const canRemindMembers = canShowBackendGatedAction(
+    viewerPermissions?.canRemindMembers,
+  );
+  const memberCanSubmitContribution = canShowBackendGatedAction(
+    viewerPermissions?.canSubmitOwnContribution,
+    ['due', 'missed', 'rejected'].includes(viewerContributionStatus.raw),
+  );
   const hasSchedule = Boolean(scheduleData?.schedule?.length);
 
   if (!activeParticipant && secondaryLoading) {
@@ -563,7 +577,10 @@ function WorkspaceContent({
       console.error('Unable to confirm contribution', confirmError);
       Alert.alert(
         t('contributions:alerts.confirmFailedTitle'),
-        t('financialErrors:confirmContribution'),
+        financialActionErrorMessage(
+          confirmError,
+          t('financialErrors:confirmContribution'),
+        ),
       );
     } finally {
       setActionMemberId(null);
@@ -596,7 +613,10 @@ function WorkspaceContent({
       console.error('Unable to record payment', markPaidError);
       Alert.alert(
         t('contributions:alerts.recordFailedTitle'),
-        t('financialErrors:recordPayment'),
+        financialActionErrorMessage(
+          markPaidError,
+          t('financialErrors:recordPayment'),
+        ),
       );
     } finally {
       setActionMemberId(null);
@@ -633,7 +653,10 @@ function WorkspaceContent({
         console.error('Unable to release payout', releaseError);
         Alert.alert(
           t('financialErrors:releasePayout'),
-          t('financialErrors:generic'),
+          financialActionErrorMessage(
+            releaseError,
+            t('financialErrors:generic'),
+          ),
         );
       }
     };
@@ -766,9 +789,12 @@ function WorkspaceContent({
         isReject
           ? t('contributions:alerts.rejectFailedTitle')
           : t('contributions:alerts.reminderFailedTitle'),
-        isReject
-          ? t('financialErrors:rejectContribution')
-          : t('financialErrors:sendReminder'),
+        financialActionErrorMessage(
+          actionError,
+          isReject
+            ? t('financialErrors:rejectContribution')
+            : t('financialErrors:sendReminder'),
+        ),
       );
     } finally {
       setActionMemberId(null);
@@ -861,6 +887,7 @@ function WorkspaceContent({
             <RoundTab
               canReleasePayout={canReleasePayout}
               canRemindMembers={canRemindMembers}
+              canRejectContributions={canRejectContributions}
               canReviewContributions={canReviewContributions}
               circle={circle}
               currentRoundMembers={currentRoundMembers}
@@ -959,6 +986,7 @@ function WorkspaceContent({
 function RoundTab({
   canReleasePayout,
   canRemindMembers,
+  canRejectContributions,
   canReviewContributions,
   circle,
   currentRoundMembers,
@@ -989,6 +1017,7 @@ function RoundTab({
 }: {
   canReleasePayout: boolean;
   canRemindMembers: boolean;
+  canRejectContributions: boolean;
   canReviewContributions: boolean;
   circle: BackendCircleDetail;
   currentRoundMembers: {
@@ -1050,6 +1079,10 @@ function RoundTab({
   const lifecyclePhase = getCircleLifecyclePhase(circle);
   const notStarted = lifecyclePhase === 'setup';
   const completed = lifecyclePhase === 'completed';
+  const paused = lifecyclePhase === 'paused';
+  const closed = lifecyclePhase === 'closed';
+  // Financial CTAs only when backend grants; paused/closed never look "live".
+  const financialActionsLocked = paused || closed || completed;
 
   const isViewerRecipient = viewerMember && recipient && viewerMember.id === recipient.id;
   const potTarget =
@@ -1273,10 +1306,51 @@ function RoundTab({
     );
   }
 
+  const lifecycleBanner =
+    paused || closed ? (
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: paused ? '#fff7ed' : '#f3f4f6',
+            borderColor: paused ? '#fdba74' : '#d1d5db',
+            marginBottom: 12,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.sectionTitle,
+            { color: paused ? '#9a3412' : '#374151' },
+          ]}
+        >
+          {paused ? roundPausedTitle() : roundClosedTitle()}
+        </Text>
+        <Text
+          style={[
+            styles.sectionSubtitle,
+            { color: paused ? '#9a3412' : '#4b5563' },
+          ]}
+        >
+          {paused ? roundPausedSubtitle() : roundClosedSubtitle()}
+        </Text>
+      </View>
+    ) : null;
+
   return (
     <View style={styles.section}>
+      {lifecycleBanner}
       {/* Single hero: round status, recipient, pot, progress (no duplicate banners) */}
-      <View style={[styles.heroCard, { backgroundColor: '#6231d6', padding: 24, borderRadius: 20 }]}>
+      <View
+        style={[
+          styles.heroCard,
+          {
+            backgroundColor: paused ? '#c2410c' : closed ? '#4b5563' : '#6231d6',
+            padding: 24,
+            borderRadius: 20,
+          },
+        ]}
+      >
         <View
           style={{
             flexDirection: 'row',
@@ -1486,8 +1560,9 @@ function RoundTab({
         </View>
       </View>
 
-      {/* Members only: report own payment. Organizers manage everyone below. */}
-      {!canReviewContributions && viewerMember ? (
+      {/* Members only: report own payment. Organizers manage everyone below.
+          Hidden when financial actions are lifecycle-locked or backend denies submit. */}
+      {!financialActionsLocked && !canReviewContributions && viewerMember ? (
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>
             {t('contributions:workspace.myContribution')}
@@ -1564,7 +1639,7 @@ function RoundTab({
       ) : null}
 
       {/* Release Payout remains gated on backend permission and readiness. */}
-      {canReleasePayout && isPremium ? (
+      {!financialActionsLocked && canReleasePayout && isPremium ? (
         <Pressable
           style={styles.payoutButton}
           onPress={() => onReleasePayout(false)}
@@ -1576,7 +1651,7 @@ function RoundTab({
             {t('rounds:payout.release')}
           </Text>
         </Pressable>
-      ) : canReleasePayout && !isPremium ? (
+      ) : !financialActionsLocked && canReleasePayout && !isPremium ? (
         <View style={{ width: '100%' }}>
           <Pressable
             style={[styles.payoutButton, { backgroundColor: '#6366f1' }]}
@@ -1600,7 +1675,7 @@ function RoundTab({
             </Text>
           </Pressable>
         </View>
-      ) : displayPayoutReady && !payoutReleased ? (
+      ) : !financialActionsLocked && displayPayoutReady && !payoutReleased ? (
         <Text style={[styles.helperText, { marginTop: 8, textAlign: 'center' }]}>
           {t('rounds:payout.waitingPermission')}
         </Text>
@@ -1651,9 +1726,21 @@ function RoundTab({
           }
 
           const isProcessing = processingMemberId === member.id;
-          const canMarkPaid = ['due', 'missed', 'rejected'].includes(status.raw);
-          const canApprove = ['submitted', 'late'].includes(status.raw);
-          const showActions = canReviewContributions && (canMarkPaid || canApprove);
+          const canMarkPaid =
+            !financialActionsLocked &&
+            canReviewContributions &&
+            ['due', 'missed', 'rejected'].includes(status.raw);
+          const canApprove =
+            !financialActionsLocked &&
+            canReviewContributions &&
+            ['submitted', 'late'].includes(status.raw);
+          const canReject =
+            !financialActionsLocked &&
+            canRejectContributions &&
+            ['submitted', 'late'].includes(status.raw);
+          const showActions =
+            !financialActionsLocked &&
+            (canMarkPaid || canApprove || canReject);
 
           return (
             <View key={member.id}>
@@ -1674,28 +1761,32 @@ function RoundTab({
 
               {showActions && (
                 <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16, gap: 8, paddingLeft: 68 }}>
-                  {canApprove ? (
+                  {canApprove || canReject ? (
                     <>
-                      <Pressable
-                        style={{ flex: 1, backgroundColor: '#10b981', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
-                        disabled={isProcessing}
-                        onPress={() => onApprove(member)}
-                      >
-                        <FontAwesome name="check-circle-o" size={14} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
-                          {t('contributions:workspace.confirm')}
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={{ flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ef4444', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
-                        disabled={isProcessing}
-                        onPress={() => onReject(member)}
-                      >
-                        <FontAwesome name="times-circle-o" size={14} color="#ef4444" />
-                        <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '800' }}>
-                          {t('contributions:workspace.reject')}
-                        </Text>
-                      </Pressable>
+                      {canApprove ? (
+                        <Pressable
+                          style={{ flex: 1, backgroundColor: '#10b981', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                          disabled={isProcessing}
+                          onPress={() => onApprove(member)}
+                        >
+                          <FontAwesome name="check-circle-o" size={14} color="#fff" />
+                          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
+                            {t('contributions:workspace.confirm')}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      {canReject ? (
+                        <Pressable
+                          style={{ flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ef4444', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                          disabled={isProcessing}
+                          onPress={() => onReject(member)}
+                        >
+                          <FontAwesome name="times-circle-o" size={14} color="#ef4444" />
+                          <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '800' }}>
+                            {t('contributions:workspace.reject')}
+                          </Text>
+                        </Pressable>
+                      ) : null}
                     </>
                   ) : canMarkPaid ? (
                     <>
@@ -4087,6 +4178,22 @@ function fromCents(amountCents?: number) {
   return typeof amountCents === 'number' && Number.isFinite(amountCents)
     ? amountCents / 100
     : undefined;
+}
+
+/**
+ * Prefer backend lifecycle / SusuRule messages (e.g. 409) over generic copy.
+ */
+function financialActionErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    if (message && message.toLowerCase() !== 'something went wrong') {
+      return message;
+    }
+  }
+  return fallback;
 }
 
 function formatProgress(progress: number | null) {

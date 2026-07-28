@@ -1,11 +1,15 @@
 import {
   buildPayoutOrderReviewLines,
   buildStartCircleConfirmations,
+  canShowBackendGatedAction,
   canShowStartCircleAction,
+  getCircleLifecyclePhase,
   getStartCircleBlockReason,
   getStartCircleReviewHints,
   getUnclaimedParticipatingHands,
+  isBackendPermissionGranted,
   isCircleSetupState,
+  isReadOnlyLifecyclePhase,
   requiresUnclaimedStartConfirmation,
 } from '../startCircleReadiness';
 
@@ -45,8 +49,11 @@ describe('startCircleReadiness', () => {
     ).toBe(true);
   });
 
-  test('paused is not startable', () => {
+  test('paused is not startable and stays paused phase (not active)', () => {
     expect(isCircleSetupState({ status: 'paused' })).toBe(false);
+    expect(getCircleLifecyclePhase({ status: 'paused' })).toBe('paused');
+    expect(getCircleLifecyclePhase({ status: 'paused' })).not.toBe('active');
+    expect(isReadOnlyLifecyclePhase('paused')).toBe(true);
     expect(
       canShowStartCircleAction({
         isOrganizer: true,
@@ -57,6 +64,9 @@ describe('startCircleReadiness', () => {
 
   test('active is not startable', () => {
     expect(isCircleSetupState({ status: 'active' })).toBe(false);
+    expect(getCircleLifecyclePhase({ status: 'active', isStarted: true })).toBe(
+      'active',
+    );
     expect(
       canShowStartCircleAction({
         isOrganizer: true,
@@ -65,8 +75,11 @@ describe('startCircleReadiness', () => {
     ).toBe(false);
   });
 
-  test('completed is not startable', () => {
+  test('completed is not startable and stays completed', () => {
     expect(isCircleSetupState({ status: 'completed' })).toBe(false);
+    expect(
+      getCircleLifecyclePhase({ status: 'completed', isStarted: true }),
+    ).toBe('completed');
     expect(
       canShowStartCircleAction({
         isOrganizer: true,
@@ -75,14 +88,48 @@ describe('startCircleReadiness', () => {
     ).toBe(false);
   });
 
-  test('closed is not startable', () => {
+  test('closed is not startable and stays closed phase (not active)', () => {
     expect(isCircleSetupState({ status: 'closed' })).toBe(false);
+    expect(getCircleLifecyclePhase({ status: 'closed' })).toBe('closed');
+    expect(getCircleLifecyclePhase({ status: 'closed' })).not.toBe('active');
+    expect(isReadOnlyLifecyclePhase('closed')).toBe(true);
     expect(
       canShowStartCircleAction({
         isOrganizer: true,
         circle: { status: 'closed' },
       }),
     ).toBe(false);
+  });
+
+  test('draft and forming remain setup phase', () => {
+    expect(getCircleLifecyclePhase({ status: 'draft' })).toBe('setup');
+    expect(getCircleLifecyclePhase({ status: 'forming' })).toBe('setup');
+    expect(getCircleLifecyclePhase({ status: 'setup' })).toBe('setup');
+  });
+
+  test('backend financial permission defaults false; never promotes local true', () => {
+    expect(isBackendPermissionGranted(undefined)).toBe(false);
+    expect(isBackendPermissionGranted(null)).toBe(false);
+    expect(isBackendPermissionGranted(false)).toBe(false);
+    expect(isBackendPermissionGranted(true)).toBe(true);
+
+    expect(canShowBackendGatedAction(false, true)).toBe(false);
+    expect(canShowBackendGatedAction(undefined, true)).toBe(false);
+    expect(canShowBackendGatedAction(true, false)).toBe(false);
+    expect(canShowBackendGatedAction(true, true)).toBe(true);
+
+    // Participant active may submit when backend allows
+    expect(
+      canShowBackendGatedAction(true, ['due'].includes('due')),
+    ).toBe(true);
+    // Participant paused: backend false always hides
+    expect(canShowBackendGatedAction(false, ['due'].includes('due'))).toBe(
+      false,
+    );
+    // Organizer paused cannot approve/release
+    expect(canShowBackendGatedAction(false, true)).toBe(false);
+    // Organizer active can approve when backend allows
+    expect(canShowBackendGatedAction(true, true)).toBe(true);
   });
 
   test('any circle with startedAt is not startable', () => {
