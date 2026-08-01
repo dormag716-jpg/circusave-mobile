@@ -94,6 +94,16 @@
     "seeRound": " · Ver cuotas en Ronda",
     "organizerShort": "Org."
   },
+  "agreements": {
+    "bannerTitle": "Acción requerida",
+    "bannerBody": "Revise y acepte los términos finales del círculo antes de que el organizador pueda iniciarlo.",
+    "bannerWaitingBody": "Su organizador debe crear la versión financiera final antes de que usted pueda aceptar los términos del círculo.",
+    "bannerStaleBody": "La estructura del círculo cambió. Espere a que el organizador publique una nueva versión final y luego acepte de nuevo.",
+    "bannerAcceptedBody": "Usted aceptó los términos finales actuales. El organizador puede iniciar cuando se completen todas las aceptaciones requeridas.",
+    "cta": "Revisar y aceptar los términos del círculo",
+    "ctaA11y": "Revisar y aceptar los términos finales del círculo",
+    "viewAccepted": "Ver sus términos aceptados"
+  },
   "setup": {
     "claimedHint": "Las manos reclamadas tienen acceso al espacio. Las manos sin reclamar pueden quedar bajo gestión en efectivo al iniciar.",
     "people": "Personas",
@@ -109,6 +119,8 @@
     "startBody": "Al iniciar se bloquean la membresía, las manos y el orden de pagos.",
     "startBodyUnclaimed": "Al iniciar se bloquean la membresía, las manos y el orden de pagos. Primero confirmarás las manos sin reclamar.",
     "startAction": "Iniciar círculo",
+    "reviewAgreements": "Revisar acuerdos e iniciar",
+    "reviewAgreementsHint": "Finalice la versión, recoja aceptaciones de miembros y luego inicie.",
     "status": {
       "action": "Acción",
       "waiting": "En espera",

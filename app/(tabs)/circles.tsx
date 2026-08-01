@@ -24,6 +24,7 @@ import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
+import { formatHandsPeopleMetrics } from '@/lib/circleLifecycleCopy';
 import {
   circleWorkspaceHref,
   completedCirclesHref,
@@ -62,21 +63,35 @@ export default function CirclesScreen() {
 
   const activeCircles = useMemo(
     () =>
-      circles.filter((circle) =>
-        isActiveCircleStatus(circle.status, circle.pot_status),
+      circles.filter(
+        (circle) =>
+          circle.status !== 'archived' &&
+          isActiveCircleStatus(circle.status, circle.pot_status),
       ),
     [circles],
   );
   const setupCircles = useMemo(
-    () => circles.filter((circle) => isSetupCircleStatus(circle.status)),
+    () =>
+      circles.filter(
+        (circle) =>
+          circle.status !== 'archived' && isSetupCircleStatus(circle.status),
+      ),
     [circles],
   );
   const pausedCircles = useMemo(
-    () => circles.filter((circle) => isPausedCircleStatus(circle.status)),
+    () =>
+      circles.filter(
+        (circle) =>
+          circle.status !== 'archived' && isPausedCircleStatus(circle.status),
+      ),
     [circles],
   );
   const closedCircles = useMemo(
-    () => circles.filter((circle) => isClosedCircleStatus(circle.status)),
+    () =>
+      circles.filter(
+        (circle) =>
+          isClosedCircleStatus(circle.status) || circle.status === 'archived',
+      ),
     [circles],
   );
   const hasAnyCircles =
@@ -261,12 +276,12 @@ export default function CirclesScreen() {
   async function confirmDeleteOneSetup(circle: BackendCircleSummary) {
     if (!token) return;
     Alert.alert(
-      t('deleteOneTitle'),
+      t('archiveOneTitle'),
       t('deleteOneMessage', { circleName: circle.name }),
       [
         { text: t('cancel'), style: 'cancel' },
         {
-          text: t('delete'),
+          text: t('archive'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -541,9 +556,29 @@ function CircleCard({
   const badgeLabel = circleLifecycleBadgeLabel(circle.status, circle.pot_status);
   const progress = circle.currentRoundProgress?.percentConfirmed ?? 0;
 
-  const totalRounds = detail?.members?.length ?? circle.memberCount;
+  const handCount =
+    detail?.handCount ??
+    circle.handCount ??
+    detail?.participatingHandCount ??
+    circle.participatingHandCount ??
+    circle.memberCount;
+  const peopleCount =
+    detail?.uniquePeopleCount ??
+    detail?.uniqueMemberCount ??
+    circle.uniquePeopleCount ??
+    circle.uniqueMemberCount ??
+    null;
+  const totalRounds =
+    detail?.totalRounds ??
+    circle.totalRounds ??
+    handCount;
   const viewerPosition =
     detail && userId ? getViewerPayoutPosition(detail, userId) : null;
+  const peopleHandsLabel = formatHandsPeopleMetrics({
+    handCount,
+    uniqueMemberCount: peopleCount,
+    memberCount: handCount,
+  });
 
   return (
     <Pressable
@@ -605,7 +640,7 @@ function CircleCard({
             <>
               <Text style={styles.circleMeta}>
                 {t(`status.${circle.status}`, { defaultValue: circle.status })} •{' '}
-                {t('memberCount', { count: circle.memberCount })} •{' '}
+                {peopleHandsLabel} •{' '}
                 {formatCurrency(
                   circle.contributionAmount,
                   i18n.resolvedLanguage || i18n.language,
@@ -685,7 +720,7 @@ function CircleCard({
         </View>
         <View style={styles.detail}>
           <Text style={styles.detailLabel}>{t('members')}</Text>
-          <Text style={styles.detailValue}>{circle.memberCount}</Text>
+          <Text style={styles.detailValue}>{peopleHandsLabel}</Text>
         </View>
       </View>
 

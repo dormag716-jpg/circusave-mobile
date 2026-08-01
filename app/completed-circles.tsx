@@ -31,7 +31,11 @@ export default function CompletedCirclesScreen() {
     setError(null);
     try {
       const allCircles = await getCircles(accessToken);
-      setCircles(allCircles.filter((c) => c.status === 'completed'));
+      setCircles(
+        allCircles.filter(
+          (c) => c.status === 'completed' || c.status === 'archived',
+        ),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load completed circles.');
     } finally {

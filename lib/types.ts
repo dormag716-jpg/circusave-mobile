@@ -147,7 +147,14 @@ export type BackendCircleSummary = {
   frequency: string;
   startDate: string;
   currentRound: number;
+  /** Participating hands (capacity / rounds). Not unique people. */
   memberCount: number;
+  handCount?: number;
+  participatingHandCount?: number;
+  totalRounds?: number;
+  /** Distinct claimed users (userId set). */
+  uniqueMemberCount?: number;
+  uniquePeopleCount?: number;
   organizerId: string;
   userRole: MembershipRole | null;
   nextPayout: {

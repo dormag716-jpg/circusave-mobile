@@ -94,6 +94,16 @@
     "seeRound": " · Gade kotizasyon nan Wonn",
     "organizerShort": "Òg."
   },
+  "agreements": {
+    "bannerTitle": "Aksyon obligatwa",
+    "bannerBody": "Revize epi aksepte kondisyon final sèk la anvan òganizatè a ka kòmanse.",
+    "bannerWaitingBody": "Òganizatè ou a dwe kreye snapshot finansye final la anvan ou ka aksepte kondisyon sèk la.",
+    "bannerStaleBody": "Estrikti sèk la chanje. Tann òganizatè a pibliye yon nouvo snapshot final, epi aksepte ankò.",
+    "bannerAcceptedBody": "Ou aksepte kondisyon final aktyèl yo. Òganizatè a ka kòmanse lè tout akseptasyon obligatwa yo fini.",
+    "cta": "Revize epi aksepte kondisyon sèk la",
+    "ctaA11y": "Revize epi aksepte kondisyon final sèk la",
+    "viewAccepted": "Gade kondisyon ou te aksepte yo"
+  },
   "setup": {
     "claimedHint": "Men reklame yo gen aksè nan espas la. Men ki poko reklame yo ka rete anba jesyon lajan kach lè gwoup la kòmanse.",
     "people": "Moun",
@@ -109,6 +119,8 @@
     "startBody": "Lè gwoup la kòmanse, manm, men, ak lòd peman an bloke.",
     "startBodyUnclaimed": "Lè gwoup la kòmanse, manm, men, ak lòd peman an bloke. W ap konfime men ki poko reklame yo anvan.",
     "startAction": "Kòmanse gwoup la",
+    "reviewAgreements": "Revize akò yo epi kòmanse",
+    "reviewAgreementsHint": "Finalize snapshot la, ranmase akseptasyon manm yo, epi kòmanse.",
     "status": {
       "action": "Aksyon",
       "waiting": "Ap tann",

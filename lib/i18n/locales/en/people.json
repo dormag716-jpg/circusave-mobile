@@ -94,6 +94,16 @@
     "seeRound": " · See Round for dues",
     "organizerShort": "Org"
   },
+  "agreements": {
+    "bannerTitle": "Action required",
+    "bannerBody": "Review and accept the final circle terms before the organizer can start.",
+    "bannerWaitingBody": "Your organizer must create the final financial snapshot before you can accept the circle terms.",
+    "bannerStaleBody": "The circle structure changed. Wait for the organizer to publish a new final snapshot, then accept again.",
+    "bannerAcceptedBody": "You accepted the current final circle terms. The organizer can start once every required acceptance is complete.",
+    "cta": "Review and accept circle terms",
+    "ctaA11y": "Review and accept the final circle terms",
+    "viewAccepted": "View your accepted terms"
+  },
   "setup": {
     "claimedHint": "Claimed hands have workspace access. Unclaimed hands may stay as cash-managed positions at Start.",
     "people": "People",
@@ -109,6 +119,8 @@
     "startBody": "Starting locks membership, hands, and payout order.",
     "startBodyUnclaimed": "Starting locks membership, hands, and payout order. You will confirm unclaimed hands first.",
     "startAction": "Start Circle",
+    "reviewAgreements": "Review agreements & start",
+    "reviewAgreementsHint": "Finalize the snapshot, collect member acceptances, then start.",
     "status": {
       "action": "Action",
       "waiting": "Waiting",

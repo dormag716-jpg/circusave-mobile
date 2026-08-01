@@ -46,11 +46,19 @@ import {
   type BackendRoundSnapshot,
   type BackendScheduleRound,
   type BackendWalletSnapshot,
+  getCircleAgreementSnapshot,
   getMemberAccessToken,
   reorderPayoutTurn,
   requestAdditionalHand,
   startCircle,
+  type CircleAgreementSnapshot,
 } from '@/lib/api';
+import {
+  getMemberAgreementPrompt,
+  memberCanOpenAgreementReview,
+  shouldShowMemberAgreementBanner,
+  type MemberAgreementPrompt,
+} from '@/lib/circleAgreements';
 import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
@@ -328,6 +336,7 @@ function WorkspaceContent({
     'financialErrors',
   ]);
   const language = translation.resolvedLanguage || translation.language;
+  const { t: tPeople } = useTranslation('people');
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
     null,
@@ -338,6 +347,120 @@ function WorkspaceContent({
   const cacheHealRetries = useRef(0);
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
   const paymentInstructions = circle.paymentInstructions ?? null;
+  const [workspaceAgreementSnapshot, setWorkspaceAgreementSnapshot] =
+    useState<CircleAgreementSnapshot | null>(null);
+  const [workspaceAgreementLoaded, setWorkspaceAgreementLoaded] = useState(false);
+
+  const workspaceParticipating = useMemo(
+    () =>
+      (circle.members || []).some(
+        (member) =>
+          String(member.userId || '').trim() === userId &&
+          member.isParticipating !== false,
+      ),
+    [circle.members, userId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const setup = isCircleNotStarted(circle);
+    if (!token || !setup || !workspaceParticipating) {
+      setWorkspaceAgreementSnapshot(null);
+      setWorkspaceAgreementLoaded(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setWorkspaceAgreementLoaded(false);
+    void (async () => {
+      try {
+        const next = await getCircleAgreementSnapshot(token, circle.id);
+        if (!cancelled) setWorkspaceAgreementSnapshot(next);
+      } catch (error) {
+        if (
+          error &&
+          typeof error === 'object' &&
+          'status' in error &&
+          (error as { status?: unknown }).status === 404
+        ) {
+          if (!cancelled) setWorkspaceAgreementSnapshot(null);
+        } else {
+          console.error('Unable to load agreement snapshot for workspace banner', error);
+          if (!cancelled) setWorkspaceAgreementSnapshot(null);
+        }
+      } finally {
+        if (!cancelled) setWorkspaceAgreementLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [circle, token, userId, workspaceParticipating, refreshNonce]);
+
+  const workspaceMemberAgreementPrompt: MemberAgreementPrompt = useMemo(() => {
+    if (!workspaceAgreementLoaded) return { kind: 'none' };
+    return getMemberAgreementPrompt({
+      circleStarted: !isCircleNotStarted(circle),
+      userId,
+      isParticipatingMember: workspaceParticipating,
+      snapshot: workspaceAgreementSnapshot,
+    });
+  }, [
+    circle,
+    userId,
+    workspaceAgreementLoaded,
+    workspaceAgreementSnapshot,
+    workspaceParticipating,
+  ]);
+
+  const workspaceMemberAgreementBanner =
+    memberCanOpenAgreementReview(workspaceMemberAgreementPrompt) &&
+    shouldShowMemberAgreementBanner(workspaceMemberAgreementPrompt) ? (
+      <View
+        style={{
+          marginTop: 12,
+          marginHorizontal: 0,
+          backgroundColor: colors.warningSoft,
+          borderColor: colors.warning,
+          borderWidth: 1,
+          borderRadius: radii.card,
+          padding: 14,
+          gap: 10,
+        }}
+        accessibilityRole="summary"
+      >
+        <Text style={{ color: colors.textStrong, fontWeight: '800', fontSize: 15 }}>
+          {tPeople('agreements.bannerTitle')} — {tPeople('agreements.cta')}
+        </Text>
+        <Text style={{ color: colors.text, lineHeight: 20 }}>
+          {workspaceMemberAgreementPrompt.kind === 'waiting_for_snapshot'
+            ? tPeople('agreements.bannerWaitingBody')
+            : workspaceMemberAgreementPrompt.kind === 'stale_structure'
+              ? tPeople('agreements.bannerStaleBody')
+              : tPeople('agreements.bannerBody')}
+        </Text>
+        <Pressable
+          style={{
+            backgroundColor: colors.primary,
+            borderRadius: radii.control,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            alignItems: 'center',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+          onPress={() => router.push(circleAgreementReviewHref(circle.id))}
+          accessibilityRole="button"
+          accessibilityLabel={tPeople('agreements.ctaA11y')}
+        >
+          <FontAwesome name="file-text-o" size={14} color="#fff" />
+          <Text style={{ color: '#fff', fontWeight: '800' }}>
+            {tPeople('agreements.cta')}
+          </Text>
+        </Pressable>
+      </View>
+    ) : null;
 
   const loadBackendSections = useCallback(async () => {
     setSecondaryLoading(true);
@@ -858,6 +981,8 @@ function WorkspaceContent({
           );
         })}
       </View>
+
+      {workspaceMemberAgreementBanner}
 
       {activeTab === 'round' ? (
         // Lifecycle phase comes only from circle.status / startedAt / isStarted.
@@ -2097,6 +2222,8 @@ function PeopleTab({
   const [showUnclaimedReview, setShowUnclaimedReview] = useState(false);
   const [pendingStartConfirmations, setPendingStartConfirmations] = useState<StartCircleConfirmations | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<PeopleNotice | null>(null);
+  const [agreementSnapshot, setAgreementSnapshot] = useState<CircleAgreementSnapshot | null>(null);
+  const [agreementSnapshotLoaded, setAgreementSnapshotLoaded] = useState(false);
   const language = translation.resolvedLanguage || translation.language;
   const formatMoney = useCallback(
     (value: number) => formatCurrency(value, language),
@@ -2121,6 +2248,72 @@ function PeopleTab({
   // People tab structural controls: lifecycle from status/startedAt/isStarted only.
   const lifecyclePhase = getCircleLifecyclePhase(circle);
   const circleNotStarted = lifecyclePhase === 'setup';
+  const isParticipatingMember = useMemo(
+    () =>
+      members.some(
+        (member) =>
+          String(member.userId || '').trim() === userId &&
+          member.isParticipating !== false,
+      ),
+    [members, userId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!token || !circleNotStarted || !isParticipatingMember) {
+      setAgreementSnapshot(null);
+      setAgreementSnapshotLoaded(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setAgreementSnapshotLoaded(false);
+    void (async () => {
+      try {
+        const next = await getCircleAgreementSnapshot(token, circle.id);
+        if (!cancelled) setAgreementSnapshot(next);
+      } catch (error) {
+        if (
+          error &&
+          typeof error === 'object' &&
+          'status' in error &&
+          (error as { status?: unknown }).status === 404
+        ) {
+          if (!cancelled) setAgreementSnapshot(null);
+        } else {
+          console.error(
+            'Unable to load circle agreement snapshot for member prompt',
+            error,
+          );
+          if (!cancelled) setAgreementSnapshot(null);
+        }
+      } finally {
+        if (!cancelled) setAgreementSnapshotLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [circle.id, circleNotStarted, isParticipatingMember, token]);
+
+  const memberAgreementPrompt: MemberAgreementPrompt = useMemo(() => {
+    if (!agreementSnapshotLoaded) {
+      return { kind: 'none' };
+    }
+    return getMemberAgreementPrompt({
+      circleStarted: !circleNotStarted,
+      userId,
+      isParticipatingMember,
+      snapshot: agreementSnapshot,
+    });
+  }, [
+    agreementSnapshot,
+    agreementSnapshotLoaded,
+    circleNotStarted,
+    isParticipatingMember,
+    userId,
+  ]);
+
   const showSetupOrganizerActions = canShowStartCircleAction({
     isOrganizer,
     circle,
@@ -2456,6 +2649,98 @@ function PeopleTab({
   const unclaimedHandsForReview = members.filter(
     (member) => member.isParticipating !== false && isUnclaimedHand(member),
   );
+
+  function openAgreementReview() {
+    router.push(circleAgreementReviewHref(circle.id));
+  }
+
+  function memberAgreementBannerBody(prompt: MemberAgreementPrompt): string {
+    switch (prompt.kind) {
+      case 'waiting_for_snapshot':
+        return t('agreements.bannerWaitingBody');
+      case 'stale_structure':
+        return t('agreements.bannerStaleBody');
+      case 'accepted':
+        return t('agreements.bannerAcceptedBody');
+      case 'action_required':
+      default:
+        return t('agreements.bannerBody');
+    }
+  }
+
+  const memberAgreementCard =
+    circleNotStarted &&
+    isParticipatingMember &&
+    memberCanOpenAgreementReview(memberAgreementPrompt) ? (
+      <View
+        style={[
+          styles.peopleCard,
+          shouldShowMemberAgreementBanner(memberAgreementPrompt)
+            ? { borderColor: colors.warning, backgroundColor: colors.warningSoft }
+            : null,
+        ]}
+        accessibilityRole="summary"
+      >
+        <View style={styles.peopleCardHeader}>
+          <View
+            style={[
+              styles.peopleIconBubble,
+              {
+                backgroundColor:
+                  memberAgreementPrompt.kind === 'accepted'
+                    ? colors.primarySoft
+                    : colors.warningSoft,
+              },
+            ]}
+          >
+            <FontAwesome
+              name={
+                memberAgreementPrompt.kind === 'accepted'
+                  ? 'check'
+                  : 'exclamation-triangle'
+              }
+              size={14}
+              color={
+                memberAgreementPrompt.kind === 'accepted' ? colors.primary : '#B45309'
+              }
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.peopleCardTitle}>
+              {memberAgreementPrompt.kind === 'accepted'
+                ? t('agreements.viewAccepted')
+                : t('agreements.bannerTitle')}
+            </Text>
+            <Text style={styles.peopleCardSub}>
+              {memberAgreementBannerBody(memberAgreementPrompt)}
+            </Text>
+          </View>
+        </View>
+        <Pressable
+          style={[
+            styles.setupPrimaryBtn,
+            {
+              marginTop: 4,
+              backgroundColor:
+                memberAgreementPrompt.kind === 'action_required'
+                  ? colors.primary
+                  : colors.subtle,
+            },
+          ]}
+          onPress={openAgreementReview}
+          accessibilityRole="button"
+          accessibilityLabel={t('agreements.ctaA11y')}
+        >
+          <FontAwesome name="file-text-o" size={14} color="#fff" />
+          <Text style={styles.setupPrimaryBtnText}>
+            {memberAgreementPrompt.kind === 'accepted'
+              ? t('agreements.viewAccepted')
+              : t('agreements.cta')}
+          </Text>
+        </Pressable>
+      </View>
+    ) : null;
+
   const peopleOverlays = (
     <>
       {payoutReviewSheet}
@@ -2945,9 +3230,7 @@ function PeopleTab({
                 </Text>
               ) : (
                 <Text style={styles.setupListHint}>
-                  {needsUnclaimedConfirm
-                    ? t('setup.startBodyUnclaimed')
-                    : t('setup.startBody')}
+                  {t('setup.reviewAgreementsHint')}
                 </Text>
               )}
               <Pressable
@@ -2964,7 +3247,7 @@ function PeopleTab({
                 onPress={promptStartCircle}
                 disabled={structureMutationBusy || Boolean(startBlockReason)}
                 accessibilityRole="button"
-                accessibilityLabel={t('setup.startTitle')}
+                accessibilityLabel={t('setup.reviewAgreements')}
                 accessibilityState={{
                   busy: startingCircle,
                   disabled: structureMutationBusy || Boolean(startBlockReason),
@@ -2974,8 +3257,10 @@ function PeopleTab({
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <FontAwesome name="play" size={14} color="#fff" />
-                    <Text style={styles.setupPrimaryBtnText}>{t('setup.startAction')}</Text>
+                    <FontAwesome name="file-text-o" size={14} color="#fff" />
+                    <Text style={styles.setupPrimaryBtnText}>
+                      {t('setup.reviewAgreements')}
+                    </Text>
                   </>
                 )}
               </Pressable>
@@ -2990,6 +3275,7 @@ function PeopleTab({
     return (
       <View style={styles.section}>
         {peopleOverlays}
+        {memberAgreementCard}
 
         {/* Invite people — expandable section at top */}
         <View style={styles.peopleCard}>
@@ -3191,6 +3477,7 @@ function PeopleTab({
   return (
     <View style={styles.section}>
       {peopleOverlays}
+      {memberAgreementCard}
 
       {/* Invite code */}
       <View style={styles.peopleCard}>

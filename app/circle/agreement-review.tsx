@@ -28,9 +28,12 @@ import {
 } from '@/lib/api';
 import {
   canSubmitAgreementAcceptance,
+  memberHasAcceptedCurrentSnapshot,
   normalizeAgreementLanguage,
+  orderedSnapshotHands,
   ownedAgreementHands,
   shouldRefreshStaleSnapshot,
+  snapshotServiceFeeCents,
 } from '@/lib/circleAgreements';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
@@ -110,13 +113,21 @@ export default function CircleAgreementReviewScreen() {
     () => (snapshot ? ownedAgreementHands(snapshot, userId) : []),
     [snapshot, userId],
   );
+  const payoutOrderHands = useMemo(
+    () => (snapshot ? orderedSnapshotHands(snapshot) : []),
+    [snapshot],
+  );
   const isParticipant = ownedHands.length > 0;
+  const memberAccepted = Boolean(
+    snapshot && memberHasAcceptedCurrentSnapshot(snapshot, userId),
+  );
   const hasUnclaimedHands = Boolean(snapshot?.hands.some((hand) => !hand.userId));
   const agreementBlockers = (readiness?.blockers ?? []).filter(
     (blocker) =>
       blocker !== 'payout_order_confirmation_missing' &&
       blocker !== 'unclaimed_hand_confirmation_missing',
   );
+  const memberFacing = isParticipant && !isOrganizer;
 
   async function finalize() {
     if (!token || !circleId || busy) return;
@@ -197,7 +208,7 @@ export default function CircleAgreementReviewScreen() {
           <Pressable onPress={() => (circleId ? router.replace(circleWorkspaceHref(circleId, 'people')) : router.back())} accessibilityRole="button">
             <FontAwesome name="chevron-left" size={24} color={colors.textStrong} />
           </Pressable>
-          <Text style={styles.title}>{t('title')}</Text>
+          <Text style={styles.title}>{memberFacing ? t('titleMember') : t('title')}</Text>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -207,7 +218,7 @@ export default function CircleAgreementReviewScreen() {
         {!loading && !snapshot ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>{t('missingTitle')}</Text>
-            <Text style={styles.body}>{t('missingBody')}</Text>
+            <Text style={styles.body}>{memberFacing || (!isOrganizer) ? t('missingBodyMember') : t('missingBody')}</Text>
             {isOrganizer ? (
               <ActionButton label={t('finalize')} disabled={Boolean(busy)} onPress={() => void finalize()} />
             ) : null}
@@ -219,6 +230,11 @@ export default function CircleAgreementReviewScreen() {
             <View style={[styles.card, styles.draftCard]}>
               <Text style={styles.draftText}>{t('draftNotice')}</Text>
               <Text style={styles.version}>{t('snapshotVersion', { version: snapshot.snapshotVersion })}</Text>
+              <Text style={styles.version} selectable>
+                {t('snapshotHash', { hash: snapshot.snapshotHash })}
+              </Text>
+              {!snapshot.structureCurrent ? <Text style={styles.blocker}>{t('stale')}</Text> : null}
+              {memberAccepted ? <Text style={styles.success}>✓ {t('acceptedBoth')}</Text> : null}
             </View>
 
             <View style={styles.card}>
@@ -227,16 +243,45 @@ export default function CircleAgreementReviewScreen() {
               <Metric label={t('totalRounds')} value={String(snapshot.totalRounds)} />
               <Metric label={t('recurringTotal')} value={money(snapshot.memberReview.currentRecurringObligationCents)} />
               <Metric label={t('estimatedTotal')} value={money(snapshot.memberReview.estimatedTotalObligationCents)} />
+              <Metric label={t('serviceFee')} value={money(snapshotServiceFeeCents(snapshot))} />
               <Metric label={t('organizerParticipates')} value={snapshot.organizerParticipates ? t('yes') : t('no')} />
             </View>
 
-            {ownedHands.map((hand) => (
-              <View style={styles.card} key={hand.handId}>
-                <Text style={styles.cardTitle}>{t('handTitle', { number: hand.handNumber })}</Text>
-                <Text style={styles.body}>{t('payoutPosition', { position: hand.payoutPosition })}</Text>
-                <Text style={styles.body}>{t('expectedPayout', { date: hand.expectedPayoutDate ? formatDateTime(hand.expectedPayoutDate, language) : '—' })}</Text>
+            {isParticipant ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>{t('yourHandsTitle')}</Text>
+                <Text style={styles.body}>{t('yourHandsHint')}</Text>
+                {ownedHands.map((hand) => (
+                  <View style={styles.handBlock} key={hand.handId}>
+                    <Text style={styles.handTitle}>{t('handTitle', { number: hand.handNumber })}</Text>
+                    <Text style={styles.body}>{t('payoutPosition', { position: hand.payoutPosition })}</Text>
+                    <Text style={styles.body}>
+                      {t('expectedPayout', {
+                        date: hand.expectedPayoutDate
+                          ? formatDateTime(hand.expectedPayoutDate, language)
+                          : '—',
+                      })}
+                    </Text>
+                  </View>
+                ))}
               </View>
-            ))}
+            ) : null}
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{t('finalOrderTitle')}</Text>
+              {payoutOrderHands.map((hand) => (
+                <Text style={styles.body} key={`order-${hand.handId}`}>
+                  {t('finalOrderRow', {
+                    position: hand.payoutPosition,
+                    number: hand.handNumber,
+                    suffix: hand.userId === userId ? t('finalOrderYours') : '',
+                  })}
+                  {hand.expectedPayoutDate
+                    ? ` · ${formatDateTime(hand.expectedPayoutDate, language)}`
+                    : ''}
+                </Text>
+              ))}
+            </View>
 
             {isParticipant ? (
               <AgreementCard
@@ -279,7 +324,9 @@ export default function CircleAgreementReviewScreen() {
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{t('readinessTitle')}</Text>
               {agreementBlockers.length === 0 ? (
-                <Text style={styles.success}>{t('ready')}</Text>
+                <Text style={styles.success}>
+                  {memberFacing || (isParticipant && !isOrganizer) ? t('readyMember') : t('ready')}
+                </Text>
               ) : (
                 <>
                   <Text style={styles.body}>{t('notReady')}</Text>
@@ -355,6 +402,8 @@ const styles = StyleSheet.create({
   version: { color: colors.muted, fontSize: 13 },
   cardTitle: { color: colors.textStrong, fontSize: 18, fontWeight: '800' },
   body: { color: colors.text, lineHeight: 21 },
+  handBlock: { gap: 4, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.cardBorder },
+  handTitle: { color: colors.textStrong, fontWeight: '800', fontSize: 16 },
   metric: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
   metricLabel: { flex: 1, color: colors.muted },
   metricValue: { color: colors.textStrong, fontWeight: '700', textAlign: 'right' },

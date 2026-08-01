@@ -168,8 +168,10 @@ export type BackendCircleDetail = {
   /** Active hands (participating memberships) — drives pot and rounds. */
   handCount?: number;
   totalHands?: number;
+  participatingHandCount?: number;
   memberCount?: number;
   uniqueMemberCount?: number;
+  uniquePeopleCount?: number;
   viewerHands?: BackendCircleMember[];
   viewerHandCount?: number;
   viewerContributionSummary?: BackendViewerContributionSummary | null;
@@ -1220,17 +1222,30 @@ export function createCircle(
   });
 }
 
-export function deleteCircle(token: string, circleId: string): Promise<unknown> {
-  return requestJson<unknown>(`/groups/${circleId}`, {
+/** Archive evidence-backed circles; hard-delete only empty drafts. */
+export function deleteCircle(
+  token: string,
+  circleId: string,
+): Promise<{
+  id: string;
+  action: 'archived' | 'deleted';
+  mode?: string;
+  status: string;
+  message?: string;
+  circle?: unknown;
+}> {
+  return requestJson(`/groups/${circleId}`, {
     method: 'DELETE',
     token,
   });
 }
 
-/** Permanently delete all setup/draft/forming circles you organize. */
+/** Archive or delete all setup/draft/forming circles you organize. */
 export function deleteAllSetupDrafts(token: string): Promise<{
   deletedCount: number;
-  deleted: Array<{ id: string; name: string; status: string }>;
+  deleted: Array<{ id: string; name: string; status: string; action?: string }>;
+  archivedCount?: number;
+  archived?: Array<{ id: string; name: string; status: string; action?: string }>;
   skippedCount: number;
   skipped: Array<{ id: string; reason: string }>;
 }> {

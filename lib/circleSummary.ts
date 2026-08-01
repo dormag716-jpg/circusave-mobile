@@ -34,6 +34,10 @@ export function getCircleListLifecycle(
   if (s === 'completed' || pot === 'completed') {
     return 'completed';
   }
+  if (s === 'archived') {
+    // Soft-archived: history only, never Active / Setup.
+    return 'closed';
+  }
   if (s === 'paused') {
     return 'paused';
   }
