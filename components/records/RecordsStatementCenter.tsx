@@ -5,7 +5,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +25,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   ApiError,
@@ -49,6 +56,18 @@ import {
   formatRelativeDate,
 } from '@/lib/i18n/formatters';
 import { colors, radii, spacing } from '@/lib/theme';
+import {
+  displayMoney,
+  formatDisplayDate,
+  formatDisplayDateTime,
+  humanizeEventType,
+  humanizeStatementLabel,
+  humanizeStatus,
+  memberContextLabel as buildMemberContextLabel,
+  nextContributionDue,
+  nextScheduledPayout,
+  shortStatementId,
+} from '@/lib/statementPresentation';
 
 type RecordsSegment = 'circle' | 'statements' | 'documents';
 
@@ -68,23 +87,28 @@ type SubjectTarget =
 
 type StatementLedgerPreviewEntry = MemberStatementSnapshot['ledger'][number];
 
-function displayMoney(value: string | number | null | undefined): string {
-  if (value === null || value === undefined || value === '') return 'Unavailable';
-  if (value === 'Unavailable') return 'Unavailable';
-  if (typeof value === 'string') return value;
-  return 'Unavailable';
+function memberContextLabel(
+  row: MemberStatementIndexRow,
+  unclaimed: boolean,
+): string {
+  return buildMemberContextLabel({
+    handCount: row.handCount,
+    roleSummary: row.roleSummary,
+    membershipStatus: row.membershipStatus,
+    unclaimed,
+  });
 }
 
 function formatRelativeDays(value?: string | null): string {
-  if (!value) return '—';
+  if (!value) return '\u2014';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return '\u2014';
   const diffMs = Date.now() - date.getTime();
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   if (days <= 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 30) return `${days}d ago`;
-  return date.toLocaleDateString();
+  return formatDisplayDate(value);
 }
 
 function ledgerIconColor(entry: BackendLedgerEntry): string {
@@ -160,6 +184,13 @@ async function saveAndSharePdf(
   return { uri: file.uri, filename };
 }
 
+function friendlyError(message: string): string {
+  const trimmed = String(message || '').trim();
+  if (!trimmed) return 'Something went wrong. Please try again.';
+  if (trimmed.length > 160) return 'Something went wrong. Please try again.';
+  return trimmed;
+}
+
 export function RecordsStatementCenter({
   circleId,
   token,
@@ -188,6 +219,9 @@ export function RecordsStatementCenter({
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [sharingDocId, setSharingDocId] = useState<string | null>(null);
+
+  const resolvedCircleName =
+    index?.circle.name || circleName || 'this circle';
 
   const periodInput: StatementPeriodInput = useMemo(() => {
     if (periodMode === 'custom') {
@@ -300,11 +334,7 @@ export function RecordsStatementCenter({
               periodInput,
             );
       await saveAndSharePdf(pdf.bytes, pdf.filename);
-      // Refresh server-backed Documents list after successful generation.
       void loadDocuments();
-      if (segment !== 'documents') {
-        // Soft nudge only via state; user can open Documents tab.
-      }
     } catch (err) {
       Alert.alert(
         'PDF unavailable',
@@ -330,43 +360,47 @@ export function RecordsStatementCenter({
     }
   };
 
+  const segments = [
+    { id: 'circle' as const, label: 'Circle Overview' },
+    { id: 'statements' as const, label: 'Member Statements' },
+    { id: 'documents' as const, label: 'Documents' },
+  ];
+
   return (
     <View style={styles.root}>
-      <View style={styles.hero}>
-        <View style={styles.heroGlow} />
-        <Text style={styles.heroKicker}>AI SUSU · STATEMENT CENTER</Text>
-        <Text style={styles.heroTitle}>Records</Text>
-        <Text style={styles.heroSub}>
-          {circleName || 'Circle'} · Backend-verified member statements
+      <View style={styles.pageHeader}>
+        <Text style={styles.pageTitle}>Records</Text>
+        <Text style={styles.pageCircleName} numberOfLines={1}>
+          {resolvedCircleName === 'this circle' ? 'Circle' : resolvedCircleName}
         </Text>
-        <Text style={styles.heroDisclaimer}>
-          Not a bank statement, tax document, legal certification, or proof of income.
+        <Text style={styles.pageSubtitle}>
+          Statements, activity, and circle documents
+        </Text>
+        <Text style={styles.pageDisclaimer}>
+          Statements are for CircuSave activity tracking only and are not bank, tax,
+          legal, or income documents.
         </Text>
       </View>
 
-      <View style={styles.segmentRow}>
-        {(
-          [
-            { id: 'circle' as const, label: 'Circle Records', icon: 'list' as const },
-            { id: 'statements' as const, label: 'Member Statements', icon: 'file-text-o' as const },
-            { id: 'documents' as const, label: 'Documents', icon: 'folder-o' as const },
-          ] as const
-        ).map((item) => {
+      <View
+        style={styles.segmentControl}
+        accessibilityRole="tablist"
+      >
+        {segments.map((item) => {
           const active = segment === item.id;
           return (
             <Pressable
               key={item.id}
-              style={[styles.segmentChip, active && styles.segmentChipActive]}
+              style={[styles.segmentItem, active && styles.segmentItemActive]}
               onPress={() => setSegment(item.id)}
-              accessibilityRole="button"
+              accessibilityRole="tab"
               accessibilityState={{ selected: active }}
+              accessibilityLabel={item.label}
             >
-              <FontAwesome
-                name={item.icon}
-                size={12}
-                color={active ? '#fff' : colors.primary}
-              />
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+              <Text
+                style={[styles.segmentLabel, active && styles.segmentLabelActive]}
+                numberOfLines={1}
+              >
                 {item.label}
               </Text>
             </Pressable>
@@ -385,6 +419,11 @@ export function RecordsStatementCenter({
 
       {segment === 'statements' ? (
         <MemberStatementsPanel
+          circleName={
+            resolvedCircleName === 'this circle'
+              ? 'this circle'
+              : resolvedCircleName
+          }
           index={index}
           loading={indexLoading}
           error={indexError}
@@ -431,7 +470,7 @@ export function RecordsStatementCenter({
         presentationStyle="pageSheet"
         onRequestClose={() => setPreviewOpen(false)}
       >
-        <View style={styles.modalRoot}>
+        <SafeAreaView style={styles.modalRoot} edges={['top', 'left', 'right', 'bottom']}>
           <View style={styles.modalHeader}>
             <Pressable
               onPress={() => setPreviewOpen(false)}
@@ -441,33 +480,47 @@ export function RecordsStatementCenter({
             >
               <FontAwesome name="close" size={18} color={colors.textStrong} />
             </Pressable>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalKicker}>STATEMENT PREVIEW</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.modalKicker}>Member Activity Statement</Text>
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {activeSubject?.displayName || 'Member'}
+              </Text>
+              <Text style={styles.modalSubtitle} numberOfLines={1}>
+                {resolvedCircleName === 'this circle' ? 'Circle' : resolvedCircleName}
               </Text>
             </View>
           </View>
 
           {previewLoading ? (
-            <View style={styles.centered}>
+            <View style={styles.stateCard}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.mutedCenter}>Loading backend snapshot…</Text>
+              <Text style={styles.stateTitle}>Loading statement</Text>
+              <Text style={styles.stateBody}>
+                Preparing a permission-filtered preview for this circle.
+              </Text>
             </View>
           ) : previewError ? (
-            <View style={styles.centered}>
-              <FontAwesome name="warning" size={28} color={colors.warning} />
-              <Text style={styles.errorText}>{previewError}</Text>
+            <View style={styles.stateCard}>
+              <View style={styles.stateIconWrap}>
+                <FontAwesome name="exclamation" size={18} color={colors.warning} />
+              </View>
+              <Text style={styles.stateTitle}>Could not load preview</Text>
+              <Text style={styles.stateBody}>{friendlyError(previewError)}</Text>
               <Pressable
                 style={styles.primaryBtn}
                 onPress={() => activeSubject && void openPreview(activeSubject)}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading statement"
               >
-                <Text style={styles.primaryBtnText}>Retry</Text>
+                <Text style={styles.primaryBtnText}>Try again</Text>
               </Pressable>
             </View>
           ) : snapshot ? (
             <>
-              <ScrollView contentContainerStyle={styles.previewScroll}>
+              <ScrollView
+                contentContainerStyle={styles.previewScroll}
+                showsVerticalScrollIndicator={false}
+              >
                 <PreviewBody snapshot={snapshot} />
               </ScrollView>
               <View style={styles.modalFooter}>
@@ -475,23 +528,37 @@ export function RecordsStatementCenter({
                   style={[styles.primaryBtn, pdfLoading && styles.btnDisabled]}
                   onPress={() => void downloadSharePdf()}
                   disabled={pdfLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download PDF"
+                  accessibilityState={{ busy: pdfLoading, disabled: pdfLoading }}
                 >
                   {pdfLoading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <>
                       <FontAwesome name="download" size={14} color="#fff" />
-                      <Text style={styles.primaryBtnText}>Download & share PDF</Text>
+                      <Text style={styles.primaryBtnText}>Download PDF</Text>
                     </>
                   )}
                 </Pressable>
+                <Pressable
+                  style={[styles.secondaryBtn, pdfLoading && styles.btnDisabled]}
+                  onPress={() => void downloadSharePdf()}
+                  disabled={pdfLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share PDF"
+                  accessibilityState={{ busy: pdfLoading, disabled: pdfLoading }}
+                >
+                  <FontAwesome name="share" size={14} color={colors.primary} />
+                  <Text style={styles.secondaryBtnText}>Share PDF</Text>
+                </Pressable>
                 <Text style={styles.footerHint}>
-                  PDF is generated by the backend from this permission-filtered snapshot.
+                  PDF uses the same backend snapshot shown above.
                 </Text>
               </View>
             </>
           ) : null}
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );
@@ -518,10 +585,10 @@ function CircleRecordsPanel({
     <View style={styles.panel}>
       <View style={styles.panelHeader}>
         <View style={styles.iconBubble}>
-          <FontAwesome name="line-chart" size={18} color={colors.primary} />
+          <FontAwesome name="line-chart" size={16} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.panelTitle}>{t('ledger:activity')}</Text>
+          <Text style={styles.panelTitle}>Circle activity</Text>
           <Text style={styles.panelSub}>
             {t('ledger:eventCount', { count: uniqueEntries.length })}
           </Text>
@@ -530,8 +597,13 @@ function CircleRecordsPanel({
 
       {uniqueEntries.length === 0 ? (
         <View style={styles.emptyBlock}>
-          <FontAwesome name="book" size={28} color={colors.subtle} />
+          <View style={styles.emptyIcon}>
+            <FontAwesome name="book" size={22} color={colors.subtle} />
+          </View>
           <Text style={styles.emptyTitle}>{t('ledger:empty')}</Text>
+          <Text style={styles.emptyBody}>
+            Contribution and payout activity for this circle will appear here.
+          </Text>
         </View>
       ) : (
         visibleEntries.map((entry, index) => (
@@ -540,25 +612,24 @@ function CircleRecordsPanel({
               <View
                 style={[
                   styles.ledgerIcon,
-                  { backgroundColor: `${ledgerIconColor(entry)}22` },
+                  { backgroundColor: `${ledgerIconColor(entry)}18` },
                 ]}
               >
-                <FontAwesome name="circle" size={10} color={ledgerIconColor(entry)} />
+                <FontAwesome name="circle" size={9} color={ledgerIconColor(entry)} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>
-                  {ledgerEventLabel(entry, t)}
-                </Text>
+                <Text style={styles.rowTitle}>{ledgerEventLabel(entry, t)}</Text>
                 <Text style={styles.rowMeta}>
                   {entryMemberName(entry, members)}
-                  {entryMemberName(entry, members) ? ' · ' : ''}
-                  {t('ledger:round', { round: entry.round || '—' })} ·{' '}
+                  {entryMemberName(entry, members) ? ' \u00B7 ' : ''}
+                  {t('ledger:round', { round: entry.round || '\u2014' })}
+                  {' \u00B7 '}
                   {entry.created_at || entry.at
                     ? formatRelativeDate(
                         entry.created_at || entry.at || '',
                         language,
                       )
-                    : '—'}
+                    : '\u2014'}
                 </Text>
               </View>
               {typeof entry.amount === 'number' ? (
@@ -574,7 +645,7 @@ function CircleRecordsPanel({
 
       {hasMore ? (
         <View style={styles.upgradeBox}>
-          <FontAwesome name="lock" size={20} color={colors.primary} />
+          <FontAwesome name="lock" size={18} color={colors.primary} />
           <Text style={styles.upgradeTitle}>{t('ledger:upgradeTitle')}</Text>
           <Text style={styles.upgradeBody}>
             {t('ledger:upgradeBody', { count: entries.length - 10 })}
@@ -583,16 +654,14 @@ function CircleRecordsPanel({
             style={styles.primaryBtn}
             onPress={() => router.push('/subscription')}
           >
-            <Text style={styles.primaryBtnText}>
-              {t('ledger:upgradeAction')}
-            </Text>
+            <Text style={styles.primaryBtnText}>{t('ledger:upgradeAction')}</Text>
           </Pressable>
         </View>
       ) : null}
 
-      <View style={styles.panelHeader}>
+      <View style={[styles.panelHeader, { marginTop: 12 }]}>
         <View style={styles.iconBubble}>
-          <FontAwesome name="credit-card" size={18} color={colors.primary} />
+          <FontAwesome name="credit-card" size={16} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.panelTitle}>{t('wallet:history')}</Text>
@@ -601,7 +670,9 @@ function CircleRecordsPanel({
       </View>
       {!wallet?.txns?.length ? (
         <View style={styles.emptyBlock}>
-          <FontAwesome name="exchange" size={28} color={colors.subtle} />
+          <View style={styles.emptyIcon}>
+            <FontAwesome name="exchange" size={22} color={colors.subtle} />
+          </View>
           <Text style={styles.emptyTitle}>{t('wallet:empty')}</Text>
         </View>
       ) : (
@@ -633,7 +704,7 @@ function CircleRecordsPanel({
               </View>
               <Text style={styles.rowAmount}>
                 {amount == null
-                  ? '—'
+                  ? '\u2014'
                   : formatCurrency(amount, language, 'USD', 2)}
               </Text>
             </View>
@@ -645,6 +716,7 @@ function CircleRecordsPanel({
 }
 
 function MemberStatementsPanel({
+  circleName,
   index,
   loading,
   error,
@@ -657,6 +729,7 @@ function MemberStatementsPanel({
   onPeriodTo,
   onOpenPreview,
 }: {
+  circleName: string;
   index: MemberStatementsIndex | null;
   loading: boolean;
   error: string | null;
@@ -669,16 +742,22 @@ function MemberStatementsPanel({
   onPeriodTo: (value: string) => void;
   onOpenPreview: (row: MemberStatementIndexRow) => void;
 }) {
+  const customIncomplete =
+    periodMode === 'custom' && (!periodFrom.trim() || !periodTo.trim());
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelHeader}>
-        <View style={styles.iconBubble}>
-          <FontAwesome name="file-text-o" size={16} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.panelTitle}>Member statements</Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.panelTitle}>Member Statements</Text>
           <Text style={styles.panelSub}>
-            One row per connected member · hands stay separate on the statement
+            View contribution and payout activity for members of {circleName}.
+            {'\n'}
+            Each statement is limited to this circle.
+          </Text>
+          <Text style={styles.panelHint}>
+            One row per connected member. Each hand remains a separate financial
+            position in the statement.
           </Text>
         </View>
         <Pressable
@@ -692,7 +771,7 @@ function MemberStatementsPanel({
       </View>
 
       <View style={styles.periodCard}>
-        <Text style={styles.periodLabel}>Statement period</Text>
+        <Text style={styles.periodLabel}>Period</Text>
         <View style={styles.periodToggleRow}>
           <Pressable
             style={[
@@ -700,6 +779,9 @@ function MemberStatementsPanel({
               periodMode === 'full_circle' && styles.periodToggleActive,
             ]}
             onPress={() => onPeriodMode('full_circle')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: periodMode === 'full_circle' }}
+            accessibilityLabel="Full circle period"
           >
             <Text
               style={[
@@ -716,6 +798,9 @@ function MemberStatementsPanel({
               periodMode === 'custom' && styles.periodToggleActive,
             ]}
             onPress={() => onPeriodMode('custom')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: periodMode === 'custom' }}
+            accessibilityLabel="Custom range period"
           >
             <Text
               style={[
@@ -727,65 +812,104 @@ function MemberStatementsPanel({
             </Text>
           </Pressable>
         </View>
-        {periodMode === 'custom' ? (
-          <View style={styles.dateRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.dateLabel}>From</Text>
-              <TextInput
-                value={periodFrom}
-                onChangeText={onPeriodFrom}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.subtle}
-                autoCapitalize="none"
-                style={styles.dateInput}
-              />
+        {periodMode === 'full_circle' ? (
+          <Text style={styles.periodHelper}>
+            Includes all available activity in this circle.
+          </Text>
+        ) : (
+          <>
+            <View style={styles.dateRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>From</Text>
+                <TextInput
+                  value={periodFrom}
+                  onChangeText={onPeriodFrom}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.subtle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.dateInput}
+                  accessibilityLabel="Period from date"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>To</Text>
+                <TextInput
+                  value={periodTo}
+                  onChangeText={onPeriodTo}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.subtle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.dateInput}
+                  accessibilityLabel="Period to date"
+                />
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.dateLabel}>To</Text>
-              <TextInput
-                value={periodTo}
-                onChangeText={onPeriodTo}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.subtle}
-                autoCapitalize="none"
-                style={styles.dateInput}
-              />
-            </View>
-          </View>
-        ) : null}
+            {customIncomplete ? (
+              <Text style={styles.periodWarning}>
+                Enter both from and to dates to open a statement.
+              </Text>
+            ) : (
+              <Text style={styles.periodHelper}>
+                Filters activity in this circle to the selected dates.
+              </Text>
+            )}
+          </>
+        )}
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
+        <View style={styles.stateCardCompact}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mutedCenter}>Loading members from backend…</Text>
+          <Text style={styles.stateTitle}>Loading members</Text>
+          <Text style={styles.stateBody}>Fetching statement subjects for this circle.</Text>
+          <View style={styles.skeletonList}>
+            <View style={styles.skeletonRow} />
+            <View style={styles.skeletonRow} />
+            <View style={[styles.skeletonRow, { width: '78%' }]} />
+          </View>
         </View>
       ) : error ? (
-        <View style={styles.centered}>
-          <FontAwesome name="warning" size={24} color={colors.warning} />
-          <Text style={styles.errorText}>{error}</Text>
-          <Pressable style={styles.primaryBtn} onPress={onRetry}>
+        <View style={styles.stateCardCompact}>
+          <View style={styles.stateIconWrap}>
+            <FontAwesome name="exclamation" size={16} color={colors.warning} />
+          </View>
+          <Text style={styles.stateTitle}>Could not load members</Text>
+          <Text style={styles.stateBody}>{friendlyError(error)}</Text>
+          <Pressable
+            style={styles.primaryBtn}
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading members"
+          >
             <Text style={styles.primaryBtnText}>Retry</Text>
           </Pressable>
         </View>
       ) : !index || (index.members.length === 0 && index.unclaimedHands.length === 0) ? (
         <View style={styles.emptyBlock}>
-          <Text style={styles.emptyTitle}>No statement subjects yet</Text>
+          <View style={styles.emptyIcon}>
+            <FontAwesome name="users" size={22} color={colors.subtle} />
+          </View>
+          <Text style={styles.emptyTitle}>No members to show yet</Text>
           <Text style={styles.emptyBody}>
-            Connected members will appear here once memberships are available.
+            Connected members of this circle will appear here when memberships are
+            available.
           </Text>
         </View>
       ) : (
-        <>
+        <View style={styles.memberList}>
           {index.members.map((row) => (
             <MemberRow key={row.subjectKey} row={row} onPress={() => onOpenPreview(row)} />
           ))}
 
           {index.unclaimedHands.length > 0 ? (
             <View style={styles.unclaimedSection}>
-              <Text style={styles.unclaimedTitle}>Unclaimed planned hands</Text>
+              <Text style={styles.unclaimedTitle}>Unclaimed hands</Text>
               <Text style={styles.unclaimedSub}>
-                Kept separate from connected memberships
+                Planned hands that have not yet been connected to a member.
               </Text>
               {index.unclaimedHands.map((row) => (
                 <MemberRow
@@ -797,7 +921,7 @@ function MemberStatementsPanel({
               ))}
             </View>
           ) : null}
-        </>
+        </View>
       )}
     </View>
   );
@@ -813,40 +937,48 @@ function MemberRow({
   unclaimed?: boolean;
 }) {
   const initials = getInitials(row.displayName);
+  const contextLabel = memberContextLabel(row, Boolean(unclaimed));
   return (
-    <View style={[styles.memberRow, unclaimed && styles.memberRowUnclaimed]}>
+    <Pressable
+      style={[styles.memberRow, unclaimed && styles.memberRowUnclaimed]}
+      onPress={onPress}
+      disabled={!row.canRequestStatement}
+      accessibilityRole="button"
+      accessibilityLabel={`Open statement for ${row.displayName}`}
+      accessibilityHint="Opens the statement preview"
+      accessibilityState={{ disabled: !row.canRequestStatement }}
+    >
       <View style={[styles.avatar, unclaimed && styles.avatarUnclaimed]}>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
-          {row.displayName}
-        </Text>
-        <Text style={styles.rowMeta}>
-          {row.handCount} hand{row.handCount === 1 ? '' : 's'}
-          {row.roleSummary ? ` · ${row.roleSummary}` : ''}
-          {row.membershipStatus ? ` · ${row.membershipStatus}` : ''}
-        </Text>
-        <View style={styles.totalsRow}>
-          <Text style={styles.totalChip}>
-            In {displayMoney(row.totals.contributedDisplay)}
-          </Text>
-          <Text style={styles.totalChip}>
-            Out {displayMoney(row.totals.receivedDisplay)}
-          </Text>
+      <View style={styles.memberBody}>
+        <View style={styles.memberHeadingRow}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.memberName} numberOfLines={1}>
+              {row.displayName}
+            </Text>
+            <Text style={styles.rowMeta}>{contextLabel}</Text>
+          </View>
+          <View style={styles.rowChevron}>
+            <FontAwesome name="chevron-right" size={13} color={colors.subtle} />
+          </View>
+        </View>
+        <View style={styles.totalsList}>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Contributed</Text>
+            <Text style={styles.totalValue}>
+              {displayMoney(row.totals.contributedDisplay)}
+            </Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Received</Text>
+            <Text style={styles.totalValue}>
+              {displayMoney(row.totals.receivedDisplay)}
+            </Text>
+          </View>
         </View>
       </View>
-      <Pressable
-        style={[styles.statementBtn, !row.canRequestStatement && styles.btnDisabled]}
-        onPress={onPress}
-        disabled={!row.canRequestStatement}
-        accessibilityRole="button"
-        accessibilityLabel={`Open statement for ${row.displayName}`}
-      >
-        <FontAwesome name="file-text-o" size={12} color="#fff" />
-        <Text style={styles.statementBtnText}>Statement</Text>
-      </Pressable>
-    </View>
+    </Pressable>
   );
 }
 
@@ -870,13 +1002,11 @@ function DocumentsPanel({
   return (
     <View style={styles.panel}>
       <View style={styles.panelHeader}>
-        <View style={styles.iconBubble}>
-          <FontAwesome name="folder-o" size={16} color={colors.primary} />
-        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.panelTitle}>Documents</Text>
           <Text style={styles.panelSub}>
-            Backend-stored statements · re-download from frozen snapshot
+            Previously generated statements for this circle. Re-download from the
+            frozen snapshot.
           </Text>
         </View>
         <Pressable
@@ -890,25 +1020,27 @@ function DocumentsPanel({
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
+        <View style={styles.stateCardCompact}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mutedCenter}>Loading documents…</Text>
+          <Text style={styles.stateTitle}>Loading documents</Text>
         </View>
       ) : error ? (
-        <View style={styles.centered}>
-          <FontAwesome name="warning" size={24} color={colors.warning} />
-          <Text style={styles.errorText}>{error}</Text>
+        <View style={styles.stateCardCompact}>
+          <Text style={styles.stateTitle}>Could not load documents</Text>
+          <Text style={styles.stateBody}>{friendlyError(error)}</Text>
           <Pressable style={styles.primaryBtn} onPress={onRefresh}>
             <Text style={styles.primaryBtnText}>Retry</Text>
           </Pressable>
         </View>
       ) : documents.length === 0 ? (
         <View style={styles.emptyBlock}>
-          <FontAwesome name="folder-open-o" size={28} color={colors.subtle} />
+          <View style={styles.emptyIcon}>
+            <FontAwesome name="folder-open-o" size={22} color={colors.subtle} />
+          </View>
           <Text style={styles.emptyTitle}>No documents yet</Text>
           <Text style={styles.emptyBody}>
             When you download a Member Circle Statement PDF, CircuSave stores a
-            permission-filtered snapshot on the server so you can re-download it later.
+            permission-filtered snapshot so you can re-download it later.
           </Text>
           <Pressable style={styles.primaryBtn} onPress={onGoStatements}>
             <Text style={styles.primaryBtnText}>Open Member Statements</Text>
@@ -917,37 +1049,72 @@ function DocumentsPanel({
       ) : (
         documents.map((doc) => (
           <View key={doc.id} style={styles.docRow}>
-            <View style={styles.iconBubble}>
+            <View style={styles.docIcon}>
               <FontAwesome name="file-pdf-o" size={16} color={colors.primary} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.rowTitle} numberOfLines={1}>
+              <Text style={styles.memberName} numberOfLines={1}>
                 {doc.memberDisplayName || 'Member'}
               </Text>
-              <Text style={styles.rowMeta}>
-                {doc.statementReference}
-                {'\n'}
-                {doc.period?.label || 'Unavailable'} ·{' '}
+              <Text style={styles.rowMeta} numberOfLines={2}>
+                {doc.period?.label || 'Unavailable'}
+                {' \u00B7 '}
                 {formatRelativeDays(doc.generatedAt)}
+              </Text>
+              <Text style={styles.docReference} numberOfLines={1}>
+                {doc.statementReference}
               </Text>
             </View>
             <Pressable
-              style={[styles.statementBtn, sharingDocId === doc.id && styles.btnDisabled]}
+              style={[
+                styles.docShareBtn,
+                sharingDocId === doc.id && styles.btnDisabled,
+              ]}
               onPress={() => onShare(doc)}
               disabled={sharingDocId === doc.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Share statement for ${doc.memberDisplayName || 'member'}`}
             >
               {sharingDocId === doc.id ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.primary} size="small" />
               ) : (
-                <>
-                  <FontAwesome name="share" size={12} color="#fff" />
-                  <Text style={styles.statementBtnText}>Share</Text>
-                </>
+                <FontAwesome name="share" size={14} color={colors.primary} />
               )}
             </Pressable>
           </View>
         ))
       )}
+    </View>
+  );
+}
+
+function ExpandableSection({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={styles.expandCard}>
+      <Pressable
+        style={styles.expandHeader}
+        onPress={() => setOpen((value) => !value)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={title}
+      >
+        <Text style={styles.expandTitle}>{title}</Text>
+        <FontAwesome
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={12}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open ? <View style={styles.expandBody}>{children}</View> : null}
     </View>
   );
 }
@@ -958,219 +1125,360 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
     [snapshot.ledger],
   );
 
+  const memberName = snapshot.member.displayName || 'Member';
+  const circleLabel = snapshot.circle.name || 'Circle';
+  const periodLabel = snapshot.period.label || 'Unavailable';
+  const handCount = snapshot.circleParticipation.memberHandCount;
+  const statementId = shortStatementId(snapshot.statementReference);
+
+  const allReceivedPayouts = useMemo(
+    () =>
+      snapshot.hands.flatMap((hand) =>
+        (hand.payouts.received || []).map((payout) => ({
+          ...payout,
+          handLabel: hand.displayLabel,
+        })),
+      ),
+    [snapshot.hands],
+  );
+
   return (
-    <View>
+    <View style={styles.previewRoot}>
       <View style={styles.previewHero}>
-        <Text style={styles.previewBrand}>CIRCUSAVE · AI SUSU</Text>
-        <Text style={styles.previewTitle}>{snapshot.title}</Text>
+        <Text style={styles.previewBrand}>CircuSave</Text>
+        <Text style={styles.previewTitle}>Member Activity Statement</Text>
+        <Text style={styles.previewMember}>{memberName}</Text>
+        <Text style={styles.previewMetaLine}>{circleLabel}</Text>
         <Text style={styles.previewDisclaimer}>
           {snapshot.verification.disclaimer ||
-            'Not a bank statement, tax document, legal certification, or proof of income.'}
+            'For CircuSave activity tracking only. Not a bank, tax, legal, or income document.'}
         </Text>
       </View>
 
-      <InfoGrid
-        rows={[
-          ['Circle', snapshot.circle.name || 'Unavailable'],
-          ['Member', snapshot.member.displayName || 'Unavailable'],
-          ['Status', snapshot.member.membershipStatus || 'Unavailable'],
-          ['Period', snapshot.period.label || 'Unavailable'],
-          ['Generated', snapshot.generatedAt || 'Unavailable'],
-          ['Reference', snapshot.statementReference || 'Unavailable'],
-          [
-            'Contribution',
-            displayMoney(snapshot.circle.contributionAmountDisplay),
-          ],
-          ['Frequency', snapshot.circle.frequency || 'Unavailable'],
-          [
-            'Hands / rounds',
-            `${snapshot.circleParticipation.totalParticipatingHands} hands · ${snapshot.circleParticipation.totalRounds} rounds`,
-          ],
-          ['Member hands', String(snapshot.circleParticipation.memberHandCount)],
-        ]}
-      />
-
-      <Text style={styles.sectionLabel}>Member totals</Text>
-      <InfoGrid
-        rows={[
-          ['Contributed', displayMoney(snapshot.memberTotals.totalContributedDisplay)],
-          ['Received', displayMoney(snapshot.memberTotals.totalReceivedDisplay)],
-          [
-            'Remaining',
-            displayMoney(snapshot.memberTotals.remainingObligationsDisplay),
-          ],
-        ]}
-      />
-
-      <Text style={styles.sectionLabel}>Hand details</Text>
-      <Text style={styles.sectionHint}>
-        Each hand is listed separately. Positions are never merged.
-      </Text>
-      {snapshot.hands.map((hand) => (
-        <View key={hand.handId} style={styles.handCard}>
-          <Text style={styles.handTitle}>{hand.displayLabel}</Text>
-          <Text style={styles.rowMeta}>
-            Payout position:{' '}
-            {hand.payoutPosition === 'Unavailable'
-              ? 'Unavailable'
-              : String(hand.payoutPosition)}
-            {hand.isParticipating ? '' : ' · not participating'}
-          </Text>
-          <InfoGrid
-            compact
-            rows={[
-              ['Expected', displayMoney(hand.contributions.expectedDisplay)],
-              ['Confirmed', displayMoney(hand.contributions.confirmedDisplay)],
-              ['Pending', displayMoney(hand.contributions.pendingDisplay)],
-              ['Missed', displayMoney(hand.contributions.missedDisplay)],
-              ['Rejected', displayMoney(hand.contributions.rejectedDisplay)],
-              ['Received', displayMoney(hand.payouts.receivedDisplay)],
-              ['Remaining', displayMoney(hand.remainingObligationsDisplay)],
-            ]}
-          />
-          {(hand.contributions.byRound || []).length > 0 ? (
-            <>
-              <Text style={styles.miniLabel}>Rounds</Text>
-              {hand.contributions.byRound.map((r) => (
-                <Text key={r.contributionId} style={styles.roundLine}>
-                  R{r.roundNumber} · {r.status} · {displayMoney(r.paidDisplay)} /{' '}
-                  {displayMoney(r.expectedDisplay)}
-                </Text>
-              ))}
-            </>
-          ) : null}
-          {(hand.payouts.scheduled || []).length > 0 ? (
-            <>
-              <Text style={styles.miniLabel}>Scheduled payouts</Text>
-              {hand.payouts.scheduled.map((s) => (
-                <Text key={`sch-${hand.handId}-${s.roundNumber}`} style={styles.roundLine}>
-                  R{s.roundNumber} · {s.status} · {displayMoney(s.amountDisplay)}
-                </Text>
-              ))}
-            </>
-          ) : null}
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryCardTitle}>Summary</Text>
+        <View style={styles.summaryMetrics}>
+          <View style={styles.summaryMetric}>
+            <Text style={styles.summaryMetricLabel}>Contributed</Text>
+            <Text style={styles.summaryMetricValue}>
+              {displayMoney(snapshot.memberTotals.totalContributedDisplay)}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryMetric}>
+            <Text style={styles.summaryMetricLabel}>Received</Text>
+            <Text style={styles.summaryMetricValue}>
+              {displayMoney(snapshot.memberTotals.totalReceivedDisplay)}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryMetric}>
+            {/* Outstanding = remainingObligations* presentation label only */}
+            <Text style={styles.summaryMetricLabel}>Outstanding</Text>
+            <Text style={styles.summaryMetricValue}>
+              {displayMoney(snapshot.memberTotals.remainingObligationsDisplay)}
+            </Text>
+          </View>
         </View>
-      ))}
+      </View>
 
-      <Text style={styles.sectionLabel}>Ledger history</Text>
-      {uniqueLedgerEntries.length === 0 ? (
-        <Text style={styles.sectionHint}>No related ledger entries for this period.</Text>
+      <View style={styles.metaCard}>
+        <MetaLine label="Circle" value={circleLabel} />
+        <MetaLine label="Member" value={memberName} />
+        <MetaLine label="Statement period" value={periodLabel} />
+        <MetaLine
+          label="Membership status"
+          value={humanizeStatus(snapshot.member.membershipStatus)}
+        />
+        <MetaLine
+          label="Hands"
+          value={`${handCount} hand${handCount === 1 ? '' : 's'}`}
+          last
+        />
+      </View>
+
+      <Text style={styles.sectionLabel}>Hands</Text>
+      <Text style={styles.sectionHint}>
+        Each hand is a separate financial position. Positions are never merged.
+      </Text>
+      {snapshot.hands.map((hand, handIndex) => {
+        const nextDue = nextContributionDue(hand.contributions.byRound);
+        const nextPayout = nextScheduledPayout(hand.payouts.scheduled);
+        return (
+          <View key={hand.handId} style={styles.handCard}>
+            <View style={styles.handHeader}>
+              <Text style={styles.handTitle} numberOfLines={2}>
+                Hand {hand.handNumber || handIndex + 1}
+              </Text>
+              <View style={styles.positionBadge}>
+                <Text style={styles.positionBadgeText}>
+                  Payout position{' '}
+                  {hand.payoutPosition === 'Unavailable'
+                    ? '\u2014'
+                    : String(hand.payoutPosition)}
+                </Text>
+              </View>
+            </View>
+            {hand.displayLabel ? (
+              <Text style={styles.rowMeta} numberOfLines={1}>
+                {hand.displayLabel}
+              </Text>
+            ) : null}
+            {!hand.isParticipating ? (
+              <Text style={styles.rowMeta}>Not participating</Text>
+            ) : null}
+
+            <View style={styles.handMetrics}>
+              <Metric
+                label="Confirmed contributions"
+                value={displayMoney(hand.contributions.confirmedDisplay)}
+              />
+              <Metric
+                label="Pending contributions"
+                value={displayMoney(hand.contributions.pendingDisplay)}
+              />
+              <Metric label="Missed" value={displayMoney(hand.contributions.missedDisplay)} />
+              <Metric
+                label="Rejected"
+                value={displayMoney(hand.contributions.rejectedDisplay)}
+              />
+              <Metric
+                label="Payouts received"
+                value={displayMoney(hand.payouts.receivedDisplay)}
+              />
+              <Metric
+                label="Outstanding"
+                value={displayMoney(hand.remainingObligationsDisplay)}
+              />
+            </View>
+
+            {nextPayout ? (
+              <Text style={styles.nextLine}>
+                Next scheduled payout: Round {nextPayout.roundNumber}
+                {' \u00B7 '}
+                {displayMoney(nextPayout.amountDisplay)}
+                {nextPayout.dueDate
+                  ? ` \u00B7 ${formatDisplayDate(nextPayout.dueDate)}`
+                  : ''}
+              </Text>
+            ) : null}
+            {nextDue ? (
+              <Text style={styles.nextLine}>
+                Next contribution due: Round {nextDue.roundNumber}
+                {' \u00B7 '}
+                {displayMoney(nextDue.expectedDisplay)}
+                {nextDue.dueDate ? ` \u00B7 ${formatDisplayDate(nextDue.dueDate)}` : ''}
+              </Text>
+            ) : null}
+
+            {(hand.contributions.byRound || []).length > 0 ? (
+              <>
+                <Text style={styles.miniLabel}>Contribution history</Text>
+                {hand.contributions.byRound.map((r) => (
+                  <View key={r.contributionId} style={styles.roundRow}>
+                    <Text style={styles.roundTitle}>Round {r.roundNumber}</Text>
+                    <Text style={styles.roundMeta}>
+                      {humanizeStatus(r.status)}
+                    </Text>
+                    <Text style={styles.roundAmount}>
+                      {displayMoney(r.paidDisplay)}
+                      {r.status !== 'confirmed'
+                        ? ` of ${displayMoney(r.expectedDisplay)}`
+                        : ''}
+                    </Text>
+                    <Text style={styles.roundMeta}>
+                      {formatDisplayDate(
+                        r.confirmedAt || r.submittedAt || r.dueDate,
+                      )}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            ) : null}
+          </View>
+        );
+      })}
+
+      <Text style={styles.sectionLabel}>Payout history</Text>
+      {allReceivedPayouts.length === 0 ? (
+        <View style={styles.emptyInline}>
+          <Text style={styles.emptyTitle}>No payouts received yet</Text>
+          <Text style={styles.emptyBody}>
+            Payouts for this member in this circle will appear here when posted.
+          </Text>
+        </View>
       ) : (
-        uniqueLedgerEntries.slice(0, 50).map((entry, index) => (
-          <View key={statementLedgerRenderKey(entry, index)} style={styles.ledgerPreviewRow}>
-            <Text style={styles.rowTitle}>{entry.eventType}</Text>
-            <Text style={styles.rowMeta}>
-              {entry.at || '—'} · R{entry.roundNumber ?? '—'} ·{' '}
-              {displayMoney(entry.amountDisplay)}
-              {'\n'}
-              Ref {entry.reference}
+        allReceivedPayouts.map((payout) => (
+          <View key={payout.payoutId} style={styles.roundRow}>
+            <Text style={styles.roundTitle}>
+              {payout.roundNumber != null
+                ? `Round ${payout.roundNumber}`
+                : 'Payout'}
+            </Text>
+            <Text style={styles.roundMeta}>
+              {humanizeStatus(payout.status)}
+              {' \u00B7 '}
+              {payout.handLabel}
+            </Text>
+            <Text style={styles.roundAmount}>
+              {displayMoney(payout.amountDisplay)}
+            </Text>
+            <Text style={styles.roundMeta}>
+              {formatDisplayDate(payout.paidAt)}
             </Text>
           </View>
         ))
       )}
 
-      <Text style={styles.sectionLabel}>Verification</Text>
-      <Text style={styles.sectionHint}>
-        Source: {snapshot.verification.dataSource}
-        {snapshot.verification.contentFingerprint
-          ? ` · ${snapshot.verification.contentFingerprint}`
-          : ''}
-      </Text>
-      <Text style={styles.sectionHint}>{snapshot.verification.footerText}</Text>
+      <ExpandableSection title="Activity details">
+        {uniqueLedgerEntries.length === 0 ? (
+          <Text style={styles.sectionHint}>
+            No related activity for this period.
+          </Text>
+        ) : (
+          uniqueLedgerEntries.slice(0, 50).map((entry, index) => (
+            <View
+              key={statementLedgerRenderKey(entry, index)}
+              style={styles.ledgerPreviewRow}
+            >
+              <Text style={styles.rowTitle}>
+                {humanizeEventType(entry.eventType)}
+              </Text>
+              <Text style={styles.rowMeta}>
+                {formatDisplayDateTime(entry.at)}
+                {entry.roundNumber != null ? ` \u00B7 Round ${entry.roundNumber}` : ''}
+                {' \u00B7 '}
+                {displayMoney(entry.amountDisplay)}
+              </Text>
+            </View>
+          ))
+        )}
+      </ExpandableSection>
+
+      <ExpandableSection title="Statement verification">
+        <Text style={styles.sectionHint}>
+          Statement ID: {statementId}
+        </Text>
+        <Text style={styles.sectionHint}>
+          Generated: {formatDisplayDateTime(snapshot.generatedAt)}
+        </Text>
+        <Text style={styles.sectionHint}>
+          Source: {snapshot.verification.dataSource || 'backend_snapshot'}
+        </Text>
+        {snapshot.verification.contentFingerprint ? (
+          <Text style={styles.sectionHint}>
+            Fingerprint: {snapshot.verification.contentFingerprint}
+          </Text>
+        ) : null}
+        <Text style={styles.sectionHint}>
+          Full reference: {snapshot.statementReference || 'Unavailable'}
+        </Text>
+        <Text style={styles.sectionHint}>
+          {snapshot.verification.footerText ||
+            'Verified against CircuSave backend records for this circle.'}
+        </Text>
+      </ExpandableSection>
     </View>
   );
 }
 
-function InfoGrid({
-  rows,
-  compact,
+function MetaLine({
+  label,
+  value,
+  last,
 }: {
-  rows: Array<[string, string]>;
-  compact?: boolean;
+  label: string;
+  value: string;
+  last?: boolean;
 }) {
   return (
-    <View style={[styles.infoGrid, compact && styles.infoGridCompact]}>
-      {rows.map(([label, value]) => (
-        <View key={label} style={styles.infoRow}>
-          <Text style={styles.infoLabel}>{label}</Text>
-          <Text style={styles.infoValue}>{value}</Text>
-        </View>
-      ))}
+    <View style={[styles.metaLine, last && styles.metaLineLast]}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metricCell}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    gap: 14,
+    gap: 16,
   },
-  hero: {
+  pageHeader: {
+    backgroundColor: colors.card,
     borderRadius: radii.card,
-    padding: 18,
-    backgroundColor: '#0B1020',
-    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2E1065',
+    borderColor: colors.cardBorder,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 4,
   },
-  heroGlow: {
-    position: 'absolute',
-    top: -40,
-    right: -20,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: '#7C3AED55',
-  },
-  heroKicker: {
-    color: '#C4B5FD',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  heroTitle: {
-    color: '#F8FAFC',
+  pageTitle: {
     fontSize: 26,
     fontWeight: '900',
-    marginTop: 6,
+    color: colors.textStrong,
+    letterSpacing: -0.4,
   },
-  heroSub: {
-    color: '#CBD5E1',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  heroDisclaimer: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginTop: 10,
-    lineHeight: 15,
-  },
-  segmentRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  segmentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-  },
-  segmentChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  segmentText: {
-    fontSize: 12,
-    fontWeight: '800',
+  pageCircleName: {
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.primaryDark,
+    marginTop: 2,
   },
-  segmentTextActive: {
-    color: '#fff',
+  pageSubtitle: {
+    fontSize: 14,
+    color: colors.muted,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  pageDisclaimer: {
+    fontSize: 11,
+    color: colors.subtle,
+    marginTop: 10,
+    lineHeight: 16,
+  },
+  segmentControl: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF2F7',
+    borderRadius: 14,
+    padding: 4,
+    gap: 2,
+  },
+  segmentItem: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  segmentItemActive: {
+    backgroundColor: colors.card,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  segmentLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.muted,
+    textAlign: 'center',
+  },
+  segmentLabelActive: {
+    color: colors.textStrong,
   },
   panel: {
     backgroundColor: colors.card,
@@ -1178,23 +1486,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
     padding: 16,
-    gap: 10,
+    gap: 12,
   },
   panelHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
-    marginBottom: 4,
   },
   refreshBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconBubble: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1202,28 +1501,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   panelTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '900',
     color: colors.textStrong,
+    letterSpacing: -0.2,
   },
   panelSub: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.muted,
-    marginTop: 2,
+    marginTop: 4,
+    lineHeight: 19,
+  },
+  panelHint: {
+    fontSize: 12,
+    color: colors.subtle,
+    marginTop: 8,
+    lineHeight: 17,
   },
   periodCard: {
     backgroundColor: '#F8FAFC',
     borderRadius: 16,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: '#E8EEF5',
     gap: 10,
   },
   periodLabel: {
     fontSize: 12,
     fontWeight: '800',
     color: colors.textStrong,
+    letterSpacing: 0.2,
   },
   periodToggleRow: {
     flexDirection: 'row',
@@ -1231,16 +1547,18 @@ const styles = StyleSheet.create({
   },
   periodToggle: {
     flex: 1,
+    minHeight: 42,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.cardBorder,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   periodToggleActive: {
     backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
+    borderColor: colors.primaryBorder,
   },
   periodToggleText: {
     fontSize: 13,
@@ -1250,6 +1568,17 @@ const styles = StyleSheet.create({
   periodToggleTextActive: {
     color: colors.primaryDark,
   },
+  periodHelper: {
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 17,
+  },
+  periodWarning: {
+    fontSize: 12,
+    color: colors.warning,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
   dateRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1258,44 +1587,74 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: colors.muted,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   dateInput: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.cardBorder,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 14,
     color: colors.textStrong,
+    minHeight: 46,
+  },
+  memberList: {
+    gap: 10,
   },
   memberRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    alignItems: 'flex-start',
+    gap: 12,
+    minHeight: 48,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E8EEF5',
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
   },
   memberRowUnclaimed: {
-    opacity: 0.95,
+    backgroundColor: '#F8FAFC',
+    borderStyle: 'dashed',
   },
   avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarUnclaimed: {
-    backgroundColor: '#64748B',
+    backgroundColor: '#94A3B8',
   },
   avatarText: {
     color: '#fff',
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 13,
+  },
+  memberBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  memberHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  rowChevron: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -2,
+    marginRight: -4,
+  },
+  memberName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textStrong,
   },
   rowTitle: {
     fontSize: 14,
@@ -1308,52 +1667,47 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 16,
   },
-  totalsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  totalsList: {
     gap: 6,
-    marginTop: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
-  totalChip: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primaryDark,
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  statementBtn: {
+  totalRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radii.pill,
+    gap: 16,
   },
-  statementBtnText: {
-    color: '#fff',
-    fontSize: 12,
+  totalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  totalValue: {
+    fontSize: 14,
     fontWeight: '800',
+    color: colors.textStrong,
+    textAlign: 'right',
   },
   unclaimedSection: {
     marginTop: 8,
-    paddingTop: 8,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    gap: 4,
+    borderTopColor: '#E8EEF5',
+    gap: 10,
   },
   unclaimedTitle: {
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '800',
     color: colors.textStrong,
   },
   unclaimedSub: {
     fontSize: 12,
     color: colors.muted,
-    marginBottom: 4,
+    lineHeight: 17,
+    marginBottom: 2,
   },
   ledgerRow: {
     flexDirection: 'row',
@@ -1371,6 +1725,7 @@ const styles = StyleSheet.create({
   rowAmount: {
     fontSize: 14,
     fontWeight: '800',
+    color: colors.textStrong,
   },
   divider: {
     height: 1,
@@ -1400,39 +1755,83 @@ const styles = StyleSheet.create({
     paddingVertical: 28,
     gap: 8,
   },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
   emptyTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: colors.muted,
+    color: colors.textStrong,
   },
   emptyBody: {
     fontSize: 13,
-    color: colors.subtle,
+    color: colors.muted,
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 19,
     paddingHorizontal: 12,
   },
-  centered: {
+  stateCard: {
+    margin: spacing.screenX,
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 24,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 28,
     gap: 10,
   },
-  mutedCenter: {
+  stateCardCompact: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8EEF5',
+    padding: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  stateIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.warningSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stateTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textStrong,
+    textAlign: 'center',
+  },
+  stateBody: {
     fontSize: 13,
     color: colors.muted,
-  },
-  errorText: {
-    fontSize: 13,
-    color: colors.danger,
     textAlign: 'center',
-    paddingHorizontal: 16,
+    lineHeight: 19,
+  },
+  skeletonList: {
+    width: '100%',
+    gap: 8,
+    marginTop: 8,
+  },
+  skeletonRow: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#E2E8F0',
+    width: '100%',
   },
   primaryBtn: {
     marginTop: 4,
+    minHeight: 48,
     backgroundColor: colors.primary,
     borderRadius: radii.pill,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1450,10 +1849,31 @@ const styles = StyleSheet.create({
   docRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
+    gap: 12,
+    paddingVertical: 14,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
+  },
+  docIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docReference: {
+    fontSize: 11,
+    color: colors.subtle,
+    marginTop: 2,
+  },
+  docShareBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalRoot: {
     flex: 1,
@@ -1468,7 +1888,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
   },
   modalClose: {
     width: 40,
@@ -1480,25 +1900,98 @@ const styles = StyleSheet.create({
   },
   modalKicker: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.primary,
-    letterSpacing: 1,
+    letterSpacing: 0.3,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '900',
     color: colors.textStrong,
   },
+  modalSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+    marginTop: 1,
+  },
+  secondaryBtn: {
+    minHeight: 48,
+    borderRadius: radii.pill,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  secondaryBtnText: {
+    color: colors.primaryDark,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  expandCard: {
+    marginTop: 12,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    overflow: 'hidden',
+  },
+  expandHeader: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  expandTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  expandBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  nextLine: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryDark,
+    lineHeight: 17,
+  },
+  roundAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+    marginTop: 2,
+  },
+  emptyInline: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E8EEF5',
+    padding: 16,
+    gap: 6,
+    marginBottom: 8,
+  },
   previewScroll: {
     padding: spacing.screenX,
     paddingBottom: 40,
-    gap: 12,
   },
   modalFooter: {
     padding: spacing.screenX,
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     gap: 8,
   },
   footerHint: {
@@ -1506,34 +1999,137 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
   },
+  previewRoot: {
+    gap: 4,
+  },
   previewHero: {
-    backgroundColor: '#0B1020',
+    backgroundColor: colors.card,
     borderRadius: 18,
-    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 18,
     marginBottom: 12,
   },
   previewBrand: {
-    color: '#C4B5FD',
-    fontSize: 11,
+    color: colors.primary,
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 1,
+    letterSpacing: 0.6,
   },
   previewTitle: {
-    color: '#F8FAFC',
-    fontSize: 18,
+    color: colors.textStrong,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  previewMember: {
+    color: colors.textStrong,
+    fontSize: 24,
     fontWeight: '900',
+    marginTop: 4,
+    letterSpacing: -0.3,
+  },
+  previewMetaLine: {
+    color: colors.muted,
+    fontSize: 13,
     marginTop: 6,
+    lineHeight: 18,
   },
   previewDisclaimer: {
-    color: '#94A3B8',
+    color: colors.subtle,
     fontSize: 11,
-    marginTop: 8,
-    lineHeight: 15,
+    marginTop: 12,
+    lineHeight: 16,
+  },
+  summaryCard: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  summaryCardTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primaryDark,
+    marginBottom: 12,
+    letterSpacing: 0.3,
+  },
+  summaryMetrics: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  summaryMetric: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryMetricLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  summaryMetricValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  summaryDivider: {
+    width: 1,
+    backgroundColor: colors.primaryBorder,
+    marginVertical: 2,
+  },
+  summaryFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.primaryBorder,
+  },
+  summaryFooterLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryDark,
+  },
+  metaCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  metaLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  metaLineLast: {
+    borderBottomWidth: 0,
+  },
+  metaLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.muted,
+    flex: 0.4,
+  },
+  metaValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textStrong,
+    flex: 0.6,
+    textAlign: 'right',
   },
   sectionLabel: {
-    marginTop: 14,
-    marginBottom: 6,
-    fontSize: 14,
+    marginTop: 16,
+    marginBottom: 4,
+    fontSize: 15,
     fontWeight: '900',
     color: colors.textStrong,
   },
@@ -1541,67 +2137,99 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.muted,
     lineHeight: 17,
-    marginBottom: 8,
-  },
-  infoGrid: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
-  },
-  infoGridCompact: {
-    marginTop: 8,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.muted,
-    flex: 0.45,
-  },
-  infoValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textStrong,
-    flex: 0.55,
-    textAlign: 'right',
+    marginBottom: 10,
   },
   handCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    padding: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  handHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
     marginBottom: 10,
   },
   handTitle: {
-    fontSize: 14,
-    fontWeight: '900',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  positionBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  positionBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
     color: colors.primaryDark,
   },
+  handMetrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metricCell: {
+    width: '47%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  metricLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  metricValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+    marginTop: 2,
+  },
   miniLabel: {
-    marginTop: 10,
+    marginTop: 14,
+    marginBottom: 6,
     fontSize: 11,
     fontWeight: '800',
     color: colors.muted,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
-  roundLine: {
+  roundRow: {
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  roundTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  roundMeta: {
     fontSize: 12,
-    color: colors.text,
-    marginTop: 3,
+    color: colors.muted,
+    marginTop: 2,
+    lineHeight: 16,
   },
   ledgerPreviewRow: {
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+  },
+  verificationCard: {
+    marginTop: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E8EEF5',
   },
 });
