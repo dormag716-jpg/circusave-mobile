@@ -1,11 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,6 +34,11 @@ import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
+import {
+  PaymentSessionLock,
+  runStripeContributionPayment,
+  sanitizePaymentUserMessage,
+} from '@/lib/stripeContributionPayment';
 import { colors, radii, spacing } from '@/lib/theme';
 import {
   contributionStatusLabel,
@@ -61,22 +67,31 @@ export default function ContributionPaymentScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [payingStripe, setPayingStripe] = useState(false);
+  /** UI phase while waiting for webhook settlement after PaymentSheet success. */
+  const [settlementPhase, setSettlementPhase] = useState<
+    null | 'confirming' | 'pending'
+  >(null);
+  const [refreshing, setRefreshing] = useState(false);
   const stripe = useStripe();
+  // Synchronous lock: React state alone can allow a second tap before re-render.
+  const paymentLockRef = useRef(new PaymentSessionLock());
 
-  async function loadContribution() {
+  async function loadContribution(options?: { silent?: boolean }) {
     const accessToken = String(token ?? '').trim();
     // Logout / unauthenticated: quiet no-op (no payment error, no PI).
     if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
       setLoading(false);
-      return;
+      return null;
     }
     if (!circleId) {
       setError(t('contributions:unavailableBody'));
       setLoading(false);
-      return;
+      return null;
     }
 
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [circleResponse, scheduleResponse] = await Promise.all([
@@ -85,12 +100,30 @@ export default function ContributionPaymentScreen() {
       ]);
       setCircle(circleResponse);
       setSnapshot(scheduleResponse);
+      return { circle: circleResponse, snapshot: scheduleResponse };
     } catch (loadError) {
       console.error('Unable to load contribution details', loadError);
       setError(t('financialErrors:loadContribution'));
+      return null;
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
+  }
+
+  async function loadHandStatus(handId: string): Promise<string> {
+    const accessToken = String(token ?? '').trim();
+    if (!accessToken || !circleId) {
+      return 'due';
+    }
+    const schedule = await getCircleSchedule(accessToken, circleId);
+    // Keep UI snapshot in sync during settlement polling (no new PaymentIntent).
+    setSnapshot(schedule);
+    const contribution = schedule.contributions?.find(
+      (entry) => entry.memberId === handId,
+    );
+    return String(contribution?.status || 'due').toLowerCase();
   }
 
   useEffect(() => {
@@ -196,49 +229,108 @@ export default function ContributionPaymentScreen() {
       );
       return;
     }
+
+    // Freeze hand at tap time so sibling hands cannot be paid by mistake.
+    const frozenHandId = activeHand.id;
+    const frozenHandLabel = activeHand.label;
+    const frozenCircleId = circle.id;
+    const frozenRound = currentRound;
+
+    if (!paymentLockRef.current.tryAcquire()) {
+      return;
+    }
+
     setPayingStripe(true);
+    setSettlementPhase(null);
     try {
-      const { clientSecret } = await createPaymentIntent(
-        accessToken,
-        circle.id,
-        currentRound,
-        activeHand.id,
+      const outcome = await runStripeContributionPayment(
+        {
+          token: accessToken,
+          circleId: frozenCircleId,
+          roundNumber: frozenRound,
+          handId: frozenHandId,
+        },
+        {
+          createPaymentIntent,
+          initPaymentSheet: (params) => stripe.initPaymentSheet(params),
+          presentPaymentSheet: () => stripe.presentPaymentSheet(),
+          loadHandStatus: async (handId) => {
+            setSettlementPhase('confirming');
+            return loadHandStatus(handId);
+          },
+          pollIntervalMs: 1500,
+          pollMaxAttempts: 8,
+        },
       );
 
-      const { error: initError } = await stripe.initPaymentSheet({
-        paymentIntentClientSecret: clientSecret,
-        merchantDisplayName: 'CircuSave',
-        returnURL: 'circusave://stripe-redirect',
-      });
-
-      if (initError) throw initError;
-
-      const { error: presentError } = await stripe.presentPaymentSheet();
-      if (presentError) {
-        if (presentError.code === 'Canceled') {
-          return;
-        }
-        throw presentError;
+      if (outcome.kind === 'canceled') {
+        return;
       }
 
+      if (outcome.kind === 'error') {
+        Alert.alert(
+          t('contributions:alerts.paymentFailedTitle'),
+          sanitizePaymentUserMessage(
+            { message: outcome.message },
+            t('financialErrors:stripePayment'),
+          ),
+        );
+        return;
+      }
+
+      if (outcome.kind === 'confirmed') {
+        setSettlementPhase(null);
+        Alert.alert(
+          t('contributions:paymentConfirmedTitle'),
+          t('contributions:paymentConfirmedBody', { hand: frozenHandLabel }),
+          [
+            {
+              text: t('contributions:alerts.ok'),
+              onPress: () => void loadContribution({ silent: true }),
+            },
+          ],
+        );
+        return;
+      }
+
+      // PaymentSheet succeeded; webhook has not confirmed yet.
+      setSettlementPhase('pending');
       Alert.alert(
-        t('contributions:paymentSuccessTitle'),
-        t('contributions:paymentSuccessBody', { hand: activeHand.label }),
+        t('contributions:paymentPendingSettlementTitle'),
+        t('contributions:paymentPendingSettlementBody'),
         [
           {
             text: t('contributions:alerts.ok'),
-            onPress: () => void loadContribution(),
+            onPress: () => void loadContribution({ silent: true }),
           },
         ],
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Unable to complete Stripe contribution payment', err);
       Alert.alert(
         t('contributions:alerts.paymentFailedTitle'),
         financialClientErrorMessage(err, t('financialErrors:stripePayment')),
       );
     } finally {
+      paymentLockRef.current.release();
       setPayingStripe(false);
+    }
+  }
+
+  async function onPullRefresh() {
+    setRefreshing(true);
+    try {
+      const loaded = await loadContribution({ silent: true });
+      if (loaded && activeHandId) {
+        const contribution = loaded.snapshot.contributions?.find(
+          (entry) => entry.memberId === activeHandId,
+        );
+        if (String(contribution?.status || '').toLowerCase() === 'confirmed') {
+          setSettlementPhase(null);
+        }
+      }
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -301,7 +393,18 @@ export default function ContributionPaymentScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onPullRefresh()}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <View style={styles.header}>
           <Pressable
             style={styles.backButton}
@@ -316,6 +419,17 @@ export default function ContributionPaymentScreen() {
             <Text style={styles.title}>{circle.name}</Text>
           </View>
         </View>
+
+        {settlementPhase === 'confirming' || settlementPhase === 'pending' ? (
+          <View style={styles.settlementBanner} accessibilityLiveRegion="polite">
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.settlementBannerText}>
+              {settlementPhase === 'confirming'
+                ? t('contributions:paymentConfirmingBody')
+                : t('contributions:paymentPendingSettlementBody')}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.amountCard}>
           <Text style={styles.amountLabel}>
@@ -364,7 +478,13 @@ export default function ContributionPaymentScreen() {
                     selected && styles.handRowSelected,
                     !due && styles.handRowSettled,
                   ]}
-                  onPress={() => setSelectedHandId(hand.id)}
+                  onPress={() => {
+                    if (payingStripe || settlementPhase === 'confirming') {
+                      return;
+                    }
+                    setSelectedHandId(hand.id);
+                  }}
+                  disabled={payingStripe || settlementPhase === 'confirming'}
                   accessibilityRole="button"
                   accessibilityLabel={t('contributions:selectHand', {
                     name: hand.label,
@@ -442,15 +562,35 @@ export default function ContributionPaymentScreen() {
           <Pressable
             style={[
               styles.primaryButton,
-              (!canSubmit || payingStripe || submitting) && styles.disabledButton,
+              (!canSubmit ||
+                payingStripe ||
+                submitting ||
+                settlementPhase === 'confirming') &&
+                styles.disabledButton,
             ]}
-            disabled={!canSubmit || payingStripe || submitting}
+            disabled={
+              !canSubmit ||
+              payingStripe ||
+              submitting ||
+              settlementPhase === 'confirming'
+            }
             onPress={() => void handleStripePayment()}
             accessibilityRole="button"
+            accessibilityState={{
+              busy: payingStripe || settlementPhase === 'confirming',
+              disabled:
+                !canSubmit ||
+                payingStripe ||
+                submitting ||
+                settlementPhase === 'confirming',
+            }}
+            accessibilityLabel={t('contributions:payWithStripe')}
           >
             <Text style={styles.primaryButtonText}>
-              {payingStripe
-                ? t('contributions:processing')
+              {payingStripe || settlementPhase === 'confirming'
+                ? settlementPhase === 'confirming'
+                  ? t('contributions:confirmingStatus')
+                  : t('contributions:processing')
                 : t('contributions:payWithStripe')}
             </Text>
           </Pressable>
@@ -531,15 +671,9 @@ function findViewerHands(
 /** Prefer backend lifecycle messages (e.g. 409) over generic financial copy. */
 function financialClientErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.message.trim()) {
-    return error.message.trim();
+    return sanitizePaymentUserMessage(error, fallback);
   }
-  if (error instanceof Error) {
-    const message = error.message.trim();
-    if (message && message.toLowerCase() !== 'something went wrong') {
-      return message;
-    }
-  }
-  return fallback;
+  return sanitizePaymentUserMessage(error, fallback);
 }
 
 function findRecipient(
@@ -582,6 +716,25 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  settlementBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  settlementBannerText: {
+    color: colors.primaryDark,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
   handRow: {
     borderColor: colors.cardBorder,
     borderRadius: radii.control,
