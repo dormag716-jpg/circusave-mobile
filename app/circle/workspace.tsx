@@ -56,6 +56,8 @@ import { RecordsStatementCenter } from '@/components/records/RecordsStatementCen
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import {
+  additionalHandConsentHref,
+  circleAgreementReviewHref,
   circleInviteHref,
   circlePaymentSetupHref,
   contributionHref,
@@ -2277,7 +2279,7 @@ function PeopleTab({
       });
       return;
     }
-    promptPayoutOrderReview();
+    router.push(circleAgreementReviewHref(circle.id));
   }
 
   function promptPayoutOrderReview() {
@@ -2355,22 +2357,12 @@ function PeopleTab({
     }
   }
 
-  async function handleAddHand() {
+  function handleAddHand() {
     if (structureMutationBusy) {
       return;
     }
-    setAddingHand(true);
     setShowHandModal(false);
-    try {
-      await requestAdditionalHand(token, circle.id);
-      await onRefresh();
-      setShowRequestSent(true);
-    } catch (e) {
-      console.error('Unable to request additional hand', e);
-      Alert.alert(t('hands.requestErrorTitle'), t('errors.generic'));
-    } finally {
-      setAddingHand(false);
-    }
+    router.push(additionalHandConsentHref(circle.id));
   }
 
   async function handleReorderHand(memberId: string, move: 'up' | 'down') {

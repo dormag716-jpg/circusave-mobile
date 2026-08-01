@@ -145,6 +145,8 @@ function AuthenticatedStack() {
       <Stack.Screen name="circle/invite" options={{ headerShown: false }} />
       <Stack.Screen name="invite/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="circle/payment-setup" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/agreement-review" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/additional-hand" options={{ headerShown: false }} />
       {/* circle/history is intentionally not registered until the backend
           history endpoint is connected. The screen file is kept as a shell.
           Re-add the Stack.Screen line below when ready:

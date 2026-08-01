@@ -241,6 +241,94 @@ export type BackendWaitlistPreview = BackendInvitePreview & {
 
 export type BackendJoinResult = BackendCircleDetail | BackendWaitlistPreview;
 
+export type AgreementLanguage = 'en' | 'es' | 'ht';
+
+export type CircleAgreementHand = {
+  handId: string;
+  handNumber: number;
+  userId: string | null;
+  payoutPosition: number;
+  expectedPayoutDate: string | null;
+};
+
+export type CircleAgreementSnapshot = {
+  id: string;
+  circleId: string;
+  snapshotVersion: number;
+  snapshotHash: string;
+  status: 'active' | 'superseded';
+  contributionAmountCents: number;
+  frequency: string;
+  totalRounds: number;
+  organizerUserId: string;
+  organizerParticipates: boolean;
+  currency: string;
+  fees: { serviceFeeCents?: number; otherFees?: unknown[] };
+  roster: Array<{ userId: string; handIds: string[] }>;
+  hands: CircleAgreementHand[];
+  payoutOrder: string[];
+  payoutDates: string[];
+  agreementVersions: Record<string, string>;
+  generatedAt: string;
+  structureCurrent: boolean;
+  memberReview: {
+    handIds: string[];
+    hands: CircleAgreementHand[];
+    contributionPerHandCents: number;
+    currentRecurringObligationCents: number;
+    estimatedTotalObligationCents: number;
+    frequency: string;
+    totalRounds: number;
+  };
+  alreadyAccepted: {
+    circleParticipationAgreement: boolean;
+    finalCircleSnapshot: boolean;
+    organizerAgreement: boolean;
+  };
+};
+
+export type CircleAgreementReadiness = {
+  circleId: string;
+  snapshotId: string | null;
+  snapshotHash: string | null;
+  readyToStart: boolean;
+  blockers: string[];
+  missingMemberAcceptances: Array<{
+    userId: string;
+    handIds: string[];
+    missingDocuments: string[];
+  }>;
+};
+
+export type CircleAgreementContent = {
+  draftStatus: 'draft_pending_licensed_counsel_approval';
+  notLegalAdvice: true;
+  versions: Record<string, string>;
+  documents: Record<string, {
+    version: string;
+    topics: string[];
+    body: Record<AgreementLanguage, string>;
+  }>;
+};
+
+export type AdditionalHandPreview = {
+  currentHandCount: number;
+  proposedHandCount: number;
+  contributionPerHandCents: number;
+  currentRecurringObligationCents: number;
+  additionalRecurringObligationCents: number;
+  newRecurringObligationCents: number;
+  remainingRounds: number;
+  currentRemainingObligationCents: number;
+  additionalRemainingObligationCents: number;
+  newTotalRemainingObligationCents: number;
+  frequency: string;
+  currency: string;
+  consentTextVersion: string;
+  previewHash: string;
+  expiresAt: string;
+};
+
 export type BackendRoundContribution = {
   confirmedAt?: string | null;
   memberId: string;
@@ -1220,6 +1308,9 @@ export type StartCircleOptions = {
   confirmPayoutOrder?: boolean;
   /** Organizer accepts managing unclaimed hands (cash path) or has none. */
   confirmUnclaimedHands?: boolean;
+  snapshotId?: string;
+  snapshotHash?: string;
+  language?: AgreementLanguage;
 };
 
 export function startCircle(
@@ -1227,13 +1318,16 @@ export function startCircle(
   circleId: string,
   options: StartCircleOptions = {},
 ): Promise<CreatedCircleResponse> {
-  const body: Record<string, boolean> = {};
-  if (options.confirmPayoutOrder) {
-    body.confirmPayoutOrder = true;
+  const body: Record<string, unknown> = {};
+  if (typeof options.confirmPayoutOrder === 'boolean') {
+    body.confirmPayoutOrder = options.confirmPayoutOrder;
   }
-  if (options.confirmUnclaimedHands) {
-    body.confirmUnclaimedHands = true;
+  if (typeof options.confirmUnclaimedHands === 'boolean') {
+    body.confirmUnclaimedHands = options.confirmUnclaimedHands;
   }
+  if (options.snapshotId) body.snapshotId = options.snapshotId;
+  if (options.snapshotHash) body.snapshotHash = options.snapshotHash;
+  if (options.language) body.language = options.language;
   return requestJson<CreatedCircleResponse>(`/groups/${circleId}/start`, {
     method: 'POST',
     token,
@@ -1454,10 +1548,74 @@ export async function resolveCircleCode(
 export function requestAdditionalHand(
   token: string,
   circleId: string,
+  input: {
+    previewHash: string;
+    acceptedAdditionalHandObligation: true;
+    consentTextVersion: string;
+    language: AgreementLanguage;
+    clientIdentifier: string;
+  },
 ): Promise<unknown> {
   return requestJson<unknown>(`/groups/${circleId}/join`, {
     method: 'POST',
     token,
-    body: JSON.stringify({ additionalHand: true }),
+    body: JSON.stringify({ additionalHand: true, ...input }),
+  });
+}
+
+export function finalizeCircleAgreementSnapshot(
+  token: string,
+  circleId: string,
+): Promise<CircleAgreementSnapshot> {
+  return requestJson<CircleAgreementSnapshot>(`/groups/${circleId}/agreement-snapshot/finalize`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export function getCircleAgreementContent(
+  token: string,
+): Promise<CircleAgreementContent> {
+  return requestJson<CircleAgreementContent>('/groups/agreements/content', { token });
+}
+
+export function getCircleAgreementSnapshot(
+  token: string,
+  circleId: string,
+): Promise<CircleAgreementSnapshot> {
+  return requestJson<CircleAgreementSnapshot>(`/groups/${circleId}/agreement-snapshot`, { token });
+}
+
+export function getCircleAgreementReadiness(
+  token: string,
+  circleId: string,
+): Promise<CircleAgreementReadiness> {
+  return requestJson<CircleAgreementReadiness>(`/groups/${circleId}/agreement-readiness`, { token });
+}
+
+export function acceptCircleAgreement(
+  token: string,
+  circleId: string,
+  input: {
+    snapshotId: string;
+    snapshotHash: string;
+    documentType: 'circle_participation_agreement' | 'organizer_agreement' | 'final_circle_snapshot';
+    documentVersion: string;
+    accepted: true;
+    language: AgreementLanguage;
+    clientIdentifier: string;
+  },
+): Promise<{ acceptanceId: string; idempotent: boolean; acceptedAt: string }> {
+  return requestJson(`/groups/${circleId}/agreement-acceptances`, {
+    method: 'POST', token, body: JSON.stringify(input),
+  });
+}
+
+export function getAdditionalHandPreview(
+  token: string,
+  circleId: string,
+): Promise<AdditionalHandPreview> {
+  return requestJson<AdditionalHandPreview>(`/groups/${circleId}/additional-hand-preview`, {
+    method: 'POST', token,
   });
 }

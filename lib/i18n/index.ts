@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
 import authEn from './locales/en/auth.json';
+import agreementsEn from './locales/en/agreements.json';
 import activityEn from './locales/en/activity.json';
 import circleWorkspaceEn from './locales/en/circleWorkspace.json';
 import circlesEn from './locales/en/circles.json';
@@ -24,6 +25,7 @@ import settingsEn from './locales/en/settings.json';
 import walletEn from './locales/en/wallet.json';
 import activityEs from './locales/es/activity.json';
 import authEs from './locales/es/auth.json';
+import agreementsEs from './locales/es/agreements.json';
 import circleWorkspaceEs from './locales/es/circleWorkspace.json';
 import circlesEs from './locales/es/circles.json';
 import commonEs from './locales/es/common.json';
@@ -45,6 +47,7 @@ import settingsEs from './locales/es/settings.json';
 import walletEs from './locales/es/wallet.json';
 import activityHt from './locales/ht/activity.json';
 import authHt from './locales/ht/auth.json';
+import agreementsHt from './locales/ht/agreements.json';
 import circleWorkspaceHt from './locales/ht/circleWorkspace.json';
 import circlesHt from './locales/ht/circles.json';
 import commonHt from './locales/ht/common.json';
@@ -74,6 +77,7 @@ import {
 
 const resources = {
   en: {
+    agreements: agreementsEn,
     activity: activityEn,
     auth: authEn,
     circleWorkspace: circleWorkspaceEn,
@@ -97,6 +101,7 @@ const resources = {
     wallet: walletEn,
   },
   es: {
+    agreements: agreementsEs,
     activity: activityEs,
     auth: authEs,
     circleWorkspace: circleWorkspaceEs,
@@ -120,6 +125,7 @@ const resources = {
     wallet: walletEs,
   },
   ht: {
+    agreements: agreementsHt,
     activity: activityHt,
     auth: authHt,
     circleWorkspace: circleWorkspaceHt,
@@ -158,6 +164,7 @@ async function ensureInitialized(language: SupportedLanguage): Promise<void> {
     fallbackLng: DEFAULT_LANGUAGE,
     defaultNS: 'common',
     ns: [
+      'agreements',
       'activity',
       'auth',
       'circleWorkspace',

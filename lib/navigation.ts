@@ -36,6 +36,14 @@ export function circlePaymentSetupHref(circleId: string): Href {
   };
 }
 
+export function circleAgreementReviewHref(circleId: string): Href {
+  return { pathname: '/circle/agreement-review', params: { circleId } };
+}
+
+export function additionalHandConsentHref(circleId: string): Href {
+  return { pathname: '/circle/additional-hand', params: { circleId } };
+}
+
 export function inviteJoinHref(circleId: string, claimToken?: string | null): Href {
   return {
     pathname: '/invite/[id]',
