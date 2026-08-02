@@ -240,8 +240,7 @@ export default function CircleAgreementReviewScreen() {
 
         {snapshot ? (
           <>
-            <View style={[styles.card, styles.draftCard]}>
-              <Text style={styles.draftText}>{t('draftNotice')}</Text>
+            <View style={styles.card}>
               <Text style={styles.version}>{t('snapshotVersion', { version: snapshot.snapshotVersion })}</Text>
               <Text style={styles.version} selectable>
                 {t('snapshotHash', { hash: snapshot.snapshotHash })}
@@ -441,8 +440,6 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 24 },
   title: { fontSize: 23, fontWeight: '800', color: colors.textStrong },
   card: { backgroundColor: colors.card, borderRadius: radii.card, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing.card, gap: 12, ...shadows.small },
-  draftCard: { backgroundColor: colors.warningSoft, borderColor: colors.warning },
-  draftText: { color: colors.textStrong, fontWeight: '700', lineHeight: 20 },
   version: { color: colors.muted, fontSize: 13 },
   cardTitle: { color: colors.textStrong, fontSize: 18, fontWeight: '800' },
   body: { color: colors.text, lineHeight: 21 },

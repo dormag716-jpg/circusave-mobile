@@ -30,9 +30,7 @@ export default function LegalIndexScreen() {
       >
         <Text style={styles.title}>Legal & Policies</Text>
         <Text style={styles.subtitle}>
-          Review CircuSave product policies, disclosures, and electronic consent.
-          These documents are initial product-policy drafts and are not
-          attorney-approved legal advice.
+          Review CircuSave product policies, disclosures, and terms of service.
         </Text>
 
         <View style={styles.menuCard}>
