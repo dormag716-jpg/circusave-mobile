@@ -13,6 +13,7 @@ import 'react-native-reanimated';
 import { DeviceLockProvider } from '@/components/DeviceLock';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
+import { EntitlementsProvider } from '@/lib/entitlementsContext';
 import { initializeI18n } from '@/lib/i18n';
 import { MarketProvider } from '@/lib/market';
 import { circleWorkspaceHref } from '@/lib/navigation';
@@ -102,20 +103,24 @@ function RootLayoutNav() {
       {isStripeSupported ? (
         <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''} merchantIdentifier="merchant.com.circusave">
           <AuthSessionProvider>
+            <EntitlementsProvider>
+              <MarketProvider>
+                <DeviceLockProvider>
+                  <AuthenticatedStack />
+                </DeviceLockProvider>
+              </MarketProvider>
+            </EntitlementsProvider>
+          </AuthSessionProvider>
+        </StripeProvider>
+      ) : (
+        <AuthSessionProvider>
+          <EntitlementsProvider>
             <MarketProvider>
               <DeviceLockProvider>
                 <AuthenticatedStack />
               </DeviceLockProvider>
             </MarketProvider>
-          </AuthSessionProvider>
-        </StripeProvider>
-      ) : (
-        <AuthSessionProvider>
-          <MarketProvider>
-            <DeviceLockProvider>
-              <AuthenticatedStack />
-            </DeviceLockProvider>
-          </MarketProvider>
+          </EntitlementsProvider>
         </AuthSessionProvider>
       )}
     </ThemeProvider>

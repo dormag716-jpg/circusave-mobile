@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { getActivity, getCircleDetail } from '@/lib/api';
 import { shouldLoadActivity } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import { useEntitlements } from '@/lib/entitlementsContext';
 import { activityEventSentence } from '@/lib/i18n/financial-presentation';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/navigation';
@@ -28,6 +29,7 @@ type ActivityFilter = 'all' | 'contributions' | 'payouts';
 export default function ActivityScreen() {
   const { t } = useTranslation(['activity', 'financialErrors']);
   const { session, status } = useAuthSession();
+  const { hasCapability } = useEntitlements();
   const [activeFilter, setActiveFilter] = useState<ActivityFilter>('all');
   const [entries, setEntries] = useState<BackendActivity[]>([]);
   const [memberMap, setMemberMap] = useState<Record<string, string>>({});
@@ -35,7 +37,8 @@ export default function ActivityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const token = session?.session.token;
-  const isPremium = session?.user?.role?.toLowerCase() === 'premium';
+  // Entitlements only — never session.user.role for Premium unlock.
+  const hasFullActivityHistory = hasCapability('fullActivityHistory');
 
   const loadActivity = useCallback(async (isRefresh = false) => {
     const accessToken = String(token ?? '').trim();
@@ -98,8 +101,8 @@ export default function ActivityScreen() {
     return entry.type.includes('payout');
   });
 
-  const hasMore = !isPremium && visibleEntries.length > 10;
-  if (!isPremium) {
+  const hasMore = !hasFullActivityHistory && visibleEntries.length > 10;
+  if (!hasFullActivityHistory) {
     visibleEntries = visibleEntries.slice(0, 10);
   }
 

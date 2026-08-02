@@ -3,6 +3,11 @@ import type {
   BackendCircleSummary,
   DashboardSummary,
 } from './types';
+import {
+  freeEntitlements,
+  normalizeEntitlements,
+  type Entitlements,
+} from './entitlements';
 
 export type AuthUser = {
   id: string;
@@ -960,6 +965,20 @@ export async function getAuthSession(token: string): Promise<AuthResponse> {
 
 export function getCurrentUser(token: string): Promise<AuthUser> {
   return requestJson<AuthUser>('/auth/me', { token });
+}
+
+/**
+ * Backend-authoritative Premium entitlements.
+ * Prefer this over users.role for plan and feature gates.
+ * Fail closed to free on network/API errors (never invent Premium).
+ */
+export async function getEntitlements(token: string): Promise<Entitlements> {
+  try {
+    const payload = await requestJson<unknown>('/auth/me/entitlements', { token });
+    return normalizeEntitlements(payload);
+  } catch {
+    return freeEntitlements();
+  }
 }
 
 export async function logout(token: string): Promise<void> {

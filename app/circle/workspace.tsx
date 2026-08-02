@@ -63,6 +63,7 @@ import { RecordsStatementCenter } from '@/components/records/RecordsStatementCen
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import { useEntitlements } from '@/lib/entitlementsContext';
 import {
   additionalHandConsentHref,
   circleAgreementReviewHref,
@@ -160,7 +161,8 @@ export default function CircleWorkspaceScreen() {
   const tabParam = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const initialTab = (tabParam as ActiveTab) || 'round';
   const token = session?.session.token;
-  const isPremium = session?.user?.role?.toLowerCase() === 'premium';
+  // Premium UI flags come from entitlements, never users.role.
+  // Core payout release is free for all organizers with backend permission.
 
   const [circle, setCircle] = useState<BackendCircleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -293,7 +295,6 @@ export default function CircleWorkspaceScreen() {
             userId={session.user.id}
             initialTab={initialTab}
             onReload={() => loadWorkspace({ silent: true })}
-            isPremium={isPremium}
             refreshNonce={refreshNonce}
             onRoundResolved={setResolvedRound}
           />
@@ -315,7 +316,6 @@ function WorkspaceContent({
   userId,
   initialTab,
   onReload,
-  isPremium,
   refreshNonce,
   onRoundResolved,
 }: {
@@ -324,10 +324,11 @@ function WorkspaceContent({
   userId: string;
   initialTab: ActiveTab;
   onReload: () => Promise<void>;
-  isPremium: boolean;
   refreshNonce: number;
   onRoundResolved: (round: number) => void;
 }) {
+  const { hasCapability } = useEntitlements();
+  const canExportAdvancedReports = hasCapability('advancedReports');
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
     'contributions',
@@ -1040,7 +1041,6 @@ function WorkspaceContent({
               viewerPayoutPosition={viewerPayoutPosition}
               processingMemberId={actionMemberId}
               paymentInstructions={paymentInstructions}
-              isPremium={isPremium}
             />
           </>
         ) : !scheduleData && secondaryLoading ? (
@@ -1100,7 +1100,7 @@ function WorkspaceContent({
           token={token ?? ''}
           members={circle.members || []}
           ledgerEntries={ledgerEntries}
-          isPremium={isPremium}
+          isPremium={canExportAdvancedReports}
           circleName={circle.name}
           wallet={roundWallet}
         />
@@ -1139,7 +1139,6 @@ function RoundTab({
   viewerMember,
   viewerPayoutPosition,
   paymentInstructions,
-  isPremium,
 }: {
   canReleasePayout: boolean;
   canRemindMembers: boolean;
@@ -1174,7 +1173,6 @@ function RoundTab({
   viewerMember?: BackendCircleMember;
   viewerPayoutPosition?: number | null;
   paymentInstructions?: string | null;
-  isPremium: boolean;
 }) {
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
@@ -1766,30 +1764,18 @@ function RoundTab({
         </View>
       ) : null}
 
-      {/* Release Payout remains gated on backend permission and readiness. */}
-      {!financialActionsLocked && canReleasePayout && isPremium ? (
-        <Pressable
-          style={styles.payoutButton}
-          onPress={() => onReleasePayout(false)}
-          accessibilityRole="button"
-          accessibilityLabel={t('rounds:payout.release')}
-        >
-          <FontAwesome name="money" size={18} color="#fff" />
-          <Text style={styles.payoutButtonText}>
-            {t('rounds:payout.release')}
-          </Text>
-        </Pressable>
-      ) : !financialActionsLocked && canReleasePayout && !isPremium ? (
+      {/* Core payout release is free — gated only on backend permission/readiness. */}
+      {!financialActionsLocked && canReleasePayout ? (
         <View style={{ width: '100%' }}>
           <Pressable
-            style={[styles.payoutButton, { backgroundColor: '#6366f1' }]}
-            onPress={() => router.push('/subscription')}
+            style={styles.payoutButton}
+            onPress={() => onReleasePayout(false)}
             accessibilityRole="button"
-            accessibilityLabel={t('ledger:upgradeAction')}
+            accessibilityLabel={t('rounds:payout.release')}
           >
-            <FontAwesome name="star" size={18} color="#fff" />
+            <FontAwesome name="money" size={18} color="#fff" />
             <Text style={styles.payoutButtonText}>
-              {t('rounds:payout.premium')}
+              {t('rounds:payout.release')}
             </Text>
           </Pressable>
           <Pressable
