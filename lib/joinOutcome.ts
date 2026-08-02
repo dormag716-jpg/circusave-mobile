@@ -16,6 +16,7 @@ export type JoinOutcomeDetailLike = {
   viewerHands?: JoinOutcomeMemberLike[] | null;
   viewerHandCount?: number | null;
   userRole?: string | null;
+  joinOutcome?: string | null;
 };
 
 export function resolveJoinOutcome(
@@ -24,6 +25,16 @@ export function resolveJoinOutcome(
 ): JoinOutcome {
   if (!detail) {
     return 'unknown';
+  }
+
+  const explicit = String(detail.joinOutcome || '').trim().toLowerCase();
+  if (explicit === 'claimed') return 'claimed';
+  if (
+    explicit === 'request_pending' ||
+    explicit === 'pending' ||
+    explicit === 'acknowledgment_required'
+  ) {
+    return 'pending';
   }
 
   const uid = String(viewerUserId || '').trim();

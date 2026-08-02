@@ -18,6 +18,9 @@
   "frequency": "Frekans",
   "members": "Manm",
   "previewInfo": "Si òganizatè a te deja ajoute telefòn oswa imèl ou, ou ka reklame men pa ou tousuit. Sinon, demann ou ap tann apwobasyon òganizatè a.",
+  "claimDisclosureConditional": "Si gen yon men planifye ki matche ak imèl oswa telefòn verifye ou, aksyon sa a ap reklame men sa a provizwaman. Sinon, demann ou ap voye bay òganizatè a.",
+  "claimDisclosureBody": "W ap reklame yon men planifye nan sèk sa a.\n\nLòd peman an poko final. Anvan sèk la kòmanse, w ap revize epi aksepte montan egzak kontribisyon ou, frekans, pozisyon peman, dat peman, frè, ak obligasyon total la.\n\nAksyon sa a pa otorize yon peman.",
+  "claimAckLabel": "Mwen konprann ke reklamasyon sa a se provizwa epi akseptasyon final ap obligatwa anvan sèk la kòmanse.",
   "requestAccessibility": "Mande pou antre nan gwoup sa a",
   "joinCircle": "Antre nan gwoup la",
   "outcome": {

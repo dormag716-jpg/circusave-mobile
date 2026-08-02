@@ -18,6 +18,9 @@
   "frequency": "Frequency",
   "members": "Members",
   "previewInfo": "If the organizer already added your phone or email, you may claim your hand right away. Otherwise your request waits for organizer approval.",
+  "claimDisclosureConditional": "If a planned hand matches your verified email or phone, this action will claim that hand provisionally. Otherwise, your request will be sent to the organizer.",
+  "claimDisclosureBody": "You are claiming one planned hand in this circle.\n\nThe payout order is not final yet. Before the circle starts, you will review and accept your exact contribution amount, frequency, payout position, payout date, fees, and total obligation.\n\nThis action does not authorize a payment.",
+  "claimAckLabel": "I understand that this claim is provisional and final acceptance will be required before the circle starts.",
   "requestAccessibility": "Request to join this circle",
   "joinCircle": "Join Circle",
   "outcome": {

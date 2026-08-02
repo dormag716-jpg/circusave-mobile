@@ -18,6 +18,9 @@
   "frequency": "Frecuencia",
   "members": "Miembros",
   "previewInfo": "Si el organizador ya agregó tu teléfono o correo electrónico, podrás reclamar tu mano de inmediato. De lo contrario, tu solicitud esperará su aprobación.",
+  "claimDisclosureConditional": "Si una mano planificada coincide con tu correo o teléfono verificado, esta acción reclamará esa mano de forma provisional. De lo contrario, tu solicitud se enviará al organizador.",
+  "claimDisclosureBody": "Estás reclamando una mano planificada en este círculo.\n\nEl orden de pagos aún no es final. Antes de que el círculo comience, revisarás y aceptarás el monto exacto de tu aporte, la frecuencia, la posición de pago, la fecha de pago, las tarifas y la obligación total.\n\nEsta acción no autoriza un pago.",
+  "claimAckLabel": "Entiendo que este reclamo es provisional y que se requerirá la aceptación final antes de que el círculo comience.",
   "requestAccessibility": "Solicitar acceso a este círculo",
   "joinCircle": "Unirse al círculo",
   "outcome": {

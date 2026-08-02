@@ -22,6 +22,10 @@ import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { resolveJoinOutcome } from '@/lib/joinOutcome';
 import { circleWorkspaceHref, inviteJoinHref } from '@/lib/navigation';
+import {
+  buildPlannedHandClaimAcknowledgment,
+  canSubmitPlannedHandClaim,
+} from '@/lib/plannedHandClaim';
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function JoinInviteScreen() {
@@ -31,6 +35,7 @@ export default function JoinInviteScreen() {
   const circleId = Array.isArray(params.id) ? params.id[0] : params.id;
   const claimToken = Array.isArray(params.claimToken) ? params.claimToken[0] : params.claimToken;
   const token = session?.session.token;
+  const [claimAckChecked, setClaimAckChecked] = useState(false);
 
   function continueAuth(path: '/login' | '/create-account') {
     if (circleId) {
@@ -71,10 +76,21 @@ export default function JoinInviteScreen() {
 
   async function handleJoin() {
     if (!token || !circleId || !preview) return;
+    if (!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })) {
+      return;
+    }
+    const ack = buildPlannedHandClaimAcknowledgment({
+      language: i18n.resolvedLanguage || i18n.language,
+      checked: claimAckChecked,
+    });
+    if (!ack) return;
 
     setJoining(true);
     try {
-      const result = await requestJoin(token, circleId, claimToken);
+      const result = await requestJoin(token, circleId, {
+        claimToken,
+        ...ack,
+      });
       const outcome = resolveJoinOutcome(result, session?.user?.id);
       const goWorkspace = outcome === 'claimed';
       Alert.alert(
@@ -199,19 +215,42 @@ export default function JoinInviteScreen() {
 
         <View style={styles.actionContainer}>
           {token ? (
-            <Pressable
-              style={[styles.primaryButton, joining && styles.disabledButton]}
-              disabled={joining}
-              onPress={() => void handleJoin()}
-              accessibilityRole="button"
-              accessibilityLabel={t('invite:acceptAccessibility', {
-                circleName: preview.name,
-              })}
-            >
-              <Text style={styles.primaryButtonText}>
-                {joining ? t('invite:accepting') : t('invite:accept')}
-              </Text>
-            </Pressable>
+            <>
+              <Text style={styles.disclosureBody}>{t('invite:claimDisclosureBody')}</Text>
+              {claimToken ? null : (
+                <Text style={styles.disclosureHint}>{t('invite:claimDisclosureConditional')}</Text>
+              )}
+              <Pressable
+                style={styles.ackRow}
+                onPress={() => setClaimAckChecked((value) => !value)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: claimAckChecked }}
+                accessibilityLabel={t('invite:claimAckLabel')}
+              >
+                <View style={[styles.checkbox, claimAckChecked && styles.checkboxChecked]}>
+                  {claimAckChecked ? (
+                    <FontAwesome name="check" size={12} color="#fff" />
+                  ) : null}
+                </View>
+                <Text style={styles.ackLabel}>{t('invite:claimAckLabel')}</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  (!claimAckChecked || joining) && styles.disabledButton,
+                ]}
+                disabled={!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })}
+                onPress={() => void handleJoin()}
+                accessibilityRole="button"
+                accessibilityLabel={t('invite:acceptAccessibility', {
+                  circleName: preview.name,
+                })}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {joining ? t('invite:accepting') : t('invite:accept')}
+                </Text>
+              </Pressable>
+            </>
           ) : (
             <View style={styles.loginCard}>
               <Text style={styles.loginText}>
@@ -357,6 +396,40 @@ const styles = StyleSheet.create({
   },
   actionContainer: {
     marginTop: 'auto',
+    gap: 12,
+  },
+  disclosureBody: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 21,
+  },
+  disclosureHint: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 19,
+  },
+  ackRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: { backgroundColor: colors.primary },
+  ackLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textStrong,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   primaryButton: {
     backgroundColor: colors.primary,

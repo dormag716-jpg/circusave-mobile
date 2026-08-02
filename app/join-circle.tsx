@@ -25,6 +25,10 @@ import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { resolveJoinOutcome, type JoinOutcome } from '@/lib/joinOutcome';
 import { dashboardHref } from '@/lib/navigation';
+import {
+  buildPlannedHandClaimAcknowledgment,
+  canSubmitPlannedHandClaim,
+} from '@/lib/plannedHandClaim';
 import { colors, spacing } from '@/lib/theme';
 
 export default function JoinCircleScreen() {
@@ -38,6 +42,7 @@ export default function JoinCircleScreen() {
   const [preview, setPreview] = useState<BackendInvitePreview | null>(null);
   const [resolvedId, setResolvedId] = useState<string | null>(null);
   const [joinOutcome, setJoinOutcome] = useState<JoinOutcome | null>(null);
+  const [claimAckChecked, setClaimAckChecked] = useState(false);
 
   async function lookup() {
     if (!code.trim()) {
@@ -67,9 +72,17 @@ export default function JoinCircleScreen() {
 
   async function join() {
     if (!token || !resolvedId) return;
+    if (!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })) {
+      return;
+    }
+    const ack = buildPlannedHandClaimAcknowledgment({
+      language: i18n.resolvedLanguage || i18n.language,
+      checked: claimAckChecked,
+    });
+    if (!ack) return;
     setJoining(true);
     try {
-      const result = await requestJoin(token, resolvedId);
+      const result = await requestJoin(token, resolvedId, ack);
       setJoinOutcome(resolveJoinOutcome(result, viewerUserId));
     } catch (error) {
       console.error('Unable to request circle membership.', error);
@@ -79,13 +92,14 @@ export default function JoinCircleScreen() {
     }
   }
 
-  function onCode(t: string) {
-    const u = t.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  function onCode(next: string) {
+    const u = next.toUpperCase().replace(/[^A-Z0-9-]/g, '');
     setCode(u);
     if (preview || joinOutcome) {
       setPreview(null);
       setResolvedId(null);
       setJoinOutcome(null);
+      setClaimAckChecked(false);
     }
   }
 
@@ -227,23 +241,36 @@ export default function JoinCircleScreen() {
                 </View>
               </View>
 
-              {/* Info — honest: claim when matched, otherwise organizer approval */}
+              {/* Conditional claim disclosure — backend decides claim vs pending */}
               <View style={sty.infoBanner}>
                 <FontAwesome name="info-circle" size={14} color="#2563eb" />
-                <Text style={sty.infoTxt}>
-                  {t('previewInfo')}
-                </Text>
+                <Text style={sty.infoTxt}>{t('claimDisclosureConditional')}</Text>
               </View>
+              <Text style={sty.disclosureBody}>{t('claimDisclosureBody')}</Text>
+              <Pressable
+                style={sty.ackRow}
+                onPress={() => setClaimAckChecked((value) => !value)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: claimAckChecked }}
+                accessibilityLabel={t('claimAckLabel')}
+              >
+                <View style={[sty.checkbox, claimAckChecked && sty.checkboxChecked]}>
+                  {claimAckChecked ? (
+                    <FontAwesome name="check" size={12} color="#fff" />
+                  ) : null}
+                </View>
+                <Text style={sty.ackLabel}>{t('claimAckLabel')}</Text>
+              </Pressable>
 
-              {/* Join button */}
+              {/* Join button — disabled until provisional claim acknowledgment */}
               <Pressable
                 style={({ pressed }) => [
                   sty.joinBtn,
-                  joining && sty.dim,
+                  (!claimAckChecked || joining) && sty.dim,
                   pressed && { opacity: 0.85 },
                 ]}
                 onPress={join}
-                disabled={joining}
+                disabled={!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })}
                 accessibilityRole="button"
                 accessibilityLabel={t('requestAccessibility')}
               >
@@ -487,9 +514,33 @@ const sty = StyleSheet.create({
     backgroundColor: '#eff6ff',
     borderRadius: 12,
     padding: 12,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   infoTxt: { flex: 1, fontSize: 13, color: '#1e40af', lineHeight: 19 },
+  disclosureBody: {
+    fontSize: 13,
+    color: colors.text,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  ackRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 16,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: { backgroundColor: colors.primary },
+  ackLabel: { flex: 1, fontSize: 14, color: colors.textStrong, lineHeight: 20, fontWeight: '600' },
   joinBtn: {
     backgroundColor: colors.primary,
     borderRadius: 16,

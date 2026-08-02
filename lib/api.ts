@@ -1292,18 +1292,40 @@ export function getPublicInvitePreview(
   return requestJson<BackendInvitePreview>(`/groups/${circleId}/invite`);
 }
 
+export type PlannedHandClaimJoinOptions = {
+  claimToken?: string;
+  /** Required when the action may claim a planned hand (CS-006). */
+  acknowledgmentAccepted?: boolean;
+  acknowledgmentVersion?: string;
+  language?: string;
+  clientIdentifier?: string;
+};
+
 export function requestJoin(
   token: string,
   circleId: string,
-  claimToken?: string,
+  claimTokenOrOptions?: string | PlannedHandClaimJoinOptions,
 ): Promise<BackendJoinResult> {
+  const options: PlannedHandClaimJoinOptions =
+    typeof claimTokenOrOptions === 'string'
+      ? { claimToken: claimTokenOrOptions }
+      : claimTokenOrOptions || {};
+  const body: Record<string, unknown> = {};
+  if (options.claimToken) {
+    body.claimToken = options.claimToken;
+  }
+  if (options.acknowledgmentAccepted === true) {
+    body.acknowledgmentAccepted = true;
+    body.acknowledgmentVersion = options.acknowledgmentVersion;
+    body.language = options.language;
+    body.clientIdentifier = options.clientIdentifier;
+  }
   return requestJson<BackendJoinResult>(`/groups/${circleId}/join`, {
     method: 'POST',
     token,
-    body: claimToken ? JSON.stringify({ claimToken }) : undefined,
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
   });
 }
-
 
 export function approveJoinRequest(
   token: string,
