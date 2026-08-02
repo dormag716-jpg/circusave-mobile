@@ -21,16 +21,24 @@ export default function SecurityScreen() {
     setExporting(true);
     try {
       const data = await exportUserData(token);
-      const profile = (data?.profile && typeof data.profile === 'object') ? (data.profile as Record<string, unknown>) : {};
+      const profile =
+        data?.profile && typeof data.profile === 'object'
+          ? (data.profile as Record<string, unknown>)
+          : {};
       const memberships = Array.isArray(data?.memberships) ? data.memberships : [];
-      const legalAcceptances = Array.isArray(data?.legalAcceptances) ? data.legalAcceptances : [];
+      const legalAcceptances = Array.isArray(data?.legalAcceptances)
+        ? data.legalAcceptances
+        : [];
       Alert.alert(
-        "Data Export Prepared",
-        `Your data export archive (v1.0) is ready.\n\nExport Summary:\n• Email: ${typeof profile.email === 'string' ? profile.email : 'N/A'}\n• Memberships: ${memberships.length}\n• Legal Audit Trail: ${legalAcceptances.length} accepted`,
-        [{ text: "OK" }]
+        'Data Export Prepared',
+        `Your data export archive (v1.0) is ready.\n\nExport Summary:\n• Email: ${
+          typeof profile.email === 'string' ? profile.email : 'N/A'
+        }\n• Memberships: ${memberships.length}\n• Legal Audit Trail: ${legalAcceptances.length} accepted`,
+        [{ text: 'OK' }],
       );
-    } catch {
-      Alert.alert("Export Error", "Unable to export user data. Please try again.");
+    } catch (err) {
+      console.error('Data export failed:', err);
+      Alert.alert('Export Error', 'Unable to export user data. Please check your connection.');
     } finally {
       setExporting(false);
     }
@@ -39,30 +47,45 @@ export default function SecurityScreen() {
   const handleDeleteAccount = () => {
     if (!token) return;
     Alert.alert(
-      "Delete Account?",
-      "Are you sure you want to permanently delete your account?\n\n• Your personal details (name, email, phone) will be anonymized.\n• Your active session will be revoked immediately.\n• Required financial transaction records will be retained for regulatory audit compliance.",
+      'Delete Account?',
+      'Are you sure you want to permanently delete your account?\n\n• Your personal details (name, email, phone) will be anonymized.\n• Your active session will be revoked immediately.\n• Required financial transaction records will be retained for regulatory audit compliance.',
       [
-        { text: "Cancel", style: "cancel" },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: "Delete Account",
-          style: "destructive",
+          text: 'Delete Account',
+          style: 'destructive',
           onPress: async () => {
             setDeleting(true);
             try {
               await deleteAccount(token);
-              Alert.alert("Account Deleted", "Your account has been deleted and anonymized.");
-            } catch {
-              Alert.alert("Deletion Error", "Unable to complete account deletion. Please try again.");
+              Alert.alert(
+                'Account Deleted',
+                'Your account has been deleted and anonymized.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: async () => {
+                      try {
+                        await signOut();
+                      } finally {
+                        router.replace('/login');
+                      }
+                    },
+                  },
+                ],
+              );
+            } catch (err) {
+              console.error('Account deletion failed:', err);
+              Alert.alert(
+                'Deletion Error',
+                'Unable to complete account deletion. Please verify your connection or try again.',
+              );
             } finally {
-              try {
-                await signOut();
-              } finally {
-                router.replace('/login');
-              }
+              setDeleting(false);
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -110,7 +133,7 @@ export default function SecurityScreen() {
           </View>
         </View>
 
-        {/* Section: Data & Account Rights (Store Compliance) */}
+        {/* Section: Data & Privacy Rights */}
         <Text style={styles.sectionTitle}>Data & Privacy Rights</Text>
         <View style={styles.card}>
           <Pressable
