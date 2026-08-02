@@ -1,4 +1,4 @@
-﻿import FontAwesome from '@expo/vector-icons/FontAwesome';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   useCallback,
@@ -180,7 +180,7 @@ export default function CircleWorkspaceScreen() {
       return;
     }
     if (!circleId) {
-      // Authenticated but missing route id â€” real navigation problem.
+      // Authenticated but missing route id - real navigation problem.
       setError(t('status.genericError'));
       setLoading(false);
       return;
@@ -431,7 +431,7 @@ function WorkspaceContent({
         accessibilityRole="summary"
       >
         <Text style={{ color: colors.textStrong, fontWeight: '800', fontSize: 15 }}>
-          {tPeople('agreements.bannerTitle')} â€” {tPeople('agreements.cta')}
+          {tPeople('agreements.bannerTitle')} - {tPeople('agreements.cta')}
         </Text>
         <Text style={{ color: colors.text, lineHeight: 20 }}>
           {workspaceMemberAgreementPrompt.kind === 'waiting_for_snapshot'
@@ -486,7 +486,7 @@ function WorkspaceContent({
   }, [circle.id, token, refreshNonce, loadBackendSections]);
 
   // scheduleData is the single source of truth for the round summary.
-  // Do not fall back to circle.currentRoundSummary â€” it can be stale relative
+  // Do not fall back to circle.currentRoundSummary - it can be stale relative
   // to what getCircleSchedule returns, causing contradictory display values.
   const summary = scheduleData?.currentRoundSummary;
   const roundWorkspace = scheduleData?.roundWorkspace;
@@ -652,7 +652,7 @@ function WorkspaceContent({
     (viewerPermissions as { canRejectContributions?: boolean } | undefined)
       ?.canRejectContributions ?? viewerPermissions?.canApproveContributions,
   );
-  // Release Payout is strictly backend-gated â€” display state alone must never
+  // Release Payout is strictly backend-gated - display state alone must never
   // enable this button.
   const canReleasePayout = canShowBackendGatedAction(
     viewerPermissions?.canReleasePayout,
@@ -987,7 +987,7 @@ function WorkspaceContent({
 
       {activeTab === 'round' ? (
         // Lifecycle phase comes only from circle.status / startedAt / isStarted.
-        // Do not wait on schedule to decide setup vs live â€” schedule is for active rounds only.
+        // Do not wait on schedule to decide setup vs live - schedule is for active rounds only.
         isCircleNotStarted(circle) || isCircleCompleted(circle) || scheduleData ? (
           <>
             {secondaryLoading && isCircleStarted(circle) && !isCircleCompleted(circle) ? (
@@ -1201,7 +1201,7 @@ function RoundTab({
   // All display values arrive pre-normalized from WorkspaceContent.
   const expectedContributionsCount = totalMembers;
   const visibleTotalRounds = totalRoundsCount;
-  // Authoritative only: status / startedAt / isStarted â€” never schedule presence.
+  // Authoritative only: status / startedAt / isStarted - never schedule presence.
   const lifecyclePhase = getCircleLifecyclePhase(circle);
   const notStarted = lifecyclePhase === 'setup';
   const completed = lifecyclePhase === 'completed';
@@ -1216,7 +1216,7 @@ function RoundTab({
       ? circle.contributionAmount * expectedContributionsCount
       : payoutAmount ?? null;
 
-  // Setup / draft: planned hands only â€” never Collecting, dues, or payout readiness.
+  // Setup / draft: planned hands only - never Collecting, dues, or payout readiness.
   if (notStarted) {
     const plannedHands =
       currentRoundMembers.length > 0
@@ -1385,7 +1385,7 @@ function RoundTab({
     );
   }
 
-  // Completed: historical only â€” no Start, no structural setup, no live Collecting chrome.
+  // Completed: historical only - no Start, no structural setup, no live Collecting chrome.
   if (completed) {
     return (
       <View style={styles.section}>
@@ -1764,7 +1764,7 @@ function RoundTab({
         </View>
       ) : null}
 
-      {/* Core payout release is free â€” gated only on backend permission/readiness. */}
+      {/* Core payout release is free - gated only on backend permission/readiness. */}
       {!financialActionsLocked && canReleasePayout ? (
         <View style={{ width: '100%' }}>
           <Pressable
@@ -2008,7 +2008,7 @@ function RoundTab({
               icon="money"
               label={t('rounds:fullPot')}
               value={
-                potTarget != null ? formatCurrency(potTarget, language) : 'â€”'
+                potTarget != null ? formatCurrency(potTarget, language) : '-'
               }
             />
             {viewerPayoutPosition ? (
@@ -2018,7 +2018,7 @@ function RoundTab({
                 value={t('rounds:positionOf', {
                   position: formatOrdinal(viewerPayoutPosition, language),
                   total:
-                    visibleTotalRounds || expectedContributionsCount || 'â€”',
+                    visibleTotalRounds || expectedContributionsCount || '-',
                 })}
                 last
               />
@@ -2197,7 +2197,7 @@ function PeopleTab({
   const [startingCircle, setStartingCircle] = useState(false);
   const [sharingClaimId, setSharingClaimId] = useState<string | null>(null);
   const [reorderingId, setReorderingId] = useState<string | null>(null);
-  /** Mirrors start contract confirmPayoutOrder â€” not a DB field. */
+  /** Mirrors start contract confirmPayoutOrder - not a DB field. */
   const [payoutOrderReviewed, setPayoutOrderReviewed] = useState(false);
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const [expandedMemberKey, setExpandedMemberKey] = useState<string | null>(null);
@@ -2551,7 +2551,7 @@ function PeopleTab({
     setReorderingId(memberId);
     try {
       await reorderPayoutTurn(token, circle.id, memberId, move);
-      // Structure changed â€” organizer must re-confirm at Start.
+      // Structure changed - organizer must re-confirm at Start.
       setPayoutOrderReviewed(false);
       await onRefresh();
     } catch (error) {
@@ -2626,7 +2626,7 @@ function PeopleTab({
                 {formatOrdinal(index + 1, language)}
               </Text>
             </View>
-            <Text style={styles.payoutReviewName}>{line.replace(/^\d+\.\s*/, '').replace(/^â€¢\s*/, '')}</Text>
+            <Text style={styles.payoutReviewName}>{line.replace(/^\d+\.\s*/, '').replace(/^-\s*/, '')}</Text>
           </View>
         )) : <Text style={styles.helperText}>{t('payoutOrder:review.empty')}</Text>}
       </View>
@@ -2808,7 +2808,7 @@ function PeopleTab({
     </>
   );
 
-  // â”€â”€ Phase 1 setup (organizer + setup only) â€” single surface, accordion steps â”€
+  // â”€â”€ Phase 1 setup (organizer + setup only) - single surface, accordion steps â”€
   if (circleNotStarted && isOrganizer && setupProgress) {
     const progress = setupProgress;
 
@@ -2851,7 +2851,7 @@ function PeopleTab({
                       code: shortCode || t('common.unavailable'),
                     })}
                   >
-                    {shortCode || 'â€”'}
+                    {shortCode || '-'}
                   </Text>
                   <View style={styles.setupCodeActions}>
                     <Pressable
@@ -3263,7 +3263,7 @@ function PeopleTab({
         {peopleOverlays}
         {memberAgreementCard}
 
-        {/* Invite people â€” expandable section at top */}
+        {/* Invite people - expandable section at top */}
         <View style={styles.peopleCard}>
           <Pressable
             style={styles.peopleCardHeader}
@@ -3477,7 +3477,7 @@ function PeopleTab({
                 code: shortCode || t('common.unavailable'),
               })}
             >
-              {shortCode || 'â€”'}
+              {shortCode || '-'}
             </Text>
             <View style={styles.setupCodeActions}>
               <Pressable
@@ -3934,7 +3934,7 @@ function ExpandableMemberTile({
                       color: orderIndex >= 0 ? colors.primary : '#B45309',
                     }}
                   >
-                    {orderIndex >= 0 ? formatOrdinal(orderIndex + 1, language) : 'â€”'}
+                    {orderIndex >= 0 ? formatOrdinal(orderIndex + 1, language) : '-'}
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -4513,7 +4513,7 @@ function financialActionErrorMessage(
 function formatProgress(progress: number | null) {
   return typeof progress === 'number' && Number.isFinite(progress)
     ? `${Math.max(0, Math.min(100, progress))}%`
-    : 'â€”';
+    : '-';
 }
 
 function formatConfirmedStatusFromCounts(
@@ -4556,7 +4556,7 @@ function formatRelativeDays(value?: string | null) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return 'â€”';
+  if (!value) return '-';
   const time = Date.parse(value);
   if (!Number.isFinite(time)) return value;
   return new Date(time).toLocaleDateString('en-US', {
@@ -5903,4 +5903,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
 
