@@ -117,11 +117,12 @@ export default function CreateAccountScreen() {
         setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
       }
       await setAuthenticatedSession(result);
-    } catch {
-      Alert.alert(
-        t('create.createErrorTitle'),
-        t('common.genericErrorMessage'),
-      );
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : t('common.genericErrorMessage');
+      Alert.alert(t('create.createErrorTitle'), message);
     } finally {
       setIsSubmitting(false);
     }
