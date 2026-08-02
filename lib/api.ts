@@ -1695,3 +1695,13 @@ export function getAdditionalHandPreview(
     method: 'POST', token,
   });
 }
+
+export function downloadPayoutOrderPdf(
+  token: string,
+  circleId: string,
+): Promise<MemberStatementPdfResult> {
+  return requestPdf(
+    `/groups/${encodeURIComponent(circleId)}/payout-order/pdf`,
+    token,
+  );
+}
