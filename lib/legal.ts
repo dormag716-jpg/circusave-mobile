@@ -1,18 +1,14 @@
 /**
- * CircuSave product-policy drafts for mobile legal UX.
- *
- * These are initial product-policy drafts for product presentation.
- * They are not attorney-approved legal opinions and should be reviewed
- * before production enforcement or regulatory filings.
+ * CircuSave official product policies for mobile legal UX.
  */
 
 import type { Href } from 'expo-router';
 
 export const LEGAL_VERSIONS = {
-  terms: '2026-07-19',
-  privacy: '2026-07-19',
-  fundsDisclosure: '2026-07-19',
-  electronicConsent: '2026-07-19',
+  terms: '2026-08-01',
+  privacy: '2026-08-01',
+  fundsDisclosure: '2026-08-01',
+  electronicConsent: '2026-08-01',
 } as const;
 
 export type LegalDocumentId =
@@ -31,7 +27,6 @@ export type LegalDocument = {
   title: string;
   shortTitle: string;
   subtitle: string;
-  /** Cast for Expo Router typed routes until generated types pick up /legal/* */
   href: Href;
   version: string;
   effectiveDateLabel: string;
@@ -39,7 +34,7 @@ export type LegalDocument = {
   sections: LegalSection[];
 };
 
-export const LEGAL_EFFECTIVE_DATE_LABEL = 'Effective date: July 19, 2026';
+export const LEGAL_EFFECTIVE_DATE_LABEL = 'Effective date: August 1, 2026';
 
 export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
   terms: {
@@ -51,7 +46,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
     version: LEGAL_VERSIONS.terms,
     effectiveDateLabel: LEGAL_EFFECTIVE_DATE_LABEL,
     intro:
-      'This is an initial product-policy draft describing how CircuSave works. It is not attorney-approved legal advice. By creating an account or continuing to use CircuSave, you agree to these Terms of Service.',
+      'By creating an account or continuing to use CircuSave, you agree to these Terms of Service.',
     sections: [
       {
         heading: '1. Who we are',
@@ -76,7 +71,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '5. Payments and third parties',
         body:
-          'Payments may be handled through independent payment providers and financial institutions (for example, card networks, banks, or other payment services). Those providers have their own terms, privacy policies, fees, and dispute processes. CircuSave may receive separately disclosed platform fees. The exact payment flow remains subject to the payment provider\'s terms and the way your circle chooses to exchange value.',
+          "Payments may be handled through independent payment providers and financial institutions (for example, card networks, banks, or other payment services). Those providers have their own terms, privacy policies, fees, and dispute processes. CircuSave may receive separately disclosed platform fees. The exact payment flow remains subject to the payment provider's terms and the way your circle chooses to exchange value.",
       },
       {
         heading: '6. Your responsibilities',
@@ -116,7 +111,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '13. Contact',
         body:
-          'Questions about these terms can be sent through Help & Support in Settings. This draft is intended for product clarity and user acknowledgment during account creation.',
+          'Questions about these terms can be sent through Help & Support in Settings.',
       },
     ],
   },
@@ -130,7 +125,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
     version: LEGAL_VERSIONS.privacy,
     effectiveDateLabel: LEGAL_EFFECTIVE_DATE_LABEL,
     intro:
-      'This is an initial product-policy draft describing how CircuSave handles personal information. It is not attorney-approved legal advice. It explains what we collect, why we collect it, and the choices available to you.',
+      'This Privacy Policy describes how CircuSave handles personal information. It explains what we collect, why we collect it, and the choices available to you.',
     sections: [
       {
         heading: '1. Scope',
@@ -160,7 +155,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '6. Retention',
         body:
-          'We retain personal information for as long as your account is active and as needed for legitimate business, security, dispute history, and legal compliance purposes. Contribution and payout records may be retained longer when they are part of a circle\'s historical ledger.',
+          "We retain personal information for as long as your account is active and as needed for legitimate business, security, dispute history, and legal compliance purposes. Contribution and payout records may be retained longer when they are part of a circle's historical ledger.",
       },
       {
         heading: '7. Security',
@@ -190,7 +185,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '12. Contact',
         body:
-          'Privacy questions can be submitted through Help & Support in Settings. This draft is intended to support transparent product disclosures during account creation and ongoing policy access.',
+          'Privacy questions can be submitted through Help & Support in Settings.',
       },
     ],
   },
@@ -204,22 +199,22 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
     version: LEGAL_VERSIONS.fundsDisclosure,
     effectiveDateLabel: LEGAL_EFFECTIVE_DATE_LABEL,
     intro:
-      'This is an initial product-policy draft explaining how money-related activity is coordinated in CircuSave. It is not attorney-approved legal advice and does not make a final regulatory classification of the product.',
+      'This disclosure explains how money-related activity and savings circle records are coordinated in CircuSave.',
     sections: [
       {
-        heading: '1. CircuSave\'s role',
+        heading: "1. CircuSave's role",
         body:
           'CircuSave is a digital coordination and recordkeeping platform for savings circles. CircuSave helps users organize circles, schedules, contribution records, communications, and payout order. CircuSave is not a bank, credit union, lender, escrow provider, trustee, investment company, or financial institution.',
       },
       {
         heading: '2. What CircuSave does not do with contribution funds',
         body:
-          'CircuSave does not own, borrow, invest, or use member contribution funds. CircuSave does not treat member contribution amounts as CircuSave operating capital. When members contribute in a savings circle, those contributions are intended for the circle\'s scheduled payout process among members according to the circle\'s rules and records.',
+          "CircuSave does not own, borrow, invest, or use member contribution funds. CircuSave does not treat member contribution amounts as CircuSave operating capital. When members contribute in a savings circle, those contributions are intended for the circle's scheduled payout process among members according to the circle's rules and records.",
       },
       {
         heading: '3. Payments are handled by independent providers',
         body:
-          'Payments are handled through independent payment providers and financial institutions. Depending on the flow enabled for your circle or market, funds may move between members\' own accounts, cards, banks, or other payment methods supported by those providers. The exact payment flow remains subject to the payment provider\'s terms, availability, verification requirements, and dispute procedures.',
+          "Payments are handled through independent payment providers and financial institutions. Depending on the flow enabled for your circle or market, funds may move between members' own accounts, cards, banks, or other payment methods supported by those providers. The exact payment flow remains subject to the payment provider's terms, availability, verification requirements, and dispute procedures.",
       },
       {
         heading: '4. What a "pot" or contribution total means',
@@ -239,12 +234,12 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '7. Organizer and member responsibilities',
         body:
-          'Organizers and members remain responsible for accurate recordkeeping inputs, confirming real-world payment receipt when required, and resolving disputes within their circle. CircuSave\'s tools are designed to improve transparency and coordination; they do not replace trust, good judgment, or applicable law.',
+          "Organizers and members remain responsible for accurate recordkeeping inputs, confirming real-world payment receipt when required, and resolving disputes within their circle. CircuSave's tools are designed to improve transparency and coordination; they do not replace trust, good judgment, or applicable law.",
       },
       {
-        heading: '8. Product description, not a final legal classification',
+        heading: '8. Product description',
         body:
-          'This disclosure describes product behavior: coordination, recordkeeping, and optional integration with independent payment providers. It does not assert a final regulatory conclusion about how every jurisdiction may classify every payment flow. As payment features evolve, disclosures may be updated to match the actual flow presented to users.',
+          'This disclosure describes product behavior: coordination, recordkeeping, and optional integration with independent payment providers.',
       },
     ],
   },
@@ -258,7 +253,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
     version: LEGAL_VERSIONS.electronicConsent,
     effectiveDateLabel: LEGAL_EFFECTIVE_DATE_LABEL,
     intro:
-      'This is an initial product-policy draft describing your consent to receive agreements and notices electronically. It is not attorney-approved legal advice.',
+      'This Electronic Consent agreement describes your consent to receive disclosures, notices, and records electronically.',
     sections: [
       {
         heading: '1. Consent to electronic delivery',
