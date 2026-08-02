@@ -24,6 +24,7 @@ import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
+import { useEntitlements } from '@/lib/entitlementsContext';
 import { formatHandsPeopleMetrics } from '@/lib/circleLifecycleCopy';
 import {
   circleWorkspaceHref,
@@ -50,6 +51,7 @@ type ListItem =
 export default function CirclesScreen() {
   const { t } = useTranslation('circles');
   const { session, status } = useAuthSession();
+  const { planTier } = useEntitlements();
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,10 +105,10 @@ export default function CirclesScreen() {
     () =>
       buildOpenCircleCapacity({
         circles,
-        organizerRoleOrTier: session?.user?.role,
+        organizerRoleOrTier: planTier,
         organizerOwnedOnly: true,
       }),
-    [circles, session?.user?.role],
+    [circles, planTier],
   );
 
   const listData = useMemo(() => {

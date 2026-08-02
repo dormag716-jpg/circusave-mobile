@@ -21,7 +21,8 @@ import type { TFunction } from 'i18next';
 
 import { createCircle, getCircleDetail, getCircles } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
-import { buildOpenCircleCapacity, normalizePlanTier } from '@/lib/circleCapacity';
+import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
+import { useEntitlements } from '@/lib/entitlementsContext';
 import {
   applyDraftDefaults,
   buildCreateCirclePayload,
@@ -65,6 +66,7 @@ const emptyNewMember = (): MemberDraft => ({
 export default function CircleSetupWizardScreen() {
   const { t, i18n: translation } = useTranslation('createCircle');
   const { session } = useAuthSession();
+  const { planTier } = useEntitlements();
   const { sourceCircleId } = useLocalSearchParams<{ sourceCircleId: string }>();
   const [activeStep, setActiveStep] = useState(0);
   const [circleName, setCircleName] = useState('');
@@ -313,7 +315,7 @@ export default function CircleSetupWizardScreen() {
     const capError = validatePlanCapacity(
       nextMembers,
       organizerParticipates,
-      session?.user?.role,
+      planTier,
     );
     if (capError) {
       Alert.alert(t('errors.planLimitTitle'), capacityErrorMessage());
@@ -363,7 +365,7 @@ export default function CircleSetupWizardScreen() {
       const capError = validatePlanCapacity(
         members,
         organizerParticipates,
-        session?.user?.role,
+        planTier,
       );
       if (capError) {
         Alert.alert(t('errors.planLimitTitle'), capacityErrorMessage());
@@ -397,7 +399,7 @@ export default function CircleSetupWizardScreen() {
         const existing = await getCircles(token);
         const openCap = buildOpenCircleCapacity({
           circles: existing,
-          organizerRoleOrTier: session?.user?.role,
+          organizerRoleOrTier: planTier,
           organizerOwnedOnly: true,
         });
         if (openCap.atCapacity) {
@@ -451,7 +453,7 @@ export default function CircleSetupWizardScreen() {
   }
 
   function capacityErrorMessage() {
-    return normalizePlanTier(session?.user?.role) === 'premium'
+    return planTier === 'premium'
       ? t('validation.premiumCapacity', { count: 50 })
       : t('validation.freeCapacity', { count: 20, premiumCount: 50 });
   }

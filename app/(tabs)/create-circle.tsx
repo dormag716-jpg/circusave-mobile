@@ -11,6 +11,7 @@ import { useAuthSession } from '@/lib/authContext';
 import {
   buildOpenCircleCapacity,
 } from '@/lib/circleCapacity';
+import { useEntitlements } from '@/lib/entitlementsContext';
 import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 
@@ -19,8 +20,8 @@ type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
 export default function CreateCircleGuideScreen() {
   const { t } = useTranslation('createCircle');
   const { session } = useAuthSession();
+  const { planTier } = useEntitlements();
   const token = session?.session.token;
-  const role = session?.user?.role;
 
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +46,7 @@ export default function CreateCircleGuideScreen() {
 
   const openCap = buildOpenCircleCapacity({
     circles,
-    organizerRoleOrTier: role,
+    organizerRoleOrTier: planTier,
     organizerOwnedOnly: true,
   });
   const hasReachedLimit = openCap.atCapacity;
