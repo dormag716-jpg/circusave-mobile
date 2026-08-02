@@ -298,16 +298,20 @@ export type CircleAgreementReadiness = {
   circleId: string;
   snapshotId: string | null;
   snapshotHash: string | null;
+  /** Preferred structural readiness fields. */
+  structureComplete?: boolean;
+  payoutOrderComplete?: boolean;
+  pendingStructureRequests?: boolean;
+  canStartCircle?: boolean;
+  structuralBlockers?: string[];
   /**
-   * Full-gate signal including unresolved live start-confirmation requirements.
-   * Remains false before start under backward-compatible semantics.
-   * Do not use for agreement-completeness or Start-button eligibility —
-   * use agreementsComplete / canOpenStartFlow instead.
+   * Legacy full-gate signal including unresolved start-confirmation requirements.
+   * Prefer canStartCircle / canOpenStartFlow for Start-button eligibility.
    */
   readyToStart: boolean;
-  /** Full list (durable agreement + start-confirmation) for compatibility. */
+  /** Full list (structural + confirmation) for compatibility. */
   blockers: string[];
-  /** Durable agreement / structural blockers only. */
+  /** Legacy agreement blockers (always empty under structural-only start). */
   agreementBlockers: string[];
   /** Start-confirmation codes only (submitted in the start request). */
   confirmationRequirements: string[];
@@ -327,8 +331,8 @@ export type CircleAgreementReadiness = {
 };
 
 export type CircleAgreementContent = {
-  draftStatus: 'draft_pending_licensed_counsel_approval';
-  notLegalAdvice: true;
+  draftStatus: string;
+  notLegalAdvice: boolean;
   versions: Record<string, string>;
   documents: Record<string, {
     version: string;

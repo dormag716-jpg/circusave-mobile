@@ -113,19 +113,18 @@ describe('circle agreement presentation', () => {
     ]);
   });
 
-  it('shows action required when a member is missing acceptance', () => {
+  it('never requires member acceptance prompts', () => {
     const prompt = getMemberAgreementPrompt({
       circleStarted: false,
       userId: 'u1',
       isParticipatingMember: true,
       snapshot,
     });
-    expect(prompt).toEqual({ kind: 'action_required' });
-    expect(shouldShowMemberAgreementBanner(prompt)).toBe(true);
-    expect(memberCanOpenAgreementReview(prompt)).toBe(true);
+    expect(prompt).toEqual({ kind: 'none' });
+    expect(shouldShowMemberAgreementBanner(prompt)).toBe(false);
   });
 
-  it('does not show organizer-style acceptance for non-members', () => {
+  it('does not show acceptance banners for non-members', () => {
     const prompt = getMemberAgreementPrompt({
       circleStarted: false,
       userId: 'outsider',
@@ -136,18 +135,7 @@ describe('circle agreement presentation', () => {
     expect(shouldShowMemberAgreementBanner(prompt)).toBe(false);
   });
 
-  it('requires a snapshot before members can accept', () => {
-    expect(
-      getMemberAgreementPrompt({
-        circleStarted: false,
-        userId: 'u1',
-        isParticipatingMember: true,
-        snapshot: null,
-      }),
-    ).toEqual({ kind: 'waiting_for_snapshot' });
-  });
-
-  it('treats multi-hand ownership as accepted only for the exact current snapshot', () => {
+  it('still derives multi-hand ownership from snapshot data', () => {
     const accepted = {
       ...snapshot,
       alreadyAccepted: {
@@ -165,21 +153,7 @@ describe('circle agreement presentation', () => {
         isParticipatingMember: true,
         snapshot: accepted,
       }),
-    ).toEqual({ kind: 'accepted' });
-    expect(
-      memberHasAcceptedCurrentSnapshot(
-        { ...accepted, structureCurrent: false } as CircleAgreementSnapshot,
-        'u1',
-      ),
-    ).toBe(false);
-    expect(
-      getMemberAgreementPrompt({
-        circleStarted: false,
-        userId: 'u1',
-        isParticipatingMember: true,
-        snapshot: { ...accepted, structureCurrent: false } as CircleAgreementSnapshot,
-      }),
-    ).toEqual({ kind: 'stale_structure' });
+    ).toEqual({ kind: 'none' });
   });
 
   it('reads service fees from the server snapshot', () => {
@@ -194,13 +168,15 @@ describe('circle agreement presentation', () => {
 });
 
 describe('agreement readiness semantics (CS-005)', () => {
-  it('disables Start when agreements are incomplete', () => {
+  it('disables Start when structure is incomplete', () => {
     const readiness = readinessFixture({
       agreementsComplete: false,
       canOpenStartFlow: false,
-      memberAcceptancesComplete: false,
-      agreementBlockers: ['member_acceptances_missing'],
-      blockers: ['member_acceptances_missing', 'payout_order_confirmation_missing'],
+      canStartCircle: false,
+      structureComplete: false,
+      memberAcceptancesComplete: true,
+      agreementBlockers: [],
+      blockers: ['PAYOUT_ORDER_INCOMPLETE', 'payout_order_confirmation_missing'],
     });
     expect(
       canEnableOrganizerStart({

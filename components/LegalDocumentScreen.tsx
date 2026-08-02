@@ -46,9 +46,6 @@ export function LegalDocumentScreen({
           {version ? (
             <Text style={styles.version}>Document version {version}</Text>
           ) : null}
-          <Text style={styles.draftNote}>
-            Initial product-policy draft. Not attorney-approved legal advice.
-          </Text>
 
           {intro ? <Text style={styles.intro}>{intro}</Text> : null}
 
@@ -118,13 +115,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     fontWeight: '600',
-    marginBottom: 8,
-  },
-  draftNote: {
-    color: colors.muted,
-    fontSize: 12,
-    fontStyle: 'italic',
-    lineHeight: 18,
     marginBottom: 16,
   },
   intro: {

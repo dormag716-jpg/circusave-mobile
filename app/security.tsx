@@ -4,9 +4,13 @@ import { router } from 'expo-router';
 import { Alert, ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+
 import { useAuthSession } from '@/lib/authContext';
 import { useDeviceLock } from '@/components/DeviceLock';
 import { exportUserData, deleteAccount } from '@/lib/api';
+import { copyText } from '@/lib/clipboard';
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function SecurityScreen() {
@@ -29,9 +33,31 @@ export default function SecurityScreen() {
       const legalAcceptances = Array.isArray(data?.legalAcceptances)
         ? data.legalAcceptances
         : [];
+      const archiveJson = JSON.stringify(data, null, 2);
+      const filename = `circusave-data-export-${Date.now()}.json`;
+
+      // Deliver the actual archive (store data-portability requirement), not only a summary.
+      try {
+        const file = new File(Paths.cache, filename);
+        file.create({ overwrite: true });
+        file.write(archiveJson);
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'application/json',
+            dialogTitle: 'Export CircuSave Data Archive',
+            UTI: 'public.json',
+          });
+        } else {
+          await copyText(archiveJson);
+        }
+      } catch (shareErr) {
+        console.error('Data export share failed, falling back to copy:', shareErr);
+        await copyText(archiveJson);
+      }
+
       Alert.alert(
-        'Data Export Prepared',
-        `Your data export archive (v1.0) is ready.\n\nExport Summary:\n• Email: ${
+        'Data Export Ready',
+        `Your data export archive (v1.0) is ready to save or share.\n\nExport Summary:\n• Email: ${
           typeof profile.email === 'string' ? profile.email : 'N/A'
         }\n• Memberships: ${memberships.length}\n• Legal Audit Trail: ${legalAcceptances.length} accepted`,
         [{ text: 'OK' }],

@@ -114,7 +114,8 @@ export function getAgreementReadinessStatusKeys(input: {
 }
 
 /**
- * Start-button eligibility. Uses canOpenStartFlow — never readyToStart.
+ * Start-button eligibility — structural readiness only (no agreement acceptances).
+ * Prefer canStartCircle / canOpenStartFlow; never readyToStart.
  */
 export function canEnableOrganizerStart(input: {
   readiness: CircleAgreementReadiness | null;
@@ -122,9 +123,18 @@ export function canEnableOrganizerStart(input: {
   startUnclaimedChecked: boolean;
   busy: boolean;
 }): boolean {
+  if (input.busy) return false;
   const readiness = input.readiness;
-  if (!readiness || input.busy) return false;
-  if (!readiness.canOpenStartFlow) return false;
+  // When readiness is unavailable, allow the start attempt; backend enforces structure.
+  if (!readiness) {
+    return input.startPayoutChecked;
+  }
+  const structuralOk =
+    readiness.canStartCircle === true ||
+    readiness.canOpenStartFlow === true ||
+    readiness.structureComplete === true;
+  if (!structuralOk) return false;
+  // Local product confirmations (structure lock) — not legal consent checkboxes.
   if (!input.startPayoutChecked) return false;
   if (readiness.requiresUnclaimedHandConfirmation && !input.startUnclaimedChecked) {
     return false;
@@ -225,32 +235,16 @@ export function getMemberAgreementPrompt(input: {
   isParticipatingMember: boolean;
   snapshot: CircleAgreementSnapshot | null;
 }): MemberAgreementPrompt {
-  if (input.circleStarted || !input.isParticipatingMember || !input.userId) {
-    return { kind: 'none' };
-  }
-  if (!input.snapshot) {
-    return { kind: 'waiting_for_snapshot' };
-  }
-  if (ownedAgreementHands(input.snapshot, input.userId).length === 0) {
-    return { kind: 'none' };
-  }
-  if (!input.snapshot.structureCurrent) {
-    return { kind: 'stale_structure' };
-  }
-  if (memberHasAcceptedCurrentSnapshot(input.snapshot, input.userId)) {
-    return { kind: 'accepted' };
-  }
-  return { kind: 'action_required' };
+  // Product change: members no longer complete acceptance/readiness actions.
+  void input;
+  return { kind: 'none' };
 }
 
 export function shouldShowMemberAgreementBanner(
   prompt: MemberAgreementPrompt,
 ): boolean {
-  return (
-    prompt.kind === 'action_required' ||
-    prompt.kind === 'waiting_for_snapshot' ||
-    prompt.kind === 'stale_structure'
-  );
+  void prompt;
+  return false;
 }
 
 export function memberCanOpenAgreementReview(

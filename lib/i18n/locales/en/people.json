@@ -119,8 +119,8 @@
     "startBody": "Starting locks membership, hands, and payout order.",
     "startBodyUnclaimed": "Starting locks membership, hands, and payout order. You will confirm unclaimed hands first.",
     "startAction": "Start Circle",
-    "reviewAgreements": "Review agreements & start",
-    "reviewAgreementsHint": "Finalize the snapshot, collect member acceptances, then start.",
+    "reviewAgreements": "Review and start circle",
+    "reviewAgreementsHint": "Review the final structure, then start the circle.",
     "status": {
       "action": "Action",
       "waiting": "Waiting",
