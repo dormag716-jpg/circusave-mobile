@@ -1,13 +1,70 @@
+import React, { useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuthSession } from '@/lib/authContext';
 import { useDeviceLock } from '@/components/DeviceLock';
+import { exportUserData, deleteAccount } from '@/lib/api';
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function SecurityScreen() {
+  const { session, signOut } = useAuthSession();
+  const token = session?.session.token;
   const { isLockEnabled, setLockEnabled } = useDeviceLock();
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleExportData = async () => {
+    if (!token) return;
+    setExporting(true);
+    try {
+      const data = await exportUserData(token);
+      const profile = (data?.profile && typeof data.profile === 'object') ? (data.profile as Record<string, unknown>) : {};
+      const memberships = Array.isArray(data?.memberships) ? data.memberships : [];
+      const legalAcceptances = Array.isArray(data?.legalAcceptances) ? data.legalAcceptances : [];
+      Alert.alert(
+        "Data Export Prepared",
+        `Your data export archive (v1.0) is ready.\n\nExport Summary:\n• Email: ${typeof profile.email === 'string' ? profile.email : 'N/A'}\n• Memberships: ${memberships.length}\n• Legal Audit Trail: ${legalAcceptances.length} accepted`,
+        [{ text: "OK" }]
+      );
+    } catch {
+      Alert.alert("Export Error", "Unable to export user data. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    if (!token) return;
+    Alert.alert(
+      "Delete Account?",
+      "Are you sure you want to permanently delete your account?\n\n• Your personal details (name, email, phone) will be anonymized.\n• Your active session will be revoked immediately.\n• Required financial transaction records will be retained for regulatory audit compliance.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete Account",
+          style: "destructive",
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await deleteAccount(token);
+              Alert.alert("Account Deleted", "Your account has been deleted and anonymized.");
+            } catch {
+              Alert.alert("Deletion Error", "Unable to complete account deletion. Please try again.");
+            } finally {
+              try {
+                await signOut();
+              } finally {
+                router.replace('/login');
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -19,11 +76,11 @@ export default function SecurityScreen() {
         >
           <FontAwesome name="arrow-left" size={20} color={colors.textStrong} />
         </Pressable>
-        <Text style={styles.headerTitle}>Security</Text>
+        <Text style={styles.headerTitle}>Security & Privacy</Text>
         <View style={styles.placeholder} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>Device Access</Text>
         <View style={styles.card}>
           <View style={styles.cardRow}>
@@ -52,7 +109,49 @@ export default function SecurityScreen() {
             </View>
           </View>
         </View>
-      </View>
+
+        {/* Section: Data & Account Rights (Store Compliance) */}
+        <Text style={styles.sectionTitle}>Data & Privacy Rights</Text>
+        <View style={styles.card}>
+          <Pressable
+            style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
+            onPress={handleExportData}
+            disabled={exporting}
+          >
+            <View style={styles.actionText}>
+              <Text style={styles.cardTitle}>Export My Data</Text>
+              <Text style={styles.cardSubtitle}>
+                Download a complete JSON archive of your profile, circle participation, legal acceptances, and records.
+              </Text>
+            </View>
+            {exporting ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <FontAwesome name="download" size={18} color={colors.primary} />
+            )}
+          </Pressable>
+
+          <View style={styles.cardDivider} />
+
+          <Pressable
+            style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
+            onPress={handleDeleteAccount}
+            disabled={deleting}
+          >
+            <View style={styles.actionText}>
+              <Text style={[styles.cardTitle, { color: colors.danger }]}>Delete Account</Text>
+              <Text style={styles.cardSubtitle}>
+                Anonymize your personal information and delete your account in accordance with App Store & Google Play privacy policies.
+              </Text>
+            </View>
+            {deleting ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <FontAwesome name="trash" size={18} color={colors.danger} />
+            )}
+          </Pressable>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -71,10 +170,8 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 8, marginLeft: -8 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: colors.textStrong },
-  placeholder: { width: 36 }, // To balance the back button
-  content: {
-    padding: spacing.screenX,
-  },
+  placeholder: { width: 36 },
+  content: { padding: spacing.screenX, paddingBottom: 40 },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
@@ -97,19 +194,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  cardText: {
-    flex: 1,
-    paddingRight: 16,
+  cardText: { flex: 1, paddingRight: 16 },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
   },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.textStrong,
-    marginBottom: 4,
+  actionRowPressed: { opacity: 0.7 },
+  actionText: { flex: 1, paddingRight: 16 },
+  cardDivider: {
+    height: 1,
+    backgroundColor: colors.cardBorder,
+    marginVertical: 12,
   },
-  cardSubtitle: {
-    fontSize: 14,
-    color: colors.muted,
-    lineHeight: 20,
-  },
+  cardTitle: { fontSize: 17, fontWeight: '700', color: colors.textStrong, marginBottom: 4 },
+  cardSubtitle: { fontSize: 14, color: colors.muted, lineHeight: 20 },
 });

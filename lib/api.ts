@@ -1705,3 +1705,14 @@ export function downloadPayoutOrderPdf(
     token,
   );
 }
+
+export async function exportUserData(token: string): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>('/auth/me/export', { token });
+}
+
+export async function deleteAccount(token: string): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>('/auth/me/delete', {
+    method: 'POST',
+    token,
+  });
+}
