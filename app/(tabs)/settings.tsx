@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
 
 import { useAuthSession } from '@/lib/authContext';
+import { useEntitlements } from '@/lib/entitlementsContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
 import { readLanguagePreference } from '@/lib/i18n/language-storage';
 import {
@@ -21,6 +22,7 @@ import { colors, radii, spacing } from '@/lib/theme';
 export default function SettingsScreen() {
   const { i18n, t } = useTranslation(['settings', 'navigation']);
   const { session, signOut } = useAuthSession();
+  const { isPremium } = useEntitlements();
   const { market, setMarket } = useMarket();
   const [modalVisible, setModalVisible] = useState(false);
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
@@ -48,14 +50,17 @@ export default function SettingsScreen() {
 
   const displayName = session?.user.name ?? t('settings:title');
   const email = session?.user.email ?? t('settings:connectedSession');
-  const reliabilityScore = session?.user.reliabilityScore !== undefined 
-    ? `${session.user.reliabilityScore}%` 
+  const reliabilityScore = session?.user.reliabilityScore !== undefined
+    ? `${session.user.reliabilityScore}%`
     : '--%';
+  const subscriptionSubtitle = isPremium
+    ? 'Premium Organizer — Active'
+    : 'Free Plan — Upgrade available';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        
+
         {/* Profile Header */}
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>
@@ -65,11 +70,19 @@ export default function SettingsScreen() {
                 <FontAwesome name="check-circle" size={18} color={colors.primary} />
               </View>
             </View>
-            
+
             <View style={styles.headerInfo}>
-              <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+                {isPremium ? (
+                  <View style={styles.premiumBadge}>
+                    <FontAwesome name="star" size={10} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+                  </View>
+                ) : null}
+              </View>
               <Text style={styles.email} numberOfLines={1}>{email}</Text>
-              
+
               <View style={styles.reliabilityBadge}>
                 <FontAwesome name="shield" size={12} color={colors.success} style={{ marginRight: 6 }} />
                 <Text style={styles.reliabilityText}>
@@ -117,9 +130,10 @@ export default function SettingsScreen() {
             isFirst
           />
           <MenuItem
-            icon="star-o"
+            icon="star"
             title={t('settings:subscription')}
-            subtitle={t('settings:subscriptionSubtitle')}
+            subtitle={subscriptionSubtitle}
+            badge={isPremium ? 'PRO' : undefined}
             onPress={() => router.push('/subscription')}
             isLast
           />
@@ -376,7 +390,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  name: { fontSize: 24, fontWeight: '900', color: colors.textStrong, marginBottom: 2 },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 2,
+  },
+  name: { fontSize: 22, fontWeight: '900', color: colors.textStrong },
+  premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  premiumBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
   email: { color: colors.muted, fontSize: 14, marginBottom: 12 },
   reliabilityBadge: {
     flexDirection: 'row',
