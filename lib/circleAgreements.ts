@@ -2,8 +2,135 @@ import type {
   AdditionalHandPreview,
   AgreementLanguage,
   CircleAgreementHand,
+  CircleAgreementReadiness,
   CircleAgreementSnapshot,
 } from './api';
+
+/** Durable agreement / structural blocker codes (backend-authoritative). */
+export const AGREEMENT_BLOCKER_CODES = [
+  'snapshot_missing',
+  'structure_changed_after_acceptance',
+  'organizer_agreement_missing',
+  'organizer_snapshot_acceptance_missing',
+  'member_acceptances_missing',
+  'stale_acceptances',
+] as const;
+
+/** Ephemeral start-confirmation codes (submitted only in the start request). */
+export const START_CONFIRMATION_CODES = [
+  'payout_order_confirmation_missing',
+  'unclaimed_hand_confirmation_missing',
+] as const;
+
+export type AgreementBlockerCode = (typeof AGREEMENT_BLOCKER_CODES)[number];
+export type StartConfirmationCode = (typeof START_CONFIRMATION_CODES)[number];
+
+/** i18n keys under agreements namespace for known readiness codes. */
+export const AGREEMENT_BLOCKER_COPY_KEYS: Record<AgreementBlockerCode, string> = {
+  snapshot_missing: 'blockerSnapshotMissing',
+  structure_changed_after_acceptance: 'blockerStructureChanged',
+  organizer_agreement_missing: 'blockerOrganizerAgreement',
+  organizer_snapshot_acceptance_missing: 'blockerOrganizerSnapshot',
+  member_acceptances_missing: 'blockerMemberAcceptances',
+  stale_acceptances: 'blockerStaleAcceptances',
+};
+
+export const START_CONFIRMATION_COPY_KEYS: Record<StartConfirmationCode, string> = {
+  payout_order_confirmation_missing: 'blockerPayoutOrderConfirmation',
+  unclaimed_hand_confirmation_missing: 'blockerUnclaimedHandConfirmation',
+};
+
+/**
+ * Localized status lines for the readiness card.
+ * Prefer backend additive flags; never surface raw confirmation codes as primary copy.
+ * Members do not receive organizer-only confirmation lines.
+ */
+export function getAgreementReadinessStatusKeys(input: {
+  readiness: CircleAgreementReadiness | null;
+  isOrganizer: boolean;
+}): string[] {
+  const readiness = input.readiness;
+  if (!readiness) {
+    return ['blockerSnapshotMissing'];
+  }
+
+  const keys: string[] = [];
+  const agreementBlockers =
+    readiness.agreementBlockers ??
+    (readiness.blockers ?? []).filter(
+      (code) => !(START_CONFIRMATION_CODES as readonly string[]).includes(code),
+    );
+
+  if (!readiness.snapshotPresent || agreementBlockers.includes('snapshot_missing')) {
+    keys.push('blockerSnapshotMissing');
+  } else if (!readiness.snapshotCurrent || agreementBlockers.includes('structure_changed_after_acceptance')) {
+    keys.push('blockerStructureChanged');
+  } else {
+    if (
+      !readiness.memberAcceptancesComplete ||
+      agreementBlockers.includes('member_acceptances_missing')
+    ) {
+      keys.push('blockerMemberAcceptances');
+    }
+    if (agreementBlockers.includes('stale_acceptances') && !keys.includes('blockerMemberAcceptances')) {
+      keys.push('blockerStaleAcceptances');
+    }
+    if (
+      !readiness.organizerAgreementComplete ||
+      agreementBlockers.includes('organizer_agreement_missing') ||
+      agreementBlockers.includes('organizer_snapshot_acceptance_missing')
+    ) {
+      if (agreementBlockers.includes('organizer_agreement_missing')) {
+        keys.push('blockerOrganizerAgreement');
+      } else if (agreementBlockers.includes('organizer_snapshot_acceptance_missing')) {
+        keys.push('blockerOrganizerSnapshot');
+      } else {
+        keys.push('blockerOrganizerAgreement');
+      }
+    }
+  }
+
+  // Any remaining unknown durable codes (should be rare).
+  for (const code of agreementBlockers) {
+    const mapped = AGREEMENT_BLOCKER_COPY_KEYS[code as AgreementBlockerCode];
+    if (mapped && !keys.includes(mapped)) {
+      keys.push(mapped);
+    }
+  }
+
+  if (readiness.agreementsComplete || readiness.canOpenStartFlow) {
+    keys.push('statusAgreementsComplete');
+    if (input.isOrganizer) {
+      if (readiness.requiresOrganizerStartConfirmation) {
+        keys.push('blockerPayoutOrderConfirmation');
+      }
+      if (readiness.requiresUnclaimedHandConfirmation) {
+        keys.push('blockerUnclaimedHandConfirmation');
+      }
+    }
+  }
+
+  return keys.length > 0 ? keys : ['notReady'];
+}
+
+/**
+ * Start-button eligibility. Uses canOpenStartFlow — never readyToStart.
+ */
+export function canEnableOrganizerStart(input: {
+  readiness: CircleAgreementReadiness | null;
+  startPayoutChecked: boolean;
+  startUnclaimedChecked: boolean;
+  busy: boolean;
+}): boolean {
+  const readiness = input.readiness;
+  if (!readiness || input.busy) return false;
+  if (!readiness.canOpenStartFlow) return false;
+  if (!input.startPayoutChecked) return false;
+  if (readiness.requiresUnclaimedHandConfirmation && !input.startUnclaimedChecked) {
+    return false;
+  }
+  return true;
+}
 
 export function normalizeAgreementLanguage(language: string): AgreementLanguage {
   const code = language.toLowerCase().split('-')[0];

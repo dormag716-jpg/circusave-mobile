@@ -293,13 +293,32 @@ export type CircleAgreementReadiness = {
   circleId: string;
   snapshotId: string | null;
   snapshotHash: string | null;
+  /**
+   * Full-gate signal including unresolved live start-confirmation requirements.
+   * Remains false before start under backward-compatible semantics.
+   * Do not use for agreement-completeness or Start-button eligibility —
+   * use agreementsComplete / canOpenStartFlow instead.
+   */
   readyToStart: boolean;
+  /** Full list (durable agreement + start-confirmation) for compatibility. */
   blockers: string[];
+  /** Durable agreement / structural blockers only. */
+  agreementBlockers: string[];
+  /** Start-confirmation codes only (submitted in the start request). */
+  confirmationRequirements: string[];
   missingMemberAcceptances: Array<{
     userId: string;
     handIds: string[];
     missingDocuments: string[];
   }>;
+  snapshotPresent: boolean;
+  snapshotCurrent: boolean;
+  memberAcceptancesComplete: boolean;
+  organizerAgreementComplete: boolean;
+  agreementsComplete: boolean;
+  requiresOrganizerStartConfirmation: boolean;
+  requiresUnclaimedHandConfirmation: boolean;
+  canOpenStartFlow: boolean;
 };
 
 export type CircleAgreementContent = {
@@ -1284,6 +1303,7 @@ export function requestJoin(
     body: claimToken ? JSON.stringify({ claimToken }) : undefined,
   });
 }
+
 
 export function approveJoinRequest(
   token: string,

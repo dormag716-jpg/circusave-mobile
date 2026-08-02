@@ -27,7 +27,9 @@ import {
   type CircleAgreementSnapshot,
 } from '@/lib/api';
 import {
+  canEnableOrganizerStart,
   canSubmitAgreementAcceptance,
+  getAgreementReadinessStatusKeys,
   memberHasAcceptedCurrentSnapshot,
   normalizeAgreementLanguage,
   orderedSnapshotHands,
@@ -121,12 +123,21 @@ export default function CircleAgreementReviewScreen() {
   const memberAccepted = Boolean(
     snapshot && memberHasAcceptedCurrentSnapshot(snapshot, userId),
   );
-  const hasUnclaimedHands = Boolean(snapshot?.hands.some((hand) => !hand.userId));
-  const agreementBlockers = (readiness?.blockers ?? []).filter(
-    (blocker) =>
-      blocker !== 'payout_order_confirmation_missing' &&
-      blocker !== 'unclaimed_hand_confirmation_missing',
+  // Prefer backend-authoritative confirmation flag; fall back to snapshot hands.
+  const requiresUnclaimedHandConfirmation = Boolean(
+    readiness?.requiresUnclaimedHandConfirmation ??
+      snapshot?.hands.some((hand) => !hand.userId),
   );
+  const readinessStatusKeys = useMemo(
+    () => getAgreementReadinessStatusKeys({ readiness, isOrganizer }),
+    [isOrganizer, readiness],
+  );
+  const canStart = canEnableOrganizerStart({
+    readiness,
+    startPayoutChecked,
+    startUnclaimedChecked,
+    busy: Boolean(busy),
+  });
   const memberFacing = isParticipant && !isOrganizer;
 
   async function finalize() {
@@ -183,7 +194,9 @@ export default function CircleAgreementReviewScreen() {
     try {
       await startCircle(token, circleId, {
         confirmPayoutOrder: startPayoutChecked,
-        confirmUnclaimedHands: hasUnclaimedHands ? startUnclaimedChecked : false,
+        confirmUnclaimedHands: requiresUnclaimedHandConfirmation
+          ? startUnclaimedChecked
+          : false,
         snapshotId: snapshot.id,
         snapshotHash: snapshot.snapshotHash,
         language,
@@ -323,28 +336,59 @@ export default function CircleAgreementReviewScreen() {
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{t('readinessTitle')}</Text>
-              {agreementBlockers.length === 0 ? (
+              {readiness?.agreementsComplete ? (
                 <Text style={styles.success}>
-                  {memberFacing || (isParticipant && !isOrganizer) ? t('readyMember') : t('ready')}
+                  {memberFacing ? t('readyMember') : t('ready')}
                 </Text>
               ) : (
-                <>
-                  <Text style={styles.body}>{t('notReady')}</Text>
-                  {agreementBlockers.map((blocker) => <Text style={styles.blocker} key={blocker}>• {blocker}</Text>)}
-                </>
+                <Text style={styles.body}>{t('notReady')}</Text>
               )}
+              {readinessStatusKeys.map((key) => {
+                const isCompleteLine = key === 'statusAgreementsComplete';
+                const isConfirmationLine =
+                  key === 'blockerPayoutOrderConfirmation' ||
+                  key === 'blockerUnclaimedHandConfirmation';
+                // Members never see organizer-only confirmation copy.
+                if (!isOrganizer && isConfirmationLine) return null;
+                // When agreements are complete, the success line above covers it.
+                if (readiness?.agreementsComplete && isCompleteLine) return null;
+                return (
+                  <Text
+                    style={isCompleteLine ? styles.success : styles.blocker}
+                    key={key}
+                  >
+                    • {t(key)}
+                  </Text>
+                );
+              })}
             </View>
 
             {isOrganizer ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>{t('startTitle')}</Text>
-                <ConsentRow checked={startPayoutChecked} onPress={() => setStartPayoutChecked((value) => !value)} label={t('startPayoutCheck')} />
-                {hasUnclaimedHands ? <ConsentRow checked={startUnclaimedChecked} onPress={() => setStartUnclaimedChecked((value) => !value)} label={t('startUnclaimedCheck')} /> : null}
-                <ActionButton
-                  label={t('start')}
-                  disabled={Boolean(busy) || agreementBlockers.length > 0 || !startPayoutChecked || (hasUnclaimedHands && !startUnclaimedChecked)}
-                  onPress={() => void start()}
-                />
+                {readiness?.canOpenStartFlow ? (
+                  <>
+                    <ConsentRow
+                      checked={startPayoutChecked}
+                      onPress={() => setStartPayoutChecked((value) => !value)}
+                      label={t('startPayoutCheck')}
+                    />
+                    {requiresUnclaimedHandConfirmation ? (
+                      <ConsentRow
+                        checked={startUnclaimedChecked}
+                        onPress={() => setStartUnclaimedChecked((value) => !value)}
+                        label={t('startUnclaimedCheck')}
+                      />
+                    ) : null}
+                    <ActionButton
+                      label={t('start')}
+                      disabled={!canStart}
+                      onPress={() => void start()}
+                    />
+                  </>
+                ) : (
+                  <Text style={styles.body}>{t('startBlockedUntilAgreements')}</Text>
+                )}
               </View>
             ) : null}
           </>

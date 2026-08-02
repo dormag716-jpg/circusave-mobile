@@ -1,7 +1,13 @@
-import type { AdditionalHandPreview, CircleAgreementSnapshot } from '../api';
+import type {
+  AdditionalHandPreview,
+  CircleAgreementReadiness,
+  CircleAgreementSnapshot,
+} from '../api';
 import {
   additionalHandFinancialRows,
+  canEnableOrganizerStart,
   canSubmitAgreementAcceptance,
+  getAgreementReadinessStatusKeys,
   getMemberAgreementPrompt,
   memberCanOpenAgreementReview,
   memberHasAcceptedCurrentSnapshot,
@@ -12,6 +18,32 @@ import {
   shouldShowMemberAgreementBanner,
   snapshotServiceFeeCents,
 } from '../circleAgreements';
+
+function readinessFixture(
+  overrides: Partial<CircleAgreementReadiness> = {},
+): CircleAgreementReadiness {
+  return {
+    circleId: 'c1',
+    snapshotId: 's1',
+    snapshotHash: 'a'.repeat(64),
+    readyToStart: false,
+    blockers: [
+      'payout_order_confirmation_missing',
+    ],
+    agreementBlockers: [],
+    confirmationRequirements: ['payout_order_confirmation_missing'],
+    missingMemberAcceptances: [],
+    snapshotPresent: true,
+    snapshotCurrent: true,
+    memberAcceptancesComplete: true,
+    organizerAgreementComplete: true,
+    agreementsComplete: true,
+    requiresOrganizerStartConfirmation: true,
+    requiresUnclaimedHandConfirmation: false,
+    canOpenStartFlow: true,
+    ...overrides,
+  };
+}
 
 const snapshot = {
   structureCurrent: true,
@@ -158,5 +190,154 @@ describe('circle agreement presentation', () => {
         fees: { serviceFeeCents: 250 },
       } as CircleAgreementSnapshot),
     ).toBe(250);
+  });
+});
+
+describe('agreement readiness semantics (CS-005)', () => {
+  it('disables Start when agreements are incomplete', () => {
+    const readiness = readinessFixture({
+      agreementsComplete: false,
+      canOpenStartFlow: false,
+      memberAcceptancesComplete: false,
+      agreementBlockers: ['member_acceptances_missing'],
+      blockers: ['member_acceptances_missing', 'payout_order_confirmation_missing'],
+    });
+    expect(
+      canEnableOrganizerStart({
+        readiness,
+        startPayoutChecked: true,
+        startUnclaimedChecked: true,
+        busy: false,
+      }),
+    ).toBe(false);
+    // readyToStart must not drive button eligibility.
+    expect(readiness.readyToStart).toBe(false);
+  });
+
+  it('shows final confirmation state when agreements are complete', () => {
+    const readiness = readinessFixture();
+    const keys = getAgreementReadinessStatusKeys({ readiness, isOrganizer: true });
+    expect(keys).toContain('statusAgreementsComplete');
+    expect(keys).toContain('blockerPayoutOrderConfirmation');
+    expect(keys).not.toContain('blockerMemberAcceptances');
+  });
+
+  it('enables Start only after required local checkboxes', () => {
+    const readiness = readinessFixture();
+    expect(
+      canEnableOrganizerStart({
+        readiness,
+        startPayoutChecked: false,
+        startUnclaimedChecked: false,
+        busy: false,
+      }),
+    ).toBe(false);
+    expect(
+      canEnableOrganizerStart({
+        readiness,
+        startPayoutChecked: true,
+        startUnclaimedChecked: false,
+        busy: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('requires unclaimed checkbox only when backend requires it', () => {
+    const readiness = readinessFixture({
+      requiresUnclaimedHandConfirmation: true,
+      confirmationRequirements: [
+        'payout_order_confirmation_missing',
+        'unclaimed_hand_confirmation_missing',
+      ],
+      blockers: [
+        'payout_order_confirmation_missing',
+        'unclaimed_hand_confirmation_missing',
+      ],
+    });
+    expect(
+      canEnableOrganizerStart({
+        readiness,
+        startPayoutChecked: true,
+        startUnclaimedChecked: false,
+        busy: false,
+      }),
+    ).toBe(false);
+    expect(
+      canEnableOrganizerStart({
+        readiness,
+        startPayoutChecked: true,
+        startUnclaimedChecked: true,
+        busy: false,
+      }),
+    ).toBe(true);
+    const keys = getAgreementReadinessStatusKeys({ readiness, isOrganizer: true });
+    expect(keys).toContain('blockerUnclaimedHandConfirmation');
+  });
+
+  it('keeps stale snapshot blocking', () => {
+    const readiness = readinessFixture({
+      snapshotCurrent: false,
+      agreementsComplete: false,
+      canOpenStartFlow: false,
+      agreementBlockers: ['structure_changed_after_acceptance'],
+      blockers: [
+        'structure_changed_after_acceptance',
+        'payout_order_confirmation_missing',
+      ],
+    });
+    expect(
+      canEnableOrganizerStart({
+        readiness,
+        startPayoutChecked: true,
+        startUnclaimedChecked: true,
+        busy: false,
+      }),
+    ).toBe(false);
+    const keys = getAgreementReadinessStatusKeys({ readiness, isOrganizer: true });
+    expect(keys).toContain('blockerStructureChanged');
+    expect(keys).not.toContain('statusAgreementsComplete');
+  });
+
+  it('hides organizer confirmation section copy from members', () => {
+    const readiness = readinessFixture({
+      requiresUnclaimedHandConfirmation: true,
+    });
+    const keys = getAgreementReadinessStatusKeys({ readiness, isOrganizer: false });
+    expect(keys).toContain('statusAgreementsComplete');
+    expect(keys).not.toContain('blockerPayoutOrderConfirmation');
+    expect(keys).not.toContain('blockerUnclaimedHandConfirmation');
+  });
+
+  it('does not surface raw confirmation blocker codes as status keys', () => {
+    const readiness = readinessFixture({
+      requiresUnclaimedHandConfirmation: true,
+      blockers: [
+        'payout_order_confirmation_missing',
+        'unclaimed_hand_confirmation_missing',
+      ],
+    });
+    const keys = getAgreementReadinessStatusKeys({ readiness, isOrganizer: true });
+    expect(keys).not.toContain('payout_order_confirmation_missing');
+    expect(keys).not.toContain('unclaimed_hand_confirmation_missing');
+    expect(keys).toContain('blockerPayoutOrderConfirmation');
+    expect(keys).toContain('blockerUnclaimedHandConfirmation');
+  });
+
+  it('never uses readyToStart for button eligibility even if true', () => {
+    // Hypothetical misconfigured payload: readyToStart true while canOpenStartFlow false.
+    const readiness = readinessFixture({
+      readyToStart: true,
+      canOpenStartFlow: false,
+      agreementsComplete: false,
+      agreementBlockers: ['member_acceptances_missing'],
+    });
+    expect(
+      canEnableOrganizerStart({
+        readiness,
+        startPayoutChecked: true,
+        startUnclaimedChecked: true,
+        busy: false,
+      }),
+    ).toBe(false);
   });
 });
