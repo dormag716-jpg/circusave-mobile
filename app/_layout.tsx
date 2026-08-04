@@ -72,7 +72,13 @@ export default function RootLayout() {
       const setupListener = async () => {
         const subscription = await setupNotificationListener((data) => {
           if (data.screen === 'workspace' && data.circleId) {
-            router.push(circleWorkspaceHref(data.circleId, data.tab));
+            router.push(
+              circleWorkspaceHref(
+                data.circleId,
+                data.tab,
+                data.conversationId,
+              ),
+            );
           }
         });
         return subscription;

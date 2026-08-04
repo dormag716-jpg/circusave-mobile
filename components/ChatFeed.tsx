@@ -19,7 +19,8 @@ export default function ChatFeed({ messages, currentUserId }: ChatFeedProps) {
       scrollEnabled={false}
       showsVerticalScrollIndicator={false}
       renderItem={({ item }) => {
-        const isMe = item.senderId === currentUserId;
+        const isMe =
+          item.senderUserId === currentUserId || item.senderId === currentUserId;
 
         if (item.isSystem || item.senderId === 'system') {
           return (

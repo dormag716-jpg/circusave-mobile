@@ -1521,11 +1521,44 @@ export function updateUserProfile(
 
 export type BackendChatMessage = {
   id: string;
+  circleId?: string;
+  conversationId?: string | null;
   senderName: string;
   senderId: string;
+  senderUserId?: string | null;
   text: string;
   timestamp: string;
+  createdAt?: string | null;
   isSystem?: boolean;
+};
+
+export type BackendChatParticipant = {
+  userId: string;
+  memberId: string;
+  name: string;
+};
+
+export type BackendChatConversation = {
+  id: string;
+  circleId: string;
+  type: 'group' | 'direct';
+  title: string;
+  participants: BackendChatParticipant[];
+  lastMessage: BackendChatMessage | null;
+  unreadCount: number;
+  lastReadAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type BackendChatConversationList = {
+  conversations: BackendChatConversation[];
+  unreadCount: number;
+};
+
+export type BackendChatThread = {
+  conversation: BackendChatConversation;
+  messages: BackendChatMessage[];
 };
 
 export interface BackendLinkedAccount {
@@ -1546,6 +1579,77 @@ export async function sendChatMessage(circleId: string, token: string, text: str
     token,
     body: JSON.stringify({ text }),
   });
+}
+
+export function getChatConversations(
+  circleId: string,
+  token: string,
+): Promise<BackendChatConversationList> {
+  return requestJson<BackendChatConversationList>(
+    `/groups/${circleId}/conversations`,
+    { token },
+  );
+}
+
+export function createDirectChatConversation(
+  circleId: string,
+  token: string,
+  memberId: string,
+): Promise<BackendChatConversation> {
+  return requestJson<BackendChatConversation>(
+    `/groups/${circleId}/conversations/direct`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ memberId }),
+    },
+  );
+}
+
+export function getConversationMessages(
+  circleId: string,
+  conversationId: string,
+  token: string,
+): Promise<BackendChatThread> {
+  return requestJson<BackendChatThread>(
+    `/groups/${circleId}/conversations/${conversationId}/messages`,
+    { token },
+  );
+}
+
+export function sendConversationMessage(
+  circleId: string,
+  conversationId: string,
+  token: string,
+  text: string,
+): Promise<BackendChatMessage> {
+  return requestJson<BackendChatMessage>(
+    `/groups/${circleId}/conversations/${conversationId}/messages`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ text }),
+    },
+  );
+}
+
+export function markConversationRead(
+  circleId: string,
+  conversationId: string,
+  token: string,
+): Promise<{
+  conversationId: string;
+  readAt: string | null;
+  unreadCount: number;
+  notificationsUpdated: number;
+}> {
+  return requestJson(
+    `/groups/${circleId}/conversations/${conversationId}/read`,
+    {
+      method: 'POST',
+      token,
+    },
+  );
 }
 
 export async function getMemberAccessToken(circleId: string, memberId: string, token: string): Promise<{ claimToken: string }> {

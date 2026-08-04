@@ -184,7 +184,12 @@ export async function scheduleFinancialNotification(input: {
  * Returns an EventSubscription that should be cleaned up.
  */
 export async function setupNotificationListener(
-  onNavigate: (data: { screen: string; circleId: string; tab?: string }) => void,
+  onNavigate: (data: {
+    screen: string;
+    circleId: string;
+    tab?: string;
+    conversationId?: string;
+  }) => void,
 ) {
   if (isExpoGo) {
     return null;
@@ -196,23 +201,60 @@ export async function setupNotificationListener(
     const data = response.notification.request.content.data;
     if (!data) return;
 
+    const circleId =
+      typeof data.circleId === 'string'
+        ? data.circleId
+        : typeof data.circle_id === 'string'
+          ? data.circle_id
+          : null;
+    const conversationId =
+      typeof data.conversationId === 'string'
+        ? data.conversationId
+        : conversationIdFromNotificationLink(
+            typeof data.link === 'string' ? data.link : null,
+          );
+    const notificationType =
+      typeof data.type === 'string'
+        ? data.type
+        : typeof data.notification_type === 'string'
+          ? data.notification_type
+          : null;
+
     // Direct screen routing
-    if (typeof data.screen === 'string' && typeof data.circleId === 'string') {
-      onNavigate({ screen: data.screen, circleId: data.circleId });
+    if (typeof data.screen === 'string' && circleId) {
+      onNavigate({
+        screen: data.screen,
+        circleId,
+        conversationId: conversationId || undefined,
+      });
       return;
     }
 
     // Action-based routing (Phase 5)
-    if (data.type === 'swap_request') {
-      if (typeof data.circleId === 'string') {
-        onNavigate({ screen: 'workspace', circleId: data.circleId, tab: 'people' });
+    if (notificationType === 'swap_request') {
+      if (circleId) {
+        onNavigate({ screen: 'workspace', circleId, tab: 'people' });
       }
-    } else if (data.type === 'new_chat_message') {
-      if (typeof data.circleId === 'string') {
-        onNavigate({ screen: 'workspace', circleId: data.circleId, tab: 'chat' });
+    } else if (
+      notificationType === 'new_chat_message' ||
+      notificationType === 'chat_message'
+    ) {
+      if (circleId) {
+        onNavigate({
+          screen: 'workspace',
+          circleId,
+          tab: 'chat',
+          conversationId: conversationId || undefined,
+        });
       }
     }
   });
 
   return subscription;
+}
+
+export function conversationIdFromNotificationLink(link: string | null) {
+  if (!link) return null;
+  const match = link.match(/[?&]conversationId=([^&]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }

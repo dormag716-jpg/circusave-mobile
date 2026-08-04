@@ -8,10 +8,17 @@ export const myCirclesHref = '/(tabs)/circles' as const;
 export const createCircleHref = '/(tabs)/create-circle' as const;
 export const joinCircleHref = '/join-circle' as const;
 
-export function circleWorkspaceHref(circleId: string, tab?: string): Href {
+export function circleWorkspaceHref(
+  circleId: string,
+  tab?: string,
+  conversationId?: string,
+): Href {
+  const params: Record<string, string> = { circleId };
+  if (tab) params.tab = tab;
+  if (conversationId) params.conversationId = conversationId;
   return {
     pathname: '/circle/workspace',
-    params: tab ? { circleId, tab } : { circleId },
+    params,
   };
 }
 

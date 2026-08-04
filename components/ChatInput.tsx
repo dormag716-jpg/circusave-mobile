@@ -4,17 +4,26 @@ import { colors } from '@/lib/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 type ChatInputProps = {
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | Promise<void>;
   isLoading?: boolean;
+  placeholder?: string;
 };
 
-export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
+export default function ChatInput({
+  onSend,
+  isLoading,
+  placeholder = 'Send a message...',
+}: ChatInputProps) {
   const [text, setText] = useState('');
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!text.trim() || isLoading) return;
-    onSend(text);
-    setText('');
+    try {
+      await onSend(text);
+      setText('');
+    } catch {
+      // Keep the draft so the user can retry.
+    }
   };
 
   return (
@@ -26,12 +35,12 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.input}
-            placeholder="Send a message..."
+            placeholder={placeholder}
             placeholderTextColor={colors.muted}
             value={text}
             onChangeText={setText}
             multiline
-            maxLength={500}
+            maxLength={4000}
           />
         </View>
         <Pressable
@@ -41,7 +50,7 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
             pressed && styles.sendButtonPressed
           ]}
           disabled={!text.trim() || isLoading}
-          onPress={handleSend}
+          onPress={() => void handleSend()}
           accessibilityRole="button"
         >
           {isLoading ? (

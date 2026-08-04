@@ -106,16 +106,15 @@ import {
   type StartCircleConfirmations,
 } from '@/lib/startCircleReadiness';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
-import ChatFeed from '@/components/ChatFeed';
+import ConversationChat from '@/components/ConversationChat';
 import { Avatar } from '@/components/Avatar';
-import ChatInput from '@/components/ChatInput';
-import { useChat } from '@/lib/useChat';
 import { DecisionSheet } from '@/components/DecisionSheet';
 import {
   groupCurrentApiHandsForDisplay,
   initialsForDisplay,
   validateCurrentPayoutOrder,
 } from '@/lib/peopleWorkspace';
+import { useConversationUnreadCount } from '@/lib/useConversations';
 import {
   contributionStatusLabel,
   roundStatusLabel,
@@ -154,11 +153,18 @@ const tabs: {
 export default function CircleWorkspaceScreen() {
   const { t } = useTranslation('circleWorkspace');
   const { session, status } = useAuthSession();
-  const params = useLocalSearchParams<{ circleId?: string | string[]; tab?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    circleId?: string | string[];
+    tab?: string | string[];
+    conversationId?: string | string[];
+  }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
     : params.circleId;
   const tabParam = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  const conversationIdParam = Array.isArray(params.conversationId)
+    ? params.conversationId[0]
+    : params.conversationId;
   const initialTab = (tabParam as ActiveTab) || 'round';
   const token = session?.session.token;
   // Premium UI flags come from entitlements, never users.role.
@@ -294,6 +300,7 @@ export default function CircleWorkspaceScreen() {
             token={token}
             userId={session.user.id}
             initialTab={initialTab}
+            initialConversationId={conversationIdParam}
             onReload={() => loadWorkspace({ silent: true })}
             refreshNonce={refreshNonce}
             onRoundResolved={setResolvedRound}
@@ -315,6 +322,7 @@ function WorkspaceContent({
   token,
   userId,
   initialTab,
+  initialConversationId,
   onReload,
   refreshNonce,
   onRoundResolved,
@@ -323,6 +331,7 @@ function WorkspaceContent({
   token: string;
   userId: string;
   initialTab: ActiveTab;
+  initialConversationId?: string;
   onReload: () => Promise<void>;
   refreshNonce: number;
   onRoundResolved: (round: number) => void;
@@ -348,6 +357,10 @@ function WorkspaceContent({
   const cacheHealRetries = useRef(0);
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
   const paymentInstructions = circle.paymentInstructions ?? null;
+  const { unreadCount: chatUnreadCount } = useConversationUnreadCount(
+    circle.id,
+    token,
+  );
   const [workspaceAgreementSnapshot, setWorkspaceAgreementSnapshot] =
     useState<CircleAgreementSnapshot | null>(null);
   const [workspaceAgreementLoaded, setWorkspaceAgreementLoaded] = useState(false);
@@ -492,8 +505,6 @@ function WorkspaceContent({
   const roundWorkspace = scheduleData?.roundWorkspace;
   const viewerPermissions = roundWorkspace?.viewerPermissions;
   const viewerRole = roundWorkspace?.viewerRole;
-
-  const { messages, sendMessage, sending } = useChat(circle.id);
 
   const circleUserRole = String(circle.userRole ?? 'none');
   const workspaceViewerRole = String(viewerRole ?? 'none');
@@ -970,11 +981,20 @@ function WorkspaceContent({
               accessibilityRole="tab"
               accessibilityState={{ selected }}
             >
-              <FontAwesome
-                name={tab.icon}
-                size={18}
-                color={selected ? '#fff' : colors.muted}
-              />
+              <View style={styles.tabIcon}>
+                <FontAwesome
+                  name={tab.icon}
+                  size={18}
+                  color={selected ? '#fff' : colors.muted}
+                />
+                {tab.id === 'chat' && chatUnreadCount > 0 ? (
+                  <View style={styles.chatUnreadBadge}>
+                    <Text style={styles.chatUnreadBadgeText}>
+                      {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
               <Text style={[styles.tabText, selected && styles.activeTabText]}>
                 {t(`tabs.${tab.id}`)}
               </Text>
@@ -1075,8 +1095,13 @@ function WorkspaceContent({
 
       {activeTab === 'chat' ? (
         <View style={{ marginTop: 16 }}>
-          <ChatFeed messages={messages} currentUserId={userId} />
-          <ChatInput onSend={sendMessage} isLoading={sending} />
+          <ConversationChat
+            circleId={circle.id}
+            token={token}
+            currentUserId={userId}
+            members={circle.members || []}
+            initialConversationId={initialConversationId}
+          />
         </View>
       ) : null}
 
@@ -5009,6 +5034,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 48,
   },
+  tabIcon: {
+    position: 'relative',
+  },
+  chatUnreadBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    borderColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    minHeight: 16,
+    minWidth: 16,
+    paddingHorizontal: 3,
+    position: 'absolute',
+    right: -11,
+    top: -8,
+  },
+  chatUnreadBadgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '900',
+  },
   activeTab: {
     backgroundColor: colors.primary,
   },
@@ -5903,6 +5950,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-
-
-

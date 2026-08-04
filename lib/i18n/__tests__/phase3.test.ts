@@ -75,6 +75,8 @@ describe('Phase 3 circle workspace localization', () => {
         'joinCircle:title',
         'invite:invitedTitle',
         'circleWorkspace:tabs.people',
+        'circleWorkspace:chat.newPrivate',
+        'circleWorkspace:chat.privateMeta',
         'people:requests.pendingApproval',
         'payoutOrder:review.moveUp',
       ]) {
