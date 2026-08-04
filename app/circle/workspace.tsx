@@ -1,4 +1,4 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+﻿import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   useCallback,
@@ -602,7 +602,7 @@ function WorkspaceContent({
     currentRoundSchedule?.payoutDate ||
     currentRoundSchedule?.payout_date;
 
-  // â”€â”€ Normalized display state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Normalized display state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   // Single source of truth for all Round tab display. Backend still controls
   // whether a payout can actually be released (canReleasePayout below).
 
@@ -640,7 +640,7 @@ function WorkspaceContent({
             roundWorkspace?.currentRoundStatus || circle.status,
             t,
           );
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
   // Financial UI: backend viewerPermissions are authoritative (P0.5.2/P0.5.3).
   // Missing flags default false. Local conditions may only further restrict.
@@ -1193,7 +1193,7 @@ function RoundTab({
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
 
   useEffect(() => {
-    // New round or circle â†’ keep details closed until needed.
+    // New round or circle Ã¢â€ â€™ keep details closed until needed.
     setRoundDetailsExpanded(false);
     setScheduleExpanded(false);
   }, [circle.id, currentRoundNumber]);
@@ -1534,7 +1534,7 @@ function RoundTab({
                   {t('rounds:payoutDate', {
                     date: formatLocalizedDate(dueDate, language),
                   })}{' '}
-                  Â· {formatRelativeDate(dueDate, language)}
+                  Ã‚· {formatRelativeDate(dueDate, language)}
                 </Text>
               ) : null}
             </View>
@@ -1707,7 +1707,7 @@ function RoundTab({
                       status: viewerContributionStatus.label,
                     })}
             {viewerPayoutPosition
-              ? ` Â· ${t('contributions:workspace.payoutTurn', {
+              ? ` Ã‚· ${t('contributions:workspace.payoutTurn', {
                   position: formatOrdinal(viewerPayoutPosition, language),
                 })}`
               : ''}
@@ -1752,7 +1752,7 @@ function RoundTab({
               accessibilityLabel={t('contributions:workspace.sentAction')}
             >
               <Text style={styles.primaryButtonText}>
-                {t('contributions:workspace.sentAction')} âœ“
+                {t('contributions:workspace.sentAction')} Ã¢Å“â€œ
               </Text>
             </Pressable>
           ) : (
@@ -2119,7 +2119,7 @@ function RoundTab({
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={styles.roundDetailLabel}>
-                        {t('rounds:numberOnly', { current: round.round })} Â·{' '}
+                        {t('rounds:numberOnly', { current: round.round })} Ã‚·{' '}
                         {status}
                       </Text>
                       <Text style={styles.roundDetailValue}>
@@ -2808,7 +2808,7 @@ function PeopleTab({
     </>
   );
 
-  // â”€â”€ Phase 1 setup (organizer + setup only) - single surface, accordion steps â”€
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Phase 1 setup (organizer + setup only) - single surface, accordion steps Ã¢â€â‚¬
   if (circleNotStarted && isOrganizer && setupProgress) {
     const progress = setupProgress;
 
@@ -3634,7 +3634,7 @@ function PeopleTab({
                 uniqueMemberCount: circle.uniqueMemberCount,
                 fallbackHandCount: members.length,
               })}
-              {` Â· ${circleNotStarted ? t('hands.planned') : t('hands.live')}`}
+              {` Ã‚· ${circleNotStarted ? t('hands.planned') : t('hands.live')}`}
             </Text>
           </View>
         </View>
@@ -3790,7 +3790,7 @@ function PeopleTab({
 
 /**
  * Expand/collapse member row. Details unmount completely when collapsed so no
- * empty â€œskeletonâ€ panel remains (border/height residue from open styles).
+ * empty Ã¢â‚¬Å“skeletonÃ¢â‚¬Â panel remains (border/height residue from open styles).
  */
 function ExpandableMemberTile({
   groupKey,
@@ -3947,8 +3947,8 @@ function ExpandableMemberTile({
                   <Text style={styles.handDetailMeta}>
                     {isUnclaimedHand(hand) ? t('hands.awaitingClaim') : t('common.connected')}
                     {orderIndex >= 0
-                      ? ` Â· ${t('payoutOrder:review.position', { position: orderIndex + 1 })}`
-                      : ` Â· ${t('payoutOrder:review.notInOrder')}`}
+                      ? ` Ã‚· ${t('payoutOrder:review.position', { position: orderIndex + 1 })}`
+                      : ` Ã‚· ${t('payoutOrder:review.notInOrder')}`}
                   </Text>
                 </View>
                 {share ? (
@@ -5659,7 +5659,7 @@ const styles = StyleSheet.create({
     color: colors.textStrong,
   },
 
-  /* â”€â”€ Setup People (fintech single surface) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Setup People (fintech single surface) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
   setupShell: {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
@@ -5903,5 +5903,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
 
 

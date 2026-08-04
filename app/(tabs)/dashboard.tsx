@@ -279,7 +279,7 @@ export default function DashboardScreen() {
                   <Text style={styles.heroLabel}>{t('inPot')}</Text>
                   <Text style={styles.heroAmount}>{formatMoney(potTotal)}</Text>
                   <View style={styles.heroFooterRow}>
-                    <View style={{ flex: 1, paddingRight: 8 }}>
+                    <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                       <Text style={styles.heroFooterText}>
                         {t('contribution', {
                           amount: formatMoney(circle.contributionAmount),
@@ -804,6 +804,7 @@ const styles = StyleSheet.create({
   },
   heroPayoutDate: {
     color: 'rgba(255,255,255,0.92)',
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '700',
     marginTop: 4,
