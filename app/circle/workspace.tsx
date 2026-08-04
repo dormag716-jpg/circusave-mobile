@@ -2117,12 +2117,23 @@ function RoundTab({
             ) : (
               schedule.map((round, index) => {
                 const payoutDate = round.payoutDate || round.payout_date;
-                const status =
-                  round.round < currentRoundNumber
-                    ? t('schedule:completed')
-                    : round.round === currentRoundNumber
-                      ? t('schedule:current')
-                      : t('schedule:upcoming');
+                const isCompletedRound = round.round < currentRoundNumber;
+                const isCurrentRound = round.round === currentRoundNumber;
+                const status = isCompletedRound
+                  ? t('schedule:completed')
+                  : isCurrentRound
+                    ? t('schedule:current')
+                    : t('schedule:upcoming');
+                const statusIcon = isCompletedRound
+                  ? 'check-circle'
+                  : isCurrentRound
+                    ? 'circle'
+                    : 'clock-o';
+                const statusColor = isCompletedRound
+                  ? colors.success
+                  : isCurrentRound
+                    ? colors.primary
+                    : colors.muted;
                 const recipientName =
                   round.recipientName ||
                   round.recipient_name ||
@@ -2131,31 +2142,87 @@ function RoundTab({
                   <View
                     key={round.id || `round-${round.round}`}
                     style={[
-                      styles.roundDetailRow,
+                      styles.scheduleRow,
+                      isCompletedRound
+                        ? styles.scheduleRowCompleted
+                        : isCurrentRound
+                          ? styles.scheduleRowCurrent
+                          : styles.scheduleRowUpcoming,
                       index === schedule.length - 1 && { borderBottomWidth: 0 },
                     ]}
                     accessibilityLabel={t('schedule:rowA11y', {
                       round: round.round,
                       status,
+                      recipient: recipientName,
                       date: payoutDate
                         ? formatLocalizedDate(payoutDate, language)
                         : t('schedule:notFinalized'),
                     })}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.roundDetailLabel}>
-                        {t('rounds:numberOnly', { current: round.round })} Ã‚·{' '}
-                        {status}
-                      </Text>
-                      <Text style={styles.roundDetailValue}>
-                        {recipientName}
-                      </Text>
+                    <View style={styles.scheduleRowHeader}>
+                      <View style={styles.scheduleRoundBadge}>
+                        <Text style={styles.scheduleRoundBadgeText}>
+                          {t('rounds:numberOnly', { current: round.round })}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.scheduleStatusPill,
+                          isCompletedRound
+                            ? styles.scheduleStatusCompleted
+                            : isCurrentRound
+                              ? styles.scheduleStatusCurrent
+                              : styles.scheduleStatusUpcoming,
+                        ]}
+                      >
+                        <FontAwesome
+                          name={statusIcon}
+                          size={12}
+                          color={statusColor}
+                        />
+                        <Text
+                          style={[
+                            styles.scheduleStatusText,
+                            { color: statusColor },
+                          ]}
+                        >
+                          {status}
+                        </Text>
+                      </View>
                     </View>
-                    <Text style={styles.roundDetailValue}>
-                      {payoutDate
-                        ? formatLocalizedDate(payoutDate, language)
-                        : t('schedule:notFinalized')}
-                    </Text>
+
+                    <View style={styles.schedulePrimaryRow}>
+                      <View style={styles.scheduleRecipient}>
+                        <Text style={styles.scheduleFieldLabel}>
+                          {t('schedule:recipient')}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.scheduleRecipientName,
+                            isCompletedRound &&
+                              styles.scheduleRecipientNameCompleted,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {recipientName}
+                        </Text>
+                      </View>
+                      <View style={styles.scheduleDate}>
+                        <Text style={styles.scheduleFieldLabel}>
+                          {t('schedule:payoutDate')}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.scheduleDateValue,
+                            isCurrentRound && styles.scheduleDateValueCurrent,
+                          ]}
+                        >
+                          {payoutDate
+                            ? formatLocalizedDate(payoutDate, language)
+                            : t('schedule:notFinalized')}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                 );
               })
@@ -5122,6 +5189,103 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  scheduleRow: {
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+  },
+  scheduleRowCompleted: {
+    backgroundColor: '#F8FAFC',
+  },
+  scheduleRowCurrent: {
+    backgroundColor: colors.primarySoft,
+    borderLeftColor: colors.primary,
+    borderLeftWidth: 4,
+    paddingLeft: 12,
+  },
+  scheduleRowUpcoming: {
+    backgroundColor: '#FFFFFF',
+  },
+  scheduleRowHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  scheduleRoundBadge: {
+    backgroundColor: '#EEF2F7',
+    borderRadius: radii.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  scheduleRoundBadgeText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  scheduleStatusPill: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  scheduleStatusCompleted: {
+    backgroundColor: colors.successSoft,
+  },
+  scheduleStatusCurrent: {
+    backgroundColor: '#E9DDFE',
+  },
+  scheduleStatusUpcoming: {
+    backgroundColor: '#F3F4F6',
+  },
+  scheduleStatusText: {
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  schedulePrimaryRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 16,
+  },
+  scheduleRecipient: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scheduleDate: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    maxWidth: '44%',
+  },
+  scheduleFieldLabel: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  scheduleRecipientName: {
+    color: colors.textStrong,
+    fontSize: 17,
+    fontWeight: '900',
+    lineHeight: 21,
+  },
+  scheduleRecipientNameCompleted: {
+    color: colors.text,
+  },
+  scheduleDateValue: {
+    color: colors.textStrong,
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  scheduleDateValueCurrent: {
+    color: colors.primaryDark,
   },
   roundDetailIcon: {
     alignItems: 'center',

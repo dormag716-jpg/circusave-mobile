@@ -13,7 +13,7 @@
   "loading": "Loading schedule…",
   "error": "Schedule unavailable",
   "rowUnavailable": "Schedule entry unavailable",
-  "rowA11y": "Round {{round}}, {{status}}, payout {{date}}",
+  "rowA11y": "Round {{round}}, {{status}}, recipient {{recipient}}, payout {{date}}",
   "expand": "Expand schedule",
   "collapse": "Collapse schedule",
   "show_one": "Tap to view {{count}} round",

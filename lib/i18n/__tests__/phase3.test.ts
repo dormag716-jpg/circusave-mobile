@@ -100,6 +100,19 @@ describe('Phase 3 circle workspace localization', () => {
     expect(routeSource).not.toContain('@/lib/i18n/locales/');
   });
 
+  test('workspace payout schedule emphasizes recipient, date, and status', () => {
+    const routeSource = readFileSync(
+      resolve(__dirname, '../../../app/circle/workspace.tsx'),
+      'utf8',
+    );
+
+    expect(routeSource).toContain('styles.scheduleRecipientName');
+    expect(routeSource).toContain('styles.scheduleDateValue');
+    expect(routeSource).toContain('styles.scheduleStatusPill');
+    expect(routeSource).toContain("t('schedule:recipient')");
+    expect(routeSource).toContain("t('schedule:payoutDate')");
+  });
+
   test('missing Phase 3 keys fall back to English', async () => {
     i18n.addResource(
       'en',
