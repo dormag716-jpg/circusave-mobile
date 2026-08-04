@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { getInitials } from '../lib/initials';
+import { colors } from '../lib/theme';
 
 interface AvatarProps {
   name?: string | null;
@@ -32,14 +33,14 @@ export function Avatar({ name, size = 40 }: AvatarProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#f3e8ff', // A stable light purple background
+    backgroundColor: colors.primarySoft,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#e9d5ff',
+    borderColor: colors.primaryBorder,
   },
   text: {
-    color: '#7c3aed', // Matching dark purple text
+    color: colors.primaryDark,
     fontWeight: '800',
   },
 });

@@ -817,18 +817,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   amountLabel: {
-    color: '#ddd6fe',
+    color: colors.primaryBorder,
     fontSize: 13,
     fontWeight: '900',
   },
   amountText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 46,
     fontWeight: '900',
     marginTop: 8,
   },
   amountBody: {
-    color: '#ede9fe',
+    color: colors.primarySoft,
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 21,
@@ -909,7 +909,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 17,
     fontWeight: '800',
   },

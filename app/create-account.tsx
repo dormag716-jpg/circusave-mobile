@@ -147,7 +147,7 @@ export default function CreateAccountScreen() {
 
           <View style={styles.header}>
             <View style={styles.logo}>
-              <FontAwesome name="user-plus" size={36} color="#ffffff" />
+              <FontAwesome name="user-plus" size={36} color={colors.onColor} />
             </View>
             <Text style={styles.title}>{t('create.title')}</Text>
             <Text style={styles.subtitle}>
@@ -390,7 +390,7 @@ export default function CreateAccountScreen() {
               accessibilityLabel={t('create.createAccount')}
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={colors.onColor} />
               ) : (
                 <Text style={styles.primaryButtonText}>{t('create.createAccount')}</Text>
               )}
@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 20,
   },
-  guideStepNumberText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
+  guideStepNumberText: { color: colors.onColor, fontSize: 11, fontWeight: '900' },
   guideStepText: { color: colors.text, fontSize: 12, fontWeight: '800' },
   guideDivider: {
     backgroundColor: colors.primaryBorder,
@@ -584,7 +584,7 @@ const styles = StyleSheet.create({
     minHeight: 58,
   },
   disabledButton: { opacity: 0.65 },
-  primaryButtonText: { color: '#ffffff', fontSize: 17, fontWeight: '900' },
+  primaryButtonText: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
   note: {
     color: colors.muted,
     fontSize: 12,

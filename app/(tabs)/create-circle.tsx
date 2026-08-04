@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 18,
     fontWeight: '900',
   },
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   limitCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: radii.card,
     padding: spacing.card,
     alignItems: 'center',
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   upgradeButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '800',
   },

@@ -235,7 +235,7 @@ export default function AgreementReviewScreen() {
                   onPress={confirmStart}
                 >
                   {busy ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color={colors.onColor} />
                   ) : (
                     <Text style={styles.primaryBtnText}>{t('start')}</Text>
                   )}
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   primaryBtnDisabled: { opacity: 0.5 },
-  primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  primaryBtnText: { color: colors.onColor, fontWeight: '800', fontSize: 16 },
   secondaryBtn: {
     borderWidth: 1,
     borderColor: colors.cardBorder,

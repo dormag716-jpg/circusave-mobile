@@ -530,7 +530,7 @@ export default function CirclesScreen() {
         <FontAwesome
           name={openCap.atCapacity ? 'arrow-right' : 'plus'}
           size={28}
-          color="#ffffff"
+          color={colors.onColor}
         />
       </Pressable>
     </SafeAreaView>
@@ -606,11 +606,11 @@ function CircleCard({
                 style={[
                   styles.setupTag,
                   isPaused
-                    ? { backgroundColor: '#ffedd5' }
+                    ? { backgroundColor: colors.warningSoft }
                     : isClosed
-                      ? { backgroundColor: '#e5e7eb' }
+                      ? { backgroundColor: colors.surfaceMuted }
                       : isLiveActive
-                        ? { backgroundColor: '#dcfce7' }
+                        ? { backgroundColor: colors.successSoft }
                         : null,
                 ]}
               >
@@ -619,11 +619,11 @@ function CircleCard({
                     styles.setupTagText,
                     {
                       color: isPaused
-                        ? '#9a3412'
+                        ? colors.warningText
                         : isClosed
-                          ? '#374151'
+                          ? colors.text
                           : isLiveActive
-                            ? '#166534'
+                            ? colors.successText
                             : colors.primary,
                     },
                   ]}
@@ -730,7 +730,7 @@ function CircleCard({
         <Text style={styles.openButtonText}>
           {isSetup ? t('continueSetup') : t('openCircleButton')}
         </Text>
-        <FontAwesome name="arrow-right" size={18} color="#ffffff" />
+        <FontAwesome name="arrow-right" size={18} color={colors.onColor} />
       </View>
     </Pressable>
   );
@@ -786,8 +786,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#FECACA',
-    backgroundColor: '#FEF2F2',
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSoft,
   },
   purgeSetupBtnText: {
     color: colors.danger,
@@ -803,7 +803,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.dangerSoft,
   },
   cardDeleteBtnText: {
     color: colors.danger,
@@ -865,7 +865,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   organizerTagText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 11,
     fontWeight: '900',
   },
@@ -876,7 +876,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   setupTagText: {
-    color: '#92400E',
+    color: colors.warningText,
     fontSize: 11,
     fontWeight: '900',
   },
@@ -929,7 +929,7 @@ const styles = StyleSheet.create({
     minHeight: 58,
   },
   openButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 17,
     fontWeight: '900',
   },
@@ -954,7 +954,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   retryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontWeight: '900',
   },
   fab: {
@@ -967,7 +967,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'absolute',
     right: 24,
-    shadowColor: '#000000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

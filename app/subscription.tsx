@@ -61,7 +61,7 @@ function PlanButton({
       style={[
         styles.button,
         isLight ? styles.buttonLight : styles.buttonDark,
-        theme === 'primary' && { backgroundColor: '#fff' },
+        theme === 'primary' && { backgroundColor: colors.card },
         disabled && styles.buttonDisabled,
         animatedStyle,
       ]}
@@ -237,9 +237,9 @@ export default function SubscriptionScreen() {
                 </View>
               )}
 
-              <Text style={[styles.planName, { color: '#fff' }]}>Premium Organizer</Text>
+              <Text style={[styles.planName, { color: colors.onColor }]}>Premium Organizer</Text>
               <View style={styles.priceContainer}>
-                <Text style={[styles.price, { color: '#fff' }]}>$4.99</Text>
+                <Text style={[styles.price, { color: colors.onColor }]}>$4.99</Text>
                 <Text style={[styles.period, { color: 'rgba(255,255,255,0.75)' }]}>
                   /per month
                 </Text>
@@ -261,9 +261,9 @@ export default function SubscriptionScreen() {
                 ].map((feature, i) => (
                   <View key={i} style={styles.featureRow}>
                     <View style={styles.iconWrapperDark}>
-                      <FontAwesome name="check" size={10} color="#fff" />
+                      <FontAwesome name="check" size={10} color={colors.onColor} />
                     </View>
-                    <Text style={[styles.featureText, { color: '#fff' }]}>{feature}</Text>
+                    <Text style={[styles.featureText, { color: colors.onColor }]}>{feature}</Text>
                   </View>
                 ))}
               </View>
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
 
   header: { alignItems: 'center', marginBottom: 24 },
   badgeContainer: {
-    backgroundColor: 'rgba(107, 70, 193, 0.1)',
+    backgroundColor: colors.primaryTint,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
 
   plans: { gap: 24 },
   planCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 32,
     padding: 24,
     borderWidth: 1,
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     ...shadows.small,
   },
-  popularText: { color: '#fff', fontWeight: '900', fontSize: 10, letterSpacing: 1 },
+  popularText: { color: colors.onColor, fontWeight: '900', fontSize: 10, letterSpacing: 1 },
 
   currentBadge: {
     position: 'absolute',
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     ...shadows.small,
   },
-  currentBadgeText: { color: '#fff', fontWeight: '900', fontSize: 10, letterSpacing: 1 },
+  currentBadgeText: { color: colors.onColor, fontWeight: '900', fontSize: 10, letterSpacing: 1 },
 
   planName: { fontSize: 22, fontWeight: '900', marginBottom: 6, color: colors.textStrong },
   priceContainer: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 },
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
 
   buttonText: { fontWeight: '800', fontSize: 15 },
   buttonTextLight: { color: colors.primaryDark },
-  buttonTextDark: { color: '#fff' },
+  buttonTextDark: { color: colors.onColor },
   buttonTextDisabled: { color: colors.muted },
 
   syncContainer: { alignItems: 'center', marginTop: 32 },

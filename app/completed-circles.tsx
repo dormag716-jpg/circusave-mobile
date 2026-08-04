@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   retryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '800',
   },

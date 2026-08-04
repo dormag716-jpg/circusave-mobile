@@ -54,7 +54,7 @@ export function LegalCheckbox({
     >
       <View style={[styles.box, checked && styles.boxChecked]}>
         {checked ? (
-          <FontAwesome name="check" size={14} color="#ffffff" />
+          <FontAwesome name="check" size={14} color={colors.onColor} />
         ) : null}
       </View>
       <Text style={styles.label}>

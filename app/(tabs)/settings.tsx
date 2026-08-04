@@ -76,7 +76,7 @@ export default function SettingsScreen() {
                 <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
                 {isPremium ? (
                   <View style={styles.premiumBadge}>
-                    <FontAwesome name="star" size={10} color="#fff" style={{ marginRight: 4 }} />
+                    <FontAwesome name="star" size={10} color={colors.onColor} style={{ marginRight: 4 }} />
                     <Text style={styles.premiumBadgeText}>PREMIUM</Text>
                   </View>
                 ) : null}
@@ -222,7 +222,7 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('settings:signOut')}
         >
-          <FontAwesome name="sign-out" size={20} color="#EF4444" style={{ marginRight: 8 }} />
+          <FontAwesome name="sign-out" size={20} color={colors.danger} style={{ marginRight: 8 }} />
           <Text style={styles.signOutText}>{t('settings:signOut')}</Text>
         </Pressable>
 
@@ -340,7 +340,7 @@ function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
 
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: 100 },
 
   headerCard: { 
@@ -372,15 +372,15 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
-  avatarText: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
+  avatarText: { color: colors.onColor, fontSize: 32, fontWeight: '800', textAlign: 'center' },
   badgeContainer: {
     position: 'absolute',
     bottom: 2,
     right: 2,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 2,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   premiumBadgeText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.8,
@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
     overflow: 'hidden',
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
     shadowRadius: 8,
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
   },
   menuItemPressed: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.surfaceMuted,
   },
   
   menuIconContainer: { 
@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
   signOutButtonPressed: {
     backgroundColor: `${colors.danger}20`,
   },
-  signOutText: { color: '#EF4444', fontWeight: '700', fontSize: 16 },
+  signOutText: { color: colors.danger, fontWeight: '700', fontSize: 16 },
 
   version: {
     textAlign: 'center',
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 40,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.1,
     shadowRadius: 16,

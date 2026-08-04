@@ -4,23 +4,42 @@ export const colors = {
   primaryLight: '#A78BFA',
   primarySoft: '#F5F3FF',
   primaryBorder: '#DDD6FE',
+  primaryTint: 'rgba(107, 70, 193, 0.1)',
+  onColor: '#FFFFFF',
 
   success: '#10B981',
   successLight: '#D1FAE5',
   successSoft: '#D1FAE5',
+  successText: '#047857',
+  successBorder: '#A7F3D0',
 
   warning: '#F59E0B',
+  warningStrong: '#D97706',
   warningSoft: '#FEF3C7',
+  warningText: '#92400E',
+  warningBorder: '#FCD34D',
+  warningBorderMuted: 'rgba(245, 158, 11, 0.333)',
+
   danger: '#EF4444',
+  dangerText: '#991B1B',
+  dangerSoft: '#FEF2F2',
+  dangerBorder: '#FECACA',
+
+  info: '#2563EB',
+  infoText: '#1E40AF',
+  infoSoft: '#EFF6FF',
+  infoBorder: '#BFDBFE',
 
   background: '#F8FAFC',
   card: '#FFFFFF',
+  surfaceMuted: '#F1F5F9',
   cardBorder: '#E2E8F0',
 
   textStrong: '#0F172A',
   text: '#1E2937',
   muted: '#64748B',
   subtle: '#94A3B8',
+  shadow: '#000000',
 
   gradientPrimary: ['#6B46C1', '#7C3AED'] as const,
 };
@@ -39,14 +58,14 @@ export const spacing = {
 
 export const shadows = {
   small: {
-    shadowColor: '#000000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
   },
   medium: {
-    shadowColor: '#000000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,

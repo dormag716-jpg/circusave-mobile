@@ -46,9 +46,9 @@ function NativeStripeButton({ session, onSuccess, label }: { session: AuthRespon
       accessibilityRole="button"
     >
       {isLinkingBank ? (
-        <ActivityIndicator size="small" color="#fff" />
+        <ActivityIndicator size="small" color={colors.onColor} />
       ) : (
-        <FontAwesome name="lock" size={16} color="#fff" />
+        <FontAwesome name="lock" size={16} color={colors.onColor} />
       )}
       <Text style={styles.connectButtonText}>
         {isLinkingBank ? 'Connecting...' : (label || 'Connect with Stripe')}
@@ -145,7 +145,7 @@ export default function AutomatedPaymentsScreen() {
               onPress={() => Alert.alert('Build Required', 'The Stripe SDK requires a native development build (eas build). It cannot run in Expo Go or Web.')}
               accessibilityRole="button"
             >
-              <FontAwesome name="lock" size={16} color="#fff" />
+              <FontAwesome name="lock" size={16} color={colors.onColor} />
               <Text style={styles.connectButtonText}>Connect with Stripe</Text>
             </Pressable>
           )}
@@ -156,14 +156,14 @@ export default function AutomatedPaymentsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  screen: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.screenX,
     paddingVertical: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
   },
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   bankCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.cardBorder,
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   connectButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '800',
   },

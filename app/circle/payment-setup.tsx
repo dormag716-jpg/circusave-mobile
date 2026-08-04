@@ -217,10 +217,10 @@ export default function PaymentSetupScreen() {
             onPress={() => void handleSave()}
           >
             {saving ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.onColor} />
             ) : (
               <>
-                <FontAwesome name="check" size={16} color="#fff" />
+                <FontAwesome name="check" size={16} color={colors.onColor} />
                 <Text style={styles.saveButtonText}>
                   {t('contributions:paymentSetup.save')}
                 </Text>
@@ -234,7 +234,7 @@ export default function PaymentSetupScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: spacing.screenX, paddingBottom: 100, paddingTop: 8 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   textInput: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.cardBorder,
@@ -341,5 +341,5 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   saveButtonDisabled: { opacity: 0.6 },
-  saveButtonText: { color: '#fff', fontSize: 17, fontWeight: '900' },
+  saveButtonText: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
 });

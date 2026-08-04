@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   bubbleThem: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.cardBorder,
     borderBottomLeftRadius: 4,
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   messageTextMe: {
-    color: '#fff',
+    color: colors.onColor,
   },
   timestamp: {
     fontSize: 10,

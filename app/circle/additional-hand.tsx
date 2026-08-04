@@ -111,11 +111,11 @@ export default function AdditionalHandConsentScreen() {
             </View>
             <View style={styles.card}>
               <Pressable style={styles.consentRow} onPress={() => setChecked((value) => !value)} accessibilityRole="checkbox" accessibilityState={{ checked }}>
-                <View style={[styles.checkbox, checked && styles.checkboxChecked]}>{checked ? <FontAwesome name="check" color="#fff" size={13} /> : null}</View>
+                <View style={[styles.checkbox, checked && styles.checkboxChecked]}>{checked ? <FontAwesome name="check" color={colors.onColor} size={13} /> : null}</View>
                 <Text style={styles.consentLabel}>{t('additionalCheck')}</Text>
               </Pressable>
               <Pressable style={[styles.primary, (!checked || submitting) && styles.disabled]} disabled={!checked || submitting} onPress={() => void submit()} accessibilityRole="button">
-                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t('additionalAction')}</Text>}
+                {submitting ? <ActivityIndicator color={colors.onColor} /> : <Text style={styles.primaryText}>{t('additionalAction')}</Text>}
               </Pressable>
               <Pressable style={styles.cancel} disabled={submitting} onPress={() => (circleId ? router.replace(circleWorkspaceHref(circleId, 'people')) : router.back())} accessibilityRole="button">
                 <Text style={styles.cancelText}>{t('cancel')}</Text>
@@ -150,9 +150,9 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: colors.primary },
   consentLabel: { flex: 1, color: colors.text, lineHeight: 20 },
   primary: { backgroundColor: colors.primary, padding: 15, borderRadius: radii.control, alignItems: 'center' },
-  primaryText: { color: '#fff', fontWeight: '800', textAlign: 'center' },
+  primaryText: { color: colors.onColor, fontWeight: '800', textAlign: 'center' },
   cancel: { padding: 12, alignItems: 'center' },
   cancelText: { color: colors.primary, fontWeight: '700' },
   disabled: { opacity: 0.4 },
-  error: { color: colors.danger, backgroundColor: '#FEE2E2', padding: 12, borderRadius: 12 },
+  error: { color: colors.danger, backgroundColor: colors.dangerSoft, padding: 12, borderRadius: 12 },
 });

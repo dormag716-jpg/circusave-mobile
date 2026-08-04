@@ -377,11 +377,11 @@ export default function InviteMemberScreen() {
             </View>
           </View>
         ) : (
-          <View style={[styles.formCard, { backgroundColor: '#f0fdf4' }]}>
-            <Text style={[styles.sectionTitle, { color: '#166534' }]}>
+          <View style={[styles.formCard, { backgroundColor: colors.successSoft }]}>
+            <Text style={[styles.sectionTitle, { color: colors.successText }]}>
               {t('organizer.allClaimed')}
             </Text>
-            <Text style={[styles.sectionSubtitle, { color: '#15803d' }]}>
+            <Text style={[styles.sectionSubtitle, { color: colors.successText }]}>
               {t('organizer.allClaimedSubtitle')}
             </Text>
           </View>
@@ -549,7 +549,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   shareHeroCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: radii.card,
     padding: 16,
     flexDirection: 'row',
@@ -582,7 +582,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   formCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: radii.card,
     padding: 18,
     borderWidth: 1,
@@ -686,7 +686,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '900',
   },

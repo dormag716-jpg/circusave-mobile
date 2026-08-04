@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   contactButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '800',
   },

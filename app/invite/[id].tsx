@@ -229,7 +229,7 @@ export default function JoinInviteScreen() {
               >
                 <View style={[styles.checkbox, claimAckChecked && styles.checkboxChecked]}>
                   {claimAckChecked ? (
-                    <FontAwesome name="check" size={12} color="#fff" />
+                    <FontAwesome name="check" size={12} color={colors.onColor} />
                   ) : null}
                 </View>
                 <Text style={styles.ackLabel}>{t('invite:claimAckLabel')}</Text>
@@ -356,10 +356,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   detailsCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: radii.card,
     padding: 24,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 17,
     fontWeight: '800',
   },

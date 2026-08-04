@@ -6,6 +6,7 @@ import {
   notificationCopy,
   type NotificationType,
 } from './i18n/financial-presentation';
+import { colors } from './theme';
 
 export type NotificationResult =
   | { ok: true; token: string }
@@ -38,7 +39,7 @@ export async function initializeNotifications(): Promise<NotificationResult> {
       name: i18n.t('notifications:channel'),
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#10B981',
+      lightColor: colors.success,
     });
   }
 

@@ -63,7 +63,7 @@ export function DecisionSheet({
               </Pressable>
             ) : null}
             <Pressable style={({ pressed }) => [styles.primary, (pressed || busy) && styles.pressed]} onPress={onPrimary} disabled={busy} accessibilityRole="button" accessibilityState={{ busy, disabled: busy }}>
-              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{primaryLabel}</Text>}
+              {busy ? <ActivityIndicator color={colors.onColor} /> : <Text style={styles.primaryText}>{primaryLabel}</Text>}
             </Pressable>
           </View>
         </SafeAreaView>
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     maxHeight: '88%',
@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   },
   handle: {
     alignSelf: 'center',
-    backgroundColor: '#d1d5db',
+    backgroundColor: colors.cardBorder,
     borderRadius: 2,
     height: 4,
     marginBottom: 20,
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   primaryText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '900',
     textAlign: 'center',

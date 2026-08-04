@@ -468,8 +468,8 @@ function WorkspaceContent({
           accessibilityRole="button"
           accessibilityLabel={tPeople('agreements.ctaA11y')}
         >
-          <FontAwesome name="file-text-o" size={14} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '800' }}>
+          <FontAwesome name="file-text-o" size={14} color={colors.onColor} />
+          <Text style={{ color: colors.onColor, fontWeight: '800' }}>
             {tPeople('agreements.cta')}
           </Text>
         </Pressable>
@@ -985,7 +985,7 @@ function WorkspaceContent({
                 <FontAwesome
                   name={tab.icon}
                   size={18}
-                  color={selected ? '#fff' : colors.muted}
+                  color={selected ? colors.onColor : colors.muted}
                 />
                 {tab.id === 'chat' && chatUnreadCount > 0 ? (
                   <View style={styles.chatUnreadBadge}>
@@ -1265,7 +1265,7 @@ function RoundTab({
           style={[
             styles.heroCard,
             {
-              backgroundColor: '#6231d6',
+              backgroundColor: colors.primary,
               padding: 24,
               borderRadius: 20,
             },
@@ -1282,10 +1282,10 @@ function RoundTab({
                 alignItems: 'center',
               }}
             >
-              <FontAwesome name="calendar-o" size={22} color="#fff" />
+              <FontAwesome name="calendar-o" size={22} color={colors.onColor} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
+              <Text style={{ color: colors.onColor, fontSize: 18, fontWeight: '800' }}>
                 {t('circleWorkspace:setupRound.title')}
               </Text>
               <Text
@@ -1311,7 +1311,7 @@ function RoundTab({
             <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '700' }}>
               {t('circleWorkspace:setupRound.roster')}
             </Text>
-            <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', marginTop: 4 }}>
+            <Text style={{ color: colors.onColor, fontSize: 20, fontWeight: '900', marginTop: 4 }}>
               {handMetrics}
             </Text>
             <Text
@@ -1332,7 +1332,7 @@ function RoundTab({
         <View
           style={[
             styles.sectionCard,
-            { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20 },
+            { padding: 0, overflow: 'hidden', backgroundColor: colors.card, borderRadius: 20 },
           ]}
         >
           <View
@@ -1342,10 +1342,10 @@ function RoundTab({
               justifyContent: 'space-between',
               padding: 16,
               borderBottomWidth: 1,
-              borderBottomColor: '#f3f4f6',
+              borderBottomColor: colors.surfaceMuted,
             }}
           >
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textStrong }}>
               {t('circleWorkspace:setupRound.plannedHands')}
             </Text>
             <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>
@@ -1366,7 +1366,7 @@ function RoundTab({
                   paddingHorizontal: 16,
                   paddingVertical: 12,
                   borderBottomWidth: index === plannedHands.length - 1 ? 0 : 1,
-                  borderBottomColor: '#f9fafb',
+                  borderBottomColor: colors.background,
                 }}
               >
                 <View style={styles.positionBadge}>
@@ -1374,7 +1374,7 @@ function RoundTab({
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text
-                    style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}
+                    style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong }}
                     numberOfLines={1}
                   >
                     {member.displayLabel || memberName(member)}
@@ -1398,11 +1398,11 @@ function RoundTab({
           )}
         </View>
 
-        <View style={[styles.sectionCard, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
-          <Text style={[styles.sectionTitle, { color: '#1e40af' }]}>
+        <View style={[styles.sectionCard, { backgroundColor: colors.infoSoft, borderColor: colors.infoBorder }]}>
+          <Text style={[styles.sectionTitle, { color: colors.infoText }]}>
             {t('circleWorkspace:setupRound.beforeStartTitle')}
           </Text>
-          <Text style={[styles.sectionSubtitle, { color: '#1e3a8a' }]}>
+          <Text style={[styles.sectionSubtitle, { color: colors.infoText }]}>
             {t('circleWorkspace:setupRound.beforeStartBody')}
           </Text>
         </View>
@@ -1418,13 +1418,13 @@ function RoundTab({
           style={[
             styles.heroCard,
             {
-              backgroundColor: '#374151',
+              backgroundColor: colors.text,
               padding: 24,
               borderRadius: 20,
             },
           ]}
         >
-          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
+          <Text style={{ color: colors.onColor, fontSize: 18, fontWeight: '800' }}>
             {t('circleWorkspace:completedRound.title')}
           </Text>
           <Text
@@ -1463,8 +1463,8 @@ function RoundTab({
         style={[
           styles.sectionCard,
           {
-            backgroundColor: paused ? '#fff7ed' : '#f3f4f6',
-            borderColor: paused ? '#fdba74' : '#d1d5db',
+            backgroundColor: paused ? colors.warningSoft : colors.surfaceMuted,
+            borderColor: paused ? colors.warningBorder : colors.cardBorder,
             marginBottom: 12,
           },
         ]}
@@ -1472,7 +1472,7 @@ function RoundTab({
         <Text
           style={[
             styles.sectionTitle,
-            { color: paused ? '#9a3412' : '#374151' },
+            { color: paused ? colors.warningText : colors.text },
           ]}
         >
           {paused ? roundPausedTitle() : roundClosedTitle()}
@@ -1480,7 +1480,7 @@ function RoundTab({
         <Text
           style={[
             styles.sectionSubtitle,
-            { color: paused ? '#9a3412' : '#4b5563' },
+            { color: paused ? colors.warningText : colors.muted },
           ]}
         >
           {paused ? roundPausedSubtitle() : roundClosedSubtitle()}
@@ -1496,7 +1496,7 @@ function RoundTab({
         style={[
           styles.heroCard,
           {
-            backgroundColor: paused ? '#c2410c' : closed ? '#4b5563' : '#6231d6',
+            backgroundColor: paused ? colors.warningStrong : closed ? colors.muted : colors.primary,
             padding: 24,
             borderRadius: 20,
           },
@@ -1528,12 +1528,12 @@ function RoundTab({
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>
+              <Text style={{ color: colors.onColor, fontSize: 24, fontWeight: '900' }}>
                 {currentRoundNumber}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
+              <Text style={{ color: colors.onColor, fontSize: 18, fontWeight: '800' }}>
                 {visibleTotalRounds > 0
                   ? t('rounds:number', {
                       current: currentRoundNumber,
@@ -1588,11 +1588,11 @@ function RoundTab({
                     : 'clock-o'
               }
               size={14}
-              color={payoutReleased || displayPayoutReady ? '#fff' : '#fef08a'}
+              color={payoutReleased || displayPayoutReady ? colors.onColor : colors.warningBorder}
             />
             <Text
               style={{
-                color: payoutReleased || displayPayoutReady ? '#fff' : '#fef08a',
+                color: payoutReleased || displayPayoutReady ? colors.onColor : colors.warningBorder,
                 fontSize: 13,
                 fontWeight: '600',
               }}
@@ -1625,7 +1625,7 @@ function RoundTab({
               </Text>
               <Text
                 style={{
-                  color: '#fff',
+                  color: colors.onColor,
                   fontSize: 22,
                   fontWeight: '900',
                   marginTop: 2,
@@ -1645,7 +1645,7 @@ function RoundTab({
               </Text>
               <Text
                 style={{
-                  color: '#fff',
+                  color: colors.onColor,
                   fontSize: 32,
                   fontWeight: '900',
                   marginTop: -2,
@@ -1675,10 +1675,10 @@ function RoundTab({
               marginBottom: 8,
             }}
           >
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
+            <Text style={{ color: colors.onColor, fontSize: 14, fontWeight: '700' }}>
               {t('rounds:progress')}
             </Text>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
+            <Text style={{ color: colors.onColor, fontSize: 14, fontWeight: '700' }}>
               {t('rounds:confirmedCount', {
                 confirmed: visibleConfirmedCount,
                 total: expectedContributionsCount,
@@ -1699,12 +1699,12 @@ function RoundTab({
                 style={{
                   width: `${Math.max(0, Math.min(100, visibleProgress || 0))}%`,
                   height: '100%',
-                  backgroundColor: '#22c55e',
+                  backgroundColor: colors.success,
                   borderRadius: 5,
                 }}
               />
             </View>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>
+            <Text style={{ color: colors.onColor, fontSize: 14, fontWeight: '800' }}>
               {formatPercentage(visibleProgress || 0, language)}
             </Text>
           </View>
@@ -1798,7 +1798,7 @@ function RoundTab({
             accessibilityRole="button"
             accessibilityLabel={t('rounds:payout.release')}
           >
-            <FontAwesome name="money" size={18} color="#fff" />
+            <FontAwesome name="money" size={18} color={colors.onColor} />
             <Text style={styles.payoutButtonText}>
               {t('rounds:payout.release')}
             </Text>
@@ -1820,13 +1820,13 @@ function RoundTab({
         </Text>
       ) : null}
 
-      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderRadius: 20, marginBottom: 16 }]}>
+      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: colors.card, borderRadius: 20, marginBottom: 16 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 12 }}>
-          <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textStrong }}>
             {t('contributions:workspace.whoPaid')}
           </Text>
           <Pressable onPress={() => setShowAllPaid(!showAllPaid)}>
-            <Text style={{ color: '#6b37cf', fontSize: 14, fontWeight: '800' }}>
+            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '800' }}>
               {showAllPaid
                 ? t('contributions:workspace.showLess')
                 : t('contributions:workspace.viewAll')}
@@ -1844,24 +1844,24 @@ function RoundTab({
           })
           .slice(0, showAllPaid ? undefined : 4)
           .map(({ member, status }, index, arr) => {
-          let badgeColor = '#f3f4f6';
-          let textColor = '#4b5563';
+          let badgeColor = colors.surfaceMuted;
+          let textColor = colors.muted;
           let badgeText = status.label;
           let icon = null;
 
           if (status.raw === 'confirmed') {
-            badgeColor = '#dcfce7';
-            textColor = '#166534';
+            badgeColor = colors.successSoft;
+            textColor = colors.successText;
             badgeText = t('contributions:statusLabels.confirmed');
           } else if (status.raw === 'submitted' || status.raw === 'late') {
-            badgeColor = '#fef3c7';
-            textColor = '#92400e';
+            badgeColor = colors.warningSoft;
+            textColor = colors.warningText;
             badgeText = t('contributions:statusLabels.submitted');
           } else {
-            badgeColor = '#f3f4f6';
-            textColor = '#4b5563';
+            badgeColor = colors.surfaceMuted;
+            textColor = colors.muted;
             badgeText = t('contributions:statusLabels.pending');
-            icon = <FontAwesome name="clock-o" size={12} color="#4b5563" style={{ marginRight: 4 }} />;
+            icon = <FontAwesome name="clock-o" size={12} color={colors.muted} style={{ marginRight: 4 }} />;
           }
 
           const isProcessing = processingMemberId === member.id;
@@ -1887,8 +1887,8 @@ function RoundTab({
                 <View style={{ marginRight: 12 }}>
                   <Avatar name={memberName(member)} size={40} />
                 </View>
-                <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberName(member)}</Text>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', marginRight: 16 }}>
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: colors.textStrong }}>{memberName(member)}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong, marginRight: 16 }}>
                   {formatCurrency(circle.contributionAmount, language)}
                 </Text>
                 
@@ -1904,24 +1904,24 @@ function RoundTab({
                     <>
                       {canApprove ? (
                         <Pressable
-                          style={{ flex: 1, backgroundColor: '#10b981', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                          style={{ flex: 1, backgroundColor: colors.success, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
                           disabled={isProcessing}
                           onPress={() => onApprove(member)}
                         >
-                          <FontAwesome name="check-circle-o" size={14} color="#fff" />
-                          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
+                          <FontAwesome name="check-circle-o" size={14} color={colors.onColor} />
+                          <Text style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}>
                             {t('contributions:workspace.confirm')}
                           </Text>
                         </Pressable>
                       ) : null}
                       {canReject ? (
                         <Pressable
-                          style={{ flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ef4444', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                          style={{ flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.danger, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
                           disabled={isProcessing}
                           onPress={() => onReject(member)}
                         >
-                          <FontAwesome name="times-circle-o" size={14} color="#ef4444" />
-                          <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '800' }}>
+                          <FontAwesome name="times-circle-o" size={14} color={colors.danger} />
+                          <Text style={{ color: colors.danger, fontSize: 13, fontWeight: '800' }}>
                             {t('contributions:workspace.reject')}
                           </Text>
                         </Pressable>
@@ -1930,23 +1930,23 @@ function RoundTab({
                   ) : canMarkPaid ? (
                     <>
                       <Pressable
-                        style={{ flex: 1, backgroundColor: '#3b82f6', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                        style={{ flex: 1, backgroundColor: colors.info, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
                         disabled={isProcessing}
                         onPress={() => onMarkPaid(member)}
                       >
-                        <FontAwesome name="check-circle-o" size={14} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>
+                        <FontAwesome name="check-circle-o" size={14} color={colors.onColor} />
+                        <Text style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}>
                           {t('contributions:workspace.recordPaid')}
                         </Text>
                       </Pressable>
                       {canRemindMembers ? (
                         <Pressable
-                          style={{ flex: 1, backgroundColor: '#f3f4f6', paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                          style={{ flex: 1, backgroundColor: colors.surfaceMuted, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
                           disabled={isProcessing}
                           onPress={() => onRemind(member)}
                         >
-                          <FontAwesome name="bell-o" size={14} color="#4b5563" />
-                          <Text style={{ color: '#4b5563', fontSize: 13, fontWeight: '800' }}>
+                          <FontAwesome name="bell-o" size={14} color={colors.muted} />
+                          <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '800' }}>
                             {t('contributions:workspace.remind')}
                           </Text>
                         </Pressable>
@@ -1957,7 +1957,7 @@ function RoundTab({
               )}
 
               {index < arr.length - 1 ? (
-                <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 68 }} />
+                <View style={{ height: 1, backgroundColor: colors.surfaceMuted, marginLeft: 68 }} />
               ) : null}
             </View>
           );
@@ -1971,7 +1971,7 @@ function RoundTab({
           {
             padding: 0,
             overflow: 'hidden',
-            backgroundColor: '#fff',
+            backgroundColor: colors.card,
             borderRadius: 20,
           },
         ]}
@@ -2069,7 +2069,7 @@ function RoundTab({
           {
             padding: 0,
             overflow: 'hidden',
-            backgroundColor: '#fff',
+            backgroundColor: colors.card,
             borderRadius: 20,
           },
         ]}
@@ -2779,7 +2779,7 @@ function PeopleTab({
               }
               size={14}
               color={
-                memberAgreementPrompt.kind === 'accepted' ? colors.primary : '#B45309'
+                memberAgreementPrompt.kind === 'accepted' ? colors.primary : colors.warningText
               }
             />
           </View>
@@ -2809,7 +2809,7 @@ function PeopleTab({
           accessibilityRole="button"
           accessibilityLabel={t('agreements.ctaA11y')}
         >
-          <FontAwesome name="file-text-o" size={14} color="#fff" />
+          <FontAwesome name="file-text-o" size={14} color={colors.onColor} />
           <Text style={styles.setupPrimaryBtnText}>
             {memberAgreementPrompt.kind === 'accepted'
               ? t('agreements.viewAccepted')
@@ -2979,7 +2979,7 @@ function PeopleTab({
                 accessibilityRole="button"
                 accessibilityLabel={t('invite.inviteMembers')}
               >
-                <FontAwesome name="user-plus" size={15} color="#fff" />
+                <FontAwesome name="user-plus" size={15} color={colors.onColor} />
                 <Text style={styles.setupPrimaryBtnText}>{t('invite.inviteMembers')}</Text>
               </Pressable>
             </View>
@@ -3028,7 +3028,7 @@ function PeopleTab({
                             accessibilityLabel={t('requests.approveA11y', { name: memberName(m) })}
                           >
                             {approvingId === m.requestId ? (
-                              <ActivityIndicator color="#fff" size="small" />
+                              <ActivityIndicator color={colors.onColor} size="small" />
                             ) : (
                               <Text style={styles.setupApproveBtnText}>{t('common.approve')}</Text>
                             )}
@@ -3067,7 +3067,7 @@ function PeopleTab({
                           style={{
                             fontSize: 13,
                             fontWeight: '800',
-                            color: unclaimed ? '#b45309' : '#047857',
+                            color: unclaimed ? colors.warningText : colors.successText,
                           }}
                         >
                           {(memberName(member)[0] || '?').toUpperCase()}
@@ -3136,7 +3136,7 @@ function PeopleTab({
                             accessibilityLabel={t('requests.approveExtraA11y', { name: memberName(m) })}
                           >
                             {approvingId === m.requestId ? (
-                              <ActivityIndicator color="#fff" size="small" />
+                              <ActivityIndicator color={colors.onColor} size="small" />
                             ) : (
                               <Text style={styles.setupApproveBtnText}>{t('common.approve')}</Text>
                             )}
@@ -3236,7 +3236,7 @@ function PeopleTab({
                         style={{
                           fontSize: 13,
                           fontWeight: '900',
-                          color: row.inOrder ? colors.primary : '#b45309',
+                          color: row.inOrder ? colors.primary : colors.warningText,
                         }}
                       >
                         {formatOrdinal(index + 1, language)}
@@ -3248,7 +3248,7 @@ function PeopleTab({
                           memberName(row as BackendCircleMember)}
                       </Text>
                       {!row.inOrder ? (
-                        <Text style={[styles.setupListSub, { color: '#b45309' }]}>
+                        <Text style={[styles.setupListSub, { color: colors.warningText }]}>
                           {t('payoutOrder:review.missing')}
                         </Text>
                       ) : null}
@@ -3332,10 +3332,10 @@ function PeopleTab({
                 }}
               >
                 {startingCircle ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={colors.onColor} />
                 ) : (
                   <>
-                    <FontAwesome name="file-text-o" size={14} color="#fff" />
+                    <FontAwesome name="file-text-o" size={14} color={colors.onColor} />
                     <Text style={styles.setupPrimaryBtnText}>
                       {t('setup.reviewAgreements')}
                     </Text>
@@ -3395,7 +3395,7 @@ function PeopleTab({
               <View style={styles.peopleCard}>
                 <View style={styles.peopleCardHeader}>
                   <View style={[styles.peopleIconBubble, { backgroundColor: colors.warningSoft }]}>
-                    <FontAwesome name="inbox" size={14} color="#B45309" />
+                    <FontAwesome name="inbox" size={14} color={colors.warningText} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.peopleCardTitle}>{t('requests.joinTitle')}</Text>
@@ -3531,7 +3531,7 @@ function PeopleTab({
                   accessibilityRole="button"
                 >
                   {addingHand ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color={colors.onColor} />
                   ) : (
                     <Text style={styles.setupPrimaryBtnText}>
                       {t('hands.requestAnother')}
@@ -3621,7 +3621,7 @@ function PeopleTab({
             accessibilityRole="button"
             accessibilityLabel={t('invite.inviteMember')}
           >
-            <FontAwesome name="user-plus" size={15} color="#fff" />
+            <FontAwesome name="user-plus" size={15} color={colors.onColor} />
             <Text style={styles.setupPrimaryBtnText}>{t('invite.inviteMember')}</Text>
           </Pressable>
         ) : null}
@@ -3632,7 +3632,7 @@ function PeopleTab({
         <View style={styles.peopleCard}>
           <View style={styles.peopleCardHeader}>
             <View style={[styles.peopleIconBubble, { backgroundColor: colors.warningSoft }]}>
-              <FontAwesome name="clock-o" size={14} color="#B45309" />
+              <FontAwesome name="clock-o" size={14} color={colors.warningText} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.peopleCardTitle}>{t('requests.pendingTitle')}</Text>
@@ -3687,7 +3687,7 @@ function PeopleTab({
                     accessibilityLabel={t('requests.approveA11y', { name: memberName(m) })}
                   >
                     {approvingId === m.requestId ? (
-                      <ActivityIndicator color="#fff" size="small" />
+                      <ActivityIndicator color={colors.onColor} size="small" />
                     ) : (
                       <Text style={styles.setupApproveBtnText}>{t('common.approve')}</Text>
                     )}
@@ -3807,7 +3807,7 @@ function PeopleTab({
                   accessibilityRole="button"
                 >
                   {addingHand ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color={colors.onColor} />
                   ) : (
                     <Text style={styles.setupPrimaryBtnText}>
                       {t('hands.requestAnother')}
@@ -3866,10 +3866,10 @@ function PeopleTab({
             accessibilityState={{ busy: startingCircle, disabled: structureMutationBusy }}
           >
             {startingCircle ? (
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color={colors.onColor} />
             ) : (
               <>
-                <FontAwesome name="play" size={14} color="#ffffff" />
+                <FontAwesome name="play" size={14} color={colors.onColor} />
                 <Text style={styles.setupPrimaryBtnText}>{t('setup.startAction')}</Text>
               </>
             )}
@@ -4023,7 +4023,7 @@ function ExpandableMemberTile({
                     style={{
                       fontSize: 12,
                       fontWeight: '900',
-                      color: orderIndex >= 0 ? colors.primary : '#B45309',
+                      color: orderIndex >= 0 ? colors.primary : colors.warningText,
                     }}
                   >
                     {orderIndex >= 0 ? formatOrdinal(orderIndex + 1, language) : '-'}
@@ -4209,15 +4209,15 @@ function setupStatusTone(status: SetupStepStatus): {
 } {
   switch (status) {
     case 'complete':
-      return { bg: colors.successSoft, fg: '#047857' };
+      return { bg: colors.successSoft, fg: colors.successText };
     case 'action_required':
-      return { bg: '#FFEDD5', fg: '#C2410C' };
+      return { bg: colors.warningSoft, fg: colors.warningText };
     case 'waiting':
-      return { bg: '#DBEAFE', fg: '#1D4ED8' };
+      return { bg: colors.infoSoft, fg: colors.infoText };
     case 'blocked':
-      return { bg: '#F1F5F9', fg: '#64748B' };
+      return { bg: colors.surfaceMuted, fg: colors.muted };
     default:
-      return { bg: '#F1F5F9', fg: '#64748B' };
+      return { bg: colors.surfaceMuted, fg: colors.muted };
   }
 }
 
@@ -4724,7 +4724,7 @@ const styles = StyleSheet.create({
   },
   peopleStartCard: {
     borderColor: colors.primaryBorder,
-    backgroundColor: '#FBF9FF',
+    backgroundColor: colors.primarySoft,
   },
   peopleCardHeader: {
     alignItems: 'center',
@@ -4812,10 +4812,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   peopleAccessPillTextOn: {
-    color: '#047857',
+    color: colors.successText,
   },
   peopleAccessPillTextOff: {
-    color: '#B45309',
+    color: colors.warningText,
   },
   peopleDashedBtn: {
     alignItems: 'center',
@@ -4926,19 +4926,19 @@ const styles = StyleSheet.create({
   },
   validationNotice: {
     backgroundColor: colors.warningSoft,
-    borderColor: '#FDE68A',
+    borderColor: colors.warningBorder,
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 12,
     padding: 12,
   },
   validationTitle: {
-    color: '#92400E',
+    color: colors.warningText,
     fontSize: 13,
     fontWeight: '900',
   },
   validationText: {
-    color: '#A16207',
+    color: colors.warningText,
     fontSize: 12,
     marginTop: 4,
   },
@@ -4990,7 +4990,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  screen: { flex: 1, backgroundColor: colors.background },
   content: {
     paddingBottom: 100,
     paddingHorizontal: spacing.screenX,
@@ -5045,7 +5045,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   retryButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -5063,8 +5063,8 @@ const styles = StyleSheet.create({
   },
   inlineErrorBanner: {
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B55',
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorderMuted,
     borderRadius: radii.card,
     borderWidth: 1,
     flexDirection: 'row',
@@ -5074,7 +5074,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   inlineErrorText: {
-    color: '#92400E',
+    color: colors.warningText,
     flex: 1,
     fontSize: 12,
     fontWeight: '700',
@@ -5107,7 +5107,7 @@ const styles = StyleSheet.create({
   chatUnreadBadge: {
     alignItems: 'center',
     backgroundColor: colors.danger,
-    borderColor: '#fff',
+    borderColor: colors.onColor,
     borderRadius: 8,
     borderWidth: 1.5,
     justifyContent: 'center',
@@ -5119,7 +5119,7 @@ const styles = StyleSheet.create({
     top: -8,
   },
   chatUnreadBadgeText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 8,
     fontWeight: '900',
   },
@@ -5133,7 +5133,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   activeTabText: {
-    color: '#fff',
+    color: colors.onColor,
   },
   section: {
     gap: 14,
@@ -5178,7 +5178,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningSoft,
   },
   roundDetailsStatusPending: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.surfaceMuted,
   },
   roundDetailsStatusText: {
     fontSize: 11,
@@ -5198,7 +5198,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   scheduleRowCompleted: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   scheduleRowCurrent: {
     backgroundColor: colors.primarySoft,
@@ -5207,7 +5207,7 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
   },
   scheduleRowUpcoming: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.card,
   },
   scheduleRowHeader: {
     alignItems: 'center',
@@ -5215,7 +5215,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   scheduleRoundBadge: {
-    backgroundColor: '#EEF2F7',
+    backgroundColor: colors.surfaceMuted,
     borderRadius: radii.pill,
     paddingHorizontal: 9,
     paddingVertical: 4,
@@ -5237,10 +5237,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.successSoft,
   },
   scheduleStatusCurrent: {
-    backgroundColor: '#E9DDFE',
+    backgroundColor: colors.primarySoft,
   },
   scheduleStatusUpcoming: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.surfaceMuted,
   },
   scheduleStatusText: {
     fontSize: 10,
@@ -5312,7 +5312,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   roundDetailDivider: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.surfaceMuted,
     height: 1,
     marginLeft: 60,
   },
@@ -5354,7 +5354,7 @@ const styles = StyleSheet.create({
     width: 56,
   },
   heroRoundText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 24,
     fontWeight: '900',
   },
@@ -5368,7 +5368,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   heroTitle: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 22,
     fontWeight: '900',
     marginTop: 2,
@@ -5401,7 +5401,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   infoValue: {
-    color: '#fff',
+    color: colors.onColor,
     flex: 1,
     fontSize: 13,
     fontWeight: '900',
@@ -5447,13 +5447,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   statusBadge_ready: {
-    backgroundColor: '#FDE68A',
+    backgroundColor: colors.warningSoft,
   },
   statusBadge_success: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: colors.successSoft,
   },
   statusBadge_warning: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: colors.dangerSoft,
   },
   statusBadgeText: {
     fontSize: 12,
@@ -5463,16 +5463,16 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
   },
   statusBadgeText_soft: {
-    color: '#fff',
+    color: colors.onColor,
   },
   statusBadgeText_ready: {
-    color: '#92400E',
+    color: colors.warningText,
   },
   statusBadgeText_success: {
-    color: '#166534',
+    color: colors.successText,
   },
   statusBadgeText_warning: {
-    color: '#991B1B',
+    color: colors.dangerText,
   },
   primaryButton: {
     alignItems: 'center',
@@ -5483,7 +5483,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '900',
   },
@@ -5496,7 +5496,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   confirmText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 13,
     fontWeight: '900',
   },
@@ -5509,7 +5509,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   rejectText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 13,
     fontWeight: '900',
   },
@@ -5537,7 +5537,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   payoutButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '900',
   },
@@ -5546,7 +5546,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   actionRow: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderColor: colors.cardBorder,
     borderRadius: 18,
     borderWidth: 1,
@@ -5596,7 +5596,7 @@ const styles = StyleSheet.create({
     width: 48,
   },
   positionText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 18,
     fontWeight: '900',
   },
@@ -5818,7 +5818,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -5991,7 +5991,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   setupPrimaryBtnText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -6002,7 +6002,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   setupApproveBtnText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -6070,7 +6070,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   setupNotice: {
-    color: '#92400E',
+    color: colors.warningText,
     fontSize: 12,
     lineHeight: 17,
     backgroundColor: colors.warningSoft,

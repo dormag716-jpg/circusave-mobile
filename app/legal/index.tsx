@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   menuItemPressed: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.surfaceMuted,
   },
   menuIconContainer: {
     alignItems: 'center',

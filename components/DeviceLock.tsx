@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   unlockButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '600',
   },

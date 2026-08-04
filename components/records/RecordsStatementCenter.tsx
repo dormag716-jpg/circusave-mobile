@@ -533,10 +533,10 @@ export function RecordsStatementCenter({
                   accessibilityState={{ busy: pdfLoading, disabled: pdfLoading }}
                 >
                   {pdfLoading ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color={colors.onColor} />
                   ) : (
                     <>
-                      <FontAwesome name="download" size={14} color="#fff" />
+                      <FontAwesome name="download" size={14} color={colors.onColor} />
                       <Text style={styles.primaryBtnText}>Download PDF</Text>
                     </>
                   )}
@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
   },
   segmentControl: {
     flexDirection: 'row',
-    backgroundColor: '#EEF2F7',
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 14,
     padding: 4,
     gap: 2,
@@ -1465,7 +1465,7 @@ const styles = StyleSheet.create({
   },
   segmentItemActive: {
     backgroundColor: colors.card,
-    shadowColor: '#0F172A',
+    shadowColor: colors.textStrong,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 3,
@@ -1528,11 +1528,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   periodCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E8EEF5',
+    borderColor: colors.cardBorder,
     gap: 10,
   },
   periodLabel: {
@@ -1610,12 +1610,12 @@ const styles = StyleSheet.create({
     minHeight: 48,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E8EEF5',
+    borderColor: colors.cardBorder,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.card,
   },
   memberRowUnclaimed: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderStyle: 'dashed',
   },
   avatar: {
@@ -1627,10 +1627,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarUnclaimed: {
-    backgroundColor: '#94A3B8',
+    backgroundColor: colors.subtle,
   },
   avatarText: {
-    color: '#fff',
+    color: colors.onColor,
     fontWeight: '800',
     fontSize: 13,
   },
@@ -1672,7 +1672,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: colors.surfaceMuted,
   },
   totalRow: {
     flexDirection: 'row',
@@ -1695,7 +1695,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: '#E8EEF5',
+    borderTopColor: colors.cardBorder,
     gap: 10,
   },
   unclaimedTitle: {
@@ -1729,7 +1729,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.surfaceMuted,
     marginLeft: 44,
   },
   upgradeBox: {
@@ -1759,7 +1759,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
@@ -1787,10 +1787,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   stateCardCompact: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E8EEF5',
+    borderColor: colors.cardBorder,
     padding: 20,
     alignItems: 'center',
     gap: 8,
@@ -1823,7 +1823,7 @@ const styles = StyleSheet.create({
   skeletonRow: {
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: colors.cardBorder,
     width: '100%',
   },
   primaryBtn: {
@@ -1839,7 +1839,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryBtnText: {
-    color: '#fff',
+    color: colors.onColor,
     fontWeight: '800',
     fontSize: 14,
   },
@@ -1852,7 +1852,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: colors.surfaceMuted,
   },
   docIcon: {
     width: 40,
@@ -1894,7 +1894,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1959,7 +1959,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: 14,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: colors.surfaceMuted,
   },
   nextLine: {
     marginTop: 10,
@@ -1975,10 +1975,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   emptyInline: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E8EEF5',
+    borderColor: colors.cardBorder,
     padding: 16,
     gap: 6,
     marginBottom: 8,
@@ -2108,7 +2108,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: colors.surfaceMuted,
   },
   metaLineLast: {
     borderBottomWidth: 0,
@@ -2178,7 +2178,7 @@ const styles = StyleSheet.create({
   },
   metricCell: {
     width: '47%',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -2206,7 +2206,7 @@ const styles = StyleSheet.create({
   roundRow: {
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: colors.surfaceMuted,
   },
   roundTitle: {
     fontSize: 13,
@@ -2222,14 +2222,14 @@ const styles = StyleSheet.create({
   ledgerPreviewRow: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: colors.surfaceMuted,
   },
   verificationCard: {
     marginTop: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E8EEF5',
+    borderColor: colors.cardBorder,
   },
 });

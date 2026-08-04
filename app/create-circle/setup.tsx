@@ -475,7 +475,7 @@ export default function CircleSetupWizardScreen() {
         >
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: colors.card,
               borderTopLeftRadius: 28,
               borderTopRightRadius: 28,
               padding: 28,
@@ -488,19 +488,19 @@ export default function CircleSetupWizardScreen() {
                   width: 72,
                   height: 72,
                   borderRadius: 36,
-                  backgroundColor: '#f3e8ff',
+                  backgroundColor: colors.primarySoft,
                   justifyContent: 'center',
                   alignItems: 'center',
                   marginBottom: 16,
                 }}
               >
-                <FontAwesome name="lock" size={32} color="#7c3aed" />
+                <FontAwesome name="lock" size={32} color={colors.primary} />
               </View>
               <Text
                 style={{
                   fontSize: 22,
                   fontWeight: '900',
-                  color: '#111827',
+                  color: colors.textStrong,
                   textAlign: 'center',
                 }}
               >
@@ -509,7 +509,7 @@ export default function CircleSetupWizardScreen() {
               <Text
                 style={{
                   fontSize: 15,
-                  color: '#6b7280',
+                  color: colors.muted,
                   textAlign: 'center',
                   marginTop: 8,
                   lineHeight: 22,
@@ -522,10 +522,10 @@ export default function CircleSetupWizardScreen() {
             <View
               style={{
                 flexDirection: 'row',
-                backgroundColor: '#fff7ed',
+                backgroundColor: colors.warningSoft,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: '#fed7aa',
+                borderColor: colors.warningBorder,
                 padding: 12,
                 marginBottom: 24,
                 alignItems: 'flex-start',
@@ -535,10 +535,10 @@ export default function CircleSetupWizardScreen() {
               <FontAwesome
                 name="exclamation-triangle"
                 size={16}
-                color="#f97316"
+                color={colors.warningStrong}
                 style={{ marginTop: 1 }}
               />
-              <Text style={{ flex: 1, fontSize: 13, color: '#92400e', lineHeight: 19 }}>
+              <Text style={{ flex: 1, fontSize: 13, color: colors.warningText, lineHeight: 19 }}>
                 <Text style={{ fontWeight: '800' }}>
                   {t('confirmation.warningTitle')}
                 </Text>{' '}
@@ -549,7 +549,7 @@ export default function CircleSetupWizardScreen() {
             <Pressable
               style={({ pressed }) => [
                 {
-                  backgroundColor: '#7c3aed',
+                  backgroundColor: colors.primary,
                   borderRadius: 20,
                   minHeight: 56,
                   justifyContent: 'center',
@@ -571,9 +571,9 @@ export default function CircleSetupWizardScreen() {
               accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onColor} />
               ) : (
-                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>
+                <Text style={{ color: colors.onColor, fontSize: 17, fontWeight: '900' }}>
                   {t('actions.createCircle')}
                 </Text>
               )}
@@ -586,13 +586,13 @@ export default function CircleSetupWizardScreen() {
                   justifyContent: 'center',
                   alignItems: 'center',
                   borderWidth: 1,
-                  borderColor: '#e5e7eb',
+                  borderColor: colors.cardBorder,
                 },
                 pressed && { opacity: 0.7 },
               ]}
               onPress={() => setShowConsentModal(false)}
             >
-              <Text style={{ color: '#374151', fontSize: 16, fontWeight: '700' }}>
+              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>
                 {t('actions.reviewAgain')}
               </Text>
             </Pressable>
@@ -769,7 +769,7 @@ export default function CircleSetupWizardScreen() {
                         marginTop: 6,
                         fontSize: 13,
                         lineHeight: 18,
-                        color: organizerParticipates ? '#f5f3ff' : colors.muted,
+                        color: organizerParticipates ? colors.primarySoft : colors.muted,
                       }}
                     >
                       {t('organizer.participateBody')}
@@ -797,7 +797,7 @@ export default function CircleSetupWizardScreen() {
                         marginTop: 6,
                         fontSize: 13,
                         lineHeight: 18,
-                        color: !organizerParticipates ? '#f5f3ff' : colors.muted,
+                        color: !organizerParticipates ? colors.primarySoft : colors.muted,
                       }}
                     >
                       {t('organizer.organizeOnlyBody')}
@@ -840,7 +840,7 @@ export default function CircleSetupWizardScreen() {
                         }}
                       >
                         <Text
-                          style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}
+                          style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}
                         >
                           {t('members.added', { count: members.length })}
                         </Text>
@@ -873,7 +873,7 @@ export default function CircleSetupWizardScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.fieldLabel}>{t('members.firstName')}</Text>
                         <TextInput
-                          style={[styles.input, { backgroundColor: '#fff' }]}
+                          style={[styles.input, { backgroundColor: colors.card }]}
                           value={newMember.firstName}
                           onChangeText={(firstName) =>
                             setNewMember((current) => ({ ...current, firstName }))
@@ -887,7 +887,7 @@ export default function CircleSetupWizardScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.fieldLabel}>{t('members.lastName')}</Text>
                         <TextInput
-                          style={[styles.input, { backgroundColor: '#fff' }]}
+                          style={[styles.input, { backgroundColor: colors.card }]}
                           value={newMember.lastName}
                           onChangeText={(lastName) =>
                             setNewMember((current) => ({ ...current, lastName }))
@@ -903,7 +903,7 @@ export default function CircleSetupWizardScreen() {
                     <View>
                       <Text style={styles.fieldLabel}>{t('members.phone')}</Text>
                       <TextInput
-                        style={[styles.input, { backgroundColor: '#fff' }]}
+                        style={[styles.input, { backgroundColor: colors.card }]}
                         value={newMember.phone}
                         onChangeText={(phone) =>
                           setNewMember((current) => ({ ...current, phone }))
@@ -929,7 +929,7 @@ export default function CircleSetupWizardScreen() {
                         </Text>
                       </Text>
                       <TextInput
-                        style={[styles.input, { backgroundColor: '#fff' }]}
+                        style={[styles.input, { backgroundColor: colors.card }]}
                         value={newMember.email}
                         onChangeText={(email) =>
                           setNewMember((current) => ({ ...current, email }))
@@ -953,7 +953,7 @@ export default function CircleSetupWizardScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={t('accessibility.addMember')}
                     >
-                      <FontAwesome name="user-plus" size={16} color="#fff" />
+                      <FontAwesome name="user-plus" size={16} color={colors.onColor} />
                       <Text style={styles.addBtnText}>{t('actions.addMember')}</Text>
                     </Pressable>
                   </View>
@@ -965,7 +965,7 @@ export default function CircleSetupWizardScreen() {
                         borderWidth: 1,
                         borderColor: `${colors.primary}15`,
                         overflow: 'hidden',
-                        backgroundColor: '#fff',
+                        backgroundColor: colors.card,
                       }}
                     >
                       {members.map((member, index) => (
@@ -986,7 +986,7 @@ export default function CircleSetupWizardScreen() {
                                 style={{
                                   fontSize: 15,
                                   fontWeight: '800',
-                                  color: '#111827',
+                                  color: colors.textStrong,
                                 }}
                               >
                                 {t('members.handLabel', {
@@ -1012,7 +1012,7 @@ export default function CircleSetupWizardScreen() {
                                   width: 30,
                                   height: 30,
                                   borderRadius: 15,
-                                  backgroundColor: '#fee2e2',
+                                  backgroundColor: colors.dangerSoft,
                                   justifyContent: 'center',
                                   alignItems: 'center',
                                 },
@@ -1023,14 +1023,14 @@ export default function CircleSetupWizardScreen() {
                                 name: memberDisplayName(member),
                               })}
                             >
-                              <FontAwesome name="times" size={12} color="#ef4444" />
+                              <FontAwesome name="times" size={12} color={colors.danger} />
                             </Pressable>
                           </View>
                           {index < members.length - 1 ? (
                             <View
                               style={{
                                 height: 1,
-                                backgroundColor: '#f3f4f6',
+                                backgroundColor: colors.surfaceMuted,
                                 marginLeft: 66,
                               }}
                             />
@@ -1172,17 +1172,17 @@ export default function CircleSetupWizardScreen() {
                     style={{
                       marginTop: 16,
                       marginBottom: 8,
-                      backgroundColor: '#eff6ff',
+                      backgroundColor: colors.infoSoft,
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: '#bfdbfe',
+                      borderColor: colors.infoBorder,
                       padding: 12,
                     }}
                   >
                     <Text
                       style={{
                         fontSize: 13,
-                        color: '#1e40af',
+                        color: colors.infoText,
                         lineHeight: 19,
                         fontWeight: '600',
                       }}
@@ -1204,7 +1204,7 @@ export default function CircleSetupWizardScreen() {
                       <View key={row.key} style={styles.reviewMemberCard}>
                         <View style={styles.reviewMemberAvatar}>
                           {row.isOrganizer ? (
-                            <FontAwesome name="star" size={14} color="#7c3aed" />
+                            <FontAwesome name="star" size={14} color={colors.primary} />
                           ) : (
                             <Text style={styles.reviewMemberAvatarText}>
                               {row.handNumber}
@@ -1266,7 +1266,7 @@ export default function CircleSetupWizardScreen() {
                 accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
               >
                 {isSubmitting ? (
-                  <ActivityIndicator color="#ffffff" />
+                  <ActivityIndicator color={colors.onColor} />
                 ) : (
                   <Text style={styles.nextText}>
                     {isLastStep ? t('actions.createCircle') : t('actions.continue')}
@@ -1407,14 +1407,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   infoBox: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#bfdbfe',
+    backgroundColor: colors.infoSoft,
+    borderColor: colors.infoBorder,
     borderRadius: 12,
     borderWidth: 1,
     padding: 12,
   },
   infoText: {
-    color: '#1e40af',
+    color: colors.infoText,
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 19,
@@ -1452,7 +1452,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   presetActiveText: {
-    color: '#ffffff',
+    color: colors.onColor,
   },
   option: {
     backgroundColor: colors.primarySoft,
@@ -1471,7 +1471,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   optionActiveText: {
-    color: '#ffffff',
+    color: colors.onColor,
   },
   addBtn: {
     alignItems: 'center',
@@ -1482,7 +1482,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   addBtnText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontWeight: '700',
   },
   memberTag: {
@@ -1530,7 +1530,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   reviewSummaryBadgeText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1602,13 +1602,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   organizerBadge: {
-    backgroundColor: '#f3e8ff',
+    backgroundColor: colors.primarySoft,
     borderRadius: radii.pill,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   organizerBadgeText: {
-    color: '#7c3aed',
+    color: colors.primary,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -1639,7 +1639,7 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   nextText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontWeight: '900',
   },
   disabledButton: {

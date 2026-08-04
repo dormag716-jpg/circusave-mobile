@@ -147,7 +147,7 @@ export default function LoginScreen() {
         >
           <View style={styles.branding}>
             <View style={styles.logo}>
-              <FontAwesome name="users" size={42} color="#ffffff" />
+              <FontAwesome name="users" size={42} color={colors.onColor} />
             </View>
             <Text style={styles.appName}>CircuSave</Text>
             <Text style={styles.tagline}>{t('login.tagline')}</Text>
@@ -258,7 +258,7 @@ export default function LoginScreen() {
               }
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={colors.onColor} />
               ) : (
                 <Text style={styles.signInText}>
                   {!recoveryMode
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     minHeight: 58,
   },
   disabledButton: { opacity: 0.65 },
-  signInText: { color: '#ffffff', fontSize: 17, fontWeight: '900' },
+  signInText: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
   createAccount: { marginTop: 24, alignItems: 'center' },
   createAccountText: { fontSize: 15, color: colors.muted },
   link: { color: colors.primary, fontWeight: '800' },

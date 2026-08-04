@@ -54,9 +54,9 @@ export default function ChatInput({
           accessibilityRole="button"
         >
           {isLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={colors.onColor} />
           ) : (
-            <FontAwesome name="send" size={16} color={text.trim() ? '#fff' : colors.muted} />
+            <FontAwesome name="send" size={16} color={text.trim() ? colors.onColor : colors.muted} />
           )}
         </Pressable>
       </View>
@@ -70,14 +70,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
     gap: 12,
   },
   inputWrapper: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.cardBorder,

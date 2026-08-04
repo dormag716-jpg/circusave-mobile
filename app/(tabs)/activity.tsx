@@ -148,7 +148,7 @@ export default function ActivityScreen() {
             </View>
             
             {visibleEntries.length > 0 && (
-              <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, marginTop: 16, paddingTop: 8 }} />
+              <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, marginTop: 16, paddingTop: 8 }} />
             )}
           </>
         }
@@ -184,37 +184,37 @@ export default function ActivityScreen() {
           )
         }
         renderItem={({ item, index }) => (
-          <View style={{ backgroundColor: '#fff', paddingHorizontal: 16 }}>
+          <View style={{ backgroundColor: colors.card, paddingHorizontal: 16 }}>
             <ActivityCard entry={item} memberMap={memberMap} />
             {index < visibleEntries.length - 1 ? (
-              <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 60 }} />
+              <View style={{ height: 1, backgroundColor: colors.surfaceMuted, marginLeft: 60 }} />
             ) : null}
           </View>
         )}
         ListFooterComponent={
           visibleEntries.length > 0 ? (
-            <View style={{ backgroundColor: '#fff', borderBottomLeftRadius: 20, borderBottomRightRadius: 20, overflow: 'hidden', paddingBottom: 8 }}>
+            <View style={{ backgroundColor: colors.card, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, overflow: 'hidden', paddingBottom: 8 }}>
               {hasMore ? (
-                <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center' }}>
-                  <FontAwesome name="lock" size={24} color="#6b37cf" style={{ marginBottom: 8 }} />
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827', textAlign: 'center' }}>
+                <View style={{ padding: 16, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.surfaceMuted, alignItems: 'center' }}>
+                  <FontAwesome name="lock" size={24} color={colors.primary} style={{ marginBottom: 8 }} />
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong, textAlign: 'center' }}>
                     {t('activity:unlockTitle')}
                   </Text>
-                  <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
                     {t('activity:unlockBody')}
                   </Text>
                   <Pressable
-                    style={{ backgroundColor: '#6b37cf', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, width: '100%', alignItems: 'center' }}
+                    style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, width: '100%', alignItems: 'center' }}
                     onPress={() => router.push('/subscription')}
                   >
-                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>
+                    <Text style={{ color: colors.onColor, fontSize: 15, fontWeight: '800' }}>
                       {t('activity:upgrade')}
                     </Text>
                   </Pressable>
                 </View>
               ) : (
                 <Pressable
-                  style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                  style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.surfaceMuted, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
                   onPress={() =>
                     Alert.alert(
                       t('activity:exportUnavailableTitle'),
@@ -222,8 +222,8 @@ export default function ActivityScreen() {
                     )
                   }
                 >
-                  <FontAwesome name="download" size={14} color="#6b37cf" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#6b37cf', fontSize: 15, fontWeight: '800' }}>
+                  <FontAwesome name="download" size={14} color={colors.primary} style={{ marginRight: 8 }} />
+                  <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '800' }}>
                     {t('activity:export')}
                   </Text>
                 </Pressable>
@@ -280,10 +280,10 @@ function ActivityCard({ entry, memberMap }: { entry: BackendActivity; memberMap:
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textStrong }}>
           {sentence}
         </Text>
-        <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
+        <Text style={{ fontSize: 14, color: colors.muted, marginTop: 2 }}>
           {entry.round
             ? t('activity:meta', {
                 circle: entry.circleName,
@@ -300,7 +300,7 @@ function ActivityCard({ entry, memberMap }: { entry: BackendActivity; memberMap:
             {formatCurrency(entry.amount, language, 'USD', 2)}
           </Text>
         ) : null}
-        <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, fontWeight: '600' }}>
+        <Text style={{ fontSize: 12, color: colors.subtle, marginTop: 2, fontWeight: '600' }}>
           {formatDateTime(entry.createdAt, language)}
         </Text>
       </View>
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   activeFilterText: {
-    color: '#ffffff',
+    color: colors.onColor,
   },
   statusCard: {
     backgroundColor: colors.card,
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   retryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 14,
     fontWeight: '800',
   },

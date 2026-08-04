@@ -332,7 +332,7 @@ export default function DashboardScreen() {
               accessibilityLabel={t('payYourPart')}
             >
               <Text style={styles.payDueButtonText}>{t('payNow')}</Text>
-              <FontAwesome name="arrow-right" size={12} color="#ffffff" />
+              <FontAwesome name="arrow-right" size={12} color={colors.onColor} />
             </Pressable>
           </View>
         ) : null}
@@ -341,7 +341,7 @@ export default function DashboardScreen() {
           <View style={[styles.reviewCard, { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }]}>
             <View style={{ flex: 1, paddingRight: 12 }}>
               <View style={[styles.actionCardHeader, { marginBottom: 4 }]}>
-                <FontAwesome name="check-circle" size={18} color="#B45309" />
+                <FontAwesome name="check-circle" size={18} color={colors.warningStrong} />
                 <Text style={styles.reviewTitle}>{t('paymentsToReview')}</Text>
               </View>
               <Text style={[styles.reviewSubtitle, { marginTop: 0 }]}>
@@ -366,7 +366,7 @@ export default function DashboardScreen() {
               accessibilityLabel={t('reviewPayments')}
             >
               <Text style={styles.reviewButtonText}>{t('review')}</Text>
-              <FontAwesome name="arrow-right" size={12} color="#ffffff" />
+              <FontAwesome name="arrow-right" size={12} color={colors.onColor} />
             </Pressable>
           </View>
         ) : null}
@@ -548,7 +548,7 @@ export default function DashboardScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('createNewCircle')}
           >
-            <FontAwesome name="plus" size={20} color="#ffffff" />
+            <FontAwesome name="plus" size={20} color={colors.onColor} />
             <Text style={styles.actionText}>{t('newCircle')}</Text>
           </Pressable>
 
@@ -752,13 +752,13 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   organizerBadge: {
-    backgroundColor: colors.success,
+    backgroundColor: colors.primary,
   },
   memberBadge: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: colors.primaryDark,
   },
   roleBadgeText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 11,
     fontWeight: '900',
   },
@@ -798,7 +798,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   heroFooterText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -815,19 +815,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   heroLabel: {
-    color: '#E0D4FF',
+    color: colors.primaryBorder,
     fontSize: 15,
     fontWeight: '700',
     marginTop: 4,
   },
   heroAmount: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 48,
     fontWeight: '900',
     marginVertical: 8,
   },
   heroSub: {
-    color: '#C4B5FD',
+    color: colors.primaryLight,
     fontSize: 15,
   },
   payDueCard: {
@@ -866,25 +866,25 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   payDueButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 14,
     fontWeight: '900',
   },
   reviewCard: {
     backgroundColor: colors.warningSoft,
-    borderColor: '#FCD34D',
+    borderColor: colors.warningBorder,
     borderRadius: radii.card,
     borderWidth: 1,
     marginBottom: 16,
     padding: 18,
   },
   reviewTitle: {
-    color: '#92400E',
+    color: colors.warningText,
     fontSize: 17,
     fontWeight: '900',
   },
   reviewSubtitle: {
-    color: '#78350F',
+    color: colors.warningText,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 8,
@@ -892,7 +892,7 @@ const styles = StyleSheet.create({
   reviewButton: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#D97706',
+    backgroundColor: colors.warningStrong,
     borderRadius: radii.pill,
     flexDirection: 'row',
     gap: 8,
@@ -901,7 +901,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   reviewButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 14,
     fontWeight: '900',
   },
@@ -1080,7 +1080,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   actionText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '900',
   },

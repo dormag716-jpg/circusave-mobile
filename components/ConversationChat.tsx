@@ -111,7 +111,7 @@ export default function ConversationChat({
           accessibilityRole="button"
           accessibilityLabel={t('chat.newPrivateA11y')}
         >
-          <FontAwesome name="edit" size={15} color="#fff" />
+          <FontAwesome name="edit" size={15} color={colors.onColor} />
           <Text style={styles.newChatButtonText}>{t('chat.newPrivate')}</Text>
         </Pressable>
       </View>
@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   newChatButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 12,
     fontWeight: '900',
   },
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   unreadBadge: {
     alignItems: 'center',
     backgroundColor: colors.danger,
-    borderColor: '#fff',
+    borderColor: colors.onColor,
     borderRadius: 9,
     borderWidth: 2,
     justifyContent: 'center',
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
     top: -6,
   },
   unreadBadgeText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 9,
     fontWeight: '900',
   },
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   threadCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
     borderColor: colors.cardBorder,
     borderRadius: radii.card,
     borderWidth: 1,
@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
   },
   threadHeader: {
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderBottomColor: colors.cardBorder,
     borderBottomWidth: 1,
     flexDirection: 'row',
@@ -508,8 +508,8 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
     borderRadius: radii.control,
     borderWidth: 1,
     flexDirection: 'row',

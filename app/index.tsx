@@ -33,7 +33,7 @@ export default function Index() {
       >
         <View style={styles.heroSection}>
           <View style={styles.logoContainer}>
-            <FontAwesome name="users" size={48} color="#ffffff" />
+            <FontAwesome name="users" size={48} color={colors.onColor} />
           </View>
           <Text style={styles.appName}>CircuSave</Text>
           <Text style={styles.headline}>{t('landing.headline')}</Text>
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     ...shadows.medium,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 18,
     fontWeight: '800',
   },

@@ -164,9 +164,9 @@ export default function JoinCircleScreen() {
                 accessibilityLabel={t('lookup')}
               >
                 {resolving ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={colors.onColor} size="small" />
                 ) : (
-                  <FontAwesome name="search" size={18} color="#fff" />
+                  <FontAwesome name="search" size={18} color={colors.onColor} />
                 )}
               </Pressable>
             </View>
@@ -243,7 +243,7 @@ export default function JoinCircleScreen() {
 
               {/* Conditional claim disclosure — backend decides claim vs pending */}
               <View style={sty.infoBanner}>
-                <FontAwesome name="info-circle" size={14} color="#2563eb" />
+                <FontAwesome name="info-circle" size={14} color={colors.info} />
                 <Text style={sty.infoTxt}>{t('claimDisclosureConditional')}</Text>
               </View>
               <Text style={sty.disclosureBody}>{t('claimDisclosureBody')}</Text>
@@ -256,7 +256,7 @@ export default function JoinCircleScreen() {
               >
                 <View style={[sty.checkbox, claimAckChecked && sty.checkboxChecked]}>
                   {claimAckChecked ? (
-                    <FontAwesome name="check" size={12} color="#fff" />
+                    <FontAwesome name="check" size={12} color={colors.onColor} />
                   ) : null}
                 </View>
                 <Text style={sty.ackLabel}>{t('claimAckLabel')}</Text>
@@ -275,10 +275,10 @@ export default function JoinCircleScreen() {
                 accessibilityLabel={t('requestAccessibility')}
               >
                 {joining ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={colors.onColor} />
                 ) : (
                   <>
-                    <FontAwesome name="hand-o-up" size={18} color="#fff" />
+                    <FontAwesome name="hand-o-up" size={18} color={colors.onColor} />
                     <Text style={sty.joinTxt}>{t('joinCircle')}</Text>
                   </>
                 )}
@@ -298,7 +298,7 @@ export default function JoinCircleScreen() {
                 <FontAwesome
                   name={joinOutcome === 'claimed' ? 'check' : 'clock-o'}
                   size={32}
-                  color={joinOutcome === 'claimed' ? '#059669' : '#b45309'}
+                  color={joinOutcome === 'claimed' ? colors.successText : colors.warningText}
                 />
               </View>
               <Text
@@ -400,13 +400,13 @@ const sty = StyleSheet.create({
     paddingHorizontal: 16,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
     borderColor: `${colors.primary}20`,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -445,13 +445,13 @@ const sty = StyleSheet.create({
   dim: { opacity: 0.55 },
   hint: { fontSize: 13, color: colors.muted, marginTop: 10 },
   previewCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
     borderColor: `${colors.primary}20`,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 12,
@@ -474,12 +474,12 @@ const sty = StyleSheet.create({
   previewName: { fontSize: 18, fontWeight: '900', color: colors.textStrong },
   previewOrg: { fontSize: 13, color: colors.muted, marginTop: 2 },
   badge: {
-    backgroundColor: '#d1fae5',
+    backgroundColor: colors.successSoft,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  badgeTxt: { fontSize: 12, fontWeight: '800', color: '#059669' },
+  badgeTxt: { fontSize: 12, fontWeight: '800', color: colors.successText },
   stats: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -511,12 +511,12 @@ const sty = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'flex-start',
-    backgroundColor: '#eff6ff',
+    backgroundColor: colors.infoSoft,
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
   },
-  infoTxt: { flex: 1, fontSize: 13, color: '#1e40af', lineHeight: 19 },
+  infoTxt: { flex: 1, fontSize: 13, color: colors.infoText, lineHeight: 19 },
   disclosureBody: {
     fontSize: 13,
     color: colors.text,
@@ -550,13 +550,13 @@ const sty = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  joinTxt: { color: '#fff', fontSize: 17, fontWeight: '900' },
+  joinTxt: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
   success: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 28,
     borderWidth: 1,
-    borderColor: '#d1fae5',
+    borderColor: colors.successBorder,
     alignItems: 'center',
     marginBottom: 20,
   },
@@ -564,26 +564,26 @@ const sty = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#d1fae5',
+    backgroundColor: colors.successSoft,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
   },
   pendingCircle: {
-    backgroundColor: '#fef3c7',
+    backgroundColor: colors.warningSoft,
   },
   sucTitle: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#065f46',
+    color: colors.successText,
     marginBottom: 8,
   },
   pendingTitle: {
-    color: '#92400e',
+    color: colors.warningText,
   },
   sucTxt: {
     fontSize: 15,
-    color: '#374151',
+    color: colors.text,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
@@ -597,7 +597,7 @@ const sty = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  doneTxt: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  doneTxt: { color: colors.onColor, fontSize: 16, fontWeight: '900' },
   anotherBtn: { paddingVertical: 12 },
   anotherTxt: { color: colors.primary, fontSize: 15, fontWeight: '700' },
   authNudge: { alignItems: 'center', gap: 12, paddingTop: 16 },
