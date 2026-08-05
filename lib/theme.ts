@@ -42,6 +42,14 @@ export const colors = {
   shadow: '#000000',
 
   gradientPrimary: ['#6B46C1', '#7C3AED'] as const,
+
+  premiumCanvas: '#F7F5FF',
+  premiumGlow: '#E9DDFF',
+  premiumMintGlow: '#DDF8EF',
+  premiumLavender: '#D9C8FF',
+  premiumLavenderSoft: '#EEE8FF',
+  premiumLavenderBadge: '#F0EAFE',
+  premiumGold: '#FFF4C7',
 };
 
 export const radii = {

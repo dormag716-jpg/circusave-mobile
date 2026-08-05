@@ -659,11 +659,13 @@ export type StatementDocumentsPage = {
 
 export class ApiError extends Error {
   status: number;
+  payload: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, payload?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.payload = payload;
   }
 }
 
@@ -800,7 +802,11 @@ async function requestJson<T>(
   logDevApiResponse(method, url, response.status, payload ?? text);
 
   if (!response.ok) {
-    throw new ApiError(errorMessage(payload, response.status), response.status);
+    throw new ApiError(
+      errorMessage(payload, response.status),
+      response.status,
+      payload,
+    );
   }
 
   return payload as T;
@@ -1251,6 +1257,132 @@ export function sendContributionReminder(
     token,
     body: JSON.stringify(memberId ? { memberId } : {}),
   });
+}
+
+export type BillingPlan = {
+  id: 'free' | 'premium';
+  name: string;
+  tagline: string;
+  monthlyPriceCents: number;
+  annualPriceCents: number;
+  annualSavingsCents?: number;
+  trialDays: number;
+  features: string[];
+};
+
+export type BillingPlansResponse = {
+  currency: string;
+  recommendedPlan: 'premium';
+  plans: BillingPlan[];
+};
+
+export type BillingCheckoutResponse = {
+  checkoutSessionId: string;
+  checkoutUrl: string;
+  interval: 'monthly' | 'annual';
+};
+
+export type BillingPortalResponse = {
+  portalUrl: string;
+};
+
+export type ReminderSchedule = {
+  circleId: string;
+  enabled: boolean;
+  repeatHours: number;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastResult: {
+    status?: string;
+    remindedCount?: number;
+    error?: string;
+  } | null;
+};
+
+export type AiAssistantResponse = {
+  schemaVersion: string;
+  mode: 'premium' | 'free_introduction';
+  responseType: 'answer' | 'refusal' | 'clarification';
+  message: string;
+  factRefs: string[];
+  actions: Array<{ id: string; label: string }>;
+};
+
+export function getBillingPlans(): Promise<BillingPlansResponse> {
+  return requestJson<BillingPlansResponse>('/billing/plans');
+}
+
+export function createBillingCheckout(
+  token: string,
+  interval: 'monthly' | 'annual',
+  sourceFeature?: string,
+): Promise<BillingCheckoutResponse> {
+  return requestJson<BillingCheckoutResponse>('/billing/checkout', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ interval, sourceFeature }),
+  });
+}
+
+export function createBillingPortal(
+  token: string,
+): Promise<BillingPortalResponse> {
+  return requestJson<BillingPortalResponse>('/billing/portal', {
+    method: 'POST',
+    token,
+  });
+}
+
+export function cancelPremiumSubscription(token: string): Promise<unknown> {
+  return requestJson<unknown>('/billing/subscription/cancel', {
+    method: 'POST',
+    token,
+  });
+}
+
+export function getPremiumReminderSchedule(
+  token: string,
+  circleId: string,
+): Promise<ReminderSchedule> {
+  return requestJson<ReminderSchedule>(
+    `/premium/circles/${circleId}/reminder-schedule`,
+    { token },
+  );
+}
+
+export function updatePremiumReminderSchedule(
+  token: string,
+  circleId: string,
+  input: {
+    enabled: boolean;
+    repeatHours: number;
+    nextRunAt?: string;
+  },
+): Promise<ReminderSchedule> {
+  return requestJson<ReminderSchedule>(
+    `/premium/circles/${circleId}/reminder-schedule`,
+    {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function sendAiAssistantMessage(
+  token: string,
+  circleId: string,
+  message: string,
+  locale: string,
+): Promise<AiAssistantResponse> {
+  return requestJson<AiAssistantResponse>(
+    `/assistant/circles/${circleId}/messages`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ message, locale }),
+    },
+  );
 }
 
 export function createCircle(

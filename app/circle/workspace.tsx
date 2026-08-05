@@ -1,5 +1,5 @@
 ﻿import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, type Href, useLocalSearchParams } from 'expo-router';
 import {
   useCallback,
   useEffect,
@@ -338,6 +338,7 @@ function WorkspaceContent({
 }) {
   const { hasCapability } = useEntitlements();
   const canExportAdvancedReports = hasCapability('advancedReports');
+  const isOrganizer = circle.userRole === 'organizer';
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
     'contributions',
@@ -970,6 +971,57 @@ function WorkspaceContent({
 
   return (
     <View>
+      <View style={styles.organizerTools}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.organizerTool,
+            styles.assistantTool,
+            pressed && styles.organizerToolPressed,
+          ]}
+          onPress={() =>
+            router.push(
+              `/circle/assistant?circleId=${encodeURIComponent(circle.id)}` as Href,
+            )
+          }
+        >
+          <View style={[styles.organizerToolIcon, styles.assistantToolIcon]}>
+            <FontAwesome name="magic" size={15} color={colors.onColor} />
+          </View>
+          <View style={styles.organizerToolText}>
+            <Text style={[styles.organizerToolTitle, styles.assistantToolTitle]}>
+              Ask CircuSave
+            </Text>
+            <Text style={[styles.organizerToolCopy, styles.assistantToolCopy]}>
+              Circle-aware guidance
+            </Text>
+          </View>
+          <FontAwesome name="chevron-right" size={11} color={colors.premiumLavender} />
+        </Pressable>
+
+        {isOrganizer ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.organizerTool,
+              pressed && styles.organizerToolPressed,
+            ]}
+            onPress={() =>
+              router.push(
+                `/circle/reminder-schedule?circleId=${encodeURIComponent(circle.id)}` as Href,
+              )
+            }
+          >
+            <View style={styles.organizerToolIcon}>
+              <FontAwesome name="bell" size={15} color={colors.primaryDark} />
+            </View>
+            <View style={styles.organizerToolText}>
+              <Text style={styles.organizerToolTitle}>Smart reminders</Text>
+              <Text style={styles.organizerToolCopy}>Automate follow-up</Text>
+            </View>
+            <FontAwesome name="chevron-right" size={11} color={colors.subtle} />
+          </Pressable>
+        ) : null}
+      </View>
+
       <View style={styles.tabBar}>
         {tabs.map((tab) => {
           const selected = activeTab === tab.id;
@@ -5094,6 +5146,57 @@ const styles = StyleSheet.create({
     marginTop: 18,
     padding: 6,
   },
+  organizerTools: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  organizerTool: {
+    flex: 1,
+    minHeight: 70,
+    borderRadius: 18,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    ...shadows.small,
+  },
+  assistantTool: {
+    backgroundColor: colors.primaryDark,
+    borderColor: colors.primaryDark,
+  },
+  organizerToolPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.99 }],
+  },
+  organizerToolIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assistantToolIcon: {
+    backgroundColor: 'rgba(255,255,255,0.13)',
+  },
+  organizerToolText: { flex: 1 },
+  organizerToolTitle: {
+    color: colors.textStrong,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  assistantToolTitle: { color: colors.onColor },
+  organizerToolCopy: {
+    color: colors.muted,
+    fontSize: 9,
+    marginTop: 3,
+  },
+  assistantToolCopy: { color: 'rgba(255,255,255,0.62)' },
   tab: {
     alignItems: 'center',
     borderRadius: radii.pill,

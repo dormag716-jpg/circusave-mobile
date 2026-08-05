@@ -1,485 +1,714 @@
-import React, { useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  Pressable,
-  Alert,
-  Dimensions,
-  ActivityIndicator,
 } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, {
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
 
-import { useTranslation } from 'react-i18next';
-
-import { colors, radii, spacing, shadows } from '@/lib/theme';
+import {
+  cancelPremiumSubscription,
+  createBillingCheckout,
+  createBillingPortal,
+  getBillingPlans,
+  type BillingPlan,
+} from '@/lib/api';
+import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
-import { formatDateTime } from '@/lib/i18n/formatters';
+import { colors, radii, shadows, spacing } from '@/lib/theme';
 
-const { width } = Dimensions.get('window');
+const fallbackPremium: BillingPlan = {
+  id: 'premium',
+  name: 'Organizer Pro',
+  tagline:
+    'Run multiple circles with less chasing, clearer records, and professional proof.',
+  monthlyPriceCents: 799,
+  annualPriceCents: 5999,
+  annualSavingsCents: 3589,
+  trialDays: 7,
+  features: [
+    'Unlimited open circles',
+    'Up to 50 participating hands',
+    'Scheduled and bulk reminders',
+    'Advanced organizer reports',
+    'Professional records and PDFs',
+    'Complete activity history',
+    'Ongoing AI organizer assistance',
+  ],
+};
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-function PlanButton({
-  label,
-  theme,
-  disabled,
-  onPress,
-}: {
-  label: string;
-  theme: 'light' | 'primary' | 'dark';
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const isLight = theme === 'light';
-
-  return (
-    <AnimatedPressable
-      disabled={disabled}
-      onPressIn={() => {
-        if (!disabled) scale.value = withSpring(0.95, { damping: 12, stiffness: 200 });
-      }}
-      onPressOut={() => {
-        if (!disabled) scale.value = withSpring(1, { damping: 12, stiffness: 200 });
-      }}
-      onPress={onPress}
-      style={[
-        styles.button,
-        isLight ? styles.buttonLight : styles.buttonDark,
-        theme === 'primary' && { backgroundColor: colors.card },
-        disabled && styles.buttonDisabled,
-        animatedStyle,
-      ]}
-    >
-      <Text
-        style={[
-          styles.buttonText,
-          isLight ? styles.buttonTextLight : styles.buttonTextDark,
-          theme === 'primary' && { color: colors.primaryDark },
-          disabled && styles.buttonTextDisabled,
-        ]}
-      >
-        {label}
-      </Text>
-    </AnimatedPressable>
-  );
-}
+type BillingInterval = 'monthly' | 'annual';
 
 export default function SubscriptionScreen() {
-  const { i18n } = useTranslation();
-  const language = i18n.resolvedLanguage || i18n.language || 'en';
+  const { session } = useAuthSession();
   const { entitlements, isPremium, refreshEntitlements } = useEntitlements();
-  const [syncing, setSyncing] = useState(false);
+  const token = session?.session.token;
+  const [premium, setPremium] = useState<BillingPlan>(fallbackPremium);
+  const [interval, setInterval] = useState<BillingInterval>('annual');
+  const [loading, setLoading] = useState(true);
+  const [action, setAction] = useState<'checkout' | 'portal' | 'cancel' | null>(
+    null,
+  );
 
-  const handleSync = async () => {
-    setSyncing(true);
+  useEffect(() => {
+    let active = true;
+    void getBillingPlans()
+      .then((response) => {
+        const plan = response.plans.find((item) => item.id === 'premium');
+        if (active && plan) setPremium(plan);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const selectedPrice =
+    interval === 'annual'
+      ? premium.annualPriceCents
+      : premium.monthlyPriceCents;
+  const annualMonthlyEquivalent = premium.annualPriceCents / 12;
+  const savingsPercent = useMemo(() => {
+    const fullAnnual = premium.monthlyPriceCents * 12;
+    if (!fullAnnual) return 0;
+    return Math.round(
+      ((fullAnnual - premium.annualPriceCents) / fullAnnual) * 100,
+    );
+  }, [premium]);
+
+  async function openCheckout() {
+    if (!token) return;
+    setAction('checkout');
     try {
-      const refreshed = await refreshEntitlements();
-      Alert.alert(
-        'Entitlements Synced',
-        refreshed.plan === 'premium'
-          ? 'Your Premium Organizer subscription is active and verified.'
-          : 'Your account is on the Free plan.',
+      const checkout = await createBillingCheckout(
+        token,
+        interval,
+        'subscriptionScreen',
       );
-    } catch {
+      if (!checkout.checkoutUrl) {
+        throw new Error('Checkout URL was unavailable.');
+      }
+      await WebBrowser.openBrowserAsync(checkout.checkoutUrl, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+      });
+      await refreshEntitlements();
+    } catch (error) {
       Alert.alert(
-        'Sync Error',
-        'Unable to sync entitlements. Please check your network connection.',
+        'Checkout unavailable',
+        error instanceof Error ? error.message : 'Please try again.',
       );
     } finally {
-      setSyncing(false);
+      setAction(null);
     }
-  };
+  }
 
-  const handleUpgradePrompt = () => {
+  async function openPortal() {
+    if (!token) return;
+    setAction('portal');
+    try {
+      const portal = await createBillingPortal(token);
+      await WebBrowser.openBrowserAsync(portal.portalUrl);
+      await refreshEntitlements();
+    } catch (error) {
+      Alert.alert(
+        'Billing unavailable',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+    } finally {
+      setAction(null);
+    }
+  }
+
+  function confirmCancellation() {
+    if (!token) return;
     Alert.alert(
-      'Upgrade to Premium Organizer',
-      'Get unlimited circles, 50 members per circle, payout PDFs, advanced reports, and AI assistance for $4.99/month.\n\nCancel anytime.',
+      'Keep your organizer tools?',
+      'Your circles remain safe. Organizer Pro access will continue until the end of the paid period.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Keep Organizer Pro', style: 'cancel' },
         {
-          text: 'Verify / Sync Plan',
-          onPress: () => {
-            void handleSync();
+          text: 'Cancel renewal',
+          style: 'destructive',
+          onPress: async () => {
+            setAction('cancel');
+            try {
+              await cancelPremiumSubscription(token);
+              await refreshEntitlements();
+              Alert.alert(
+                'Renewal canceled',
+                'Your Organizer Pro access remains active through the current period.',
+              );
+            } catch (error) {
+              Alert.alert(
+                'Unable to cancel',
+                error instanceof Error ? error.message : 'Please try again.',
+              );
+            } finally {
+              setAction(null);
+            }
           },
         },
       ],
     );
-  };
-
-  const formattedPeriodEnd = entitlements.currentPeriodEnd
-    ? formatDateTime(entitlements.currentPeriodEnd, language)
-    : null;
+  }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.backgroundAccent} />
+    <View style={styles.screen}>
+      <View style={styles.glowTop} />
+      <View style={styles.glowBottom} />
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeInDown.springify().damping(14)} style={styles.header}>
-            <View style={styles.badgeContainer}>
-              <Text style={styles.badgeText}>CIRCUSAVE PREMIUM</Text>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.topBar}>
+            <Pressable
+              onPress={() => router.back()}
+              style={styles.iconButton}
+              hitSlop={12}
+            >
+              <FontAwesome
+                name="chevron-left"
+                size={18}
+                color={colors.textStrong}
+              />
+            </Pressable>
+            <Text style={styles.topTitle}>Plans</Text>
+            <View style={styles.iconButtonPlaceholder} />
+          </View>
+
+          <Animated.View entering={FadeInUp.springify()} style={styles.hero}>
+            <View style={styles.crown}>
+              <FontAwesome name="diamond" size={20} color={colors.premiumGold} />
             </View>
-            <Text style={styles.title}>
-              {isPremium ? 'Your Premium Active' : 'Unlock More Power'}
+            <Text style={styles.eyebrow}>CIRCUSAVE ORGANIZER PRO</Text>
+            <Text style={styles.heroTitle}>
+              Less chasing.{'\n'}More confidence.
             </Text>
-            <Text style={styles.subtitle}>
-              {isPremium
-                ? 'You have full access to Premium Organizer features, advanced reports, and AI tools.'
-                : 'Start free. Upgrade when you need higher capacity, payout PDFs, and AI assistance.'}
-            </Text>
+            <Text style={styles.heroCopy}>{premium.tagline}</Text>
+
+            {isPremium ? (
+              <View style={styles.activePill}>
+                <FontAwesome name="check-circle" size={14} color={colors.successSoft} />
+                <Text style={styles.activePillText}>
+                  {entitlements.subscriptionStatus === 'trialing'
+                    ? 'Your free trial is active'
+                    : 'Organizer Pro is active'}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.trialCopy}>
+                Try every feature free for {premium.trialDays} days
+              </Text>
+            )}
           </Animated.View>
 
-          {isPremium ? (
+          {!isPremium ? (
             <Animated.View
-              entering={FadeInDown.springify().damping(14)}
-              style={styles.activeBanner}
+              entering={FadeInDown.delay(100).springify()}
+              style={styles.billingToggle}
             >
-              <View style={styles.bannerHeader}>
-                <FontAwesome
-                  name="check-circle"
-                  size={20}
-                  color={colors.success}
-                  style={{ marginRight: 8 }}
-                />
-                <Text style={styles.bannerTitle}>Premium Organizer Active</Text>
-              </View>
-              {formattedPeriodEnd ? (
-                <Text style={styles.bannerSubtitle}>
-                  {entitlements.cancelAtPeriodEnd
-                    ? `Access continues until ${formattedPeriodEnd}`
-                    : `Renews on ${formattedPeriodEnd}`}
-                </Text>
-              ) : null}
-              {entitlements.subscriptionStatus === 'trialing' && entitlements.trialEndsAt ? (
-                <Text style={styles.bannerSubtitle}>
-                  Trial ends {formatDateTime(entitlements.trialEndsAt, language)}
-                </Text>
-              ) : null}
-              {entitlements.source !== 'none' ? (
-                <Text style={styles.bannerSource}>
-                  Billing via {entitlements.source.toUpperCase()}
-                </Text>
-              ) : null}
+              <IntervalButton
+                active={interval === 'monthly'}
+                label="Monthly"
+                onPress={() => setInterval('monthly')}
+              />
+              <IntervalButton
+                active={interval === 'annual'}
+                label="Annual"
+                badge={`SAVE ${savingsPercent}%`}
+                onPress={() => setInterval('annual')}
+              />
             </Animated.View>
           ) : null}
 
-          <View style={styles.plans}>
-            <Animated.View
-              entering={FadeInDown.delay(100).springify().damping(14)}
-              style={[styles.planCard, !isPremium && styles.activePlanCardBorder]}
-            >
-              {!isPremium ? (
-                <View style={styles.currentBadge}>
-                  <Text style={styles.currentBadgeText}>CURRENT PLAN</Text>
-                </View>
-              ) : null}
-              <Text style={styles.planName}>Free</Text>
-              <View style={styles.priceContainer}>
-                <Text style={styles.price}>$0</Text>
-                <Text style={styles.period}>/forever</Text>
+          <Animated.View
+            entering={FadeInDown.delay(180).springify()}
+            style={styles.priceCard}
+          >
+            <View style={styles.priceHeader}>
+              <View>
+                <Text style={styles.planName}>{premium.name}</Text>
+                <Text style={styles.planAudience}>Built for trusted organizers</Text>
               </View>
-              <Text style={styles.tagline}>Complete manual tools for core circles</Text>
-              <View style={styles.divider} />
-
-              <View style={styles.features}>
-                {[
-                  '1 open circle at a time',
-                  'Up to 20 members per circle',
-                  'Manual Smart Save tools',
-                  'Submit & approve contributions',
-                  'Release & record payouts',
-                  'Basic circle reminders',
-                ].map((feature, i) => (
-                  <View key={i} style={styles.featureRow}>
-                    <View style={styles.iconWrapperLight}>
-                      <FontAwesome name="check" size={10} color={colors.success} />
-                    </View>
-                    <Text style={styles.featureTextLight}>{feature}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <PlanButton
-                label={!isPremium ? 'Current Plan' : 'Included Free'}
-                theme="light"
-                disabled={!isPremium}
-                onPress={() => router.back()}
-              />
-            </Animated.View>
-
-            <Animated.View
-              entering={FadeInDown.delay(200).springify().damping(14)}
-              style={[styles.planCard, styles.primaryCard, shadows.medium]}
-            >
-              {isPremium ? (
-                <View style={styles.popularBadge}>
-                  <Text style={styles.popularText}>ACTIVE PLAN</Text>
-                </View>
-              ) : (
-                <View style={styles.popularBadge}>
-                  <Text style={styles.popularText}>RECOMMENDED</Text>
-                </View>
-              )}
-
-              <Text style={[styles.planName, { color: colors.onColor }]}>Premium Organizer</Text>
-              <View style={styles.priceContainer}>
-                <Text style={[styles.price, { color: colors.onColor }]}>$4.99</Text>
-                <Text style={[styles.period, { color: 'rgba(255,255,255,0.75)' }]}>
-                  /per month
+              <View style={styles.recommendedBadge}>
+                <FontAwesome name="star" size={10} color={colors.primaryDark} />
+                <Text style={styles.recommendedText}>
+                  {isPremium ? 'YOUR PLAN' : 'BEST VALUE'}
                 </Text>
               </View>
-              <Text style={[styles.tagline, { color: 'rgba(255,255,255,0.75)' }]}>
-                For organizers who manage serious circles
-              </Text>
-              <View style={[styles.divider, { backgroundColor: 'rgba(255,255,255,0.15)' }]} />
+            </View>
 
-              <View style={styles.features}>
-                {[
-                  'Unlimited open circles',
-                  'Up to 50 members per circle',
-                  'Full activity & circle history',
-                  'Payout-order PDFs (Draft & Final)',
-                  'Advanced organizer reports & exports',
-                  'Enhanced reminders & scheduling',
-                  'AI Susu Assistant',
-                ].map((feature, i) => (
-                  <View key={i} style={styles.featureRow}>
-                    <View style={styles.iconWrapperDark}>
-                      <FontAwesome name="check" size={10} color={colors.onColor} />
-                    </View>
-                    <Text style={[styles.featureText, { color: colors.onColor }]}>{feature}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <PlanButton
-                label={isPremium ? 'Active Subscription' : 'Upgrade — $4.99/mo'}
-                theme="primary"
-                disabled={isPremium}
-                onPress={handleUpgradePrompt}
-              />
-            </Animated.View>
-          </View>
-
-          <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.syncContainer}>
-            <Pressable
-              style={({ pressed }) => [styles.syncButton, pressed && styles.syncButtonPressed]}
-              onPress={() => void handleSync()}
-              disabled={syncing}
-            >
-              {syncing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <>
-                  <FontAwesome
-                    name="refresh"
-                    size={14}
-                    color={colors.primary}
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.syncButtonText}>
-                    Sync Entitlements / Restore Purchases
+            {!isPremium ? (
+              <View style={styles.priceRow}>
+                <Text style={styles.currency}>$</Text>
+                <Text style={styles.price}>
+                  {(selectedPrice / 100).toFixed(2)}
+                </Text>
+                <View style={styles.priceMeta}>
+                  <Text style={styles.pricePeriod}>
+                    /{interval === 'annual' ? 'year' : 'month'}
                   </Text>
-                </>
-              )}
-            </Pressable>
-            <Text style={styles.note}>
-              Cancel anytime. Essential financial authority is always retained on Free.
-            </Text>
+                  {interval === 'annual' ? (
+                    <Text style={styles.equivalent}>
+                      ${(annualMonthlyEquivalent / 100).toFixed(2)}/month
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : (
+              <View style={styles.activeSummary}>
+                <Text style={styles.activeSummaryTitle}>
+                  All organizer tools unlocked
+                </Text>
+                <Text style={styles.activeSummaryText}>
+                  {entitlements.cancelAtPeriodEnd
+                    ? 'Your plan will not renew automatically.'
+                    : 'Your subscription is active and ready.'}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
+            <View style={styles.features}>
+              {premium.features.map((feature, index) => (
+                <View key={feature} style={styles.featureRow}>
+                  <View
+                    style={[
+                      styles.featureIcon,
+                      index < 2 && styles.featureIconFeatured,
+                    ]}
+                  >
+                    <FontAwesome
+                      name={featureIcon(feature)}
+                      size={13}
+                      color={
+                        index < 2 ? colors.onColor : colors.primaryDark
+                      }
+                    />
+                  </View>
+                  <Text style={styles.featureText}>{feature}</Text>
+                </View>
+              ))}
+            </View>
+
+            {isPremium ? (
+              <>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={() => void openPortal()}
+                  disabled={action !== null}
+                >
+                  {action === 'portal' ? (
+                    <ActivityIndicator color={colors.onColor} />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryButtonText}>Manage billing</Text>
+                      <FontAwesome
+                        name="external-link"
+                        size={14}
+                        color={colors.onColor}
+                      />
+                    </>
+                  )}
+                </Pressable>
+                {!entitlements.cancelAtPeriodEnd ? (
+                  <Pressable
+                    style={styles.cancelButton}
+                    onPress={confirmCancellation}
+                    disabled={action !== null}
+                  >
+                    <Text style={styles.cancelButtonText}>
+                      Cancel renewal
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                onPress={() => void openCheckout()}
+                disabled={action !== null || loading}
+              >
+                {action === 'checkout' ? (
+                  <ActivityIndicator color={colors.onColor} />
+                ) : (
+                  <>
+                    <Text style={styles.primaryButtonText}>
+                      Start my {premium.trialDays}-day free trial
+                    </Text>
+                    <FontAwesome
+                      name="arrow-right"
+                      size={14}
+                      color={colors.onColor}
+                    />
+                  </>
+                )}
+              </Pressable>
+            )}
           </Animated.View>
+
+          {!isPremium ? (
+            <Animated.View
+              entering={FadeInDown.delay(260).springify()}
+              style={styles.freeCard}
+            >
+              <View style={styles.freeIcon}>
+                <FontAwesome name="heart-o" size={17} color={colors.success} />
+              </View>
+              <View style={styles.freeText}>
+                <Text style={styles.freeTitle}>Free stays genuinely useful</Text>
+                <Text style={styles.freeCopy}>
+                  Run one complete circle with up to 20 hands. Upgrade only when
+                  your organizing grows.
+                </Text>
+              </View>
+            </Animated.View>
+          ) : null}
+
+          <Text style={styles.footer}>
+            Secure checkout by Stripe · Cancel anytime · Your circle records
+            remain yours
+          </Text>
         </ScrollView>
       </SafeAreaView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  backgroundAccent: {
-    position: 'absolute',
-    top: -width * 0.5,
-    left: -width * 0.2,
-    width: width * 1.4,
-    height: width * 1.4,
-    borderRadius: width * 0.7,
-    backgroundColor: colors.primarySoft,
-    opacity: 0.7,
-  },
-  safeArea: { flex: 1 },
-  content: { padding: spacing.screenX, paddingBottom: 60, paddingTop: 10 },
+function IntervalButton({
+  active,
+  label,
+  badge,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  badge?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.intervalButton, active && styles.intervalButtonActive]}
+    >
+      <Text
+        style={[styles.intervalText, active && styles.intervalTextActive]}
+      >
+        {label}
+      </Text>
+      {badge ? (
+        <View style={styles.savingsBadge}>
+          <Text style={styles.savingsText}>{badge}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
 
-  header: { alignItems: 'center', marginBottom: 24 },
-  badgeContainer: {
-    backgroundColor: colors.primaryTint,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    marginBottom: 12,
+function featureIcon(
+  feature: string,
+): React.ComponentProps<typeof FontAwesome>['name'] {
+  const value = feature.toLowerCase();
+  if (value.includes('circle')) return 'circle-o-notch';
+  if (value.includes('reminder')) return 'bell';
+  if (value.includes('report') || value.includes('history')) return 'line-chart';
+  if (value.includes('pdf') || value.includes('record')) return 'file-text';
+  if (value.includes('ai')) return 'magic';
+  return 'check';
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.premiumCanvas },
+  safeArea: { flex: 1 },
+  content: {
+    paddingHorizontal: spacing.screenX,
+    paddingBottom: 56,
   },
-  badgeText: {
-    color: colors.primaryDark,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.2,
+  glowTop: {
+    position: 'absolute',
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+    backgroundColor: colors.premiumGlow,
+    top: -260,
+    right: -150,
   },
-  title: {
-    fontSize: 32,
+  glowBottom: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: colors.premiumMintGlow,
+    bottom: -140,
+    left: -120,
+  },
+  topBar: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(107,70,193,0.10)',
+  },
+  iconButtonPlaceholder: { width: 40 },
+  topTitle: { fontSize: 15, fontWeight: '800', color: colors.textStrong },
+  hero: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: 30,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    marginTop: 8,
+    overflow: 'hidden',
+    ...shadows.medium,
+  },
+  crown: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  eyebrow: {
+    color: colors.premiumLavender,
+    fontSize: 10,
     fontWeight: '900',
-    color: colors.textStrong,
-    marginBottom: 8,
-    letterSpacing: -0.5,
+    letterSpacing: 1.5,
+    marginBottom: 10,
   },
-  subtitle: {
-    textAlign: 'center',
-    color: colors.muted,
+  heroTitle: {
+    color: colors.onColor,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: -1.2,
+    fontWeight: '900',
+  },
+  heroCopy: {
+    color: 'rgba(255,255,255,0.72)',
     fontSize: 15,
     lineHeight: 22,
-    paddingHorizontal: 10,
+    marginTop: 14,
   },
-
-  activeBanner: {
-    backgroundColor: `${colors.success}15`,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
+  trialCopy: {
+    color: colors.premiumGold,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 18,
+  },
+  activePill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(16,185,129,0.18)',
+  },
+  activePillText: { color: colors.successSoft, fontWeight: '800', fontSize: 12 },
+  billingToggle: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    padding: 5,
+    borderRadius: radii.pill,
+    marginTop: 18,
     borderWidth: 1,
-    borderColor: `${colors.success}30`,
+    borderColor: colors.primaryBorder,
   },
-  bannerHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  bannerTitle: { fontSize: 16, fontWeight: '800', color: colors.success },
-  bannerSubtitle: { fontSize: 13, color: colors.textStrong, marginTop: 2 },
-  bannerSource: { fontSize: 11, color: colors.muted, marginTop: 4, fontWeight: '700' },
-
-  plans: { gap: 24 },
-  planCard: {
+  intervalButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 7,
+  },
+  intervalButtonActive: {
     backgroundColor: colors.card,
-    borderRadius: 32,
-    padding: 24,
+    ...shadows.small,
+  },
+  intervalText: { color: colors.muted, fontWeight: '800', fontSize: 13 },
+  intervalTextActive: { color: colors.primaryDark },
+  savingsBadge: {
+    backgroundColor: colors.successSoft,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  savingsText: { color: colors.successText, fontSize: 8, fontWeight: '900' },
+  priceCard: {
+    backgroundColor: colors.card,
+    borderRadius: 28,
+    marginTop: 18,
+    padding: 22,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    ...shadows.small,
+    borderColor: colors.primaryBorder,
+    ...shadows.medium,
   },
-  activePlanCardBorder: {
-    borderColor: colors.primary,
-    borderWidth: 2,
+  priceHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  primaryCard: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primaryDark,
-  },
-
-  popularBadge: {
-    position: 'absolute',
-    top: -12,
-    alignSelf: 'center',
-    backgroundColor: colors.warning,
-    borderRadius: 999,
-    paddingHorizontal: 14,
+  planName: { color: colors.textStrong, fontSize: 21, fontWeight: '900' },
+  planAudience: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  recommendedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.premiumLavenderBadge,
+    borderRadius: radii.pill,
+    paddingHorizontal: 9,
     paddingVertical: 6,
-    ...shadows.small,
   },
-  popularText: { color: colors.onColor, fontWeight: '900', fontSize: 10, letterSpacing: 1 },
-
-  currentBadge: {
-    position: 'absolute',
-    top: -12,
-    alignSelf: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    ...shadows.small,
+  recommendedText: {
+    color: colors.primaryDark,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.6,
   },
-  currentBadgeText: { color: colors.onColor, fontWeight: '900', fontSize: 10, letterSpacing: 1 },
-
-  planName: { fontSize: 22, fontWeight: '900', marginBottom: 6, color: colors.textStrong },
-  priceContainer: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 },
-  price: {
-    fontSize: 44,
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 24,
+  },
+  currency: {
+    fontSize: 22,
     fontWeight: '900',
     color: colors.textStrong,
-    letterSpacing: -1.5,
+    marginTop: 8,
   },
-  period: { fontSize: 15, marginLeft: 4, fontWeight: '600', color: colors.muted },
-  tagline: { fontSize: 14, lineHeight: 20, marginBottom: 20, color: colors.muted },
-
+  price: {
+    fontSize: 54,
+    lineHeight: 60,
+    fontWeight: '900',
+    letterSpacing: -2,
+    color: colors.textStrong,
+  },
+  priceMeta: { marginLeft: 7, marginTop: 16 },
+  pricePeriod: { color: colors.muted, fontWeight: '700', fontSize: 12 },
+  equivalent: {
+    color: colors.successText,
+    fontWeight: '800',
+    fontSize: 11,
+    marginTop: 3,
+  },
+  activeSummary: {
+    backgroundColor: colors.successSoft,
+    padding: 16,
+    borderRadius: 18,
+    marginTop: 22,
+  },
+  activeSummaryTitle: {
+    color: colors.successText,
+    fontWeight: '900',
+    fontSize: 15,
+  },
+  activeSummaryText: {
+    color: colors.successText,
+    opacity: 0.85,
+    fontSize: 12,
+    marginTop: 4,
+  },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    marginBottom: 20,
+    backgroundColor: colors.cardBorder,
+    marginVertical: 22,
   },
-
-  features: { gap: 14, marginBottom: 28 },
+  features: { gap: 14, marginBottom: 24 },
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  iconWrapperLight: {
-    width: 20,
-    height: 20,
+  featureIcon: {
+    width: 30,
+    height: 30,
     borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featureIconFeatured: { backgroundColor: colors.primary },
+  featureText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '600',
+  },
+  primaryButton: {
+    minHeight: 54,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    ...shadows.small,
+  },
+  buttonPressed: { opacity: 0.88, transform: [{ scale: 0.99 }] },
+  primaryButtonText: {
+    color: colors.onColor,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  cancelButton: { alignItems: 'center', paddingVertical: 14 },
+  cancelButtonText: { color: colors.danger, fontWeight: '700', fontSize: 13 },
+  freeCard: {
+    flexDirection: 'row',
+    gap: 13,
+    backgroundColor: 'rgba(255,255,255,0.70)',
+    borderRadius: 20,
+    padding: 17,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  freeIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
     backgroundColor: colors.successSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconWrapperDark: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureTextLight: { fontSize: 14, flex: 1, fontWeight: '500', color: colors.textStrong },
-  featureText: { fontSize: 14, flex: 1, fontWeight: '500' },
-
-  button: {
-    borderRadius: radii.pill,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.small,
-  },
-  buttonLight: { backgroundColor: colors.primarySoft },
-  buttonDark: { backgroundColor: colors.primary },
-  buttonDisabled: { opacity: 0.65 },
-
-  buttonText: { fontWeight: '800', fontSize: 15 },
-  buttonTextLight: { color: colors.primaryDark },
-  buttonTextDark: { color: colors.onColor },
-  buttonTextDisabled: { color: colors.muted },
-
-  syncContainer: { alignItems: 'center', marginTop: 32 },
-  syncButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: radii.pill,
-    backgroundColor: `${colors.primary}10`,
-  },
-  syncButtonPressed: { backgroundColor: `${colors.primary}20` },
-  syncButtonText: { color: colors.primary, fontWeight: '800', fontSize: 14 },
-
-  note: {
+  freeText: { flex: 1 },
+  freeTitle: { color: colors.textStrong, fontWeight: '900', fontSize: 14 },
+  freeCopy: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  footer: {
+    color: colors.subtle,
     textAlign: 'center',
-    color: colors.muted,
-    marginTop: 20,
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 24,
     paddingHorizontal: 20,
   },
 });

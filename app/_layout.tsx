@@ -153,6 +153,8 @@ function AuthenticatedStack() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="create-circle/setup" options={{ headerShown: false }} />
       <Stack.Screen name="circle/workspace" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/assistant" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/reminder-schedule" options={{ headerShown: false }} />
       <Stack.Screen name="circle/invite" options={{ headerShown: false }} />
       <Stack.Screen name="invite/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="circle/payment-setup" options={{ headerShown: false }} />
