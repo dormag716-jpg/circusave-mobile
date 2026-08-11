@@ -13,7 +13,10 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -34,6 +37,10 @@ import {
   sendAiAssistantMessage,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  circleChatKeyboardBehavior,
+  circleChatKeyboardVerticalOffset,
+} from '@/lib/chatKeyboard';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 
@@ -64,8 +71,13 @@ export default function CircleAssistantScreen() {
   const { entitlements, refreshEntitlements } = useEntitlements();
   const { t, i18n } = useTranslation(['assistant', 'common']);
   const token = session?.session.token;
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const historyRequestId = useRef(0);
+  const composerBottomPad = Math.max(
+    insets.bottom,
+    Platform.OS === 'android' ? 8 : 0,
+  );
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -251,12 +263,15 @@ export default function CircleAssistantScreen() {
     text: t(`assistant:prompts.${key}`),
   }));
 
+  // Same keyboard contract as circle group/private chat:
+  // flex column, list owns scroll, composer pinned under list, iOS KAV only.
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={circleChatKeyboardBehavior(Platform.OS)}
+        keyboardVerticalOffset={circleChatKeyboardVerticalOffset(Platform.OS)}
+      >
         <View style={styles.header}>
           <Pressable
             onPress={() => router.back()}
@@ -289,9 +304,11 @@ export default function CircleAssistantScreen() {
 
         <ScrollView
           ref={scrollRef}
+          style={styles.messageList}
           contentContainerStyle={styles.messages}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <Animated.View entering={FadeInDown.springify()} style={styles.contextCard}>
             <View style={styles.contextIcon}>
@@ -455,7 +472,12 @@ export default function CircleAssistantScreen() {
           ) : null}
         </ScrollView>
 
-        <View style={styles.composer}>
+        <View
+          style={[
+            styles.composer,
+            { paddingBottom: 12 + composerBottomPad },
+          ]}
+        >
           <TextInput
             value={input}
             onChangeText={setInput}
@@ -466,6 +488,8 @@ export default function CircleAssistantScreen() {
             editable={!sending && !upgradeRequired && !historyLoading}
             style={styles.input}
             accessibilityLabel={t('assistant:composerPlaceholder')}
+            blurOnSubmit={false}
+            textAlignVertical="center"
           />
           <Pressable
             onPress={() => void send()}
@@ -486,14 +510,15 @@ export default function CircleAssistantScreen() {
             <FontAwesome name="arrow-up" size={15} color={colors.onColor} />
           </Pressable>
         </View>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.premiumCanvas },
-  safeArea: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.premiumCanvas, minHeight: 0 },
+  safeArea: { flex: 1, backgroundColor: colors.premiumCanvas },
+  messageList: { flex: 1, minHeight: 0 },
   header: {
     minHeight: 68,
     paddingHorizontal: spacing.screenX,
@@ -723,7 +748,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 10,
     paddingHorizontal: spacing.screenX,
-    paddingVertical: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.primaryBorder,
     backgroundColor: colors.card,

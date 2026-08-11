@@ -225,94 +225,98 @@ export default function CircleWorkspaceScreen() {
 
   const displayRound = resolvedRound ?? circle?.currentRound;
 
+  const workspaceHeader = (
+    <View style={styles.header}>
+      <Pressable
+        onPress={() => router.replace(myCirclesHref)}
+        hitSlop={20}
+        accessibilityRole="button"
+        accessibilityLabel={t('accessibility.backToCircles')}
+      >
+        <FontAwesome name="chevron-left" size={28} color={colors.textStrong} />
+      </Pressable>
+
+      <View style={styles.headerCenter}>
+        <Text style={styles.title}>{circle?.name || t('fallbackName')}</Text>
+        <Text style={styles.subtitle}>
+          {circle
+            ? t('headerSummary', {
+                round: displayRound ?? circle.currentRound,
+                frequency: localizedFrequency(t, circle.frequency),
+              })
+            : t('loading')}
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={() => router.replace('/(tabs)/dashboard')}
+        hitSlop={20}
+        accessibilityRole="button"
+        accessibilityLabel={t('accessibility.dashboard')}
+      >
+        <FontAwesome name="home" size={28} color={colors.textStrong} />
+      </Pressable>
+    </View>
+  );
+
+  // Chat tab needs a flex-bounded column (not a parent ScrollView) so the
+  // composer can stay above the software keyboard on Android resize + iOS.
+  const readyWorkspace = Boolean(circle && token && !loading && !error);
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          circle && token ? (
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => void handleRefresh()}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
-          ) : undefined
-        }
-      >
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.replace(myCirclesHref)}
-            hitSlop={20}
-            accessibilityRole="button"
-            accessibilityLabel={t('accessibility.backToCircles')}
-          >
-            <FontAwesome name="chevron-left" size={28} color={colors.textStrong} />
-          </Pressable>
-
-          <View style={styles.headerCenter}>
-            <Text style={styles.title}>{circle?.name || t('fallbackName')}</Text>
-            <Text style={styles.subtitle}>
-              {circle
-                ? t('headerSummary', {
-                    round: displayRound ?? circle.currentRound,
-                    frequency: localizedFrequency(t, circle.frequency),
-                  })
-                : t('loading')}
-            </Text>
-          </View>
-
-          <Pressable
-            onPress={() => router.replace('/(tabs)/dashboard')}
-            hitSlop={20}
-            accessibilityRole="button"
-            accessibilityLabel={t('accessibility.dashboard')}
-          >
-            <FontAwesome name="home" size={28} color={colors.textStrong} />
-          </Pressable>
-        </View>
-
-        {loading ? (
-          <StatusCard
-            icon="spinner"
-            loading
-            title={t('status.settingUpTitle')}
-            text={t('status.settingUpBody')}
-          />
-        ) : error ? (
-          <View style={styles.statusCard}>
-            <FontAwesome name="warning" size={34} color={colors.warning} />
-            <Text style={styles.statusTitle}>{t('status.openErrorTitle')}</Text>
-            <Text style={styles.statusText}>{error}</Text>
-            <Pressable
-              style={styles.retryButton}
-              onPress={() => void loadWorkspace()}
-              accessibilityRole="button"
-              accessibilityLabel={t('accessibility.retryWorkspace')}
-            >
-              <Text style={styles.retryButtonText}>{t('status.retry')}</Text>
-            </Pressable>
-          </View>
-        ) : circle && token ? (
+      {readyWorkspace ? (
+        <View style={styles.workspaceShell}>
+          <View style={styles.workspaceHeaderPad}>{workspaceHeader}</View>
           <WorkspaceContent
-            circle={circle}
-            token={token}
-            userId={session.user.id}
+            circle={circle!}
+            token={token!}
+            userId={session!.user.id}
             initialTab={initialTab}
             initialConversationId={conversationIdParam}
             onReload={() => loadWorkspace({ silent: true })}
             refreshNonce={refreshNonce}
             onRoundResolved={setResolvedRound}
+            refreshing={refreshing}
+            onRefresh={() => void handleRefresh()}
           />
-        ) : (
-          <StatusCard
-            icon="clock-o"
-            title={t('status.workspacePendingTitle')}
-            text={t('status.workspacePendingBody')}
-          />
-        )}
-      </ScrollView>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {workspaceHeader}
+          {loading ? (
+            <StatusCard
+              icon="spinner"
+              loading
+              title={t('status.settingUpTitle')}
+              text={t('status.settingUpBody')}
+            />
+          ) : error ? (
+            <View style={styles.statusCard}>
+              <FontAwesome name="warning" size={34} color={colors.warning} />
+              <Text style={styles.statusTitle}>{t('status.openErrorTitle')}</Text>
+              <Text style={styles.statusText}>{error}</Text>
+              <Pressable
+                style={styles.retryButton}
+                onPress={() => void loadWorkspace()}
+                accessibilityRole="button"
+                accessibilityLabel={t('accessibility.retryWorkspace')}
+              >
+                <Text style={styles.retryButtonText}>{t('status.retry')}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <StatusCard
+              icon="clock-o"
+              title={t('status.workspacePendingTitle')}
+              text={t('status.workspacePendingBody')}
+            />
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -326,6 +330,8 @@ function WorkspaceContent({
   onReload,
   refreshNonce,
   onRoundResolved,
+  refreshing,
+  onRefresh,
 }: {
   circle: BackendCircleDetail;
   token: string;
@@ -335,6 +341,8 @@ function WorkspaceContent({
   onReload: () => Promise<void>;
   refreshNonce: number;
   onRoundResolved: (round: number) => void;
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const { hasCapability } = useEntitlements();
   const canExportAdvancedReports = hasCapability('advancedReports');
@@ -970,8 +978,8 @@ function WorkspaceContent({
     }
   }
 
-  return (
-    <View>
+  const chrome = (
+    <>
       <View style={styles.organizerTools}>
         <Pressable
           style={({ pressed }) => [
@@ -1057,7 +1065,11 @@ function WorkspaceContent({
           );
         })}
       </View>
+    </>
+  );
 
+  const nonChatBody = (
+    <>
       {workspaceMemberAgreementBanner}
 
       {activeTab === 'round' ? (
@@ -1148,18 +1160,6 @@ function WorkspaceContent({
         )
       ) : null}
 
-      {activeTab === 'chat' ? (
-        <View style={{ marginTop: 16 }}>
-          <ConversationChat
-            circleId={circle.id}
-            token={token}
-            currentUserId={userId}
-            members={circle.members || []}
-            initialConversationId={initialConversationId}
-          />
-        </View>
-      ) : null}
-
       {activeTab === 'people' ? (
         <PeopleTab
           circle={circle}
@@ -1185,7 +1185,44 @@ function WorkspaceContent({
           wallet={roundWallet}
         />
       ) : null}
-    </View>
+    </>
+  );
+
+  if (activeTab === 'chat') {
+    return (
+      <View style={styles.workspaceBody}>
+        <View style={styles.chatChrome}>{chrome}</View>
+        <View style={styles.chatPanel}>
+          <ConversationChat
+            circleId={circle.id}
+            token={token}
+            currentUserId={userId}
+            members={circle.members || []}
+            initialConversationId={initialConversationId}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={styles.workspaceBody}
+      contentContainerStyle={styles.contentUnderShell}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
+    >
+      {chrome}
+      {nonChatBody}
+    </ScrollView>
   );
 }
 
@@ -5046,10 +5083,37 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   screen: { flex: 1, backgroundColor: colors.background },
+  workspaceShell: {
+    flex: 1,
+    minHeight: 0,
+  },
+  workspaceHeaderPad: {
+    paddingHorizontal: spacing.screenX,
+    paddingTop: 18,
+  },
+  workspaceBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  chatChrome: {
+    paddingHorizontal: spacing.screenX,
+  },
+  chatPanel: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 12,
+    paddingHorizontal: spacing.screenX,
+    paddingBottom: 4,
+  },
   content: {
     paddingBottom: 100,
     paddingHorizontal: spacing.screenX,
     paddingTop: 18,
+  },
+  contentUnderShell: {
+    paddingBottom: 100,
+    paddingHorizontal: spacing.screenX,
+    paddingTop: 8,
   },
   header: {
     alignItems: 'center',

@@ -1,23 +1,55 @@
-import React from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { Avatar } from './Avatar';
-import { colors } from '@/lib/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import React, { useEffect, useRef } from 'react';
+import { FlatList, StyleSheet, Text, View, type FlatListProps } from 'react-native';
+
 import type { BackendChatMessage } from '@/lib/api';
+import { colors } from '@/lib/theme';
+
+import { Avatar } from './Avatar';
 
 type ChatFeedProps = {
   messages: BackendChatMessage[];
   currentUserId?: string;
+  /**
+   * When true (default), the feed owns scrolling — required so the composer
+   * can stay pinned below a flex message list.
+   */
+  scrollEnabled?: boolean;
+  style?: FlatListProps<BackendChatMessage>['style'];
 };
 
-export default function ChatFeed({ messages, currentUserId }: ChatFeedProps) {
+export default function ChatFeed({
+  messages,
+  currentUserId,
+  scrollEnabled = true,
+  style,
+}: ChatFeedProps) {
+  const listRef = useRef<FlatList<BackendChatMessage>>(null);
+
+  useEffect(() => {
+    if (!scrollEnabled || messages.length === 0) return;
+    const handle = requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [messages.length, scrollEnabled]);
+
   return (
     <FlatList
+      ref={listRef}
       data={messages}
       keyExtractor={(item) => item.id}
+      style={[styles.list, style]}
       contentContainerStyle={styles.container}
-      scrollEnabled={false}
+      scrollEnabled={scrollEnabled}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
+      onContentSizeChange={() => {
+        if (scrollEnabled && messages.length > 0) {
+          listRef.current?.scrollToEnd({ animated: false });
+        }
+      }}
       renderItem={({ item }) => {
         const isMe =
           item.senderUserId === currentUserId || item.senderId === currentUserId;
@@ -40,8 +72,12 @@ export default function ChatFeed({ messages, currentUserId }: ChatFeedProps) {
             )}
             <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
               {!isMe && <Text style={styles.senderName}>{item.senderName}</Text>}
-              <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text}</Text>
-              <Text style={[styles.timestamp, isMe && styles.timestampMe]}>{item.timestamp}</Text>
+              <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
+                {item.text}
+              </Text>
+              <Text style={[styles.timestamp, isMe && styles.timestampMe]}>
+                {item.timestamp}
+              </Text>
             </View>
           </View>
         );
@@ -51,10 +87,14 @@ export default function ChatFeed({ messages, currentUserId }: ChatFeedProps) {
 }
 
 const styles = StyleSheet.create({
+  list: {
+    flex: 1,
+    minHeight: 0,
+  },
   container: {
+    flexGrow: 1,
     paddingVertical: 16,
     paddingHorizontal: 8,
-    gap: 12,
   },
   messageWrapper: {
     flexDirection: 'row',
@@ -64,20 +104,6 @@ const styles = StyleSheet.create({
   },
   messageWrapperMe: {
     alignSelf: 'flex-end',
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  avatarText: {
-    color: colors.primaryDark,
-    fontWeight: '800',
-    fontSize: 14,
   },
   bubble: {
     padding: 12,

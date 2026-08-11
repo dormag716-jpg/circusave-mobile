@@ -3,7 +3,9 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +15,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { BackendCircleMember } from '@/lib/api';
+import {
+  circleChatKeyboardBehavior,
+  circleChatKeyboardVerticalOffset,
+} from '@/lib/chatKeyboard';
 import { colors, radii, shadows } from '@/lib/theme';
 import { useConversations } from '@/lib/useConversations';
 
@@ -28,6 +34,12 @@ type ConversationChatProps = {
   initialConversationId?: string;
 };
 
+/**
+ * Group + private chat share this surface.
+ * Layout contract: parent must give this component a bounded flex height
+ * (not nested inside an outer vertical ScrollView), so the composer can sit
+ * above the keyboard while the message list scrolls.
+ */
 export default function ConversationChat({
   circleId,
   token,
@@ -51,11 +63,7 @@ export default function ConversationChat({
     createDirectConversation,
     sendMessage,
     refresh,
-  } = useConversations(
-    circleId,
-    token,
-    initialConversationId,
-  );
+  } = useConversations(circleId, token, initialConversationId);
 
   const availableMembers = useMemo(() => {
     const seenUserIds = new Set<string>();
@@ -96,7 +104,11 @@ export default function ConversationChat({
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={circleChatKeyboardBehavior(Platform.OS)}
+      keyboardVerticalOffset={circleChatKeyboardVerticalOffset(Platform.OS)}
+    >
       <View style={styles.header}>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>{t('chat.title')}</Text>
@@ -119,6 +131,7 @@ export default function ConversationChat({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.conversationStrip}
       >
         {conversations.map((conversation) => {
@@ -226,7 +239,11 @@ export default function ConversationChat({
           ) : (
             <View style={styles.emptyThread}>
               <FontAwesome
-                name={selectedConversation.type === 'group' ? 'comments-o' : 'comment-o'}
+                name={
+                  selectedConversation.type === 'group'
+                    ? 'comments-o'
+                    : 'comment-o'
+                }
                 size={30}
                 color={colors.primary}
               />
@@ -264,7 +281,9 @@ export default function ConversationChat({
           <View style={styles.modalHeader}>
             <View>
               <Text style={styles.modalTitle}>{t('chat.chooseMember')}</Text>
-              <Text style={styles.modalSubtitle}>{t('chat.chooseMemberBody')}</Text>
+              <Text style={styles.modalSubtitle}>
+                {t('chat.chooseMemberBody')}
+              </Text>
             </View>
             <Pressable
               style={styles.closeButton}
@@ -275,7 +294,10 @@ export default function ConversationChat({
               <FontAwesome name="close" size={20} color={colors.textStrong} />
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.memberList}>
+          <ScrollView
+            contentContainerStyle={styles.memberList}
+            keyboardShouldPersistTaps="handled"
+          >
             {pickerError ? (
               <View style={styles.errorCard}>
                 <FontAwesome name="warning" size={16} color={colors.danger} />
@@ -301,7 +323,9 @@ export default function ConversationChat({
                     <Avatar name={name} size={44} />
                     <View style={styles.memberCopy}>
                       <Text style={styles.memberName}>{name}</Text>
-                      <Text style={styles.memberHint}>{t('chat.privateHint')}</Text>
+                      <Text style={styles.memberHint}>
+                        {t('chat.privateHint')}
+                      </Text>
                     </View>
                     {creating ? (
                       <ActivityIndicator color={colors.primary} />
@@ -325,7 +349,7 @@ export default function ConversationChat({
           </ScrollView>
         </SafeAreaView>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -341,7 +365,9 @@ function displayMemberName(member: BackendCircleMember) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 14,
+    flex: 1,
+    minHeight: 0,
+    gap: 12,
   },
   header: {
     alignItems: 'center',
@@ -449,6 +475,8 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
     borderRadius: radii.card,
     borderWidth: 1,
+    flex: 1,
+    minHeight: 0,
     overflow: 'hidden',
     ...shadows.medium,
   },
@@ -490,7 +518,9 @@ const styles = StyleSheet.create({
   },
   emptyThread: {
     alignItems: 'center',
+    flex: 1,
     gap: 7,
+    justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 32,
   },
