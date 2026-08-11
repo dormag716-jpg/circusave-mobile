@@ -12,8 +12,10 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   Linking,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -176,6 +178,25 @@ export default function CircleWorkspaceScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [resolvedRound, setResolvedRound] = useState<number | null>(null);
+  const [workspaceKeyboardVisible, setWorkspaceKeyboardVisible] =
+    useState(false);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setWorkspaceKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setWorkspaceKeyboardVisible(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   async function loadWorkspace(options?: { silent?: boolean }) {
     const accessToken = String(token ?? '').trim();
@@ -267,7 +288,9 @@ export default function CircleWorkspaceScreen() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       {readyWorkspace ? (
         <View style={styles.workspaceShell}>
-          <View style={styles.workspaceHeaderPad}>{workspaceHeader}</View>
+          {!workspaceKeyboardVisible ? (
+            <View style={styles.workspaceHeaderPad}>{workspaceHeader}</View>
+          ) : null}
           <WorkspaceContent
             circle={circle!}
             token={token!}
@@ -358,6 +381,8 @@ function WorkspaceContent({
   const language = translation.resolvedLanguage || translation.language;
   const { t: tPeople } = useTranslation('people');
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
+  // Hide tab chrome while typing in chat so the composer stays on-screen.
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
     null,
   );
@@ -374,6 +399,23 @@ function WorkspaceContent({
   const [workspaceAgreementSnapshot, setWorkspaceAgreementSnapshot] =
     useState<CircleAgreementSnapshot | null>(null);
   const [workspaceAgreementLoaded, setWorkspaceAgreementLoaded] = useState(false);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const workspaceParticipating = useMemo(
     () =>
@@ -1191,8 +1233,15 @@ function WorkspaceContent({
   if (activeTab === 'chat') {
     return (
       <View style={styles.workspaceBody}>
-        <View style={styles.chatChrome}>{chrome}</View>
-        <View style={styles.chatPanel}>
+        {!keyboardVisible ? (
+          <View style={styles.chatChrome}>{chrome}</View>
+        ) : null}
+        <View
+          style={[
+            styles.chatPanel,
+            keyboardVisible && styles.chatPanelKeyboardOpen,
+          ]}
+        >
           <ConversationChat
             circleId={circle.id}
             token={token}
@@ -5104,6 +5153,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: spacing.screenX,
     paddingBottom: 4,
+  },
+  chatPanelKeyboardOpen: {
+    marginTop: 0,
+    paddingBottom: 0,
   },
   content: {
     paddingBottom: 100,

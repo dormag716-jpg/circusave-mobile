@@ -15,6 +15,8 @@ type ChatFeedProps = {
    * can stay pinned below a flex message list.
    */
   scrollEnabled?: boolean;
+  /** Extra bottom inset so bubbles clear a floating composer / keyboard. */
+  bottomPadding?: number;
   style?: FlatListProps<BackendChatMessage>['style'];
 };
 
@@ -22,6 +24,7 @@ export default function ChatFeed({
   messages,
   currentUserId,
   scrollEnabled = true,
+  bottomPadding = 0,
   style,
 }: ChatFeedProps) {
   const listRef = useRef<FlatList<BackendChatMessage>>(null);
@@ -32,7 +35,7 @@ export default function ChatFeed({
       listRef.current?.scrollToEnd({ animated: true });
     });
     return () => cancelAnimationFrame(handle);
-  }, [messages.length, scrollEnabled]);
+  }, [messages.length, scrollEnabled, bottomPadding]);
 
   return (
     <FlatList
@@ -40,7 +43,10 @@ export default function ChatFeed({
       data={messages}
       keyExtractor={(item) => item.id}
       style={[styles.list, style]}
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        bottomPadding > 0 ? { paddingBottom: 16 + bottomPadding } : null,
+      ]}
       scrollEnabled={scrollEnabled}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '@/lib/theme';
+import { colors, shadows } from '@/lib/theme';
 
 type ChatInputProps = {
   onSend: (text: string) => void | Promise<void>;
@@ -20,26 +20,31 @@ type ChatInputProps = {
   placeholder?: string;
   /** When false, skip extra bottom inset (parent already handles SafeArea). */
   applyBottomInset?: boolean;
+  /**
+   * Floating dock look: elevated bar that sits above the keyboard.
+   * Parent owns bottom offset via absolute positioning.
+   */
+  floating?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
 /**
- * Composer only — keyboard avoidance is owned by the parent chat surface
- * (ConversationChat). Nesting KeyboardAvoidingView here broke Android when
- * chat lived inside a parent ScrollView.
+ * Composer only — keyboard lift is owned by the parent chat surface
+ * (ConversationChat floating dock). Do not nest KeyboardAvoidingView here.
  */
 export default function ChatInput({
   onSend,
   isLoading,
   placeholder = 'Send a message...',
   applyBottomInset = true,
+  floating = false,
   style,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const insets = useSafeAreaInsets();
   const bottomPad = applyBottomInset
     ? Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0)
-    : 0;
+    : 8;
 
   const handleSend = async () => {
     if (!text.trim() || isLoading) return;
@@ -52,7 +57,14 @@ export default function ChatInput({
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: 12 + bottomPad }, style]}>
+    <View
+      style={[
+        styles.container,
+        floating && styles.containerFloating,
+        { paddingBottom: 12 + bottomPad },
+        style,
+      ]}
+    >
       <View style={styles.inputWrapper}>
         <TextInput
           style={styles.input}
@@ -102,6 +114,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
     gap: 12,
+  },
+  containerFloating: {
+    borderTopWidth: 0,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderBottomWidth: 0,
+    ...shadows.medium,
   },
   inputWrapper: {
     flex: 1,

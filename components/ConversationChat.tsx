@@ -1,9 +1,9 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -11,13 +11,15 @@ import {
   StyleSheet,
   Text,
   View,
+  type KeyboardEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { BackendCircleMember } from '@/lib/api';
 import {
-  circleChatKeyboardBehavior,
-  circleChatKeyboardVerticalOffset,
+  FLOATING_COMPOSER_RESTING_HEIGHT,
+  floatingComposerBottomOffset,
+  floatingComposerListPadding,
 } from '@/lib/chatKeyboard';
 import { colors, radii, shadows } from '@/lib/theme';
 import { useConversations } from '@/lib/useConversations';
@@ -36,9 +38,12 @@ type ConversationChatProps = {
 
 /**
  * Group + private chat share this surface.
- * Layout contract: parent must give this component a bounded flex height
- * (not nested inside an outer vertical ScrollView), so the composer can sit
- * above the keyboard while the message list scrolls.
+ *
+ * Layout contract:
+ * - Parent gives a bounded flex height (not nested in an outer ScrollView).
+ * - Message list scrolls inside the thread card.
+ * - Composer is a floating dock that lifts by measured keyboard overlap so
+ *   typed text always stays visible above the software keyboard.
  */
 export default function ConversationChat({
   circleId,
@@ -48,9 +53,19 @@ export default function ConversationChat({
   initialConversationId,
 }: ConversationChatProps) {
   const { t } = useTranslation('circleWorkspace');
+  const rootRef = useRef<View>(null);
+  /** Last keyboard top (window Y). Used to re-measure after chrome collapses. */
+  const keyboardTopYRef = useRef<number | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  /** Extra bottom offset so the floating dock sits above the keyboard. */
+  const [composerLift, setComposerLift] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(
+    FLOATING_COMPOSER_RESTING_HEIGHT,
+  );
+
   const {
     conversations,
     selectedConversation,
@@ -77,6 +92,70 @@ export default function ConversationChat({
     });
   }, [currentUserId, members]);
 
+  const remeasureComposerLift = useCallback(() => {
+    const keyboardTopY = keyboardTopYRef.current;
+    if (keyboardTopY == null) {
+      setComposerLift(0);
+      return;
+    }
+    rootRef.current?.measureInWindow((_x, y, _w, h) => {
+      const containerBottomY = y + h;
+      setComposerLift(
+        floatingComposerBottomOffset(containerBottomY, keyboardTopY),
+      );
+    });
+  }, []);
+
+  const applyKeyboardFrame = useCallback(
+    (event: KeyboardEvent | null) => {
+      if (!event) {
+        keyboardTopYRef.current = null;
+        setKeyboardVisible(false);
+        setComposerLift(0);
+        return;
+      }
+
+      keyboardTopYRef.current = event.endCoordinates.screenY;
+      setKeyboardVisible(true);
+
+      // Measure after layout so we know how much of *this* chat root is covered.
+      requestAnimationFrame(() => {
+        remeasureComposerLift();
+      });
+    },
+    [remeasureComposerLift],
+  );
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const changeEvent =
+      Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+
+    const showSub = Keyboard.addListener(showEvent, applyKeyboardFrame);
+    const changeSub = Keyboard.addListener(changeEvent, applyKeyboardFrame);
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      applyKeyboardFrame(null);
+    });
+
+    return () => {
+      showSub.remove();
+      changeSub.remove();
+      hideSub.remove();
+    };
+  }, [applyKeyboardFrame]);
+
+  // Chrome collapses when the keyboard opens — re-measure after that layout.
+  useEffect(() => {
+    if (!keyboardVisible) return;
+    const handle = requestAnimationFrame(() => {
+      remeasureComposerLift();
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [keyboardVisible, remeasureComposerLift]);
+
   async function startDirectChat(member: BackendCircleMember) {
     setCreatingMemberId(member.id);
     setPickerError(null);
@@ -94,6 +173,14 @@ export default function ConversationChat({
     }
   }
 
+  const listBottomPadding = floatingComposerListPadding(
+    selectedConversation ? composerHeight : 0,
+    // List lives inside the flex root; when the window resizes, lift is 0 and
+    // the dock still needs its own height reserved. When the window does not
+    // resize, lift pushes the dock up and the list needs that space too.
+    selectedConversation ? composerLift : 0,
+  );
+
   if (loading && conversations.length === 0) {
     return (
       <View style={styles.loadingCard}>
@@ -104,91 +191,101 @@ export default function ConversationChat({
   }
 
   return (
-    <KeyboardAvoidingView
+    <View
+      ref={rootRef}
       style={styles.container}
-      behavior={circleChatKeyboardBehavior(Platform.OS)}
-      keyboardVerticalOffset={circleChatKeyboardVerticalOffset(Platform.OS)}
+      collapsable={false}
+      onLayout={() => {
+        if (keyboardTopYRef.current != null) {
+          remeasureComposerLift();
+        }
+      }}
     >
-      <View style={styles.header}>
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>{t('chat.title')}</Text>
-          <Text style={styles.subtitle}>{t('chat.subtitle')}</Text>
+      {!keyboardVisible ? (
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>{t('chat.title')}</Text>
+            <Text style={styles.subtitle}>{t('chat.subtitle')}</Text>
+          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.newChatButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => setPickerVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.newPrivateA11y')}
+          >
+            <FontAwesome name="edit" size={15} color={colors.onColor} />
+            <Text style={styles.newChatButtonText}>{t('chat.newPrivate')}</Text>
+          </Pressable>
         </View>
-        <Pressable
-          style={({ pressed }) => [
-            styles.newChatButton,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => setPickerVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel={t('chat.newPrivateA11y')}
-        >
-          <FontAwesome name="edit" size={15} color={colors.onColor} />
-          <Text style={styles.newChatButtonText}>{t('chat.newPrivate')}</Text>
-        </Pressable>
-      </View>
+      ) : null}
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.conversationStrip}
-      >
-        {conversations.map((conversation) => {
-          const selected = conversation.id === selectedConversation?.id;
-          return (
-            <Pressable
-              key={conversation.id}
-              style={({ pressed }) => [
-                styles.conversationChip,
-                selected && styles.conversationChipSelected,
-                pressed && styles.pressed,
-              ]}
-              onPress={() => selectConversation(conversation.id)}
-              accessibilityRole="button"
-              accessibilityLabel={t('chat.openConversationA11y', {
-                name: conversation.title,
-                count: conversation.unreadCount,
-              })}
-            >
-              <View style={styles.chipAvatar}>
-                {conversation.type === 'group' ? (
-                  <View style={styles.groupAvatar}>
-                    <FontAwesome name="users" size={15} color={colors.primary} />
-                  </View>
-                ) : (
-                  <Avatar name={conversation.title} size={34} />
-                )}
-                {conversation.unreadCount > 0 ? (
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadBadgeText}>
-                      {conversation.unreadCount > 99
-                        ? '99+'
-                        : conversation.unreadCount}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.chipCopy}>
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.chipTitle,
-                    selected && styles.chipTitleSelected,
-                  ]}
-                >
-                  {conversation.type === 'group'
-                    ? t('chat.group')
-                    : conversation.title}
-                </Text>
-                <Text numberOfLines={1} style={styles.chipPreview}>
-                  {conversation.lastMessage?.text || t('chat.noMessages')}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      {!keyboardVisible ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          style={styles.conversationStripScroll}
+          contentContainerStyle={styles.conversationStrip}
+        >
+          {conversations.map((conversation) => {
+            const selected = conversation.id === selectedConversation?.id;
+            return (
+              <Pressable
+                key={conversation.id}
+                style={({ pressed }) => [
+                  styles.conversationChip,
+                  selected && styles.conversationChipSelected,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => selectConversation(conversation.id)}
+                accessibilityRole="button"
+                accessibilityLabel={t('chat.openConversationA11y', {
+                  name: conversation.title,
+                  count: conversation.unreadCount,
+                })}
+              >
+                <View style={styles.chipAvatar}>
+                  {conversation.type === 'group' ? (
+                    <View style={styles.groupAvatar}>
+                      <FontAwesome name="users" size={15} color={colors.primary} />
+                    </View>
+                  ) : (
+                    <Avatar name={conversation.title} size={34} />
+                  )}
+                  {conversation.unreadCount > 0 ? (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>
+                        {conversation.unreadCount > 99
+                          ? '99+'
+                          : conversation.unreadCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.chipCopy}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.chipTitle,
+                      selected && styles.chipTitleSelected,
+                    ]}
+                  >
+                    {conversation.type === 'group'
+                      ? t('chat.group')
+                      : conversation.title}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.chipPreview}>
+                    {conversation.lastMessage?.text || t('chat.noMessages')}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
 
       {error ? (
         <Pressable
@@ -205,39 +302,54 @@ export default function ConversationChat({
 
       {selectedConversation ? (
         <View style={styles.threadCard}>
-          <View style={styles.threadHeader}>
-            <View style={styles.threadIdentity}>
-              {selectedConversation.type === 'group' ? (
-                <View style={styles.groupAvatarLarge}>
-                  <FontAwesome name="users" size={18} color={colors.primary} />
+          {!keyboardVisible ? (
+            <View style={styles.threadHeader}>
+              <View style={styles.threadIdentity}>
+                {selectedConversation.type === 'group' ? (
+                  <View style={styles.groupAvatarLarge}>
+                    <FontAwesome
+                      name="users"
+                      size={18}
+                      color={colors.primary}
+                    />
+                  </View>
+                ) : (
+                  <Avatar name={selectedConversation.title} size={42} />
+                )}
+                <View style={styles.threadHeaderCopy}>
+                  <Text style={styles.threadTitle} numberOfLines={1}>
+                    {selectedConversation.type === 'group'
+                      ? t('chat.groupTitle')
+                      : selectedConversation.title}
+                  </Text>
+                  <Text style={styles.threadMeta}>
+                    {selectedConversation.type === 'group'
+                      ? t('chat.groupMeta', {
+                          count: selectedConversation.participants.length,
+                        })
+                      : t('chat.privateMeta')}
+                  </Text>
                 </View>
-              ) : (
-                <Avatar name={selectedConversation.title} size={42} />
-              )}
-              <View style={styles.threadHeaderCopy}>
-                <Text style={styles.threadTitle}>
-                  {selectedConversation.type === 'group'
-                    ? t('chat.groupTitle')
-                    : selectedConversation.title}
-                </Text>
-                <Text style={styles.threadMeta}>
-                  {selectedConversation.type === 'group'
-                    ? t('chat.groupMeta', {
-                        count: selectedConversation.participants.length,
-                      })
-                    : t('chat.privateMeta')}
-                </Text>
               </View>
+              {threadLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : null}
             </View>
-            {threadLoading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : null}
-          </View>
+          ) : null}
 
           {messages.length > 0 ? (
-            <ChatFeed messages={messages} currentUserId={currentUserId} />
+            <ChatFeed
+              messages={messages}
+              currentUserId={currentUserId}
+              bottomPadding={listBottomPadding}
+            />
           ) : (
-            <View style={styles.emptyThread}>
+            <View
+              style={[
+                styles.emptyThread,
+                { paddingBottom: listBottomPadding + 24 },
+              ]}
+            >
               <FontAwesome
                 name={
                   selectedConversation.type === 'group'
@@ -257,12 +369,6 @@ export default function ConversationChat({
               </Text>
             </View>
           )}
-
-          <ChatInput
-            onSend={sendMessage}
-            isLoading={sending}
-            placeholder={t('chat.placeholder')}
-          />
         </View>
       ) : (
         <View style={styles.emptyThread}>
@@ -270,6 +376,27 @@ export default function ConversationChat({
           <Text style={styles.emptyText}>{t('chat.noConversationBody')}</Text>
         </View>
       )}
+
+      {/* Floating chat console — rides above the keyboard via measured lift. */}
+      {selectedConversation ? (
+        <View
+          style={[styles.composerDock, { bottom: composerLift }]}
+          onLayout={(e) => {
+            const next = Math.ceil(e.nativeEvent.layout.height);
+            if (next > 0 && next !== composerHeight) {
+              setComposerHeight(next);
+            }
+          }}
+        >
+          <ChatInput
+            onSend={sendMessage}
+            isLoading={sending}
+            placeholder={t('chat.placeholder')}
+            applyBottomInset={composerLift === 0}
+            floating
+          />
+        </View>
+      ) : null}
 
       <Modal
         visible={pickerVisible}
@@ -349,7 +476,7 @@ export default function ConversationChat({
           </ScrollView>
         </SafeAreaView>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -403,21 +530,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
+  conversationStripScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   conversationStrip: {
+    alignItems: 'stretch',
     gap: 10,
     paddingVertical: 2,
   },
   conversationChip: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
     borderRadius: radii.card,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 9,
-    minWidth: 154,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
+    gap: 8,
+    maxWidth: 140,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   conversationChipSelected: {
     backgroundColor: colors.primarySoft,
@@ -454,8 +587,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   chipCopy: {
-    flex: 1,
-    minWidth: 0,
+    flexShrink: 1,
+    maxWidth: 78,
   },
   chipTitle: {
     color: colors.textStrong,
@@ -494,6 +627,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: 10,
+    minWidth: 0,
   },
   groupAvatarLarge: {
     alignItems: 'center',
@@ -505,6 +639,7 @@ const styles = StyleSheet.create({
   },
   threadHeaderCopy: {
     flex: 1,
+    minWidth: 0,
   },
   threadTitle: {
     color: colors.textStrong,
@@ -535,6 +670,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     textAlign: 'center',
+  },
+  /** Absolute floating console docked to the chat root bottom. */
+  composerDock: {
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 20,
+    elevation: 12,
   },
   errorCard: {
     alignItems: 'center',

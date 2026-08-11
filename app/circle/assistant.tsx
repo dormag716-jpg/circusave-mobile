@@ -3,7 +3,7 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  type KeyboardEvent,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
@@ -38,8 +39,9 @@ import {
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import {
-  circleChatKeyboardBehavior,
-  circleChatKeyboardVerticalOffset,
+  FLOATING_COMPOSER_RESTING_HEIGHT,
+  floatingComposerBottomOffset,
+  floatingComposerListPadding,
 } from '@/lib/chatKeyboard';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
@@ -72,12 +74,11 @@ export default function CircleAssistantScreen() {
   const { t, i18n } = useTranslation(['assistant', 'common']);
   const token = session?.session.token;
   const insets = useSafeAreaInsets();
+  const rootRef = useRef<View>(null);
   const scrollRef = useRef<ScrollView>(null);
   const historyRequestId = useRef(0);
-  const composerBottomPad = Math.max(
-    insets.bottom,
-    Platform.OS === 'android' ? 8 : 0,
-  );
+  /** Last keyboard top (window Y). Used to re-measure after chrome collapses. */
+  const keyboardTopYRef = useRef<number | null>(null);
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -85,9 +86,19 @@ export default function CircleAssistantScreen() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [composerLift, setComposerLift] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(
+    FLOATING_COMPOSER_RESTING_HEIGHT,
+  );
   const [items, setItems] = useState<ChatItem[]>([
     welcomeItem(''),
   ]);
+
+  const composerBottomPad =
+    composerLift === 0
+      ? Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0)
+      : 8;
 
   const apiLocale = assistantApiLocale(
     i18n.resolvedLanguage || i18n.language || 'en',
@@ -121,7 +132,74 @@ export default function CircleAssistantScreen() {
 
   useEffect(() => {
     scrollToEnd();
-  }, [items, sending, historyLoading, scrollToEnd]);
+  }, [items, sending, historyLoading, composerLift, composerHeight, scrollToEnd]);
+
+  const remeasureComposerLift = useCallback(() => {
+    const keyboardTopY = keyboardTopYRef.current;
+    if (keyboardTopY == null) {
+      setComposerLift(0);
+      return;
+    }
+    rootRef.current?.measureInWindow((_x, y, _w, h) => {
+      const containerBottomY = y + h;
+      setComposerLift(
+        floatingComposerBottomOffset(containerBottomY, keyboardTopY),
+      );
+    });
+  }, []);
+
+  const applyKeyboardFrame = useCallback(
+    (event: KeyboardEvent | null) => {
+      if (!event) {
+        keyboardTopYRef.current = null;
+        setKeyboardVisible(false);
+        setComposerLift(0);
+        return;
+      }
+
+      keyboardTopYRef.current = event.endCoordinates.screenY;
+      setKeyboardVisible(true);
+      requestAnimationFrame(() => {
+        remeasureComposerLift();
+      });
+    },
+    [remeasureComposerLift],
+  );
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const changeEvent =
+      Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+
+    const showSub = Keyboard.addListener(showEvent, applyKeyboardFrame);
+    const changeSub = Keyboard.addListener(changeEvent, applyKeyboardFrame);
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      applyKeyboardFrame(null);
+    });
+
+    return () => {
+      showSub.remove();
+      changeSub.remove();
+      hideSub.remove();
+    };
+  }, [applyKeyboardFrame]);
+
+  // Header collapses when the keyboard opens — re-measure after that layout.
+  useEffect(() => {
+    if (!keyboardVisible) return;
+    const handle = requestAnimationFrame(() => {
+      remeasureComposerLift();
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [keyboardVisible, remeasureComposerLift]);
+
+  const listBottomPadding = floatingComposerListPadding(
+    composerHeight,
+    composerLift,
+  );
 
   const loadHistory = useCallback(async () => {
     if (!token || !circleId) return;
@@ -263,49 +341,65 @@ export default function CircleAssistantScreen() {
     text: t(`assistant:prompts.${key}`),
   }));
 
-  // Same keyboard contract as circle group/private chat:
-  // flex column, list owns scroll, composer pinned under list, iOS KAV only.
+  // Same floating composer contract as circle group/private chat:
+  // flex column, list owns scroll, dock lifts by measured keyboard overlap.
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <KeyboardAvoidingView
+      <View
+        ref={rootRef}
         style={styles.screen}
-        behavior={circleChatKeyboardBehavior(Platform.OS)}
-        keyboardVerticalOffset={circleChatKeyboardVerticalOffset(Platform.OS)}
+        collapsable={false}
+        onLayout={() => {
+          if (keyboardTopYRef.current != null) {
+            remeasureComposerLift();
+          }
+        }}
       >
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.iconButton}
-            accessibilityRole="button"
-            accessibilityLabel={t('assistant:backA11y')}
-          >
-            <FontAwesome name="chevron-left" size={18} color={colors.textStrong} />
-          </Pressable>
-          <View style={styles.headerTitle}>
-            <View style={styles.sparkle}>
-              <FontAwesome name="magic" size={13} color={colors.onColor} />
+        {!keyboardVisible ? (
+          <View style={styles.header}>
+            <Pressable
+              onPress={() => router.back()}
+              style={styles.iconButton}
+              accessibilityRole="button"
+              accessibilityLabel={t('assistant:backA11y')}
+            >
+              <FontAwesome
+                name="chevron-left"
+                size={18}
+                color={colors.textStrong}
+              />
+            </Pressable>
+            <View style={styles.headerTitle}>
+              <View style={styles.sparkle}>
+                <FontAwesome name="magic" size={13} color={colors.onColor} />
+              </View>
+              <View>
+                <Text style={styles.title}>{t('assistant:title')}</Text>
+                <Text style={styles.subtitle}>{t('assistant:subtitle')}</Text>
+              </View>
             </View>
-            <View>
-              <Text style={styles.title}>{t('assistant:title')}</Text>
-              <Text style={styles.subtitle}>{t('assistant:subtitle')}</Text>
-            </View>
+            <Pressable
+              onPress={startNewChat}
+              style={styles.newChatButton}
+              accessibilityRole="button"
+              accessibilityLabel={t('assistant:history.newChatA11y')}
+              disabled={historyLoading || sending}
+            >
+              <FontAwesome name="plus" size={12} color={colors.primaryDark} />
+              <Text style={styles.newChatText}>
+                {t('assistant:history.newChat')}
+              </Text>
+            </Pressable>
           </View>
-          <Pressable
-            onPress={startNewChat}
-            style={styles.newChatButton}
-            accessibilityRole="button"
-            accessibilityLabel={t('assistant:history.newChatA11y')}
-            disabled={historyLoading || sending}
-          >
-            <FontAwesome name="plus" size={12} color={colors.primaryDark} />
-            <Text style={styles.newChatText}>{t('assistant:history.newChat')}</Text>
-          </Pressable>
-        </View>
+        ) : null}
 
         <ScrollView
           ref={scrollRef}
           style={styles.messageList}
-          contentContainerStyle={styles.messages}
+          contentContainerStyle={[
+            styles.messages,
+            { paddingBottom: 16 + listBottomPadding },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -472,45 +566,57 @@ export default function CircleAssistantScreen() {
           ) : null}
         </ScrollView>
 
+        {/* Floating assistant console — rides above the keyboard. */}
         <View
-          style={[
-            styles.composer,
-            { paddingBottom: 12 + composerBottomPad },
-          ]}
-        >
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder={t('assistant:composerPlaceholder')}
-            placeholderTextColor={colors.subtle}
-            multiline
-            maxLength={2000}
-            editable={!sending && !upgradeRequired && !historyLoading}
-            style={styles.input}
-            accessibilityLabel={t('assistant:composerPlaceholder')}
-            blurOnSubmit={false}
-            textAlignVertical="center"
-          />
-          <Pressable
-            onPress={() => void send()}
-            disabled={
-              !input.trim() || sending || upgradeRequired || historyLoading
+          style={[styles.composerDock, { bottom: composerLift }]}
+          onLayout={(e) => {
+            const next = Math.ceil(e.nativeEvent.layout.height);
+            if (next > 0 && next !== composerHeight) {
+              setComposerHeight(next);
             }
-            accessibilityRole="button"
-            accessibilityLabel={t('assistant:sendA11y')}
+          }}
+        >
+          <View
             style={[
-              styles.sendButton,
-              (!input.trim() ||
-                sending ||
-                upgradeRequired ||
-                historyLoading) &&
-                styles.sendButtonDisabled,
+              styles.composer,
+              styles.composerFloating,
+              { paddingBottom: 12 + composerBottomPad },
             ]}
           >
-            <FontAwesome name="arrow-up" size={15} color={colors.onColor} />
-          </Pressable>
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              placeholder={t('assistant:composerPlaceholder')}
+              placeholderTextColor={colors.subtle}
+              multiline
+              maxLength={2000}
+              editable={!sending && !upgradeRequired && !historyLoading}
+              style={styles.input}
+              accessibilityLabel={t('assistant:composerPlaceholder')}
+              blurOnSubmit={false}
+              textAlignVertical="center"
+            />
+            <Pressable
+              onPress={() => void send()}
+              disabled={
+                !input.trim() || sending || upgradeRequired || historyLoading
+              }
+              accessibilityRole="button"
+              accessibilityLabel={t('assistant:sendA11y')}
+              style={[
+                styles.sendButton,
+                (!input.trim() ||
+                  sending ||
+                  upgradeRequired ||
+                  historyLoading) &&
+                  styles.sendButtonDisabled,
+              ]}
+            >
+              <FontAwesome name="arrow-up" size={15} color={colors.onColor} />
+            </Pressable>
+          </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -571,7 +677,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
-  messages: { padding: spacing.screenX, paddingBottom: 30 },
+  messages: { padding: spacing.screenX, paddingBottom: 16 },
   historyErrorCard: {
     backgroundColor: colors.dangerSoft,
     borderRadius: 14,
@@ -743,6 +849,13 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   upgradeButtonText: { color: colors.primaryDark, fontWeight: '900', fontSize: 10 },
+  composerDock: {
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 20,
+    elevation: 12,
+  },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -752,6 +865,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.primaryBorder,
     backgroundColor: colors.card,
+  },
+  composerFloating: {
+    borderTopWidth: 0,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    borderBottomWidth: 0,
+    ...shadows.medium,
   },
   input: {
     flex: 1,
