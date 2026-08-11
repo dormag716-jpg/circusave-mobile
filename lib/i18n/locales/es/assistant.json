@@ -1,0 +1,51 @@
+{
+  "entry": {
+    "title": "Pregunta a CircuSave",
+    "subtitle": "Orientación según tu círculo",
+    "openA11y": "Abrir el asistente de CircuSave para este círculo"
+  },
+  "title": "Asistente CircuSave",
+  "subtitle": "Privado · Solo lectura · Contexto del círculo",
+  "contextTitle": "Respuestas basadas en tu círculo",
+  "contextCopy": "Puedo explicar registros y sugerir dónde mirar, pero no puedo mover dinero ni cambiar datos del círculo.",
+  "welcome": {
+    "premium": "Estoy listo. Pregúntame sobre este círculo, su configuración, contribuciones, preparación de pagos o qué hacer a continuación.",
+    "intro": "Tienes una vista general de cortesía. Pregúntame qué necesita este círculo a continuación."
+  },
+  "prompts": {
+    "attention": "¿Qué necesita mi atención hoy?",
+    "ready": "¿Este círculo está listo para el siguiente paso?",
+    "explainRound": "Explica la ronda actual en términos simples."
+  },
+  "thinking": "Leyendo los datos más recientes del círculo…",
+  "composerPlaceholder": "Pregunta sobre este círculo…",
+  "sendA11y": "Enviar mensaje al asistente",
+  "backA11y": "Volver",
+  "refusalBadge": "SOLO LECTURA · SIN ACCIÓN",
+  "introBadge": "VISTA GENERAL DE CORTESÍA",
+  "upgrade": {
+    "title": "Mantén tu asistente",
+    "body": "Organizer Pro incluye orientación continua según tu círculo.",
+    "cta": "Ver plan",
+    "introUsed": "Tu vista general de cortesía ha terminado. Organizer Pro mantiene el asistente disponible cuando lo necesites."
+  },
+  "errors": {
+    "generic": "No pude responder ahora. Inténtalo de nuevo.",
+    "historyLoad": "No se pudieron cargar mensajes anteriores. Aún puedes hacer una pregunta nueva."
+  },
+  "history": {
+    "loading": "Cargando conversación…",
+    "newChat": "Chat nuevo",
+    "newChatA11y": "Iniciar una nueva conversación con el asistente"
+  },
+  "nav": {
+    "view_circle_setup": "Configuración del círculo",
+    "view_pending_requests": "Solicitudes pendientes",
+    "view_hand_details": "Detalles de la mano",
+    "view_round_status": "Estado de la ronda",
+    "view_contribution_status": "Contribuciones",
+    "view_payout_order": "Orden de pago",
+    "view_activity": "Actividad",
+    "upgrade_to_premium": "Ver plan"
+  }
+}

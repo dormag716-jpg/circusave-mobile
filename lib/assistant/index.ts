@@ -8,3 +8,11 @@ export {
   labelForAssistantAction,
   type AssistantNavTarget,
 } from './navigation';
+export {
+  assistantApiLocale,
+  mapStoredMessagesToChatItems,
+  pickResumeConversation,
+  type AssistantConversationSummary,
+  type AssistantHistoryChatItem,
+  type AssistantStoredMessage,
+} from './history';

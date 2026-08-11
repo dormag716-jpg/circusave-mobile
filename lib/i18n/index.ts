@@ -4,6 +4,7 @@ import { initReactI18next } from 'react-i18next';
 import authEn from './locales/en/auth.json';
 import agreementsEn from './locales/en/agreements.json';
 import activityEn from './locales/en/activity.json';
+import assistantEn from './locales/en/assistant.json';
 import circleWorkspaceEn from './locales/en/circleWorkspace.json';
 import circlesEn from './locales/en/circles.json';
 import commonEn from './locales/en/common.json';
@@ -26,6 +27,7 @@ import walletEn from './locales/en/wallet.json';
 import activityEs from './locales/es/activity.json';
 import authEs from './locales/es/auth.json';
 import agreementsEs from './locales/es/agreements.json';
+import assistantEs from './locales/es/assistant.json';
 import circleWorkspaceEs from './locales/es/circleWorkspace.json';
 import circlesEs from './locales/es/circles.json';
 import commonEs from './locales/es/common.json';
@@ -48,6 +50,7 @@ import walletEs from './locales/es/wallet.json';
 import activityHt from './locales/ht/activity.json';
 import authHt from './locales/ht/auth.json';
 import agreementsHt from './locales/ht/agreements.json';
+import assistantHt from './locales/ht/assistant.json';
 import circleWorkspaceHt from './locales/ht/circleWorkspace.json';
 import circlesHt from './locales/ht/circles.json';
 import commonHt from './locales/ht/common.json';
@@ -79,6 +82,7 @@ const resources = {
   en: {
     agreements: agreementsEn,
     activity: activityEn,
+    assistant: assistantEn,
     auth: authEn,
     circleWorkspace: circleWorkspaceEn,
     circles: circlesEn,
@@ -103,6 +107,7 @@ const resources = {
   es: {
     agreements: agreementsEs,
     activity: activityEs,
+    assistant: assistantEs,
     auth: authEs,
     circleWorkspace: circleWorkspaceEs,
     circles: circlesEs,
@@ -127,6 +132,7 @@ const resources = {
   ht: {
     agreements: agreementsHt,
     activity: activityHt,
+    assistant: assistantHt,
     auth: authHt,
     circleWorkspace: circleWorkspaceHt,
     circles: circlesHt,
@@ -166,6 +172,7 @@ async function ensureInitialized(language: SupportedLanguage): Promise<void> {
     ns: [
       'agreements',
       'activity',
+      'assistant',
       'auth',
       'circleWorkspace',
       'circles',

@@ -43,6 +43,25 @@ describe('i18n foundation', () => {
     expect(i18n.t('settings:language')).toBe('Lang');
   });
 
+  test.each(['en', 'es', 'ht'] as const)(
+    'registers assistant namespace in %s',
+    async (language) => {
+      await changeLanguagePreference(language);
+      expect(i18n.hasResourceBundle(language, 'assistant')).toBe(true);
+      expect(i18n.t('assistant:entry.title')).toBeTruthy();
+      expect(i18n.t('assistant:nav.view_round_status')).toBeTruthy();
+    },
+  );
+
+  test('assistant copy switches with language preference', async () => {
+    await changeLanguagePreference('en');
+    expect(i18n.t('assistant:entry.title')).toBe('Ask CircuSave');
+    await changeLanguagePreference('es');
+    expect(i18n.t('assistant:entry.title')).toBe('Pregunta a CircuSave');
+    await changeLanguagePreference('ht');
+    expect(i18n.t('assistant:entry.title')).toBe('Mande CircuSave');
+  });
+
   test('system preference resumes device-language detection', async () => {
     deviceLanguageTag = 'es-DO';
 

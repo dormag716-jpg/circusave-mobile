@@ -17,9 +17,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import {
-  hrefForAssistantAction,
-  labelForAssistantAction,
-} from '@/lib/assistant/navigation';
+  assistantApiLocale,
+  mapStoredMessagesToChatItems,
+  pickResumeConversation,
+} from '@/lib/assistant/history';
+import { hrefForAssistantAction } from '@/lib/assistant/navigation';
 import {
   createAssistantIdempotencyKey,
   normalizeAssistantResponse,
@@ -27,6 +29,8 @@ import {
 } from '@/lib/assistant/response';
 import {
   ApiError,
+  listAssistantConversations,
+  listAssistantMessages,
   sendAiAssistantMessage,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
@@ -44,11 +48,12 @@ type ChatItem = {
   isError?: boolean;
 };
 
-const SUGGESTED_PROMPTS = [
-  'What needs my attention today?',
-  'Is this circle ready for the next step?',
-  'Explain the current round in simple terms.',
-];
+const PROMPT_KEYS = ['attention', 'ready', 'explainRound'] as const;
+const WELCOME_ID = 'welcome';
+
+function welcomeItem(message: string): ChatItem {
+  return { id: WELCOME_ID, role: 'assistant', message };
+}
 
 export default function CircleAssistantScreen() {
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
@@ -57,25 +62,44 @@ export default function CircleAssistantScreen() {
     : params.circleId;
   const { session } = useAuthSession();
   const { entitlements, refreshEntitlements } = useEntitlements();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation(['assistant', 'common']);
   const token = session?.session.token;
   const scrollRef = useRef<ScrollView>(null);
+  const historyRequestId = useRef(0);
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [items, setItems] = useState<ChatItem[]>(() => [
-    {
-      id: 'welcome',
-      role: 'assistant',
-      message: entitlements.capabilities.aiAssistant
-        ? 'I am ready. Ask me about this circle, its setup, contributions, payout readiness, or what to do next.'
-        : 'You have one complimentary organizer overview. Ask me what this circle needs next.',
-    },
+  const [items, setItems] = useState<ChatItem[]>([
+    welcomeItem(''),
   ]);
 
-  const locale = (i18n.resolvedLanguage || i18n.language || 'en').slice(0, 2);
+  const apiLocale = assistantApiLocale(
+    i18n.resolvedLanguage || i18n.language || 'en',
+  );
+  const welcomeMessage = entitlements.capabilities.aiAssistant
+    ? t('assistant:welcome.premium')
+    : t('assistant:welcome.intro');
+
+  const showSuggestedPrompts =
+    items.length === 1 && items[0]?.id === WELCOME_ID && !historyLoading;
+
+  // Keep the local welcome bubble in sync with language / entitlement mode
+  // only when we are not showing a loaded thread.
+  useEffect(() => {
+    setItems((current) => {
+      if (current.length !== 1 || current[0]?.id !== WELCOME_ID) {
+        return current;
+      }
+      if (current[0].message === welcomeMessage) {
+        return current;
+      }
+      return [welcomeItem(welcomeMessage)];
+    });
+  }, [welcomeMessage]);
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => {
@@ -85,7 +109,60 @@ export default function CircleAssistantScreen() {
 
   useEffect(() => {
     scrollToEnd();
-  }, [items, sending, scrollToEnd]);
+  }, [items, sending, historyLoading, scrollToEnd]);
+
+  const loadHistory = useCallback(async () => {
+    if (!token || !circleId) return;
+    const requestId = ++historyRequestId.current;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const listed = await listAssistantConversations(token, circleId);
+      if (requestId !== historyRequestId.current) return;
+
+      const resume = pickResumeConversation(
+        listed.conversations || [],
+        apiLocale,
+      );
+      if (!resume) {
+        setConversationId(null);
+        setItems([welcomeItem(welcomeMessage)]);
+        return;
+      }
+
+      const thread = await listAssistantMessages(token, circleId, resume.id);
+      if (requestId !== historyRequestId.current) return;
+
+      const mapped = mapStoredMessagesToChatItems(thread.messages || []);
+      setConversationId(resume.id);
+      if (mapped.length === 0) {
+        setItems([welcomeItem(welcomeMessage)]);
+      } else {
+        setItems(mapped);
+      }
+    } catch {
+      if (requestId !== historyRequestId.current) return;
+      setConversationId(null);
+      setHistoryError(t('assistant:errors.historyLoad'));
+      setItems([welcomeItem(welcomeMessage)]);
+    } finally {
+      if (requestId === historyRequestId.current) {
+        setHistoryLoading(false);
+      }
+    }
+  }, [token, circleId, apiLocale, welcomeMessage, t]);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  function startNewChat() {
+    historyRequestId.current += 1;
+    setConversationId(null);
+    setHistoryError(null);
+    setUpgradeRequired(false);
+    setItems([welcomeItem(welcomeMessage)]);
+  }
 
   function openSuggestion(actionId: string) {
     if (!circleId) return;
@@ -96,11 +173,12 @@ export default function CircleAssistantScreen() {
 
   async function send(message = input) {
     const trimmed = message.trim();
-    if (!trimmed || !token || !circleId || sending) return;
+    if (!trimmed || !token || !circleId || sending || historyLoading) return;
 
     setInput('');
     setSending(true);
     setUpgradeRequired(false);
+    setHistoryError(null);
     setItems((current) => [
       ...current,
       { id: `user-${Date.now()}`, role: 'user', message: trimmed },
@@ -111,7 +189,7 @@ export default function CircleAssistantScreen() {
         token,
         circleId,
         trimmed,
-        locale === 'es' || locale === 'ht' ? locale : 'en',
+        apiLocale,
         {
           conversationId,
           idempotencyKey: createAssistantIdempotencyKey(),
@@ -157,16 +235,21 @@ export default function CircleAssistantScreen() {
           role: 'assistant',
           isError: true,
           message: requiresUpgrade
-            ? 'Your complimentary overview is complete. Organizer Pro keeps your circle-aware assistant available whenever you need it.'
+            ? t('assistant:upgrade.introUsed')
             : error instanceof Error
               ? error.message
-              : 'I could not answer right now. Please try again.',
+              : t('assistant:errors.generic'),
         },
       ]);
     } finally {
       setSending(false);
     }
   }
+
+  const suggestedPrompts = PROMPT_KEYS.map((key) => ({
+    key,
+    text: t(`assistant:prompts.${key}`),
+  }));
 
   return (
     <KeyboardAvoidingView
@@ -175,7 +258,12 @@ export default function CircleAssistantScreen() {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.iconButton}>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.iconButton}
+            accessibilityRole="button"
+            accessibilityLabel={t('assistant:backA11y')}
+          >
             <FontAwesome name="chevron-left" size={18} color={colors.textStrong} />
           </Pressable>
           <View style={styles.headerTitle}>
@@ -183,16 +271,20 @@ export default function CircleAssistantScreen() {
               <FontAwesome name="magic" size={13} color={colors.onColor} />
             </View>
             <View>
-              <Text style={styles.title}>CircuSave Assistant</Text>
-              <Text style={styles.subtitle}>Private · Read-only · Circle-aware</Text>
+              <Text style={styles.title}>{t('assistant:title')}</Text>
+              <Text style={styles.subtitle}>{t('assistant:subtitle')}</Text>
             </View>
           </View>
-          <View
-            style={[
-              styles.planDot,
-              entitlements.capabilities.aiAssistant && styles.planDotPremium,
-            ]}
-          />
+          <Pressable
+            onPress={startNewChat}
+            style={styles.newChatButton}
+            accessibilityRole="button"
+            accessibilityLabel={t('assistant:history.newChatA11y')}
+            disabled={historyLoading || sending}
+          >
+            <FontAwesome name="plus" size={12} color={colors.primaryDark} />
+            <Text style={styles.newChatText}>{t('assistant:history.newChat')}</Text>
+          </Pressable>
         </View>
 
         <ScrollView
@@ -206,13 +298,25 @@ export default function CircleAssistantScreen() {
               <FontAwesome name="shield" size={16} color={colors.primaryDark} />
             </View>
             <View style={styles.contextText}>
-              <Text style={styles.contextTitle}>Answers grounded in your circle</Text>
-              <Text style={styles.contextCopy}>
-                I can explain records and suggest where to look, but I cannot move
-                money or change circle data.
-              </Text>
+              <Text style={styles.contextTitle}>{t('assistant:contextTitle')}</Text>
+              <Text style={styles.contextCopy}>{t('assistant:contextCopy')}</Text>
             </View>
           </Animated.View>
+
+          {historyLoading ? (
+            <View style={styles.thinking}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.thinkingText}>
+                {t('assistant:history.loading')}
+              </Text>
+            </View>
+          ) : null}
+
+          {historyError && !historyLoading ? (
+            <View style={styles.historyErrorCard}>
+              <Text style={styles.historyErrorText}>{historyError}</Text>
+            </View>
+          ) : null}
 
           {items.map((item) => (
             <Animated.View
@@ -259,10 +363,12 @@ export default function CircleAssistantScreen() {
                   {item.message}
                 </Text>
                 {item.isRefusal ? (
-                  <Text style={styles.refusalLabel}>READ-ONLY · NO ACTION TAKEN</Text>
+                  <Text style={styles.refusalLabel}>
+                    {t('assistant:refusalBadge')}
+                  </Text>
                 ) : null}
                 {item.isIntro ? (
-                  <Text style={styles.introLabel}>COMPLIMENTARY OVERVIEW</Text>
+                  <Text style={styles.introLabel}>{t('assistant:introBadge')}</Text>
                 ) : null}
                 {item.navigationSuggestions &&
                 item.navigationSuggestions.length > 0 &&
@@ -274,14 +380,20 @@ export default function CircleAssistantScreen() {
                         circleId,
                       );
                       if (!target) return null;
+                      const navKey = `assistant:nav.${suggestion.actionId}`;
+                      const navLabel = t(navKey, {
+                        defaultValue: target.fallbackLabel,
+                      });
                       return (
                         <Pressable
                           key={`${item.id}-${suggestion.actionId}`}
                           style={styles.navChip}
                           onPress={() => openSuggestion(suggestion.actionId)}
+                          accessibilityRole="button"
+                          accessibilityLabel={navLabel}
                         >
                           <Text style={styles.navChipText} numberOfLines={1}>
-                            {labelForAssistantAction(suggestion.actionId)}
+                            {navLabel}
                           </Text>
                           <FontAwesome
                             name="chevron-right"
@@ -297,15 +409,16 @@ export default function CircleAssistantScreen() {
             </Animated.View>
           ))}
 
-          {items.length === 1 ? (
+          {showSuggestedPrompts ? (
             <View style={styles.prompts}>
-              {SUGGESTED_PROMPTS.map((prompt) => (
+              {suggestedPrompts.map((prompt) => (
                 <Pressable
-                  key={prompt}
+                  key={prompt.key}
                   style={styles.prompt}
-                  onPress={() => void send(prompt)}
+                  onPress={() => void send(prompt.text)}
+                  disabled={historyLoading || sending}
                 >
-                  <Text style={styles.promptText}>{prompt}</Text>
+                  <Text style={styles.promptText}>{prompt.text}</Text>
                   <FontAwesome name="arrow-right" size={11} color={colors.primary} />
                 </Pressable>
               ))}
@@ -315,9 +428,7 @@ export default function CircleAssistantScreen() {
           {sending ? (
             <View style={styles.thinking}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.thinkingText}>
-                Reading the latest circle facts…
-              </Text>
+              <Text style={styles.thinkingText}>{t('assistant:thinking')}</Text>
             </View>
           ) : null}
 
@@ -327,16 +438,18 @@ export default function CircleAssistantScreen() {
                 <FontAwesome name="diamond" size={16} color={colors.premiumGold} />
               </View>
               <View style={styles.upgradeText}>
-                <Text style={styles.upgradeTitle}>Keep your assistant</Text>
-                <Text style={styles.upgradeCopy}>
-                  Organizer Pro includes ongoing circle-aware guidance.
-                </Text>
+                <Text style={styles.upgradeTitle}>{t('assistant:upgrade.title')}</Text>
+                <Text style={styles.upgradeCopy}>{t('assistant:upgrade.body')}</Text>
               </View>
               <Pressable
                 style={styles.upgradeButton}
                 onPress={() => router.push('/subscription' as Href)}
+                accessibilityRole="button"
+                accessibilityLabel={t('assistant:upgrade.cta')}
               >
-                <Text style={styles.upgradeButtonText}>View plan</Text>
+                <Text style={styles.upgradeButtonText}>
+                  {t('assistant:upgrade.cta')}
+                </Text>
               </Pressable>
             </View>
           ) : null}
@@ -346,19 +459,27 @@ export default function CircleAssistantScreen() {
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Ask about this circle…"
+            placeholder={t('assistant:composerPlaceholder')}
             placeholderTextColor={colors.subtle}
             multiline
             maxLength={2000}
-            editable={!sending && !upgradeRequired}
+            editable={!sending && !upgradeRequired && !historyLoading}
             style={styles.input}
+            accessibilityLabel={t('assistant:composerPlaceholder')}
           />
           <Pressable
             onPress={() => void send()}
-            disabled={!input.trim() || sending || upgradeRequired}
+            disabled={
+              !input.trim() || sending || upgradeRequired || historyLoading
+            }
+            accessibilityRole="button"
+            accessibilityLabel={t('assistant:sendA11y')}
             style={[
               styles.sendButton,
-              (!input.trim() || sending || upgradeRequired) &&
+              (!input.trim() ||
+                sending ||
+                upgradeRequired ||
+                historyLoading) &&
                 styles.sendButtonDisabled,
             ]}
           >
@@ -409,7 +530,37 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.muted, fontSize: 10, marginTop: 2 },
   planDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.warning },
   planDotPremium: { backgroundColor: colors.success },
+  newChatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  newChatText: {
+    color: colors.primaryDark,
+    fontSize: 10,
+    fontWeight: '800',
+  },
   messages: { padding: spacing.screenX, paddingBottom: 30 },
+  historyErrorCard: {
+    backgroundColor: colors.dangerSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    padding: 12,
+    marginBottom: 14,
+  },
+  historyErrorText: {
+    color: colors.dangerText,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
   contextCard: {
     flexDirection: 'row',
     gap: 12,

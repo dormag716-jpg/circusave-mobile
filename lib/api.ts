@@ -1423,10 +1423,34 @@ export function sendAiAssistantMessage(
   });
 }
 
+export type AssistantConversationSummary = {
+  id: string;
+  circleId: string;
+  locale: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AssistantStoredMessage = {
+  id: string;
+  conversationId: string;
+  role: string;
+  status: string;
+  locale: string;
+  message: string;
+  responseType?: string | null;
+  explanationCodes?: string[];
+  factRefs?: string[];
+  navigationSuggestions?: AiAssistantNavigationSuggestion[];
+  errorCode?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+};
+
 export function listAssistantConversations(
   token: string,
   circleId: string,
-): Promise<{ conversations: Array<{ id: string; circleId: string; locale: string; createdAt: string; updatedAt: string }> }> {
+): Promise<{ conversations: AssistantConversationSummary[] }> {
   return requestJson(`/assistant/circles/${circleId}/conversations`, { token });
 }
 
@@ -1435,21 +1459,8 @@ export function listAssistantMessages(
   circleId: string,
   conversationId: string,
 ): Promise<{
-  messages: Array<{
-    id: string;
-    conversationId: string;
-    role: string;
-    status: string;
-    locale: string;
-    message: string;
-    responseType?: string | null;
-    explanationCodes?: string[];
-    factRefs?: string[];
-    navigationSuggestions?: AiAssistantNavigationSuggestion[];
-    errorCode?: string | null;
-    createdAt: string;
-    completedAt?: string | null;
-  }>;
+  conversation: AssistantConversationSummary;
+  messages: AssistantStoredMessage[];
 }> {
   return requestJson(
     `/assistant/circles/${circleId}/conversations/${encodeURIComponent(conversationId)}/messages`,

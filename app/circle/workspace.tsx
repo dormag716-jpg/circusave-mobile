@@ -345,6 +345,7 @@ function WorkspaceContent({
     'rounds',
     'schedule',
     'financialErrors',
+    'assistant',
   ]);
   const language = translation.resolvedLanguage || translation.language;
   const { t: tPeople } = useTranslation('people');
@@ -978,6 +979,8 @@ function WorkspaceContent({
             styles.assistantTool,
             pressed && styles.organizerToolPressed,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={t('assistant:entry.openA11y')}
           onPress={() =>
             router.push(
               `/circle/assistant?circleId=${encodeURIComponent(circle.id)}` as Href,
@@ -989,10 +992,10 @@ function WorkspaceContent({
           </View>
           <View style={styles.organizerToolText}>
             <Text style={[styles.organizerToolTitle, styles.assistantToolTitle]}>
-              Ask CircuSave
+              {t('assistant:entry.title')}
             </Text>
             <Text style={[styles.organizerToolCopy, styles.assistantToolCopy]}>
-              Circle-aware guidance
+              {t('assistant:entry.subtitle')}
             </Text>
           </View>
           <FontAwesome name="chevron-right" size={11} color={colors.premiumLavender} />

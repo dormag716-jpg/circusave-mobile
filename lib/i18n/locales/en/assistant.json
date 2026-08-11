@@ -1,0 +1,51 @@
+{
+  "entry": {
+    "title": "Ask CircuSave",
+    "subtitle": "Circle-aware guidance",
+    "openA11y": "Open CircuSave assistant for this circle"
+  },
+  "title": "CircuSave Assistant",
+  "subtitle": "Private · Read-only · Circle-aware",
+  "contextTitle": "Answers grounded in your circle",
+  "contextCopy": "I can explain records and suggest where to look, but I cannot move money or change circle data.",
+  "welcome": {
+    "premium": "I am ready. Ask me about this circle, its setup, contributions, payout readiness, or what to do next.",
+    "intro": "You have one complimentary organizer overview. Ask me what this circle needs next."
+  },
+  "prompts": {
+    "attention": "What needs my attention today?",
+    "ready": "Is this circle ready for the next step?",
+    "explainRound": "Explain the current round in simple terms."
+  },
+  "thinking": "Reading the latest circle facts…",
+  "composerPlaceholder": "Ask about this circle…",
+  "sendA11y": "Send message to assistant",
+  "backA11y": "Go back",
+  "refusalBadge": "READ-ONLY · NO ACTION TAKEN",
+  "introBadge": "COMPLIMENTARY OVERVIEW",
+  "upgrade": {
+    "title": "Keep your assistant",
+    "body": "Organizer Pro includes ongoing circle-aware guidance.",
+    "cta": "View plan",
+    "introUsed": "Your complimentary overview is complete. Organizer Pro keeps your circle-aware assistant available whenever you need it."
+  },
+  "errors": {
+    "generic": "I could not answer right now. Please try again.",
+    "historyLoad": "Could not load earlier messages. You can still ask a new question."
+  },
+  "history": {
+    "loading": "Loading conversation…",
+    "newChat": "New chat",
+    "newChatA11y": "Start a new assistant conversation"
+  },
+  "nav": {
+    "view_circle_setup": "Circle setup",
+    "view_pending_requests": "Pending requests",
+    "view_hand_details": "Hand details",
+    "view_round_status": "Round status",
+    "view_contribution_status": "Contributions",
+    "view_payout_order": "Payout order",
+    "view_activity": "Activity",
+    "upgrade_to_premium": "View plan"
+  }
+}

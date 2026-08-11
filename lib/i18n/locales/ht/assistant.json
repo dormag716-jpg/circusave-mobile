@@ -1,0 +1,51 @@
+{
+  "entry": {
+    "title": "Mande CircuSave",
+    "subtitle": "Gid ki baze sou sèk ou a",
+    "openA11y": "Louvri asistan CircuSave pou sèk sa a"
+  },
+  "title": "Asistan CircuSave",
+  "subtitle": "Prive · Sèlman lekti · Konsyan de sèk la",
+  "contextTitle": "Repons ki baze sou sèk ou a",
+  "contextCopy": "Mwen ka esplike dosye yo epi sijere kote pou gade, men mwen pa ka deplase lajan ni chanje done sèk la.",
+  "welcome": {
+    "premium": "Mwen pare. Mande m sou sèk sa a, konfigirasyon li, kontribisyon, preparasyon peman, oswa sa pou fè apre sa.",
+    "intro": "Ou gen yon apèsi gratis. Mande m sa sèk sa a bezwen apre sa."
+  },
+  "prompts": {
+    "attention": "Kisa ki bezwen atansyon mwen jodi a?",
+    "ready": "Eske sèk sa a pare pou pwochen etap la?",
+    "explainRound": "Eksplike wonn aktyèl la nan mo senp."
+  },
+  "thinking": "M ap li dènye enfòmasyon sèk la…",
+  "composerPlaceholder": "Mande sou sèk sa a…",
+  "sendA11y": "Voye mesaj bay asistan an",
+  "backA11y": "Tounen",
+  "refusalBadge": "SÈLMAN LEKTI · PA GEN AKSYON",
+  "introBadge": "APÈSI GRATIS",
+  "upgrade": {
+    "title": "Kenbe asistan ou",
+    "body": "Organizer Pro gen gid kontinyèl ki baze sou sèk la.",
+    "cta": "Gade plan an",
+    "introUsed": "Apèsi gratis ou a fini. Organizer Pro kenbe asistan an disponib lè ou bezwen li."
+  },
+  "errors": {
+    "generic": "Mwen pa t kapab reponn kounye a. Eseye ankò.",
+    "historyLoad": "Nou pa t kapab chaje mesaj anvan yo. Ou ka toujou poze yon nouvo kesyon."
+  },
+  "history": {
+    "loading": "Chajman konvèsasyon an…",
+    "newChat": "Nouvo chat",
+    "newChatA11y": "Kòmanse yon nouvo konvèsasyon ak asistan an"
+  },
+  "nav": {
+    "view_circle_setup": "Konfigirasyon sèk",
+    "view_pending_requests": "Demann k ap tann",
+    "view_hand_details": "Detay men",
+    "view_round_status": "Estati wonn",
+    "view_contribution_status": "Kontribisyon",
+    "view_payout_order": "Lòd peman",
+    "view_activity": "Aktivite",
+    "upgrade_to_premium": "Gade plan an"
+  }
+}
