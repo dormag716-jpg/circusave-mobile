@@ -486,7 +486,7 @@ export default function DashboardScreen() {
                       })}
                     </Text>
                     {isViewerRecipient ? (
-                      <View style={{ alignItems: 'flex-start' }}>
+                      <View style={{ alignItems: 'flex-start', width: '100%' }}>
                         <Text
                           style={[
                             styles.recipient,
@@ -498,7 +498,12 @@ export default function DashboardScreen() {
                         <Text
                           style={[
                             styles.circleMeta,
-                            { marginTop: 2, color: colors.success },
+                            {
+                              marginTop: 2,
+                              color: colors.success,
+                              flexShrink: 1,
+                              width: '100%',
+                            },
                           ]}
                         >
                           {t('payoutDate', {
@@ -507,13 +512,22 @@ export default function DashboardScreen() {
                         </Text>
                       </View>
                     ) : (
-                      <View style={{ alignItems: 'flex-start' }}>
+                      <View style={{ alignItems: 'flex-start', width: '100%' }}>
                         <Text style={styles.recipient}>
                           {t('nextRecipient', {
                             name: circleRecipientName ?? t('unavailable'),
                           })}
                         </Text>
-                        <Text style={[styles.circleMeta, { marginTop: 2 }]}>
+                        <Text
+                          style={[
+                            styles.circleMeta,
+                            {
+                              marginTop: 2,
+                              flexShrink: 1,
+                              width: '100%',
+                            },
+                          ]}
+                        >
                           {t('payoutDate', {
                             date: formattedPayoutDate || t('notScheduled'),
                           })}
