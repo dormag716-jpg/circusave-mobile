@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,9 +17,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import {
+  hrefForAssistantAction,
+  labelForAssistantAction,
+} from '@/lib/assistant/navigation';
+import {
+  createAssistantIdempotencyKey,
+  normalizeAssistantResponse,
+  type NormalizedAssistantReply,
+} from '@/lib/assistant/response';
+import {
   ApiError,
   sendAiAssistantMessage,
-  type AiAssistantResponse,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
@@ -29,10 +37,14 @@ type ChatItem = {
   id: string;
   role: 'user' | 'assistant';
   message: string;
-  mode?: AiAssistantResponse['mode'];
+  responseType?: NormalizedAssistantReply['responseType'];
+  isRefusal?: boolean;
+  isIntro?: boolean;
+  navigationSuggestions?: NormalizedAssistantReply['navigationSuggestions'];
+  isError?: boolean;
 };
 
-const prompts = [
+const SUGGESTED_PROMPTS = [
   'What needs my attention today?',
   'Is this circle ready for the next step?',
   'Explain the current round in simple terms.',
@@ -47,23 +59,45 @@ export default function CircleAssistantScreen() {
   const { entitlements, refreshEntitlements } = useEntitlements();
   const { i18n } = useTranslation();
   const token = session?.session.token;
+  const scrollRef = useRef<ScrollView>(null);
+
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
-  const [items, setItems] = useState<ChatItem[]>([
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [items, setItems] = useState<ChatItem[]>(() => [
     {
       id: 'welcome',
       role: 'assistant',
-      message:
-        entitlements.capabilities.aiAssistant
-          ? 'I am ready. Ask me about this circle, its setup, contributions, payout readiness, or what to do next.'
-          : 'You have one complimentary organizer overview. Ask me what this circle needs next.',
+      message: entitlements.capabilities.aiAssistant
+        ? 'I am ready. Ask me about this circle, its setup, contributions, payout readiness, or what to do next.'
+        : 'You have one complimentary organizer overview. Ask me what this circle needs next.',
     },
   ]);
+
+  const locale = (i18n.resolvedLanguage || i18n.language || 'en').slice(0, 2);
+
+  const scrollToEnd = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollToEnd();
+  }, [items, sending, scrollToEnd]);
+
+  function openSuggestion(actionId: string) {
+    if (!circleId) return;
+    const target = hrefForAssistantAction(actionId, circleId);
+    if (!target) return;
+    router.push(target.href);
+  }
 
   async function send(message = input) {
     const trimmed = message.trim();
     if (!trimmed || !token || !circleId || sending) return;
+
     setInput('');
     setSending(true);
     setUpgradeRequired(false);
@@ -71,20 +105,38 @@ export default function CircleAssistantScreen() {
       ...current,
       { id: `user-${Date.now()}`, role: 'user', message: trimmed },
     ]);
+
     try {
-      const response = await sendAiAssistantMessage(
+      const raw = await sendAiAssistantMessage(
         token,
         circleId,
         trimmed,
-        i18n.resolvedLanguage || i18n.language || 'en',
+        locale === 'es' || locale === 'ht' ? locale : 'en',
+        {
+          conversationId,
+          idempotencyKey: createAssistantIdempotencyKey(),
+        },
       );
+      const reply = normalizeAssistantResponse(raw);
+      if (reply.conversationId) {
+        setConversationId(reply.conversationId);
+      }
+
+      // Intro consumption: free overview may end after a successful turn.
+      const usedIntro =
+        !entitlements.capabilities.aiAssistant &&
+        entitlements.capabilities.aiIntroAvailable;
+
       setItems((current) => [
         ...current,
         {
-          id: `assistant-${Date.now()}`,
+          id: reply.messageId || `assistant-${Date.now()}`,
           role: 'assistant',
-          message: response.message,
-          mode: response.mode,
+          message: reply.message,
+          responseType: reply.responseType,
+          isRefusal: reply.isRefusal,
+          isIntro: usedIntro,
+          navigationSuggestions: reply.navigationSuggestions,
         },
       ]);
       await refreshEntitlements();
@@ -95,7 +147,7 @@ export default function CircleAssistantScreen() {
         Boolean(
           error.payload &&
             typeof error.payload === 'object' &&
-            'upgrade' in error.payload,
+            'upgrade' in (error.payload as object),
         );
       setUpgradeRequired(requiresUpgrade);
       setItems((current) => [
@@ -103,6 +155,7 @@ export default function CircleAssistantScreen() {
         {
           id: `assistant-error-${Date.now()}`,
           role: 'assistant',
+          isError: true,
           message: requiresUpgrade
             ? 'Your complimentary overview is complete. Organizer Pro keeps your circle-aware assistant available whenever you need it.'
             : error instanceof Error
@@ -143,6 +196,7 @@ export default function CircleAssistantScreen() {
         </View>
 
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.messages}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -154,7 +208,8 @@ export default function CircleAssistantScreen() {
             <View style={styles.contextText}>
               <Text style={styles.contextTitle}>Answers grounded in your circle</Text>
               <Text style={styles.contextCopy}>
-                I can explain records and suggest navigation, but I cannot move money or change circle data.
+                I can explain records and suggest where to look, but I cannot move
+                money or change circle data.
               </Text>
             </View>
           </Animated.View>
@@ -169,14 +224,30 @@ export default function CircleAssistantScreen() {
               ]}
             >
               {item.role === 'assistant' ? (
-                <View style={styles.avatar}>
-                  <FontAwesome name="magic" size={12} color={colors.onColor} />
+                <View
+                  style={[
+                    styles.avatar,
+                    item.isRefusal && styles.avatarRefusal,
+                    item.isError && styles.avatarError,
+                  ]}
+                >
+                  <FontAwesome
+                    name={item.isRefusal || item.isError ? 'info' : 'magic'}
+                    size={12}
+                    color={colors.onColor}
+                  />
                 </View>
               ) : null}
               <View
                 style={[
                   styles.bubble,
-                  item.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                  item.role === 'user'
+                    ? styles.userBubble
+                    : item.isRefusal
+                      ? styles.refusalBubble
+                      : item.isError
+                        ? styles.errorBubble
+                        : styles.assistantBubble,
                 ]}
               >
                 <Text
@@ -187,8 +258,40 @@ export default function CircleAssistantScreen() {
                 >
                   {item.message}
                 </Text>
-                {item.mode === 'free_introduction' ? (
+                {item.isRefusal ? (
+                  <Text style={styles.refusalLabel}>READ-ONLY · NO ACTION TAKEN</Text>
+                ) : null}
+                {item.isIntro ? (
                   <Text style={styles.introLabel}>COMPLIMENTARY OVERVIEW</Text>
+                ) : null}
+                {item.navigationSuggestions &&
+                item.navigationSuggestions.length > 0 &&
+                circleId ? (
+                  <View style={styles.navChips}>
+                    {item.navigationSuggestions.map((suggestion) => {
+                      const target = hrefForAssistantAction(
+                        suggestion.actionId,
+                        circleId,
+                      );
+                      if (!target) return null;
+                      return (
+                        <Pressable
+                          key={`${item.id}-${suggestion.actionId}`}
+                          style={styles.navChip}
+                          onPress={() => openSuggestion(suggestion.actionId)}
+                        >
+                          <Text style={styles.navChipText} numberOfLines={1}>
+                            {labelForAssistantAction(suggestion.actionId)}
+                          </Text>
+                          <FontAwesome
+                            name="chevron-right"
+                            size={10}
+                            color={colors.primary}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 ) : null}
               </View>
             </Animated.View>
@@ -196,7 +299,7 @@ export default function CircleAssistantScreen() {
 
           {items.length === 1 ? (
             <View style={styles.prompts}>
-              {prompts.map((prompt) => (
+              {SUGGESTED_PROMPTS.map((prompt) => (
                 <Pressable
                   key={prompt}
                   style={styles.prompt}
@@ -212,7 +315,9 @@ export default function CircleAssistantScreen() {
           {sending ? (
             <View style={styles.thinking}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.thinkingText}>Reading the latest circle facts…</Text>
+              <Text style={styles.thinkingText}>
+                Reading the latest circle facts…
+              </Text>
             </View>
           ) : null}
 
@@ -229,7 +334,7 @@ export default function CircleAssistantScreen() {
               </View>
               <Pressable
                 style={styles.upgradeButton}
-                onPress={() => router.push('/subscription')}
+                onPress={() => router.push('/subscription' as Href)}
               >
                 <Text style={styles.upgradeButtonText}>View plan</Text>
               </Pressable>
@@ -245,14 +350,16 @@ export default function CircleAssistantScreen() {
             placeholderTextColor={colors.subtle}
             multiline
             maxLength={2000}
+            editable={!sending && !upgradeRequired}
             style={styles.input}
           />
           <Pressable
             onPress={() => void send()}
-            disabled={!input.trim() || sending}
+            disabled={!input.trim() || sending || upgradeRequired}
             style={[
               styles.sendButton,
-              (!input.trim() || sending) && styles.sendButtonDisabled,
+              (!input.trim() || sending || upgradeRequired) &&
+                styles.sendButtonDisabled,
             ]}
           >
             <FontAwesome name="arrow-up" size={15} color={colors.onColor} />
@@ -321,8 +428,19 @@ const styles = StyleSheet.create({
   },
   contextText: { flex: 1 },
   contextTitle: { color: colors.primaryDark, fontWeight: '900', fontSize: 13 },
-  contextCopy: { color: colors.primaryDark, opacity: 0.72, fontSize: 11, lineHeight: 16, marginTop: 3 },
-  messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 14 },
+  contextCopy: {
+    color: colors.primaryDark,
+    opacity: 0.72,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginBottom: 14,
+  },
   messageRowUser: { justifyContent: 'flex-end' },
   avatar: {
     width: 28,
@@ -332,12 +450,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarRefusal: { backgroundColor: colors.warning },
+  avatarError: { backgroundColor: colors.danger },
   bubble: { maxWidth: '82%', paddingHorizontal: 15, paddingVertical: 12 },
   assistantBubble: {
     backgroundColor: colors.card,
     borderRadius: 18,
     borderBottomLeftRadius: 5,
     ...shadows.small,
+  },
+  refusalBubble: {
+    backgroundColor: colors.warningSoft,
+    borderRadius: 18,
+    borderBottomLeftRadius: 5,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
+  },
+  errorBubble: {
+    backgroundColor: colors.dangerSoft,
+    borderRadius: 18,
+    borderBottomLeftRadius: 5,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
   },
   userBubble: {
     backgroundColor: colors.primaryDark,
@@ -346,7 +480,39 @@ const styles = StyleSheet.create({
   },
   messageText: { color: colors.text, fontSize: 14, lineHeight: 21 },
   userMessageText: { color: colors.onColor },
-  introLabel: { color: colors.primary, fontSize: 8, fontWeight: '900', letterSpacing: 0.8, marginTop: 8 },
+  introLabel: {
+    color: colors.primary,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginTop: 8,
+  },
+  refusalLabel: {
+    color: colors.warning,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    marginTop: 8,
+  },
+  navChips: { marginTop: 10, gap: 6 },
+  navChip: {
+    minHeight: 34,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  navChipText: {
+    flex: 1,
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800',
+  },
   prompts: { gap: 9, marginLeft: 36, marginBottom: 16 },
   prompt: {
     minHeight: 44,
@@ -361,7 +527,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   promptText: { flex: 1, color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
-  thinking: { flexDirection: 'row', alignItems: 'center', gap: 9, marginLeft: 36, marginBottom: 14 },
+  thinking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginLeft: 36,
+    marginBottom: 14,
+  },
   thinkingText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
   upgradeCard: {
     backgroundColor: colors.primaryDark,
@@ -382,8 +554,18 @@ const styles = StyleSheet.create({
   },
   upgradeText: { flex: 1 },
   upgradeTitle: { color: colors.onColor, fontWeight: '900', fontSize: 13 },
-  upgradeCopy: { color: 'rgba(255,255,255,0.68)', fontSize: 10, lineHeight: 14, marginTop: 2 },
-  upgradeButton: { backgroundColor: colors.card, borderRadius: radii.pill, paddingHorizontal: 12, paddingVertical: 9 },
+  upgradeCopy: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 10,
+    lineHeight: 14,
+    marginTop: 2,
+  },
+  upgradeButton: {
+    backgroundColor: colors.card,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
   upgradeButtonText: { color: colors.primaryDark, fontWeight: '900', fontSize: 10 },
   composer: {
     flexDirection: 'row',

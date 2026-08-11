@@ -1299,13 +1299,31 @@ export type ReminderSchedule = {
   } | null;
 };
 
+/**
+ * Production assistant-response.v2 shape (AiAssistantService).
+ * Older shells used { mode, actions }; those fields are no longer returned.
+ */
+export type AiAssistantNavigationSuggestion = {
+  actionId: string;
+  reason: string;
+  assistantExecutable: false;
+};
+
 export type AiAssistantResponse = {
-  schemaVersion: string;
-  mode: 'premium' | 'free_introduction';
+  schemaVersion: 'assistant-response.v2' | string;
+  conversationId: string;
+  messageId: string;
+  status: 'completed' | 'refused';
+  locale: string;
   responseType: 'answer' | 'refusal' | 'clarification';
   message: string;
+  explanationCodes: string[];
   factRefs: string[];
-  actions: Array<{ id: string; label: string }>;
+  navigationSuggestions: AiAssistantNavigationSuggestion[];
+  generatedFromContextAt: string;
+  actionsExecutable: false;
+  /** Present only on some entitlement/error payloads — not on v2 success body. */
+  mode?: 'premium' | 'free_introduction';
 };
 
 export function getBillingPlans(): Promise<BillingPlansResponse> {
@@ -1369,19 +1387,73 @@ export function updatePremiumReminderSchedule(
   );
 }
 
+/**
+ * Send a circle assistant message (production v2).
+ * Requires Idempotency-Key (8–128 chars). Prefer createAssistantIdempotencyKey().
+ */
 export function sendAiAssistantMessage(
   token: string,
   circleId: string,
   message: string,
   locale: string,
+  options?: {
+    conversationId?: string | null;
+    idempotencyKey?: string;
+  },
 ): Promise<AiAssistantResponse> {
-  return requestJson<AiAssistantResponse>(
-    `/assistant/circles/${circleId}/messages`,
-    {
-      method: 'POST',
-      token,
-      body: JSON.stringify({ message, locale }),
+  const conversationId = String(options?.conversationId || '').trim();
+  const idempotencyKey = String(
+    options?.idempotencyKey ||
+      `m-ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+  ).trim();
+  const path = conversationId
+    ? `/assistant/circles/${circleId}/conversations/${encodeURIComponent(conversationId)}/messages`
+    : `/assistant/circles/${circleId}/messages`;
+  return requestJson<AiAssistantResponse>(path, {
+    method: 'POST',
+    token,
+    headers: {
+      'Idempotency-Key': idempotencyKey,
     },
+    body: JSON.stringify({
+      message,
+      locale,
+      idempotencyKey,
+    }),
+  });
+}
+
+export function listAssistantConversations(
+  token: string,
+  circleId: string,
+): Promise<{ conversations: Array<{ id: string; circleId: string; locale: string; createdAt: string; updatedAt: string }> }> {
+  return requestJson(`/assistant/circles/${circleId}/conversations`, { token });
+}
+
+export function listAssistantMessages(
+  token: string,
+  circleId: string,
+  conversationId: string,
+): Promise<{
+  messages: Array<{
+    id: string;
+    conversationId: string;
+    role: string;
+    status: string;
+    locale: string;
+    message: string;
+    responseType?: string | null;
+    explanationCodes?: string[];
+    factRefs?: string[];
+    navigationSuggestions?: AiAssistantNavigationSuggestion[];
+    errorCode?: string | null;
+    createdAt: string;
+    completedAt?: string | null;
+  }>;
+}> {
+  return requestJson(
+    `/assistant/circles/${circleId}/conversations/${encodeURIComponent(conversationId)}/messages`,
+    { token },
   );
 }
 
