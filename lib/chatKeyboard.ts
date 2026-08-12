@@ -7,6 +7,8 @@
  * - Avoids KeyboardAvoidingView double-padding on Android adjustResize.
  */
 
+import { Platform } from 'react-native';
+
 /** Approx resting height of the floating ChatInput dock (padding + 48px row). */
 export const FLOATING_COMPOSER_RESTING_HEIGHT = 72;
 
@@ -36,6 +38,7 @@ export function circleChatKeyboardVerticalOffset(_platformOS: string): number {
 export function floatingComposerBottomOffset(
   containerBottomY: number,
   keyboardTopY: number,
+  keyboardHeight?: number,
 ): number {
   if (
     !Number.isFinite(containerBottomY) ||
@@ -43,6 +46,20 @@ export function floatingComposerBottomOffset(
   ) {
     return 0;
   }
+
+  if (Platform.OS === 'android' && keyboardHeight != null) {
+    // If the container resized (adjustResize), its bottom is at or above the keyboard top.
+    // We allow a small 24px threshold for rounding or status bar differences.
+    if (containerBottomY <= keyboardTopY + 24) {
+      return 0;
+    }
+    // Container did not shrink (e.g. edge-to-edge mode).
+    // measureInWindow y+h on Android often excludes the navigation bar, causing the
+    // computed difference to be too small. For full-screen containers, the overlap
+    // is exactly the keyboard height.
+    return keyboardHeight;
+  }
+
   return Math.max(0, Math.round(containerBottomY - keyboardTopY));
 }
 

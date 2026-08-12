@@ -54,8 +54,8 @@ export default function ConversationChat({
 }: ConversationChatProps) {
   const { t } = useTranslation('circleWorkspace');
   const rootRef = useRef<View>(null);
-  /** Last keyboard top (window Y). Used to re-measure after chrome collapses. */
-  const keyboardTopYRef = useRef<number | null>(null);
+  /** Last keyboard metrics. Used to re-measure after chrome collapses. */
+  const keyboardMetricsRef = useRef<{ topY: number; height: number } | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -93,29 +93,32 @@ export default function ConversationChat({
   }, [currentUserId, members]);
 
   const remeasureComposerLift = useCallback(() => {
-    const keyboardTopY = keyboardTopYRef.current;
-    if (keyboardTopY == null) {
+    const metrics = keyboardMetricsRef.current;
+    if (metrics == null) {
       setComposerLift(0);
       return;
     }
     rootRef.current?.measureInWindow((_x, y, _w, h) => {
       const containerBottomY = y + h;
       setComposerLift(
-        floatingComposerBottomOffset(containerBottomY, keyboardTopY),
+        floatingComposerBottomOffset(containerBottomY, metrics.topY, metrics.height),
       );
     });
   }, []);
 
-  const applyKeyboardFrame = useCallback(
+    const applyKeyboardFrame = useCallback(
     (event: KeyboardEvent | null) => {
       if (!event) {
-        keyboardTopYRef.current = null;
+        keyboardMetricsRef.current = null;
         setKeyboardVisible(false);
         setComposerLift(0);
         return;
       }
 
-      keyboardTopYRef.current = event.endCoordinates.screenY;
+      keyboardMetricsRef.current = {
+        topY: event.endCoordinates.screenY,
+        height: event.endCoordinates.height,
+      };
       setKeyboardVisible(true);
 
       // Measure after layout so we know how much of *this* chat root is covered.
@@ -196,7 +199,7 @@ export default function ConversationChat({
       style={styles.container}
       collapsable={false}
       onLayout={() => {
-        if (keyboardTopYRef.current != null) {
+        if (keyboardMetricsRef.current != null) {
           remeasureComposerLift();
         }
       }}
