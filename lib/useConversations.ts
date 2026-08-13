@@ -9,12 +9,29 @@ import {
   type BackendChatConversation,
   type BackendChatMessage,
 } from './api';
+import {
+  areConversationsEquivalent,
+  chatPollIntervalMs,
+  mergeChatMessages,
+  shouldRunUnreadConversationPoll,
+} from './circleChatState';
+import {
+  claimCircleChatClient,
+  getCircleChatSnapshot,
+  isCircleChatClientActive,
+  publishCircleChatSnapshot,
+  releaseCircleChatClient,
+  subscribeCircleChatOwnership,
+  subscribeCircleChatSnapshot,
+} from './circleChatStore';
 
 export function useConversations(
   circleId: string,
   token: string,
   initialConversationId?: string,
+  options?: { focused?: boolean },
 ) {
+  const focused = options?.focused !== false;
   const [conversations, setConversations] = useState<BackendChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
     initialConversationId ?? null,
@@ -25,6 +42,7 @@ export function useConversations(
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastMarkedMessageId = useRef<string | null>(null);
+  const hasConversationSnapshot = useRef(false);
   const activeConversationId = useRef<string | null>(
     initialConversationId ?? null,
   );
@@ -48,7 +66,16 @@ export function useConversations(
     if (!circleId || !token) return;
     try {
       const response = await getChatConversations(circleId, token);
-      setConversations(response.conversations);
+      setConversations((current) =>
+        areConversationsEquivalent(current, response.conversations)
+          ? current
+          : response.conversations,
+      );
+      publishCircleChatSnapshot(circleId, {
+        conversations: response.conversations,
+        unreadCount: response.unreadCount,
+      });
+      hasConversationSnapshot.current = true;
       setSelectedConversationId((current) => {
         if (
           current &&
@@ -87,7 +114,7 @@ export function useConversations(
         if (activeConversationId.current !== conversationId) {
           return;
         }
-        setMessages((current) => mergeMessages(response.messages, current));
+        setMessages((current) => mergeChatMessages(response.messages, current));
         setConversations((current) =>
           current.map((conversation) =>
             conversation.id === response.conversation.id
@@ -127,13 +154,29 @@ export function useConversations(
   );
 
   useEffect(() => {
-    setLoading(true);
+    claimCircleChatClient(circleId);
+    return () => {
+      releaseCircleChatClient(circleId);
+    };
+  }, [circleId]);
+
+  useEffect(() => {
+    if (!hasConversationSnapshot.current) {
+      setLoading(true);
+    }
     void loadConversations();
+    const intervalMs = chatPollIntervalMs({
+      kind: 'conversations',
+      focused,
+    });
+    if (intervalMs <= 0) {
+      return;
+    }
     const interval = setInterval(() => {
       void loadConversations();
-    }, 5000);
+    }, intervalMs);
     return () => clearInterval(interval);
-  }, [loadConversations]);
+  }, [focused, loadConversations]);
 
   useEffect(() => {
     if (!selectedConversationId) {
@@ -143,11 +186,21 @@ export function useConversations(
     setMessages([]);
     lastMarkedMessageId.current = null;
     void loadMessages(selectedConversationId);
+  }, [loadMessages, selectedConversationId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) {
+      return;
+    }
+    const intervalMs = chatPollIntervalMs({ kind: 'messages', focused });
+    if (intervalMs <= 0) {
+      return;
+    }
     const interval = setInterval(() => {
       void loadMessages(selectedConversationId, { quiet: true });
-    }, 3000);
+    }, intervalMs);
     return () => clearInterval(interval);
-  }, [loadMessages, selectedConversationId]);
+  }, [focused, loadMessages, selectedConversationId]);
 
   const selectConversation = useCallback((conversationId: string) => {
     activeConversationId.current = conversationId;
@@ -224,12 +277,38 @@ export function useConversations(
 }
 
 export function useConversationUnreadCount(circleId: string, token: string) {
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(
+    () => getCircleChatSnapshot(circleId)?.unreadCount ?? 0,
+  );
+  const [chatClientActive, setChatClientActive] = useState(() =>
+    isCircleChatClientActive(circleId),
+  );
+
+  useEffect(() => {
+    const sync = () => {
+      setChatClientActive(isCircleChatClientActive(circleId));
+      const snapshot = getCircleChatSnapshot(circleId);
+      if (snapshot) {
+        setUnreadCount(snapshot.unreadCount);
+      }
+    };
+    sync();
+    const stopOwnership = subscribeCircleChatOwnership(sync);
+    const stopSnapshot = subscribeCircleChatSnapshot(circleId, sync);
+    return () => {
+      stopOwnership();
+      stopSnapshot();
+    };
+  }, [circleId]);
 
   const loadUnreadCount = useCallback(async () => {
     if (!circleId || !token) return;
     try {
       const response = await getChatConversations(circleId, token);
+      publishCircleChatSnapshot(circleId, {
+        conversations: response.conversations,
+        unreadCount: response.unreadCount,
+      });
       setUnreadCount(response.unreadCount);
     } catch (error) {
       console.error('Failed to load conversation unread count', error);
@@ -237,25 +316,15 @@ export function useConversationUnreadCount(circleId: string, token: string) {
   }, [circleId, token]);
 
   useEffect(() => {
+    if (!shouldRunUnreadConversationPoll({ chatClientActive })) {
+      return;
+    }
     void loadUnreadCount();
     const interval = setInterval(() => {
       void loadUnreadCount();
-    }, 5000);
+    }, chatPollIntervalMs({ kind: 'conversations', focused: true }));
     return () => clearInterval(interval);
-  }, [loadUnreadCount]);
+  }, [chatClientActive, loadUnreadCount]);
 
   return { unreadCount, refreshUnreadCount: loadUnreadCount };
-}
-
-function mergeMessages(
-  incoming: BackendChatMessage[],
-  current: BackendChatMessage[],
-) {
-  const incomingIds = new Set(incoming.map((message) => message.id));
-  const missingCurrent = current.filter(
-    (message) => !incomingIds.has(message.id),
-  );
-  return missingCurrent.length > 0
-    ? [...incoming, ...missingCurrent]
-    : incoming;
 }

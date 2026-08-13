@@ -1,17 +1,17 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Keyboard,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type KeyboardEvent,
+  type ListRenderItem,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
@@ -20,6 +20,7 @@ import {
 } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
+import AssistantComposer from '@/components/AssistantComposer';
 import {
   assistantApiLocale,
   mapStoredMessagesToChatItems,
@@ -27,7 +28,14 @@ import {
 } from '@/lib/assistant/history';
 import { hrefForAssistantAction } from '@/lib/assistant/navigation';
 import {
-  createAssistantIdempotencyKey,
+  buildAssistantSendOptions,
+  didConsumeAssistantIntro,
+  isAssistantUpgradeEntitlementError,
+  shouldAnimateAssistantMessage,
+  shouldRefreshAssistantEntitlements,
+  type AssistantMessageSource,
+} from '@/lib/assistant/presentation';
+import {
   normalizeAssistantResponse,
   type NormalizedAssistantReply,
 } from '@/lib/assistant/response';
@@ -55,14 +63,118 @@ type ChatItem = {
   isIntro?: boolean;
   navigationSuggestions?: NormalizedAssistantReply['navigationSuggestions'];
   isError?: boolean;
+  source?: AssistantMessageSource;
 };
 
 const PROMPT_KEYS = ['attention', 'ready', 'explainRound'] as const;
 const WELCOME_ID = 'welcome';
 
 function welcomeItem(message: string): ChatItem {
-  return { id: WELCOME_ID, role: 'assistant', message };
+  return { id: WELCOME_ID, role: 'assistant', message, source: 'history' };
 }
+
+const AssistantMessageRow = memo(function AssistantMessageRow({
+  item,
+  circleId,
+  onOpenSuggestion,
+}: {
+  item: ChatItem;
+  circleId?: string;
+  onOpenSuggestion: (actionId: string) => void;
+}) {
+  const { t } = useTranslation(['assistant', 'common']);
+  const animate = shouldAnimateAssistantMessage({
+    source: item.source ?? 'history',
+  });
+  const row = (
+    <View
+      style={[styles.messageRow, item.role === 'user' && styles.messageRowUser]}
+    >
+      {item.role === 'assistant' ? (
+        <View
+          style={[
+            styles.avatar,
+            item.isRefusal && styles.avatarRefusal,
+            item.isError && styles.avatarError,
+          ]}
+        >
+          <FontAwesome
+            name={item.isRefusal || item.isError ? 'info' : 'magic'}
+            size={12}
+            color={colors.onColor}
+          />
+        </View>
+      ) : null}
+      <View
+        style={[
+          styles.bubble,
+          item.role === 'user'
+            ? styles.userBubble
+            : item.isRefusal
+              ? styles.refusalBubble
+              : item.isError
+                ? styles.errorBubble
+                : styles.assistantBubble,
+        ]}
+      >
+        <Text
+          style={[
+            styles.messageText,
+            item.role === 'user' && styles.userMessageText,
+          ]}
+        >
+          {item.message}
+        </Text>
+        {item.isRefusal ? (
+          <Text style={styles.refusalLabel}>{t('assistant:refusalBadge')}</Text>
+        ) : null}
+        {item.isIntro ? (
+          <Text style={styles.introLabel}>{t('assistant:introBadge')}</Text>
+        ) : null}
+        {item.navigationSuggestions &&
+        item.navigationSuggestions.length > 0 &&
+        circleId ? (
+          <View style={styles.navChips}>
+            {item.navigationSuggestions.map((suggestion) => {
+              const target = hrefForAssistantAction(
+                suggestion.actionId,
+                circleId,
+              );
+              if (!target) return null;
+              const navLabel = t(`assistant:nav.${suggestion.actionId}`, {
+                defaultValue: target.fallbackLabel,
+              });
+              return (
+                <Pressable
+                  key={`${item.id}-${suggestion.actionId}`}
+                  style={styles.navChip}
+                  onPress={() => onOpenSuggestion(suggestion.actionId)}
+                  accessibilityRole="button"
+                  accessibilityLabel={navLabel}
+                >
+                  <Text style={styles.navChipText} numberOfLines={1}>
+                    {navLabel}
+                  </Text>
+                  <FontAwesome
+                    name="chevron-right"
+                    size={10}
+                    color={colors.primary}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  if (!animate) {
+    return row;
+  }
+
+  return <Animated.View entering={FadeInDown.duration(180)}>{row}</Animated.View>;
+});
 
 export default function CircleAssistantScreen() {
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
@@ -75,12 +187,11 @@ export default function CircleAssistantScreen() {
   const token = session?.session.token;
   const insets = useSafeAreaInsets();
   const rootRef = useRef<View>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<ChatItem>>(null);
   const historyRequestId = useRef(0);
   /** Last keyboard metrics. Used to re-measure after chrome collapses. */
   const keyboardMetricsRef = useRef<{ topY: number; height: number } | null>(null);
 
-  const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -126,13 +237,13 @@ export default function CircleAssistantScreen() {
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
+      listRef.current?.scrollToEnd({ animated: true });
     });
   }, []);
 
   useEffect(() => {
     scrollToEnd();
-  }, [items, sending, historyLoading, composerLift, composerHeight, scrollToEnd]);
+  }, [items.length, sending, historyLoading, scrollToEnd]);
 
   const remeasureComposerLift = useCallback(() => {
     const metrics = keyboardMetricsRef.current;
@@ -231,7 +342,9 @@ export default function CircleAssistantScreen() {
       const thread = await listAssistantMessages(token, circleId, resume.id);
       if (requestId !== historyRequestId.current) return;
 
-      const mapped = mapStoredMessagesToChatItems(thread.messages || []);
+      const mapped = mapStoredMessagesToChatItems(thread.messages || []).map(
+        (item) => ({ ...item, source: 'history' as const }),
+      );
       setConversationId(resume.id);
       if (mapped.length === 0) {
         setItems([welcomeItem(welcomeMessage)]);
@@ -269,39 +382,41 @@ export default function CircleAssistantScreen() {
     router.push(target.href);
   }
 
-  async function send(message = input) {
+  async function send(message: string) {
     const trimmed = message.trim();
     if (!trimmed || !token || !circleId || sending || historyLoading) return;
 
-    setInput('');
     setSending(true);
     setUpgradeRequired(false);
     setHistoryError(null);
     setItems((current) => [
       ...current,
-      { id: `user-${Date.now()}`, role: 'user', message: trimmed },
+      {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        message: trimmed,
+        source: 'live',
+      },
     ]);
 
     try {
+      const sendOptions = buildAssistantSendOptions(conversationId);
       const raw = await sendAiAssistantMessage(
         token,
         circleId,
         trimmed,
         apiLocale,
-        {
-          conversationId,
-          idempotencyKey: createAssistantIdempotencyKey(),
-        },
+        sendOptions,
       );
       const reply = normalizeAssistantResponse(raw);
       if (reply.conversationId) {
         setConversationId(reply.conversationId);
       }
 
-      // Intro consumption: free overview may end after a successful turn.
-      const usedIntro =
-        !entitlements.capabilities.aiAssistant &&
-        entitlements.capabilities.aiIntroAvailable;
+      const usedIntro = didConsumeAssistantIntro({
+        hasAiAssistant: entitlements.capabilities.aiAssistant,
+        aiIntroAvailable: entitlements.capabilities.aiIntroAvailable,
+      });
 
       setItems((current) => [
         ...current,
@@ -313,18 +428,27 @@ export default function CircleAssistantScreen() {
           isRefusal: reply.isRefusal,
           isIntro: usedIntro,
           navigationSuggestions: reply.navigationSuggestions,
+          source: 'live',
         },
       ]);
-      await refreshEntitlements();
+      if (
+        shouldRefreshAssistantEntitlements({
+          usedIntro,
+          requiresUpgrade: false,
+        })
+      ) {
+        await refreshEntitlements();
+      }
     } catch (error) {
-      const requiresUpgrade =
-        error instanceof ApiError &&
-        error.status === 403 &&
-        Boolean(
-          error.payload &&
+      const requiresUpgrade = isAssistantUpgradeEntitlementError({
+        status: error instanceof ApiError ? error.status : undefined,
+        hasUpgradePayload: Boolean(
+          error instanceof ApiError &&
+            error.payload &&
             typeof error.payload === 'object' &&
             'upgrade' in (error.payload as object),
-        );
+        ),
+      });
       setUpgradeRequired(requiresUpgrade);
       setItems((current) => [
         ...current,
@@ -332,6 +456,7 @@ export default function CircleAssistantScreen() {
           id: `assistant-error-${Date.now()}`,
           role: 'assistant',
           isError: true,
+          source: 'live',
           message: requiresUpgrade
             ? t('assistant:upgrade.introUsed')
             : error instanceof Error
@@ -339,6 +464,14 @@ export default function CircleAssistantScreen() {
               : t('assistant:errors.generic'),
         },
       ]);
+      if (
+        shouldRefreshAssistantEntitlements({
+          usedIntro: false,
+          requiresUpgrade,
+        })
+      ) {
+        await refreshEntitlements();
+      }
     } finally {
       setSending(false);
     }
@@ -348,6 +481,91 @@ export default function CircleAssistantScreen() {
     key,
     text: t(`assistant:prompts.${key}`),
   }));
+
+  const renderItem: ListRenderItem<ChatItem> = useCallback(
+    ({ item }) => (
+      <AssistantMessageRow
+        item={item}
+        circleId={circleId}
+        onOpenSuggestion={openSuggestion}
+      />
+    ),
+    [circleId],
+  );
+
+  const listHeader = (
+    <>
+      <View style={styles.contextCard}>
+        <View style={styles.contextIcon}>
+          <FontAwesome name="shield" size={16} color={colors.primaryDark} />
+        </View>
+        <View style={styles.contextText}>
+          <Text style={styles.contextTitle}>{t('assistant:contextTitle')}</Text>
+          <Text style={styles.contextCopy}>{t('assistant:contextCopy')}</Text>
+        </View>
+      </View>
+      {historyLoading ? (
+        <View style={styles.thinking}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.thinkingText}>
+            {t('assistant:history.loading')}
+          </Text>
+        </View>
+      ) : null}
+      {historyError && !historyLoading ? (
+        <View style={styles.historyErrorCard}>
+          <Text style={styles.historyErrorText}>{historyError}</Text>
+        </View>
+      ) : null}
+    </>
+  );
+
+  const listFooter = (
+    <>
+      {showSuggestedPrompts ? (
+        <View style={styles.prompts}>
+          {suggestedPrompts.map((prompt) => (
+            <Pressable
+              key={prompt.key}
+              style={styles.prompt}
+              onPress={() => void send(prompt.text)}
+              disabled={historyLoading || sending}
+            >
+              <Text style={styles.promptText}>{prompt.text}</Text>
+              <FontAwesome name="arrow-right" size={11} color={colors.primary} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {sending ? (
+        <View style={styles.thinking}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.thinkingText}>{t('assistant:thinking')}</Text>
+        </View>
+      ) : null}
+      {upgradeRequired ? (
+        <View style={styles.upgradeCard}>
+          <View style={styles.upgradeIcon}>
+            <FontAwesome name="diamond" size={16} color={colors.premiumGold} />
+          </View>
+          <View style={styles.upgradeText}>
+            <Text style={styles.upgradeTitle}>{t('assistant:upgrade.title')}</Text>
+            <Text style={styles.upgradeCopy}>{t('assistant:upgrade.body')}</Text>
+          </View>
+          <Pressable
+            style={styles.upgradeButton}
+            onPress={() => router.push('/subscription' as Href)}
+            accessibilityRole="button"
+            accessibilityLabel={t('assistant:upgrade.cta')}
+          >
+            <Text style={styles.upgradeButtonText}>
+              {t('assistant:upgrade.cta')}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </>
+  );
 
   // Same floating composer contract as circle group/private chat:
   // flex column, list owns scroll, dock lifts by measured keyboard overlap.
@@ -401,8 +619,12 @@ export default function CircleAssistantScreen() {
           </View>
         ) : null}
 
-        <ScrollView
-          ref={scrollRef}
+        <FlatList
+          ref={listRef}
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          extraData={`${sending}:${historyLoading}:${upgradeRequired}`}
           style={styles.messageList}
           contentContainerStyle={[
             styles.messages,
@@ -411,168 +633,9 @@ export default function CircleAssistantScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-        >
-          <Animated.View entering={FadeInDown.springify()} style={styles.contextCard}>
-            <View style={styles.contextIcon}>
-              <FontAwesome name="shield" size={16} color={colors.primaryDark} />
-            </View>
-            <View style={styles.contextText}>
-              <Text style={styles.contextTitle}>{t('assistant:contextTitle')}</Text>
-              <Text style={styles.contextCopy}>{t('assistant:contextCopy')}</Text>
-            </View>
-          </Animated.View>
-
-          {historyLoading ? (
-            <View style={styles.thinking}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.thinkingText}>
-                {t('assistant:history.loading')}
-              </Text>
-            </View>
-          ) : null}
-
-          {historyError && !historyLoading ? (
-            <View style={styles.historyErrorCard}>
-              <Text style={styles.historyErrorText}>{historyError}</Text>
-            </View>
-          ) : null}
-
-          {items.map((item) => (
-            <Animated.View
-              entering={FadeInDown.springify()}
-              key={item.id}
-              style={[
-                styles.messageRow,
-                item.role === 'user' && styles.messageRowUser,
-              ]}
-            >
-              {item.role === 'assistant' ? (
-                <View
-                  style={[
-                    styles.avatar,
-                    item.isRefusal && styles.avatarRefusal,
-                    item.isError && styles.avatarError,
-                  ]}
-                >
-                  <FontAwesome
-                    name={item.isRefusal || item.isError ? 'info' : 'magic'}
-                    size={12}
-                    color={colors.onColor}
-                  />
-                </View>
-              ) : null}
-              <View
-                style={[
-                  styles.bubble,
-                  item.role === 'user'
-                    ? styles.userBubble
-                    : item.isRefusal
-                      ? styles.refusalBubble
-                      : item.isError
-                        ? styles.errorBubble
-                        : styles.assistantBubble,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.messageText,
-                    item.role === 'user' && styles.userMessageText,
-                  ]}
-                >
-                  {item.message}
-                </Text>
-                {item.isRefusal ? (
-                  <Text style={styles.refusalLabel}>
-                    {t('assistant:refusalBadge')}
-                  </Text>
-                ) : null}
-                {item.isIntro ? (
-                  <Text style={styles.introLabel}>{t('assistant:introBadge')}</Text>
-                ) : null}
-                {item.navigationSuggestions &&
-                item.navigationSuggestions.length > 0 &&
-                circleId ? (
-                  <View style={styles.navChips}>
-                    {item.navigationSuggestions.map((suggestion) => {
-                      const target = hrefForAssistantAction(
-                        suggestion.actionId,
-                        circleId,
-                      );
-                      if (!target) return null;
-                      const navKey = `assistant:nav.${suggestion.actionId}`;
-                      const navLabel = t(navKey, {
-                        defaultValue: target.fallbackLabel,
-                      });
-                      return (
-                        <Pressable
-                          key={`${item.id}-${suggestion.actionId}`}
-                          style={styles.navChip}
-                          onPress={() => openSuggestion(suggestion.actionId)}
-                          accessibilityRole="button"
-                          accessibilityLabel={navLabel}
-                        >
-                          <Text style={styles.navChipText} numberOfLines={1}>
-                            {navLabel}
-                          </Text>
-                          <FontAwesome
-                            name="chevron-right"
-                            size={10}
-                            color={colors.primary}
-                          />
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ) : null}
-              </View>
-            </Animated.View>
-          ))}
-
-          {showSuggestedPrompts ? (
-            <View style={styles.prompts}>
-              {suggestedPrompts.map((prompt) => (
-                <Pressable
-                  key={prompt.key}
-                  style={styles.prompt}
-                  onPress={() => void send(prompt.text)}
-                  disabled={historyLoading || sending}
-                >
-                  <Text style={styles.promptText}>{prompt.text}</Text>
-                  <FontAwesome name="arrow-right" size={11} color={colors.primary} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          {sending ? (
-            <View style={styles.thinking}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.thinkingText}>{t('assistant:thinking')}</Text>
-            </View>
-          ) : null}
-
-          {upgradeRequired ? (
-            <View style={styles.upgradeCard}>
-              <View style={styles.upgradeIcon}>
-                <FontAwesome name="diamond" size={16} color={colors.premiumGold} />
-              </View>
-              <View style={styles.upgradeText}>
-                <Text style={styles.upgradeTitle}>{t('assistant:upgrade.title')}</Text>
-                <Text style={styles.upgradeCopy}>{t('assistant:upgrade.body')}</Text>
-              </View>
-              <Pressable
-                style={styles.upgradeButton}
-                onPress={() => router.push('/subscription' as Href)}
-                accessibilityRole="button"
-                accessibilityLabel={t('assistant:upgrade.cta')}
-              >
-                <Text style={styles.upgradeButtonText}>
-                  {t('assistant:upgrade.cta')}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </ScrollView>
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+        />
 
         {/* Floating assistant console — rides above the keyboard. */}
         <View
@@ -584,58 +647,14 @@ export default function CircleAssistantScreen() {
             }
           }}
         >
-          <View
-            style={[
-              styles.composer,
-              { paddingBottom: composerBottomPad },
-            ]}
-          >
-            <View style={styles.composerPill}>
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder={t('assistant:composerPlaceholder')}
-                placeholderTextColor={colors.subtle}
-                multiline
-                maxLength={2000}
-                editable={!sending && !upgradeRequired && !historyLoading}
-                style={styles.input}
-                accessibilityLabel={t('assistant:composerPlaceholder')}
-                blurOnSubmit={false}
-                textAlignVertical="center"
-              />
-
-              <Pressable
-                onPress={() => void send()}
-                disabled={
-                  !input.trim() ||
-                  sending ||
-                  upgradeRequired ||
-                  historyLoading
-                }
-                accessibilityRole="button"
-                accessibilityLabel={t('assistant:sendA11y')}
-                style={[
-                  styles.sendButton,
-                  (!input.trim() ||
-                    sending ||
-                    upgradeRequired ||
-                    historyLoading) &&
-                    styles.sendButtonDisabled,
-                ]}
-              >
-                {sending ? (
-                  <ActivityIndicator size="small" color={colors.onColor} />
-                ) : (
-                  <FontAwesome
-                    name="arrow-up"
-                    size={15}
-                    color={colors.onColor}
-                  />
-                )}
-              </Pressable>
-            </View>
-          </View>
+          <AssistantComposer
+            onSend={send}
+            placeholder={t('assistant:composerPlaceholder')}
+            sendA11y={t('assistant:sendA11y')}
+            sending={sending}
+            disabled={upgradeRequired || historyLoading}
+            bottomPad={composerBottomPad}
+          />
         </View>
       </View>
     </SafeAreaView>

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { composerDraftAfterSend } from '@/lib/circleChatState';
 import { colors, shadows } from '@/lib/theme';
 
 type ChatInputProps = {
@@ -50,9 +51,9 @@ export default function ChatInput({
     if (!text.trim() || isLoading) return;
     try {
       await onSend(text);
-      setText('');
+      setText((current) => composerDraftAfterSend(current, true));
     } catch {
-      // Keep the draft so the user can retry.
+      setText((current) => composerDraftAfterSend(current, false));
     }
   };
 

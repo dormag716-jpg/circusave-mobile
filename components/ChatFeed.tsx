@@ -1,8 +1,20 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React, { useEffect, useRef } from 'react';
-import { FlatList, StyleSheet, Text, View, type FlatListProps } from 'react-native';
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  View,
+  type FlatListProps,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 
 import type { BackendChatMessage } from '@/lib/api';
+import {
+  isPinnedNearBottom,
+  shouldAutoScrollChat,
+} from '@/lib/circleChatState';
 import { colors } from '@/lib/theme';
 
 import { Avatar } from './Avatar';
@@ -17,6 +29,8 @@ type ChatFeedProps = {
   scrollEnabled?: boolean;
   /** Extra bottom inset so bubbles clear a floating composer / keyboard. */
   bottomPadding?: number;
+  /** Increment after a successful send to pin the list to the newest message. */
+  pinToBottomNonce?: number;
   style?: FlatListProps<BackendChatMessage>['style'];
 };
 
@@ -25,17 +39,61 @@ export default function ChatFeed({
   currentUserId,
   scrollEnabled = true,
   bottomPadding = 0,
+  pinToBottomNonce = 0,
   style,
 }: ChatFeedProps) {
   const listRef = useRef<FlatList<BackendChatMessage>>(null);
+  const pinnedToBottomRef = useRef(true);
+  const lastTailIdRef = useRef<string | null>(null);
+  const lastSendNonceRef = useRef(pinToBottomNonce);
+  const didInitialScrollRef = useRef(false);
+
+  const scrollToEnd = (animated: boolean) => {
+    listRef.current?.scrollToEnd({ animated });
+    pinnedToBottomRef.current = true;
+  };
 
   useEffect(() => {
     if (!scrollEnabled || messages.length === 0) return;
+
+    const tailId = messages[messages.length - 1]?.id ?? null;
+    const sendRequested = pinToBottomNonce !== lastSendNonceRef.current;
+    lastSendNonceRef.current = pinToBottomNonce;
+
+    const newTail = tailId != null && tailId !== lastTailIdRef.current;
+    lastTailIdRef.current = tailId;
+
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      const handle = requestAnimationFrame(() => {
+        scrollToEnd(false);
+      });
+      return () => cancelAnimationFrame(handle);
+    }
+
+    const reason = sendRequested ? 'user-send' : newTail ? 'new-tail' : 'layout';
+    if (
+      !shouldAutoScrollChat({
+        reason,
+        pinnedToBottom: pinnedToBottomRef.current,
+      })
+    ) {
+      return;
+    }
+
     const handle = requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
+      scrollToEnd(reason !== 'layout');
     });
     return () => cancelAnimationFrame(handle);
-  }, [messages.length, scrollEnabled, bottomPadding]);
+  }, [messages, pinToBottomNonce, scrollEnabled]);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    pinnedToBottomRef.current = isPinnedNearBottom({
+      offsetFromEnd:
+        contentSize.height - (contentOffset.y + layoutMeasurement.height),
+    });
+  };
 
   return (
     <FlatList
@@ -51,9 +109,18 @@ export default function ChatFeed({
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
+      onScroll={handleScroll}
+      scrollEventThrottle={16}
       onContentSizeChange={() => {
-        if (scrollEnabled && messages.length > 0) {
-          listRef.current?.scrollToEnd({ animated: false });
+        if (
+          scrollEnabled &&
+          messages.length > 0 &&
+          shouldAutoScrollChat({
+            reason: 'layout',
+            pinnedToBottom: pinnedToBottomRef.current,
+          })
+        ) {
+          scrollToEnd(false);
         }
       }}
       renderItem={({ item }) => {

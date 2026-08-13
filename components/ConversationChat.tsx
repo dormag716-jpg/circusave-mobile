@@ -21,6 +21,10 @@ import {
   floatingComposerBottomOffset,
   floatingComposerListPadding,
 } from '@/lib/chatKeyboard';
+import {
+  shouldApplyKeyboardGeometry,
+  workspaceChromeLayoutStyle,
+} from '@/lib/workspaceKeyboardChrome';
 import { colors, radii, shadows } from '@/lib/theme';
 import { useConversations } from '@/lib/useConversations';
 
@@ -34,6 +38,9 @@ type ConversationChatProps = {
   currentUserId: string;
   members: BackendCircleMember[];
   initialConversationId?: string;
+  focused?: boolean;
+  /** Workspace-owned keyboard chrome collapse. Geometry stays local. */
+  chromeCollapsed?: boolean;
 };
 
 /**
@@ -51,6 +58,8 @@ export default function ConversationChat({
   currentUserId,
   members,
   initialConversationId,
+  focused = true,
+  chromeCollapsed = false,
 }: ConversationChatProps) {
   const { t } = useTranslation('circleWorkspace');
   const rootRef = useRef<View>(null);
@@ -59,12 +68,12 @@ export default function ConversationChat({
   const [pickerVisible, setPickerVisible] = useState(false);
   const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   /** Extra bottom offset so the floating dock sits above the keyboard. */
   const [composerLift, setComposerLift] = useState(0);
   const [composerHeight, setComposerHeight] = useState(
     FLOATING_COMPOSER_RESTING_HEIGHT,
   );
+  const [sendScrollNonce, setSendScrollNonce] = useState(0);
 
   const {
     conversations,
@@ -78,7 +87,7 @@ export default function ConversationChat({
     createDirectConversation,
     sendMessage,
     refresh,
-  } = useConversations(circleId, token, initialConversationId);
+  } = useConversations(circleId, token, initialConversationId, { focused });
 
   const availableMembers = useMemo(() => {
     const seenUserIds = new Set<string>();
@@ -113,9 +122,9 @@ export default function ConversationChat({
 
     const applyKeyboardFrame = useCallback(
     (event: KeyboardEvent | null) => {
-      if (!event) {
+      const height = event?.endCoordinates.height;
+      if (!event || !shouldApplyKeyboardGeometry(height)) {
         keyboardMetricsRef.current = null;
-        setKeyboardVisible(false);
         setComposerLift(0);
         return;
       }
@@ -124,7 +133,6 @@ export default function ConversationChat({
         topY: event.endCoordinates.screenY,
         height: event.endCoordinates.height,
       };
-      setKeyboardVisible(true);
 
       // Measure after layout so we know how much of *this* chat root is covered.
       requestAnimationFrame(() => {
@@ -155,14 +163,14 @@ export default function ConversationChat({
     };
   }, [applyKeyboardFrame]);
 
-  // Chrome collapses when the keyboard opens — re-measure after that layout.
+  // Workspace chrome collapse changes this root's height — re-measure lift only.
   useEffect(() => {
-    if (!keyboardVisible) return;
+    if (!chromeCollapsed) return;
     const handle = requestAnimationFrame(() => {
       remeasureComposerLift();
     });
     return () => cancelAnimationFrame(handle);
-  }, [keyboardVisible, remeasureComposerLift]);
+  }, [chromeCollapsed, remeasureComposerLift]);
 
   async function startDirectChat(member: BackendCircleMember) {
     setCreatingMemberId(member.id);
@@ -209,7 +217,10 @@ export default function ConversationChat({
         }
       }}
     >
-      {!keyboardVisible ? (
+      <View
+        style={workspaceChromeLayoutStyle(chromeCollapsed)}
+        collapsable={false}
+      >
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>{t('chat.title')}</Text>
@@ -228,9 +239,12 @@ export default function ConversationChat({
             <Text style={styles.newChatButtonText}>{t('chat.newPrivate')}</Text>
           </Pressable>
         </View>
-      ) : null}
+      </View>
 
-      {!keyboardVisible ? (
+      <View
+        style={workspaceChromeLayoutStyle(chromeCollapsed)}
+        collapsable={false}
+      >
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -293,7 +307,7 @@ export default function ConversationChat({
             );
           })}
         </ScrollView>
-      ) : null}
+      </View>
 
       {error ? (
         <Pressable
@@ -310,7 +324,10 @@ export default function ConversationChat({
 
       {selectedConversation ? (
         <View style={styles.threadCard}>
-          {!keyboardVisible ? (
+          <View
+            style={workspaceChromeLayoutStyle(chromeCollapsed)}
+            collapsable={false}
+          >
             <View style={styles.threadHeader}>
               <View style={styles.threadIdentity}>
                 {selectedConversation.type === 'group' ? (
@@ -343,13 +360,14 @@ export default function ConversationChat({
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : null}
             </View>
-          ) : null}
+          </View>
 
           {messages.length > 0 ? (
             <ChatFeed
               messages={messages}
               currentUserId={currentUserId}
               bottomPadding={listBottomPadding}
+              pinToBottomNonce={sendScrollNonce}
             />
           ) : (
             <View
@@ -397,7 +415,10 @@ export default function ConversationChat({
           }}
         >
           <ChatInput
-            onSend={sendMessage}
+            onSend={async (text) => {
+              await sendMessage(text);
+              setSendScrollNonce((current) => current + 1);
+            }}
             isLoading={sending}
             placeholder={t('chat.placeholder')}
             applyBottomInset={composerLift === 0}

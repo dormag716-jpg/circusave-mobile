@@ -65,7 +65,15 @@ import { RecordsStatementCenter } from '@/components/records/RecordsStatementCen
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  readCircleWorkspacePresentation,
+  seedCircleWorkspaceCache,
+} from '@/lib/circleWorkspaceCache';
 import { createRequestGeneration } from '@/lib/requestGeneration';
+import {
+  isWorkspaceChromeCollapsed,
+  workspaceChromeLayoutStyle,
+} from '@/lib/workspaceKeyboardChrome';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import {
   additionalHandConsentHref,
@@ -173,16 +181,21 @@ export default function CircleWorkspaceScreen() {
   // Premium UI flags come from entitlements, never users.role.
   // Core payout release is free for all organizers with backend permission.
 
-  const [circle, setCircle] = useState<BackendCircleDetail | null>(null);
+  const warmPresentation = circleId
+    ? readCircleWorkspacePresentation(circleId)
+    : null;
+  const [circle, setCircle] = useState<BackendCircleDetail | null>(
+    warmPresentation?.detail ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!warmPresentation?.detail);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [resolvedRound, setResolvedRound] = useState<number | null>(null);
   const [workspaceKeyboardVisible, setWorkspaceKeyboardVisible] =
     useState(false);
   const workspaceGeneration = useRef(createRequestGeneration());
-  const hasLastKnownCircleRef = useRef(false);
+  const hasLastKnownCircleRef = useRef(Boolean(warmPresentation?.detail));
 
   useEffect(() => {
     const showEvent =
@@ -235,6 +248,7 @@ export default function CircleWorkspaceScreen() {
       }
       hasLastKnownCircleRef.current = true;
       setCircle(nextCircle);
+      seedCircleWorkspaceCache({ circleId, detail: nextCircle });
     } catch (loadError) {
       console.error('Unable to load circle workspace', loadError);
       if (!workspaceGeneration.current.isCurrent(generation)) {
@@ -253,11 +267,20 @@ export default function CircleWorkspaceScreen() {
 
   useEffect(() => {
     workspaceGeneration.current.next();
-    hasLastKnownCircleRef.current = false;
-    setCircle(null);
+    const warm = circleId
+      ? readCircleWorkspacePresentation(circleId)
+      : null;
+    if (warm?.detail) {
+      hasLastKnownCircleRef.current = true;
+      setCircle(warm.detail);
+      setLoading(false);
+    } else {
+      hasLastKnownCircleRef.current = false;
+      setCircle(null);
+      setLoading(true);
+    }
     setResolvedRound(null);
     setError(null);
-    setLoading(true);
   }, [circleId]);
 
   useEffect(() => {
@@ -319,9 +342,17 @@ export default function CircleWorkspaceScreen() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       {readyWorkspace ? (
         <View style={styles.workspaceShell}>
-          {!workspaceKeyboardVisible ? (
-            <View style={styles.workspaceHeaderPad}>{workspaceHeader}</View>
-          ) : null}
+          <View
+            style={[
+              styles.workspaceHeaderPad,
+              workspaceChromeLayoutStyle(
+                isWorkspaceChromeCollapsed(workspaceKeyboardVisible),
+              ),
+            ]}
+            collapsable={false}
+          >
+            {workspaceHeader}
+          </View>
           {error ? (
             <View style={[styles.inlineErrorBanner, styles.workspaceLoadError]}>
               <FontAwesome name="warning" size={14} color={colors.warning} />
@@ -346,6 +377,7 @@ export default function CircleWorkspaceScreen() {
             onRoundResolved={setResolvedRound}
             refreshing={refreshing}
             onRefresh={() => void handleRefresh()}
+            keyboardVisible={workspaceKeyboardVisible}
           />
         </View>
       ) : (
@@ -399,6 +431,7 @@ function WorkspaceContent({
   onRoundResolved,
   refreshing,
   onRefresh,
+  keyboardVisible,
 }: {
   circle: BackendCircleDetail;
   token: string;
@@ -410,6 +443,7 @@ function WorkspaceContent({
   onRoundResolved: (round: number) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  keyboardVisible: boolean;
 }) {
   const { hasCapability } = useEntitlements();
   const canExportAdvancedReports = hasCapability('advancedReports');
@@ -425,17 +459,20 @@ function WorkspaceContent({
   const language = translation.resolvedLanguage || translation.language;
   const { t: tPeople } = useTranslation('people');
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
-  // Hide tab chrome while typing in chat so the composer stays on-screen.
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [chatOpened, setChatOpened] = useState(initialTab === 'chat');
+  const warmSections = readCircleWorkspacePresentation(circle.id);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
-    null,
+    warmSections?.schedule ?? null,
   );
   const [ledgerEntries, setLedgerEntries] = useState<BackendLedgerEntry[]>([]);
-  const [secondaryLoading, setSecondaryLoading] = useState(true);
+  const [secondaryLoading, setSecondaryLoading] = useState(
+    !warmSections?.schedule,
+  );
   const [secondaryError, setSecondaryError] = useState<string | null>(null);
   const cacheHealRetries = useRef(0);
   const sectionsGeneration = useRef(createRequestGeneration());
-  const hasLastKnownSectionsRef = useRef(false);
+  const ledgerGeneration = useRef(createRequestGeneration());
+  const hasLastKnownSectionsRef = useRef(Boolean(warmSections?.schedule));
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
   const paymentInstructions = circle.paymentInstructions ?? null;
   const { unreadCount: chatUnreadCount } = useConversationUnreadCount(
@@ -447,21 +484,10 @@ function WorkspaceContent({
   const [workspaceAgreementLoaded, setWorkspaceAgreementLoaded] = useState(false);
 
   useEffect(() => {
-    const showEvent =
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent =
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, () => {
-      setKeyboardVisible(true);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setKeyboardVisible(false);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+    if (activeTab === 'chat') {
+      setChatOpened(true);
+    }
+  }, [activeTab]);
 
   const workspaceParticipating = useMemo(
     () =>
@@ -583,16 +609,16 @@ function WorkspaceContent({
       setSecondaryError(null);
     }
     try {
-      const [scheduleResponse, ledgerResponse] = await Promise.all([
-        getCircleSchedule(token, circle.id),
-        getLedgerEntries(token, circle.id),
-      ]);
+      const scheduleResponse = await getCircleSchedule(token, circle.id);
       if (!sectionsGeneration.current.isCurrent(generation)) {
         return;
       }
       hasLastKnownSectionsRef.current = true;
       setScheduleData(scheduleResponse);
-      setLedgerEntries(ledgerResponse.entries || []);
+      seedCircleWorkspaceCache({
+        circleId: circle.id,
+        schedule: scheduleResponse,
+      });
     } catch (loadError) {
       console.error('Unable to load circle workspace sections', loadError);
       if (!sectionsGeneration.current.isCurrent(generation)) {
@@ -606,18 +632,46 @@ function WorkspaceContent({
     }
   }, [token, circle.id, t]);
 
+  const loadLedger = useCallback(async () => {
+    const generation = ledgerGeneration.current.next();
+    try {
+      const ledgerResponse = await getLedgerEntries(token, circle.id);
+      if (!ledgerGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      setLedgerEntries(ledgerResponse.entries || []);
+    } catch (loadError) {
+      console.error('Unable to load circle ledger', loadError);
+    }
+  }, [token, circle.id]);
+
   useEffect(() => {
     sectionsGeneration.current.next();
-    hasLastKnownSectionsRef.current = false;
-    setScheduleData(null);
+    ledgerGeneration.current.next();
+    const warm = readCircleWorkspacePresentation(circle.id);
+    if (warm?.schedule) {
+      hasLastKnownSectionsRef.current = true;
+      setScheduleData(warm.schedule);
+      setSecondaryLoading(false);
+    } else {
+      hasLastKnownSectionsRef.current = false;
+      setScheduleData(null);
+      setSecondaryLoading(true);
+    }
     setLedgerEntries([]);
     setSecondaryError(null);
-    setSecondaryLoading(true);
   }, [circle.id]);
 
   useEffect(() => {
     void loadBackendSections();
   }, [circle.id, token, refreshNonce, loadBackendSections]);
+
+  useEffect(() => {
+    if (activeTab !== 'records') {
+      return;
+    }
+    void loadLedger();
+  }, [activeTab, circle.id, loadLedger, refreshNonce]);
 
   // scheduleData is the single source of truth for the round summary.
   // Do not fall back to circle.currentRoundSummary - it can be stale relative
@@ -1299,48 +1353,71 @@ function WorkspaceContent({
     </>
   );
 
+  const chatSurface = chatOpened ? (
+    <View
+      style={
+        activeTab === 'chat'
+          ? [
+              styles.chatPanel,
+              keyboardVisible && styles.chatPanelKeyboardOpen,
+            ]
+          : styles.chatHidden
+      }
+      pointerEvents={activeTab === 'chat' ? 'auto' : 'none'}
+      collapsable={false}
+    >
+      <ConversationChat
+        circleId={circle.id}
+        token={token}
+        currentUserId={userId}
+        members={circle.members || []}
+        initialConversationId={initialConversationId}
+        focused={activeTab === 'chat'}
+        chromeCollapsed={isWorkspaceChromeCollapsed(keyboardVisible)}
+      />
+    </View>
+  ) : null;
+
   if (activeTab === 'chat') {
     return (
       <View style={styles.workspaceBody}>
-        {!keyboardVisible ? (
-          <View style={styles.chatChrome}>{chrome}</View>
-        ) : null}
         <View
           style={[
-            styles.chatPanel,
-            keyboardVisible && styles.chatPanelKeyboardOpen,
+            styles.chatChrome,
+            workspaceChromeLayoutStyle(
+              isWorkspaceChromeCollapsed(keyboardVisible),
+            ),
           ]}
+          collapsable={false}
         >
-          <ConversationChat
-            circleId={circle.id}
-            token={token}
-            currentUserId={userId}
-            members={circle.members || []}
-            initialConversationId={initialConversationId}
-          />
+          {chrome}
         </View>
+        {chatSurface}
       </View>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.workspaceBody}
-      contentContainerStyle={styles.contentUnderShell}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.primary}
-          colors={[colors.primary]}
-        />
-      }
-    >
-      {chrome}
-      {nonChatBody}
-    </ScrollView>
+    <View style={styles.workspaceBody}>
+      <ScrollView
+        style={styles.workspaceBody}
+        contentContainerStyle={styles.contentUnderShell}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        {chrome}
+        {nonChatBody}
+      </ScrollView>
+      {chatSurface}
+    </View>
   );
 }
 
@@ -5230,6 +5307,9 @@ const styles = StyleSheet.create({
   chatPanelKeyboardOpen: {
     marginTop: 0,
     paddingBottom: 0,
+  },
+  chatHidden: {
+    display: 'none',
   },
   content: {
     paddingBottom: 100,

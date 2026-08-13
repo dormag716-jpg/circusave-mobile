@@ -8,6 +8,11 @@ import {
   normalizeEntitlements,
   type Entitlements,
 } from './entitlements';
+import {
+  invalidateCachedGets,
+  runDedupedGet,
+  shouldUseHttpGetCache,
+} from './httpGetCache';
 
 export type AuthUser = {
   id: string;
@@ -760,7 +765,7 @@ function logDevApiResponse(method: string, url: string, status: number, body: un
   });
 }
 
-async function requestJson<T>(
+async function requestJsonUncached<T>(
   path: string,
   options: RequestInit & { token?: string } = {},
 ): Promise<T> {
@@ -810,6 +815,25 @@ async function requestJson<T>(
   }
 
   return payload as T;
+}
+
+async function requestJson<T>(
+  path: string,
+  options: RequestInit & { token?: string } = {},
+): Promise<T> {
+  const method = (options.method ?? 'GET').toUpperCase();
+  if (shouldUseHttpGetCache(method, path)) {
+    return runDedupedGet({
+      path,
+      token: options.token,
+      fetcher: () => requestJsonUncached<T>(path, options),
+    });
+  }
+  const payload = await requestJsonUncached<T>(path, options);
+  if (method !== 'GET') {
+    invalidateCachedGets();
+  }
+  return payload;
 }
 
 function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthResponse {

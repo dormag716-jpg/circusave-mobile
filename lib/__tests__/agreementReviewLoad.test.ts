@@ -3,6 +3,7 @@ import { join } from 'path';
 
 import { getCircleDetail } from '../api';
 import { loadAgreementReviewCircleDetail } from '../agreementReviewLoad';
+import { resetHttpGetCacheForTests } from '../httpGetCache';
 
 describe('agreement-review getCircleDetail contract', () => {
   const originalFetch = global.fetch;
@@ -11,6 +12,7 @@ describe('agreement-review getCircleDetail contract', () => {
   const originalDev = globalWithDev.__DEV__;
 
   beforeEach(() => {
+    resetHttpGetCacheForTests();
     process.env.EXPO_PUBLIC_API_BASE_URL = 'http://127.0.0.1:5000';
     globalWithDev.__DEV__ = false;
     global.fetch = jest.fn().mockResolvedValue({

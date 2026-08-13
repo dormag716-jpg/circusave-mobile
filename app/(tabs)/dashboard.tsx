@@ -43,6 +43,7 @@ import {
   isActiveCircleStatus,
   isSetupCircleStatus,
 } from '@/lib/circleSummary';
+import { seedCircleWorkspaceCache } from '@/lib/circleWorkspaceCache';
 import {
   shouldReserveDashboardActionSlot,
   shouldShowDashboardEmptyCircles,
@@ -213,6 +214,13 @@ export default function DashboardScreen() {
           }
           if (schedule) {
             schedulesMap[circle.id] = schedule;
+          }
+          if (detail || schedule) {
+            seedCircleWorkspaceCache({
+              circleId: circle.id,
+              detail: detail ?? null,
+              schedule: schedule ?? null,
+            });
           }
         });
 
