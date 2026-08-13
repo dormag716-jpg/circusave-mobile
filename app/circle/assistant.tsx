@@ -582,41 +582,54 @@ export default function CircleAssistantScreen() {
           <View
             style={[
               styles.composer,
-              styles.composerFloating,
-              { paddingBottom: 12 + composerBottomPad },
+              { paddingBottom: composerBottomPad },
             ]}
           >
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder={t('assistant:composerPlaceholder')}
-              placeholderTextColor={colors.subtle}
-              multiline
-              maxLength={2000}
-              editable={!sending && !upgradeRequired && !historyLoading}
-              style={styles.input}
-              accessibilityLabel={t('assistant:composerPlaceholder')}
-              blurOnSubmit={false}
-              textAlignVertical="center"
-            />
-            <Pressable
-              onPress={() => void send()}
-              disabled={
-                !input.trim() || sending || upgradeRequired || historyLoading
-              }
-              accessibilityRole="button"
-              accessibilityLabel={t('assistant:sendA11y')}
-              style={[
-                styles.sendButton,
-                (!input.trim() ||
+            <View style={styles.composerPill}>
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder={t('assistant:composerPlaceholder')}
+                placeholderTextColor={colors.subtle}
+                multiline
+                maxLength={2000}
+                editable={!sending && !upgradeRequired && !historyLoading}
+                style={styles.input}
+                accessibilityLabel={t('assistant:composerPlaceholder')}
+                blurOnSubmit={false}
+                textAlignVertical="center"
+              />
+
+              <Pressable
+                onPress={() => void send()}
+                disabled={
+                  !input.trim() ||
                   sending ||
                   upgradeRequired ||
-                  historyLoading) &&
-                  styles.sendButtonDisabled,
-              ]}
-            >
-              <FontAwesome name="arrow-up" size={15} color={colors.onColor} />
-            </Pressable>
+                  historyLoading
+                }
+                accessibilityRole="button"
+                accessibilityLabel={t('assistant:sendA11y')}
+                style={[
+                  styles.sendButton,
+                  (!input.trim() ||
+                    sending ||
+                    upgradeRequired ||
+                    historyLoading) &&
+                    styles.sendButtonDisabled,
+                ]}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color={colors.onColor} />
+                ) : (
+                  <FontAwesome
+                    name="arrow-up"
+                    size={15}
+                    color={colors.onColor}
+                  />
+                )}
+              </Pressable>
+            </View>
           </View>
         </View>
       </View>
@@ -860,42 +873,44 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   composer: {
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    backgroundColor: 'transparent',
+  },
+  composerPill: {
+    minHeight: 56,
+    maxHeight: 118,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 10,
-    paddingHorizontal: spacing.screenX,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.primaryBorder,
+    gap: 8,
+    paddingLeft: 18,
+    paddingRight: 6,
+    paddingVertical: 6,
     backgroundColor: colors.card,
-  },
-  composerFloating: {
-    borderTopWidth: 0,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
-    borderBottomWidth: 0,
     ...shadows.medium,
   },
   input: {
     flex: 1,
-    maxHeight: 110,
-    minHeight: 46,
-    borderRadius: 18,
-    backgroundColor: colors.surfaceMuted,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    minHeight: 44,
+    maxHeight: 106,
+    paddingHorizontal: 0,
+    paddingVertical: 10,
     color: colors.textStrong,
     fontSize: 14,
   },
   sendButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendButtonDisabled: { opacity: 0.4 },
+  sendButtonDisabled: {
+    backgroundColor: colors.primarySoft,
+    opacity: 1,
+  },
 });
