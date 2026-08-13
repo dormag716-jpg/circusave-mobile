@@ -2,6 +2,8 @@
   "memberFallback": "Miembro",
   "sessionMissing": "Tu sesión no tiene un token de acceso. Inicia sesión de nuevo.",
   "loadError": "No se pudo cargar tu panel.",
+  "loadingDashboard": "Cargando tu panel",
+  "checkingContributions": "Revisando aportes",
   "greetingMorning": "Buenos días",
   "greetingAfternoon": "Buenas tardes",
   "greetingEvening": "Buenas noches",

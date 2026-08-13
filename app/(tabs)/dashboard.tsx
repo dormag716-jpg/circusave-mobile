@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState, type ComponentProps } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Dimensions,
   Pressable,
@@ -43,6 +43,16 @@ import {
   isActiveCircleStatus,
   isSetupCircleStatus,
 } from '@/lib/circleSummary';
+import {
+  shouldReserveDashboardActionSlot,
+  shouldShowDashboardEmptyCircles,
+  shouldShowDashboardSkeleton,
+  shouldUseSilentDashboardRefresh,
+} from '@/lib/dashboardPaint';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+} from '@/lib/requestGeneration';
 import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
 
 type IconName = ComponentProps<typeof FontAwesome>['name'];
@@ -65,6 +75,9 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [detailsReady, setDetailsReady] = useState(false);
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasLastKnownStateRef = useRef(false);
   const token = session?.session.token;
   const userId = session?.user.id;
   const displayName = session?.user.name ?? t('memberFallback');
@@ -121,27 +134,53 @@ export default function DashboardScreen() {
 
   /** Global next future-or-today payout — only from dashboard summary (not first circle). */
   const upcomingPayout = summary?.upcomingPayout ?? null;
+  const hasSnapshot = summary !== null || circles.length > 0;
+  const showSkeleton = shouldShowDashboardSkeleton({ loading, hasSnapshot });
+  const showEmptyCircles = shouldShowDashboardEmptyCircles({
+    hasSnapshot,
+    activeCircleCount: activeCircles.length,
+  });
+  const reserveActionSlot = shouldReserveDashboardActionSlot({
+    detailsReady,
+    pendingContributions: summary?.pendingContributions ?? 0,
+  });
 
   const loadDashboard = useCallback(
     async (options?: { silent?: boolean }) => {
+      const generation = requestGeneration.current.next();
       const accessToken = String(token ?? '').trim();
       // Logout / unauthenticated: quiet no-op (not sessionMissing).
       if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
+          setRefreshing(false);
+        }
         return;
       }
 
-      if (!options?.silent) {
+      const firstPaint = !hasLastKnownStateRef.current;
+      if (!options?.silent && firstPaint) {
         setLoading(true);
+        setDetailsReady(false);
       }
-      setError(null);
+      if (requestGeneration.current.isCurrent(generation)) {
+        setError(null);
+      }
 
       try {
         const [nextSummary, nextCircles] = await Promise.all([
           getDashboardSummary(accessToken),
           getCircles(accessToken),
         ]);
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
+        hasLastKnownStateRef.current = true;
+        setSummary(nextSummary);
+        setCircles(nextCircles);
+        setLoading(false);
+
         const nextActiveCircles = nextCircles.filter((circle) =>
           isActiveCircleStatus(circle.status, circle.pot_status),
         );
@@ -160,6 +199,10 @@ export default function DashboardScreen() {
           ),
         ]);
 
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
         const detailsMap: Record<string, BackendCircleDetail> = {};
         const schedulesMap: Record<string, BackendRoundSnapshot> = {};
         toLoad.forEach((circle, index) => {
@@ -173,18 +216,25 @@ export default function DashboardScreen() {
           }
         });
 
-        setSummary(nextSummary);
-        setCircles(nextCircles);
         setCircleDetails(detailsMap);
         setCircleSchedules(schedulesMap);
+        setDetailsReady(true);
       } catch {
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
         setError(t('loadError'));
-        setSummary(null);
-        setCircles([]);
-        setCircleDetails({});
-        setCircleSchedules({});
+        if (shouldReplaceFinancialStateOnError(hasLastKnownStateRef.current)) {
+          setSummary(null);
+          setCircles([]);
+          setCircleDetails({});
+          setCircleSchedules({});
+          setDetailsReady(false);
+        }
       } finally {
-        setLoading(false);
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
+        }
       }
     },
     [status, t, token],
@@ -192,7 +242,9 @@ export default function DashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadDashboard();
+      void loadDashboard({
+        silent: shouldUseSilentDashboardRefresh(hasLastKnownStateRef.current),
+      });
     }, [loadDashboard]),
   );
 
@@ -224,25 +276,37 @@ export default function DashboardScreen() {
             <Text style={styles.welcome}>
               {getGreeting(t)}, {firstName} 👋
             </Text>
-            <View
-              style={[
-                styles.roleBadge,
-                userIsOrganizer ? styles.organizerBadge : styles.memberBadge,
-              ]}
-            >
-              <Text style={styles.roleBadgeText}>
-                {userIsOrganizer ? t('organizer') : t('member')}
-              </Text>
-            </View>
+            {hasSnapshot ? (
+              <View
+                style={[
+                  styles.roleBadge,
+                  userIsOrganizer ? styles.organizerBadge : styles.memberBadge,
+                ]}
+              >
+                <Text style={styles.roleBadgeText}>
+                  {userIsOrganizer ? t('organizer') : t('member')}
+                </Text>
+              </View>
+            ) : null}
           </View>
-          <Text style={styles.subtitle}>
-            {userIsOrganizer
-              ? t('organizerSubtitle')
-              : t('memberSubtitle')}
-          </Text>
+          {hasSnapshot ? (
+            <Text style={styles.subtitle}>
+              {userIsOrganizer
+                ? t('organizerSubtitle')
+                : t('memberSubtitle')}
+            </Text>
+          ) : (
+            <View style={styles.skeletonLine} />
+          )}
         </View>
 
-        {activeCircles.length > 0 ? (
+        {showSkeleton ? (
+          <View
+            style={styles.heroSkeleton}
+            accessibilityRole="progressbar"
+            accessibilityLabel={t('loadingDashboard')}
+          />
+        ) : activeCircles.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -297,7 +361,7 @@ export default function DashboardScreen() {
               );
             })}
           </ScrollView>
-        ) : (
+        ) : showEmptyCircles ? (
           <View style={styles.heroCard}>
             <Text style={styles.heroLabel}>
               {t('noActiveCircles')}
@@ -306,7 +370,7 @@ export default function DashboardScreen() {
               {t('noActiveDescription')}
             </Text>
           </View>
-        )}
+        ) : null}
 
         {personalDueCount > 0 && firstDueCircle ? (
           <View style={[styles.payDueCard, { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }]}>
@@ -369,6 +433,12 @@ export default function DashboardScreen() {
               <FontAwesome name="arrow-right" size={12} color={colors.onColor} />
             </Pressable>
           </View>
+        ) : reserveActionSlot ? (
+          <View
+            style={styles.actionSlotReserve}
+            accessibilityRole="progressbar"
+            accessibilityLabel={t('checkingContributions')}
+          />
         ) : null}
 
         {error ? (
@@ -379,7 +449,13 @@ export default function DashboardScreen() {
             </View>
             <Pressable
               style={styles.retryButton}
-              onPress={() => void loadDashboard()}
+              onPress={() =>
+                void loadDashboard({
+                  silent: shouldUseSilentDashboardRefresh(
+                    hasLastKnownStateRef.current,
+                  ),
+                })
+              }
               accessibilityRole="button"
               accessibilityLabel={t('retryDashboard')}
             >
@@ -389,33 +465,42 @@ export default function DashboardScreen() {
         ) : null}
 
         <View style={styles.statsRow}>
-          <StatCard
-            icon="clock-o"
-            value={
-              upcomingPayout?.payoutDate
-                ? relativePayoutLabel(upcomingPayout.payoutDate, t)
-                : '—'
-            }
-            label={
-              upcomingPayout?.recipientName
-                ? t('receives', { name: upcomingPayout.recipientName })
-                : upcomingPayout
-                  ? upcomingPayout.circleName || t('nextPayout')
-                  : t('noUpcomingPayout')
-            }
-            color={colors.success}
-          />
-          <StatCard
-            icon="users"
-            value={String(summary?.activeCircles ?? activeCircles.length)}
-            label={t('activeCircles')}
-            color={colors.primary}
-            detail={
-              userIsOrganizer
-                ? t('manageCircles')
-                : undefined
-            }
-          />
+          {showSkeleton ? (
+            <>
+              <View style={styles.statSkeleton} />
+              <View style={styles.statSkeleton} />
+            </>
+          ) : (
+            <>
+              <StatCard
+                icon="clock-o"
+                value={
+                  upcomingPayout?.payoutDate
+                    ? relativePayoutLabel(upcomingPayout.payoutDate, t)
+                    : '—'
+                }
+                label={
+                  upcomingPayout?.recipientName
+                    ? t('receives', { name: upcomingPayout.recipientName })
+                    : upcomingPayout
+                      ? upcomingPayout.circleName || t('nextPayout')
+                      : t('noUpcomingPayout')
+                }
+                color={colors.success}
+              />
+              <StatCard
+                icon="users"
+                value={String(summary?.activeCircles ?? activeCircles.length)}
+                label={t('activeCircles')}
+                color={colors.primary}
+                detail={
+                  userIsOrganizer
+                    ? t('manageCircles')
+                    : undefined
+                }
+              />
+            </>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -430,7 +515,12 @@ export default function DashboardScreen() {
             </Pressable>
           </View>
 
-          {activeCircles.length > 0 ? (
+          {showSkeleton ? (
+            <View style={styles.circleList}>
+              <View style={styles.circleSkeleton} />
+              <View style={styles.circleSkeleton} />
+            </View>
+          ) : activeCircles.length > 0 ? (
             <View style={styles.circleList}>
               {activeCircles.map((circle) => {
                 const detail = circleDetails[circle.id];
@@ -541,7 +631,7 @@ export default function DashboardScreen() {
                 );
               })}
             </View>
-          ) : (
+          ) : showEmptyCircles ? (
             <View style={styles.emptyCard}>
               <FontAwesome name="users" size={28} color={colors.muted} />
               <Text style={styles.emptyTitle}>{t('emptyActiveTitle')}</Text>
@@ -549,7 +639,7 @@ export default function DashboardScreen() {
                 {t('emptyActiveDescription')}
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         <View style={styles.actions}>
@@ -788,6 +878,40 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     minHeight: 184,
     padding: 28,
+  },
+  heroSkeleton: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 28,
+    marginBottom: 24,
+    minHeight: 184,
+  },
+  skeletonLine: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 8,
+    height: 16,
+    marginTop: 8,
+    width: 220,
+  },
+  actionSlotReserve: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    marginBottom: 16,
+    minHeight: 72,
+  },
+  statSkeleton: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    flex: 1,
+    minHeight: 144,
+  },
+  circleSkeleton: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 24,
+    borderWidth: 1,
+    minHeight: 128,
   },
   heroCarouselContainer: {
     gap: 16,

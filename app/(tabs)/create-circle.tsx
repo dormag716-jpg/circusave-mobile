@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,11 @@ import {
 } from '@/lib/circleCapacity';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+  shouldShowBlockingLoadState,
+} from '@/lib/requestGeneration';
 import { colors, radii, spacing } from '@/lib/theme';
 
 type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
@@ -25,22 +30,46 @@ export default function CreateCircleGuideScreen() {
 
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasSnapshotRef = useRef(false);
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
+    const generation = requestGeneration.current.next();
     if (!token) {
-      setLoading(false);
+      if (requestGeneration.current.isCurrent(generation)) {
+        setLoading(false);
+      }
       return;
     }
-    setLoading(true);
-    getCircles(token)
-      .then(setCircles)
-      .catch(() => setCircles([]))
-      .finally(() => setLoading(false));
+
+    if (!hasSnapshotRef.current) {
+      setLoading(true);
+    }
+
+    try {
+      const next = await getCircles(token);
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      hasSnapshotRef.current = true;
+      setCircles(next);
+    } catch {
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      if (shouldReplaceFinancialStateOnError(hasSnapshotRef.current)) {
+        setCircles([]);
+      }
+    } finally {
+      if (requestGeneration.current.isCurrent(generation)) {
+        setLoading(false);
+      }
+    }
   }, [token]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load]),
   );
 
@@ -60,7 +89,7 @@ export default function CreateCircleGuideScreen() {
       String(existing.status || '').toLowerCase(),
     );
 
-  if (loading) {
+  if (shouldShowBlockingLoadState(loading, hasSnapshotRef.current)) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.loadingContainer}>

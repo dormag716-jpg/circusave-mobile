@@ -2,6 +2,8 @@
   "memberFallback": "Manm",
   "sessionMissing": "Sesyon ou pa gen yon jeton aksè. Konekte ankò.",
   "loadError": "Nou pa t kapab chaje tablodbò ou.",
+  "loadingDashboard": "N ap chaje tablodbò ou",
+  "checkingContributions": "N ap verifye kontribisyon yo",
   "greetingMorning": "Bonjou",
   "greetingAfternoon": "Bon aprèmidi",
   "greetingEvening": "Bonswa",

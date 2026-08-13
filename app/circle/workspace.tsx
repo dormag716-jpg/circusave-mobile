@@ -65,6 +65,7 @@ import { RecordsStatementCenter } from '@/components/records/RecordsStatementCen
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import { createRequestGeneration } from '@/lib/requestGeneration';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import {
   additionalHandConsentHref,
@@ -180,6 +181,8 @@ export default function CircleWorkspaceScreen() {
   const [resolvedRound, setResolvedRound] = useState<number | null>(null);
   const [workspaceKeyboardVisible, setWorkspaceKeyboardVisible] =
     useState(false);
+  const workspaceGeneration = useRef(createRequestGeneration());
+  const hasLastKnownCircleRef = useRef(false);
 
   useEffect(() => {
     const showEvent =
@@ -199,36 +202,63 @@ export default function CircleWorkspaceScreen() {
   }, []);
 
   async function loadWorkspace(options?: { silent?: boolean }) {
+    const generation = workspaceGeneration.current.next();
     const accessToken = String(token ?? '').trim();
     // Logout / unauthenticated: quiet no-op (do not console.error or generic error).
     if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
-      setLoading(false);
-      setRefreshing(false);
+      if (workspaceGeneration.current.isCurrent(generation)) {
+        setLoading(false);
+        setRefreshing(false);
+      }
       return;
     }
     if (!circleId) {
       // Authenticated but missing route id - real navigation problem.
-      setError(t('status.genericError'));
-      setLoading(false);
+      if (workspaceGeneration.current.isCurrent(generation)) {
+        setError(t('status.genericError'));
+        setLoading(false);
+      }
       return;
     }
 
-    if (!options?.silent) {
+    if (!options?.silent && !hasLastKnownCircleRef.current) {
       setLoading(true);
     }
-    setError(null);
+    if (workspaceGeneration.current.isCurrent(generation)) {
+      setError(null);
+    }
 
     try {
-      setCircle(await getCircleDetail(accessToken, circleId));
+      const nextCircle = await getCircleDetail(accessToken, circleId);
+      if (!workspaceGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      hasLastKnownCircleRef.current = true;
+      setCircle(nextCircle);
     } catch (loadError) {
       console.error('Unable to load circle workspace', loadError);
+      if (!workspaceGeneration.current.isCurrent(generation)) {
+        return;
+      }
       setError(t('status.genericError'));
     } finally {
-      if (!options?.silent) {
+      if (
+        !options?.silent &&
+        workspaceGeneration.current.isCurrent(generation)
+      ) {
         setLoading(false);
       }
     }
   }
+
+  useEffect(() => {
+    workspaceGeneration.current.next();
+    hasLastKnownCircleRef.current = false;
+    setCircle(null);
+    setResolvedRound(null);
+    setError(null);
+    setLoading(true);
+  }, [circleId]);
 
   useEffect(() => {
     void loadWorkspace();
@@ -282,7 +312,8 @@ export default function CircleWorkspaceScreen() {
 
   // Chat tab needs a flex-bounded column (not a parent ScrollView) so the
   // composer can stay above the software keyboard on Android resize + iOS.
-  const readyWorkspace = Boolean(circle && token && !loading && !error);
+  // Keep last-known circle mounted across refetch errors and silent reloads.
+  const readyWorkspace = Boolean(circle && token);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -290,6 +321,19 @@ export default function CircleWorkspaceScreen() {
         <View style={styles.workspaceShell}>
           {!workspaceKeyboardVisible ? (
             <View style={styles.workspaceHeaderPad}>{workspaceHeader}</View>
+          ) : null}
+          {error ? (
+            <View style={[styles.inlineErrorBanner, styles.workspaceLoadError]}>
+              <FontAwesome name="warning" size={14} color={colors.warning} />
+              <Text style={styles.inlineErrorText}>{error}</Text>
+              <Pressable
+                onPress={() => void loadWorkspace({ silent: true })}
+                accessibilityRole="button"
+                accessibilityLabel={t('accessibility.retryWorkspace')}
+              >
+                <Text style={styles.inlineErrorRetry}>{t('status.retry')}</Text>
+              </Pressable>
+            </View>
           ) : null}
           <WorkspaceContent
             circle={circle!}
@@ -390,6 +434,8 @@ function WorkspaceContent({
   const [secondaryLoading, setSecondaryLoading] = useState(true);
   const [secondaryError, setSecondaryError] = useState<string | null>(null);
   const cacheHealRetries = useRef(0);
+  const sectionsGeneration = useRef(createRequestGeneration());
+  const hasLastKnownSectionsRef = useRef(false);
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
   const paymentInstructions = circle.paymentInstructions ?? null;
   const { unreadCount: chatUnreadCount } = useConversationUnreadCount(
@@ -529,22 +575,45 @@ function WorkspaceContent({
     ) : null;
 
   const loadBackendSections = useCallback(async () => {
-    setSecondaryLoading(true);
-    setSecondaryError(null);
+    const generation = sectionsGeneration.current.next();
+    if (!hasLastKnownSectionsRef.current) {
+      setSecondaryLoading(true);
+    }
+    if (sectionsGeneration.current.isCurrent(generation)) {
+      setSecondaryError(null);
+    }
     try {
       const [scheduleResponse, ledgerResponse] = await Promise.all([
         getCircleSchedule(token, circle.id),
         getLedgerEntries(token, circle.id),
       ]);
+      if (!sectionsGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      hasLastKnownSectionsRef.current = true;
       setScheduleData(scheduleResponse);
       setLedgerEntries(ledgerResponse.entries || []);
     } catch (loadError) {
       console.error('Unable to load circle workspace sections', loadError);
+      if (!sectionsGeneration.current.isCurrent(generation)) {
+        return;
+      }
       setSecondaryError(t('status.genericError'));
     } finally {
-      setSecondaryLoading(false);
+      if (sectionsGeneration.current.isCurrent(generation)) {
+        setSecondaryLoading(false);
+      }
     }
-  }, [token, circle.id]);
+  }, [token, circle.id, t]);
+
+  useEffect(() => {
+    sectionsGeneration.current.next();
+    hasLastKnownSectionsRef.current = false;
+    setScheduleData(null);
+    setLedgerEntries([]);
+    setSecondaryError(null);
+    setSecondaryLoading(true);
+  }, [circle.id]);
 
   useEffect(() => {
     void loadBackendSections();
@@ -5139,6 +5208,10 @@ const styles = StyleSheet.create({
   workspaceHeaderPad: {
     paddingHorizontal: spacing.screenX,
     paddingTop: 18,
+  },
+  workspaceLoadError: {
+    marginHorizontal: spacing.screenX,
+    marginTop: 8,
   },
   workspaceBody: {
     flex: 1,

@@ -2,6 +2,8 @@
   "memberFallback": "Member",
   "sessionMissing": "Your session is missing an access token. Sign in again.",
   "loadError": "Unable to load your dashboard.",
+  "loadingDashboard": "Loading your dashboard",
+  "checkingContributions": "Checking contributions",
   "greetingMorning": "Good morning",
   "greetingAfternoon": "Good afternoon",
   "greetingEvening": "Good evening",

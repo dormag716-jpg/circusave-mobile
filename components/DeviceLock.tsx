@@ -1,7 +1,15 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,11 +20,13 @@ const SECURE_STORE_KEY = 'circusave_require_local_auth';
 
 type DeviceLockContextType = {
   isLockEnabled: boolean;
+  isInitializing: boolean;
   setLockEnabled: (enabled: boolean) => Promise<void>;
 };
 
 const DeviceLockContext = createContext<DeviceLockContextType>({
   isLockEnabled: false,
+  isInitializing: false,
   setLockEnabled: async () => {},
 });
 
@@ -40,7 +50,8 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
         setIsLockEnabled(enabled);
         if (enabled) {
           setIsLocked(true);
-          await authenticate();
+          // Overlay only — do not block the navigator or dashboard fetch.
+          void authenticate();
         }
       } catch {
         // ignore
@@ -99,23 +110,24 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
     };
   }, [isLockEnabled, t]);
 
-  const setLockEnabled = async (enabled: boolean) => {
+  const setLockEnabled = useCallback(async (enabled: boolean) => {
     try {
       await SecureStore.setItemAsync(SECURE_STORE_KEY, enabled ? 'true' : 'false');
     } catch {
       // ignore storage failures — in-memory state is still updated
     }
     setIsLockEnabled(enabled);
-  };
+  }, []);
 
-  if (isInitializing) {
-    return <View style={styles.container} />; // blank screen while checking
-  }
+  const value = useMemo(
+    () => ({ isLockEnabled, isInitializing, setLockEnabled }),
+    [isInitializing, isLockEnabled, setLockEnabled],
+  );
 
   return (
-    <DeviceLockContext.Provider value={{ isLockEnabled, setLockEnabled }}>
+    <DeviceLockContext.Provider value={value}>
       {children}
-      {isLocked && (
+      {isLocked ? (
         <SafeAreaView style={styles.lockOverlay} edges={['top', 'bottom']}>
           <View style={styles.lockContent}>
             <View style={styles.iconCircle}>
@@ -136,16 +148,12 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
             </Pressable>
           </View>
         </SafeAreaView>
-      )}
+      ) : null}
     </DeviceLockContext.Provider>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   lockOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.background,

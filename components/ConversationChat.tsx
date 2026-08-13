@@ -101,7 +101,12 @@ export default function ConversationChat({
     rootRef.current?.measureInWindow((_x, y, _w, h) => {
       const containerBottomY = y + h;
       setComposerLift(
-        floatingComposerBottomOffset(containerBottomY, metrics.topY, metrics.height),
+        floatingComposerBottomOffset(
+          containerBottomY,
+          metrics.topY,
+          metrics.height,
+          Platform.OS,
+        ),
       );
     });
   }, []);

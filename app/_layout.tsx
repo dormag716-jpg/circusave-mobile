@@ -7,14 +7,15 @@ import { StatusBar } from 'expo-status-bar';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'react-native-reanimated';
 
-import { DeviceLockProvider } from '@/components/DeviceLock';
+import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
 import { EntitlementsProvider } from '@/lib/entitlementsContext';
 import { initializeI18n } from '@/lib/i18n';
+import { shouldHideLaunchSplash } from '@/lib/launchSplash';
 import { MarketProvider } from '@/lib/market';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
@@ -34,7 +35,6 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [i18nReady, setI18nReady] = useState(false);
   const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
 
@@ -62,34 +62,28 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (loaded && i18nReady) {
-      SplashScreen.hideAsync();
-      // Set up the foreground notification handler once fonts are ready.
-      // Fire-and-forget — notification failure must never crash the app.
-      void initializeNotifications();
-
-      // Set up deep link listener for tapped notifications
-      const setupListener = async () => {
-        const subscription = await setupNotificationListener((data) => {
-          if (data.screen === 'workspace' && data.circleId) {
-            router.push(
-              circleWorkspaceHref(
-                data.circleId,
-                data.tab,
-                data.conversationId,
-              ),
-            );
-          }
-        });
-        return subscription;
-      };
-      
-      const subPromise = setupListener();
-
-      return () => {
-        subPromise.then((sub) => sub?.remove()).catch(() => {});
-      };
+    if (!loaded || !i18nReady) {
+      return;
     }
+    // Do not hide the splash here — wait for the first real route frame.
+    // Fire-and-forget — notification failure must never crash the app.
+    void initializeNotifications();
+
+    const subPromise = setupNotificationListener((data) => {
+      if (data.screen === 'workspace' && data.circleId) {
+        router.push(
+          circleWorkspaceHref(
+            data.circleId,
+            data.tab,
+            data.conversationId,
+          ),
+        );
+      }
+    });
+
+    return () => {
+      subPromise.then((sub) => sub?.remove()).catch(() => {});
+    };
   }, [i18nReady, loaded]);
 
   if (!loaded || !i18nReady) {
@@ -97,6 +91,45 @@ export default function RootLayout() {
   }
 
   return <RootLayoutNav />;
+}
+
+function LaunchSplashController() {
+  const { status } = useAuthSession();
+  const { isInitializing } = useDeviceLock();
+  const hidden = useRef(false);
+
+  useEffect(() => {
+    if (hidden.current) {
+      return;
+    }
+    if (
+      !shouldHideLaunchSplash({
+        authStatus: status,
+        deviceLockInitializing: isInitializing,
+      })
+    ) {
+      return;
+    }
+    hidden.current = true;
+    void SplashScreen.hideAsync();
+  }, [isInitializing, status]);
+
+  return null;
+}
+
+function SessionTree() {
+  return (
+    <AuthSessionProvider>
+      <EntitlementsProvider>
+        <MarketProvider>
+          <DeviceLockProvider>
+            <LaunchSplashController />
+            <AuthenticatedStack />
+          </DeviceLockProvider>
+        </MarketProvider>
+      </EntitlementsProvider>
+    </AuthSessionProvider>
+  );
 }
 
 function RootLayoutNav() {
@@ -108,26 +141,10 @@ function RootLayoutNav() {
       <StatusBar style="dark" />
       {isStripeSupported ? (
         <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''} merchantIdentifier="merchant.com.circusave">
-          <AuthSessionProvider>
-            <EntitlementsProvider>
-              <MarketProvider>
-                <DeviceLockProvider>
-                  <AuthenticatedStack />
-                </DeviceLockProvider>
-              </MarketProvider>
-            </EntitlementsProvider>
-          </AuthSessionProvider>
+          <SessionTree />
         </StripeProvider>
       ) : (
-        <AuthSessionProvider>
-          <EntitlementsProvider>
-            <MarketProvider>
-              <DeviceLockProvider>
-                <AuthenticatedStack />
-              </DeviceLockProvider>
-            </MarketProvider>
-          </EntitlementsProvider>
-        </AuthSessionProvider>
+        <SessionTree />
       )}
     </ThemeProvider>
   );

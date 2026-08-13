@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +32,11 @@ import {
 } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  applyContributionLoadResult,
+  createContributionRequestStreams,
+  resolveSettlementHandStatus,
+} from '@/lib/contributionRequestStreams';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
 import {
@@ -75,60 +80,124 @@ export default function ContributionPaymentScreen() {
   const stripe = useStripe();
   // Synchronous lock: React state alone can allow a second tap before re-render.
   const paymentLockRef = useRef(new PaymentSessionLock());
+  const requestStreams = useRef(createContributionRequestStreams());
+  const hasLastKnownStateRef = useRef(false);
 
-  async function loadContribution(options?: { silent?: boolean }) {
-    const accessToken = String(token ?? '').trim();
-    // Logout / unauthenticated: quiet no-op (no payment error, no PI).
-    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
-      setLoading(false);
-      return null;
-    }
-    if (!circleId) {
-      setError(t('contributions:unavailableBody'));
-      setLoading(false);
-      return null;
-    }
-
-    if (!options?.silent) {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const [circleResponse, scheduleResponse] = await Promise.all([
-        getCircleDetail(accessToken, circleId),
-        getCircleSchedule(accessToken, circleId),
-      ]);
-      setCircle(circleResponse);
-      setSnapshot(scheduleResponse);
-      return { circle: circleResponse, snapshot: scheduleResponse };
-    } catch (loadError) {
-      console.error('Unable to load contribution details', loadError);
-      setError(t('financialErrors:loadContribution'));
-      return null;
-    } finally {
-      if (!options?.silent) {
-        setLoading(false);
+  const loadContribution = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const loadGeneration = requestStreams.current.contributionLoad.next();
+      const accessToken = String(token ?? '').trim();
+      // Logout / unauthenticated: quiet no-op (no payment error, no PI).
+      if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+        applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            setLoading(false);
+          },
+        });
+        return null;
       }
-    }
-  }
+      if (!circleId) {
+        applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            setError(t('contributions:unavailableBody'));
+            setLoading(false);
+          },
+        });
+        return null;
+      }
 
-  async function loadHandStatus(handId: string): Promise<string> {
+      if (!options?.silent && !hasLastKnownStateRef.current) {
+        setLoading(true);
+      }
+      applyContributionLoadResult({
+        streams: requestStreams.current,
+        loadGeneration,
+        apply: () => {
+          setError(null);
+        },
+      });
+      try {
+        const [circleResponse, scheduleResponse] = await Promise.all([
+          getCircleDetail(accessToken, circleId),
+          getCircleSchedule(accessToken, circleId),
+        ]);
+        const applied = applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            hasLastKnownStateRef.current = true;
+            setCircle(circleResponse);
+            setSnapshot(scheduleResponse);
+          },
+        });
+        return applied
+          ? { circle: circleResponse, snapshot: scheduleResponse }
+          : null;
+      } catch (loadError) {
+        console.error('Unable to load contribution details', loadError);
+        applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            setError(t('financialErrors:loadContribution'));
+          },
+        });
+        return null;
+      } finally {
+        if (!options?.silent) {
+          applyContributionLoadResult({
+            streams: requestStreams.current,
+            loadGeneration,
+            apply: () => {
+              setLoading(false);
+            },
+          });
+        }
+      }
+    },
+    [circleId, status, t, token],
+  );
+
+  const loadHandStatus = useCallback(async (handId: string): Promise<string> => {
+    const settlementGeneration = requestStreams.current.settlementStatus.next();
     const accessToken = String(token ?? '').trim();
     if (!accessToken || !circleId) {
       return 'due';
     }
     const schedule = await getCircleSchedule(accessToken, circleId);
-    // Keep UI snapshot in sync during settlement polling (no new PaymentIntent).
-    setSnapshot(schedule);
     const contribution = schedule.contributions?.find(
       (entry) => entry.memberId === handId,
     );
-    return String(contribution?.status || 'due').toLowerCase();
-  }
+    const fetchedStatus = String(contribution?.status || 'due').toLowerCase();
+    // Always return this fetch's status to the payment poller. Only the
+    // latest settlement generation may write the on-screen schedule snapshot.
+    return resolveSettlementHandStatus({
+      streams: requestStreams.current,
+      settlementGeneration,
+      fetchedStatus,
+      applySnapshot: () => {
+        setSnapshot(schedule);
+      },
+    });
+  }, [circleId, token]);
+
+  useEffect(() => {
+    requestStreams.current.contributionLoad.next();
+    requestStreams.current.settlementStatus.next();
+    hasLastKnownStateRef.current = false;
+    setCircle(null);
+    setSnapshot(null);
+    setError(null);
+    setLoading(true);
+  }, [circleId]);
 
   useEffect(() => {
     void loadContribution();
-  }, [circleId, token, status]);
+  }, [loadContribution]);
 
   const viewerHands = findViewerHands(circle, userId, snapshot, t);
   const amountPerHand = circle?.contributionAmount ?? 0;
@@ -334,7 +403,7 @@ export default function ContributionPaymentScreen() {
     }
   }
 
-  if (loading) {
+  if (loading && !circle) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
@@ -345,7 +414,7 @@ export default function ContributionPaymentScreen() {
     );
   }
 
-  if (error || !circle) {
+  if (!circle) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
@@ -419,6 +488,22 @@ export default function ContributionPaymentScreen() {
             <Text style={styles.title}>{circle.name}</Text>
           </View>
         </View>
+
+        {error ? (
+          <View style={styles.inlineErrorBanner}>
+            <FontAwesome name="warning" size={14} color={colors.warning} />
+            <Text style={styles.inlineErrorText}>{error}</Text>
+            <Pressable
+              onPress={() => void loadContribution({ silent: true })}
+              accessibilityRole="button"
+              accessibilityLabel={t('contributions:retry')}
+            >
+              <Text style={styles.inlineErrorRetry}>
+                {t('contributions:retry')}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {settlementPhase === 'confirming' || settlementPhase === 'pending' ? (
           <View style={styles.settlementBanner} accessibilityLiveRegion="polite">
@@ -734,6 +819,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 18,
+  },
+  inlineErrorBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inlineErrorText: {
+    color: colors.warningText,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  inlineErrorRetry: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
   },
   handRow: {
     borderColor: colors.cardBorder,

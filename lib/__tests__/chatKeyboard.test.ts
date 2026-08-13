@@ -34,6 +34,20 @@ describe('floatingComposerBottomOffset', () => {
     expect(floatingComposerBottomOffset(NaN, 500)).toBe(0);
     expect(floatingComposerBottomOffset(800, Infinity)).toBe(0);
   });
+
+  test('on Android returns 0 when adjustResize already lifted the container', () => {
+    expect(floatingComposerBottomOffset(500, 500, 300, 'android')).toBe(0);
+    expect(floatingComposerBottomOffset(510, 500, 300, 'android')).toBe(0);
+  });
+
+  test('on Android uses keyboard height when the window did not resize', () => {
+    expect(floatingComposerBottomOffset(800, 500, 300, 'android')).toBe(300);
+  });
+
+  test('ignores the Android height shortcut on iOS', () => {
+    expect(floatingComposerBottomOffset(800, 500, 300, 'ios')).toBe(300);
+    expect(floatingComposerBottomOffset(800, 520, 300, 'ios')).toBe(280);
+  });
 });
 
 describe('floatingComposerListPadding', () => {

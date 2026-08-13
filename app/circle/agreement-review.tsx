@@ -25,6 +25,7 @@ import {
   type CircleAgreementReadiness,
   type CircleAgreementSnapshot,
 } from '@/lib/api';
+import { loadAgreementReviewCircleDetail } from '@/lib/agreementReviewLoad';
 import { useAuthSession } from '@/lib/authContext';
 import {
   canEnableOrganizerStart,
@@ -72,7 +73,11 @@ export default function AgreementReviewScreen() {
     setLoading(true);
     setError(null);
     try {
-      const circle = await getCircleDetail(circleId, token);
+      const circle = await loadAgreementReviewCircleDetail(
+        getCircleDetail,
+        token,
+        circleId,
+      );
       setIsOrganizer(String(circle.userRole || '').toLowerCase() === 'organizer');
       setCircleName(String(circle.name || ''));
 
