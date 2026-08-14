@@ -64,6 +64,7 @@ import {
 import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
+import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/workspaceAgreementLoad';
 import { useAuthSession } from '@/lib/authContext';
 import {
   readCircleWorkspacePresentation,
@@ -502,11 +503,17 @@ function WorkspaceContent({
       ),
     [circle.members, userId],
   );
+  const circleNotStarted = isCircleNotStarted(circle);
 
   useEffect(() => {
     let cancelled = false;
-    const setup = isCircleNotStarted(circle);
-    if (!token || !setup || !workspaceParticipating) {
+    if (
+      !shouldFetchWorkspaceAgreementSnapshot({
+        token,
+        circleNotStarted,
+        isParticipating: workspaceParticipating,
+      })
+    ) {
       setWorkspaceAgreementSnapshot(null);
       setWorkspaceAgreementLoaded(true);
       return () => {
@@ -537,18 +544,24 @@ function WorkspaceContent({
     return () => {
       cancelled = true;
     };
-  }, [circle, token, userId, workspaceParticipating, refreshNonce]);
+  }, [
+    circle.id,
+    circleNotStarted,
+    refreshNonce,
+    token,
+    workspaceParticipating,
+  ]);
 
   const workspaceMemberAgreementPrompt: MemberAgreementPrompt = useMemo(() => {
     if (!workspaceAgreementLoaded) return { kind: 'none' };
     return getMemberAgreementPrompt({
-      circleStarted: !isCircleNotStarted(circle),
+      circleStarted: !circleNotStarted,
       userId,
       isParticipatingMember: workspaceParticipating,
       snapshot: workspaceAgreementSnapshot,
     });
   }, [
-    circle,
+    circleNotStarted,
     userId,
     workspaceAgreementLoaded,
     workspaceAgreementSnapshot,
@@ -1340,6 +1353,8 @@ function WorkspaceContent({
           currentRoundNumber={currentRoundNumber}
           token={token ?? ''}
           onRefresh={onReload}
+          agreementSnapshot={workspaceAgreementSnapshot}
+          agreementSnapshotLoaded={workspaceAgreementLoaded}
         />
       ) : null}
 
@@ -2562,6 +2577,8 @@ function PeopleTab({
   currentRoundNumber,
   token,
   onRefresh,
+  agreementSnapshot,
+  agreementSnapshotLoaded,
 }: {
   circle: BackendCircleDetail;
   hasSchedule: boolean;
@@ -2572,6 +2589,8 @@ function PeopleTab({
   currentRoundNumber: number;
   token: string;
   onRefresh: () => Promise<void>;
+  agreementSnapshot: CircleAgreementSnapshot | null;
+  agreementSnapshotLoaded: boolean;
 }) {
   const { t, i18n: translation } = useTranslation(['people', 'payoutOrder']);
   const [approvingId, setApprovingId] = useState<string | null>(null);
@@ -2591,8 +2610,6 @@ function PeopleTab({
   const [showUnclaimedReview, setShowUnclaimedReview] = useState(false);
   const [pendingStartConfirmations, setPendingStartConfirmations] = useState<StartCircleConfirmations | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<PeopleNotice | null>(null);
-  const [agreementSnapshot, setAgreementSnapshot] = useState<CircleAgreementSnapshot | null>(null);
-  const [agreementSnapshotLoaded, setAgreementSnapshotLoaded] = useState(false);
   const language = translation.resolvedLanguage || translation.language;
   const formatMoney = useCallback(
     (value: number) => formatCurrency(value, language),
@@ -2626,44 +2643,6 @@ function PeopleTab({
       ),
     [members, userId],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!token || !circleNotStarted || !isParticipatingMember) {
-      setAgreementSnapshot(null);
-      setAgreementSnapshotLoaded(true);
-      return () => {
-        cancelled = true;
-      };
-    }
-    setAgreementSnapshotLoaded(false);
-    void (async () => {
-      try {
-        const next = await getCircleAgreementSnapshot(token, circle.id);
-        if (!cancelled) setAgreementSnapshot(next);
-      } catch (error) {
-        if (
-          error &&
-          typeof error === 'object' &&
-          'status' in error &&
-          (error as { status?: unknown }).status === 404
-        ) {
-          if (!cancelled) setAgreementSnapshot(null);
-        } else {
-          console.error(
-            'Unable to load circle agreement snapshot for member prompt',
-            error,
-          );
-          if (!cancelled) setAgreementSnapshot(null);
-        }
-      } finally {
-        if (!cancelled) setAgreementSnapshotLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [circle.id, circleNotStarted, isParticipatingMember, token]);
 
   const memberAgreementPrompt: MemberAgreementPrompt = useMemo(() => {
     if (!agreementSnapshotLoaded) {

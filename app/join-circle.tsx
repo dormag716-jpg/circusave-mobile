@@ -23,6 +23,9 @@ import {
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
+import {
+  shouldKeepJoinPreviewDuringLookup,
+} from '@/lib/joinCirclePaint';
 import { resolveJoinOutcome, type JoinOutcome } from '@/lib/joinOutcome';
 import { dashboardHref } from '@/lib/navigation';
 import {
@@ -55,9 +58,11 @@ export default function JoinCircleScreen() {
       return;
     }
     setResolving(true);
-    setPreview(null);
-    setResolvedId(null);
     setJoinOutcome(null);
+    if (!shouldKeepJoinPreviewDuringLookup(preview != null)) {
+      setPreview(null);
+      setResolvedId(null);
+    }
     try {
       const { circleId, preview: p } = await resolveCircleCode(token, code);
       setPreview(p);

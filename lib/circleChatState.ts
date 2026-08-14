@@ -138,6 +138,49 @@ export function areChatMessagesEquivalent(
   return true;
 }
 
+export function shouldClearMessagesOnConversationSwitch(): false {
+  return false;
+}
+
+export function messagesForSelectedConversation(
+  messagesByConversationId: Record<string, BackendChatMessage[]>,
+  selectedId: string | null | undefined,
+): BackendChatMessage[] {
+  const id = String(selectedId || '').trim();
+  if (!id) {
+    return [];
+  }
+  return messagesByConversationId[id] ?? [];
+}
+
+export function storeConversationMessages(
+  current: Record<string, BackendChatMessage[]>,
+  conversationId: string,
+  incoming: BackendChatMessage[],
+): Record<string, BackendChatMessage[]> {
+  const id = String(conversationId || '').trim();
+  if (!id) {
+    return current;
+  }
+  const merged = mergeChatMessages(incoming, current[id] ?? []);
+  if (merged === current[id]) {
+    return current;
+  }
+  return { ...current, [id]: merged };
+}
+
+export function appendConversationMessage(
+  current: Record<string, BackendChatMessage[]>,
+  conversationId: string,
+  message: BackendChatMessage,
+): Record<string, BackendChatMessage[]> {
+  const id = String(conversationId || '').trim();
+  if (!id) {
+    return current;
+  }
+  return { ...current, [id]: [...(current[id] ?? []), message] };
+}
+
 export function mergeChatMessages(
   incoming: BackendChatMessage[],
   current: BackendChatMessage[],

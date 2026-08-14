@@ -2,7 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
@@ -11,12 +11,14 @@ import { useAuthSession } from '@/lib/authContext';
 import {
   buildOpenCircleCapacity,
 } from '@/lib/circleCapacity';
+import {
+  shouldShowCreateTabLimitCard,
+} from '@/lib/createTabPaint';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
 import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
-  shouldShowBlockingLoadState,
 } from '@/lib/requestGeneration';
 import { colors, radii, spacing } from '@/lib/theme';
 
@@ -29,21 +31,14 @@ export default function CreateCircleGuideScreen() {
   const token = session?.session.token;
 
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
   const requestGeneration = useRef(createRequestGeneration());
   const hasSnapshotRef = useRef(false);
 
   const load = useCallback(async () => {
     const generation = requestGeneration.current.next();
     if (!token) {
-      if (requestGeneration.current.isCurrent(generation)) {
-        setLoading(false);
-      }
       return;
-    }
-
-    if (!hasSnapshotRef.current) {
-      setLoading(true);
     }
 
     try {
@@ -52,6 +47,7 @@ export default function CreateCircleGuideScreen() {
         return;
       }
       hasSnapshotRef.current = true;
+      setHasSnapshot(true);
       setCircles(next);
     } catch {
       if (!requestGeneration.current.isCurrent(generation)) {
@@ -59,10 +55,6 @@ export default function CreateCircleGuideScreen() {
       }
       if (shouldReplaceFinancialStateOnError(hasSnapshotRef.current)) {
         setCircles([]);
-      }
-    } finally {
-      if (requestGeneration.current.isCurrent(generation)) {
-        setLoading(false);
       }
     }
   }, [token]);
@@ -78,7 +70,10 @@ export default function CreateCircleGuideScreen() {
     organizerRoleOrTier: planTier,
     organizerOwnedOnly: true,
   });
-  const hasReachedLimit = openCap.atCapacity;
+  const hasReachedLimit = shouldShowCreateTabLimitCard({
+    hasSnapshot,
+    atCapacity: openCap.atCapacity,
+  });
   const existingId = openCap.primaryOpenCircleId;
   const existing = existingId
     ? circles.find((c) => c.id === existingId)
@@ -88,17 +83,6 @@ export default function CreateCircleGuideScreen() {
     ['draft', 'setup', 'forming'].includes(
       String(existing.status || '').toLowerCase(),
     );
-
-  if (shouldShowBlockingLoadState(loading, hasSnapshotRef.current)) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>{t('landing.loading')}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -298,16 +282,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 14,
     textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    color: colors.muted,
-    fontSize: 14,
   },
   limitCard: {
     backgroundColor: colors.card,

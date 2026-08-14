@@ -49,9 +49,14 @@ import { useAuthSession } from '@/lib/authContext';
 import {
   FLOATING_COMPOSER_RESTING_HEIGHT,
   floatingComposerBottomOffset,
+  floatingComposerDockOffset,
   floatingComposerListPadding,
 } from '@/lib/chatKeyboard';
 import { useEntitlements } from '@/lib/entitlementsContext';
+import {
+  shouldApplyKeyboardGeometry,
+  workspaceChromeLayoutStyle,
+} from '@/lib/workspaceKeyboardChrome';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 
 type ChatItem = {
@@ -266,9 +271,10 @@ export default function CircleAssistantScreen() {
     });
   }, []);
 
-    const applyKeyboardFrame = useCallback(
+  const applyKeyboardFrame = useCallback(
     (event: KeyboardEvent | null) => {
-      if (!event) {
+      const height = event?.endCoordinates.height;
+      if (!event || !shouldApplyKeyboardGeometry(height)) {
         keyboardMetricsRef.current = null;
         setKeyboardVisible(false);
         setComposerLift(0);
@@ -317,9 +323,13 @@ export default function CircleAssistantScreen() {
     return () => cancelAnimationFrame(handle);
   }, [keyboardVisible, remeasureComposerLift]);
 
+  const dockBottom = floatingComposerDockOffset(
+    composerLift,
+    keyboardVisible,
+  );
   const listBottomPadding = floatingComposerListPadding(
     composerHeight,
-    composerLift,
+    dockBottom,
   );
 
   const loadHistory = useCallback(async () => {
@@ -583,43 +593,47 @@ export default function CircleAssistantScreen() {
           }
         }}
       >
-        {!keyboardVisible ? (
-          <View style={styles.header}>
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.iconButton}
-              accessibilityRole="button"
-              accessibilityLabel={t('assistant:backA11y')}
-            >
-              <FontAwesome
-                name="chevron-left"
-                size={18}
-                color={colors.textStrong}
-              />
-            </Pressable>
-            <View style={styles.headerTitle}>
-              <View style={styles.sparkle}>
-                <FontAwesome name="magic" size={13} color={colors.onColor} />
-              </View>
-              <View>
-                <Text style={styles.title}>{t('assistant:title')}</Text>
-                <Text style={styles.subtitle}>{t('assistant:subtitle')}</Text>
-              </View>
+        <View
+          style={[
+            styles.header,
+            workspaceChromeLayoutStyle(keyboardVisible),
+          ]}
+          collapsable={false}
+        >
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.iconButton}
+            accessibilityRole="button"
+            accessibilityLabel={t('assistant:backA11y')}
+          >
+            <FontAwesome
+              name="chevron-left"
+              size={18}
+              color={colors.textStrong}
+            />
+          </Pressable>
+          <View style={styles.headerTitle}>
+            <View style={styles.sparkle}>
+              <FontAwesome name="magic" size={13} color={colors.onColor} />
             </View>
-            <Pressable
-              onPress={startNewChat}
-              style={styles.newChatButton}
-              accessibilityRole="button"
-              accessibilityLabel={t('assistant:history.newChatA11y')}
-              disabled={historyLoading || sending}
-            >
-              <FontAwesome name="plus" size={12} color={colors.primaryDark} />
-              <Text style={styles.newChatText}>
-                {t('assistant:history.newChat')}
-              </Text>
-            </Pressable>
+            <View>
+              <Text style={styles.title}>{t('assistant:title')}</Text>
+              <Text style={styles.subtitle}>{t('assistant:subtitle')}</Text>
+            </View>
           </View>
-        ) : null}
+          <Pressable
+            onPress={startNewChat}
+            style={styles.newChatButton}
+            accessibilityRole="button"
+            accessibilityLabel={t('assistant:history.newChatA11y')}
+            disabled={historyLoading || sending}
+          >
+            <FontAwesome name="plus" size={12} color={colors.primaryDark} />
+            <Text style={styles.newChatText}>
+              {t('assistant:history.newChat')}
+            </Text>
+          </Pressable>
+        </View>
 
         <FlatList
           ref={listRef}
@@ -641,7 +655,7 @@ export default function CircleAssistantScreen() {
 
         {/* Floating assistant console — rides above the keyboard. */}
         <View
-          style={[styles.composerDock, { bottom: composerLift }]}
+          style={[styles.composerDock, { bottom: dockBottom }]}
           onLayout={(e) => {
             const next = Math.ceil(e.nativeEvent.layout.height);
             if (next > 0 && next !== composerHeight) {

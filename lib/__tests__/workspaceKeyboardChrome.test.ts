@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import path from 'path';
+
 import {
   COMPOSER_VISUAL_CLEARANCE,
   floatingComposerBottomOffset,
@@ -35,6 +38,17 @@ describe('workspace keyboard chrome ownership', () => {
     expect(isSoftwareKeyboardVisible(0)).toBe(false);
     expect(shouldApplyKeyboardGeometry(0)).toBe(false);
     expect(isSoftwareKeyboardVisible(280)).toBe(true);
+  });
+
+  it('keeps the Susu header mounted and uses shared composer clearance', () => {
+    const source = readFileSync(
+      path.join(__dirname, '..', '..', 'app', 'circle', 'assistant.tsx'),
+      'utf8',
+    );
+    expect(source).toMatch(/workspaceChromeLayoutStyle\(keyboardVisible\)/);
+    expect(source).toMatch(/floatingComposerDockOffset/);
+    expect(source).toMatch(/shouldApplyKeyboardGeometry/);
+    expect(source).not.toMatch(/!keyboardVisible \?/);
   });
 });
 

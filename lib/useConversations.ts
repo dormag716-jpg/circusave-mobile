@@ -11,12 +11,14 @@ import {
   type BackendChatMessage,
 } from './api';
 import {
+  appendConversationMessage,
   areConversationsEquivalent,
   chatPollIntervalMs,
   chatThreadPollFocused,
   isChatPollAppActive,
-  mergeChatMessages,
+  messagesForSelectedConversation,
   shouldRunUnreadConversationPoll,
+  storeConversationMessages,
 } from './circleChatState';
 import {
   claimCircleChatClient,
@@ -63,7 +65,11 @@ export function useConversations(
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
     initialConversationId ?? null,
   );
-  const [messages, setMessages] = useState<BackendChatMessage[]>([]);
+  const [messagesByConversationId, setMessagesByConversationId] = useState<
+    Record<string, BackendChatMessage[]>
+  >({});
+  const messagesByConversationIdRef = useRef(messagesByConversationId);
+  messagesByConversationIdRef.current = messagesByConversationId;
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -87,6 +93,14 @@ export function useConversations(
         (conversation) => conversation.id === selectedConversationId,
       ) ?? null,
     [conversations, selectedConversationId],
+  );
+  const messages = useMemo(
+    () =>
+      messagesForSelectedConversation(
+        messagesByConversationId,
+        selectedConversationId,
+      ),
+    [messagesByConversationId, selectedConversationId],
   );
 
   const loadConversations = useCallback(async () => {
@@ -138,10 +152,12 @@ export function useConversations(
           conversationId,
           token,
         );
+        setMessagesByConversationId((current) =>
+          storeConversationMessages(current, conversationId, response.messages),
+        );
         if (activeConversationId.current !== conversationId) {
           return;
         }
-        setMessages((current) => mergeChatMessages(response.messages, current));
         setConversations((current) =>
           current.map((conversation) =>
             conversation.id === response.conversation.id
@@ -181,6 +197,8 @@ export function useConversations(
   );
 
   useEffect(() => {
+    setMessagesByConversationId({});
+    messagesByConversationIdRef.current = {};
     claimCircleChatClient(circleId);
     return () => {
       releaseCircleChatClient(circleId);
@@ -211,12 +229,13 @@ export function useConversations(
 
   useEffect(() => {
     if (!selectedConversationId) {
-      setMessages([]);
       return;
     }
-    setMessages([]);
     lastMarkedMessageId.current = null;
-    void loadMessages(selectedConversationId);
+    const cached = messagesByConversationIdRef.current[selectedConversationId];
+    void loadMessages(selectedConversationId, {
+      quiet: Array.isArray(cached) && cached.length > 0,
+    });
   }, [loadMessages, selectedConversationId]);
 
   useEffect(() => {
@@ -282,7 +301,9 @@ export function useConversations(
           token,
           text.trim(),
         );
-        setMessages((current) => [...current, message]);
+        setMessagesByConversationId((current) =>
+          appendConversationMessage(current, selectedConversationId, message),
+        );
         await loadConversations();
         setError(null);
       } catch (sendError) {

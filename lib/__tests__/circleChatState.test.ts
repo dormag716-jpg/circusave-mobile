@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import path from 'path';
+
 import type { BackendChatMessage } from '../api';
 import {
   CIRCLE_CHAT_POLL_MS,
@@ -6,8 +9,12 @@ import {
   chatThreadPollFocused,
   composerDraftAfterSend,
   isChatPollAppActive,
+  appendConversationMessage,
   mergeChatMessages,
+  messagesForSelectedConversation,
   shouldAutoScrollChat,
+  shouldClearMessagesOnConversationSwitch,
+  storeConversationMessages,
   shouldKeepConversationSurfaceMounted,
   shouldRunUnreadConversationPoll,
   toggleConversationPanel,
@@ -150,6 +157,42 @@ describe('circle chat message state', () => {
     expect(mergeChatMessages([message('1', 'edited')], current)).toEqual([
       message('1', 'edited'),
     ]);
+  });
+
+  it('keeps each conversation thread when switching selections', () => {
+    expect(shouldClearMessagesOnConversationSwitch()).toBe(false);
+
+    let store: Record<string, ReturnType<typeof message>[]> = {};
+    store = storeConversationMessages(store, 'group', [
+      message('g1', 'group hello'),
+    ]);
+    store = storeConversationMessages(store, 'direct', [
+      message('d1', 'private hello'),
+    ]);
+
+    expect(
+      messagesForSelectedConversation(store, 'group').map((item) => item.id),
+    ).toEqual(['g1']);
+    expect(
+      messagesForSelectedConversation(store, 'direct').map((item) => item.id),
+    ).toEqual(['d1']);
+    expect(messagesForSelectedConversation(store, 'group')).toBe(store.group);
+
+    store = appendConversationMessage(store, 'group', message('g2', 'next'));
+    expect(messagesForSelectedConversation(store, 'direct')[0]?.id).toBe('d1');
+    expect(
+      messagesForSelectedConversation(store, 'group').map((item) => item.id),
+    ).toEqual(['g1', 'g2']);
+  });
+
+  it('does not clear the selected thread before the next conversation loads', () => {
+    const source = readFileSync(
+      path.join(__dirname, '..', 'useConversations.ts'),
+      'utf8',
+    );
+    expect(source).toMatch(/messagesForSelectedConversation/);
+    expect(source).toMatch(/storeConversationMessages/);
+    expect(source).not.toMatch(/setMessages\(\[\]\)/);
   });
 });
 

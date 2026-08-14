@@ -1,9 +1,8 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -20,12 +19,20 @@ import {
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
+import {
+  shouldShowInvitePreviewSkeleton,
+  shouldShowInviteUnavailable,
+} from '@/lib/invitePaint';
 import { resolveJoinOutcome } from '@/lib/joinOutcome';
 import { circleWorkspaceHref, inviteJoinHref } from '@/lib/navigation';
 import {
   buildPlannedHandClaimAcknowledgment,
   canSubmitPlannedHandClaim,
 } from '@/lib/plannedHandClaim';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+} from '@/lib/requestGeneration';
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function JoinInviteScreen() {
@@ -48,31 +55,60 @@ export default function JoinInviteScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasPreviewRef = useRef(false);
 
-  async function loadPreview() {
+  const loadPreview = useCallback(async () => {
+    const generation = requestGeneration.current.next();
     if (!circleId) {
-      setError(t('invite:unavailableMessage'));
-      setLoading(false);
+      if (requestGeneration.current.isCurrent(generation)) {
+        setError(t('invite:unavailableMessage'));
+        setLoading(false);
+      }
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!hasPreviewRef.current) {
+      setLoading(true);
+    }
+    if (requestGeneration.current.isCurrent(generation)) {
+      setError(null);
+    }
 
     try {
       const data = await getPublicInvitePreview(circleId);
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      hasPreviewRef.current = true;
       setPreview(data);
     } catch (loadError) {
       console.error('Unable to load public invite preview.', loadError);
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
       setError(t('invite:unavailableMessage'));
+      if (shouldReplaceFinancialStateOnError(hasPreviewRef.current)) {
+        setPreview(null);
+      }
     } finally {
-      setLoading(false);
+      if (requestGeneration.current.isCurrent(generation)) {
+        setLoading(false);
+      }
     }
-  }
+  }, [circleId, t]);
+
+  useEffect(() => {
+    requestGeneration.current.next();
+    hasPreviewRef.current = false;
+    setPreview(null);
+    setError(null);
+    setLoading(true);
+  }, [circleId]);
 
   useEffect(() => {
     void loadPreview();
-  }, [circleId]);
+  }, [loadPreview]);
 
   async function handleJoin() {
     if (!token || !circleId || !preview) return;
@@ -119,44 +155,19 @@ export default function JoinInviteScreen() {
     }
   }
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-        <View style={styles.statusCard}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.statusText}>{t('invite:loading')}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (error || !preview) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.replace('/(tabs)/dashboard')}
-          >
-            <FontAwesome name="home" size={24} color={colors.primaryDark} />
-          </Pressable>
-        </View>
-        <View style={styles.statusCard}>
-          <FontAwesome name="warning" size={32} color={colors.warning} />
-          <Text style={styles.statusTitle}>{t('invite:unavailableTitle')}</Text>
-          <Text style={styles.statusText}>
-            {error ?? t('invite:unavailableMessage')}
-          </Text>
-          <Pressable
-            style={styles.primaryButton}
-            onPress={() => router.replace('/(tabs)/dashboard')}
-          >
-            <Text style={styles.primaryButtonText}>{t('invite:goHome')}</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const hasPreview = preview != null;
+  const showPreviewSkeleton = shouldShowInvitePreviewSkeleton({
+    loading,
+    hasPreview,
+  });
+  const showUnavailable = shouldShowInviteUnavailable({
+    loading,
+    hasPreview,
+    error,
+  });
+  const acceptDisabled =
+    !preview ||
+    !canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining });
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -180,38 +191,82 @@ export default function JoinInviteScreen() {
             <FontAwesome name="group" size={32} color={colors.primary} />
           </View>
           <Text style={styles.heroTitle}>{t('invite:invitedTitle')}</Text>
-          <Text style={styles.heroSubtitle}>
-            {t('invite:invitedBy', {
-              organizerName:
-                preview.organizerName ||
-                t('joinCircle:organizerFallback'),
-            })}
-          </Text>
+          {preview ? (
+            <Text style={styles.heroSubtitle}>
+              {t('invite:invitedBy', {
+                organizerName:
+                  preview.organizerName ||
+                  t('joinCircle:organizerFallback'),
+              })}
+            </Text>
+          ) : showPreviewSkeleton ? (
+            <View style={styles.skeletonLine} />
+          ) : null}
         </View>
 
-        <View style={styles.detailsCard}>
-          <Text style={styles.circleName}>{preview.name}</Text>
-          
-          <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>{t('invite:contribution')}</Text>
-              <Text style={styles.detailValue}>
-                {formatInviteAmount(
-                  preview.contributionAmount,
-                  i18n.resolvedLanguage || i18n.language,
+        {showUnavailable ? (
+          <View style={styles.unavailableCard}>
+            <FontAwesome name="warning" size={32} color={colors.warning} />
+            <Text style={styles.statusTitle}>{t('invite:unavailableTitle')}</Text>
+            <Text style={styles.statusText}>
+              {error ?? t('invite:unavailableMessage')}
+            </Text>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => void loadPreview()}
+              accessibilityRole="button"
+              accessibilityLabel={t('invite:retryAccessibility')}
+            >
+              <Text style={styles.primaryButtonText}>{t('invite:retry')}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.primaryButton, styles.secondaryAuthButton]}
+              onPress={() => router.replace('/(tabs)/dashboard')}
+              accessibilityRole="button"
+              accessibilityLabel={t('invite:goHome')}
+            >
+              <Text style={styles.secondaryAuthButtonText}>
+                {t('invite:goHome')}
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.detailsCard}>
+            {preview ? (
+              <Text style={styles.circleName}>{preview.name}</Text>
+            ) : (
+              <View style={[styles.skeletonLine, styles.skeletonTitle]} />
+            )}
+
+            <View style={styles.detailRow}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>{t('invite:contribution')}</Text>
+                {preview ? (
+                  <Text style={styles.detailValue}>
+                    {formatInviteAmount(
+                      preview.contributionAmount,
+                      i18n.resolvedLanguage || i18n.language,
+                    )}
+                  </Text>
+                ) : (
+                  <View style={styles.skeletonValue} />
                 )}
-              </Text>
-            </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>{t('invite:frequency')}</Text>
-              <Text style={styles.detailValue}>
-                {t(`invite:frequencyValue.${String(preview.frequency).toLowerCase()}`, {
-                  defaultValue: preview.frequency,
-                })}
-              </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>{t('invite:frequency')}</Text>
+                {preview ? (
+                  <Text style={styles.detailValue}>
+                    {t(`invite:frequencyValue.${String(preview.frequency).toLowerCase()}`, {
+                      defaultValue: preview.frequency,
+                    })}
+                  </Text>
+                ) : (
+                  <View style={styles.skeletonValue} />
+                )}
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.actionContainer}>
           {token ? (
@@ -237,13 +292,13 @@ export default function JoinInviteScreen() {
               <Pressable
                 style={[
                   styles.primaryButton,
-                  (!claimAckChecked || joining) && styles.disabledButton,
+                  acceptDisabled && styles.disabledButton,
                 ]}
-                disabled={!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })}
+                disabled={acceptDisabled}
                 onPress={() => void handleJoin()}
                 accessibilityRole="button"
                 accessibilityLabel={t('invite:acceptAccessibility', {
-                  circleName: preview.name,
+                  circleName: preview?.name || t('joinCircle:outcome.circleFallback'),
                 })}
               >
                 <Text style={styles.primaryButtonText}>
@@ -309,11 +364,35 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: -8,
   },
-  statusCard: {
-    flex: 1,
+  unavailableCard: {
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    gap: 4,
+    marginBottom: 32,
+    padding: 24,
+  },
+  skeletonLine: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 8,
+    height: 16,
+    marginTop: 8,
+    width: 180,
+  },
+  skeletonTitle: {
+    alignSelf: 'center',
+    height: 22,
+    marginBottom: 24,
+    width: 160,
+  },
+  skeletonValue: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 8,
+    height: 20,
+    marginTop: 4,
+    width: 88,
   },
   statusTitle: {
     fontSize: 20,

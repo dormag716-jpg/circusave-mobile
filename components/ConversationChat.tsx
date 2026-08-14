@@ -434,6 +434,7 @@ export default function ConversationChat({
 
           {messages.length > 0 ? (
             <ChatFeed
+              key={selectedConversation.id}
               messages={messages}
               currentUserId={currentUserId}
               pinToBottomNonce={sendScrollNonce}
