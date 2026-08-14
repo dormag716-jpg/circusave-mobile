@@ -2,6 +2,9 @@ import { canShowBackendGatedAction } from '../startCircleReadiness';
 import type { BackendCircleDetail, BackendRoundSnapshot } from '../api';
 import {
   CIRCLE_WORKSPACE_CACHE_TTL_MS,
+  bindCircleWorkspaceCacheUser,
+  circleWorkspaceCacheKey,
+  clearCircleWorkspaceCache,
   isLedgerRequiredForRoundPresentation,
   isWorkspaceCacheAuthoritativeForPermissions,
   readCircleWorkspaceCache,
@@ -51,6 +54,7 @@ function schedule(
 describe('circle workspace warm cache', () => {
   beforeEach(() => {
     resetCircleWorkspaceCacheForTests();
+    bindCircleWorkspaceCacheUser('usr_test');
   });
 
   it('seeds presentation by circle ID without leaking another circle', () => {
@@ -160,5 +164,54 @@ describe('circle workspace warm cache', () => {
         true,
       ),
     ).toBe(false);
+  });
+
+  it('does not seed or read without a bound user', () => {
+    resetCircleWorkspaceCacheForTests();
+    seedCircleWorkspaceCache({
+      circleId: 'circle-a',
+      detail: detail('circle-a', 'Alpha'),
+    });
+    expect(readCircleWorkspacePresentation('circle-a')).toBeNull();
+    expect(circleWorkspaceCacheKey('circle-a', '')).toBe('');
+  });
+
+  it('does not first-paint another user from the same circle id', () => {
+    seedCircleWorkspaceCache({
+      circleId: 'circle-a',
+      detail: detail('circle-a', 'Ada Circle'),
+      schedule: schedule('circle-a', true),
+    });
+    expect(readCircleWorkspacePresentation('circle-a')?.detail?.name).toBe(
+      'Ada Circle',
+    );
+
+    bindCircleWorkspaceCacheUser('usr_other');
+    expect(readCircleWorkspacePresentation('circle-a')).toBeNull();
+
+    seedCircleWorkspaceCache({
+      circleId: 'circle-a',
+      detail: detail('circle-a', 'Other Circle'),
+    });
+    expect(readCircleWorkspacePresentation('circle-a')?.detail?.name).toBe(
+      'Other Circle',
+    );
+
+    bindCircleWorkspaceCacheUser('usr_test');
+    expect(readCircleWorkspacePresentation('circle-a')).toBeNull();
+  });
+
+  it('keeps the same user warm after a same-user rebind and clears on explicit reset', () => {
+    seedCircleWorkspaceCache({
+      circleId: 'circle-a',
+      detail: detail('circle-a', 'Alpha'),
+    });
+    bindCircleWorkspaceCacheUser('usr_test');
+    expect(readCircleWorkspacePresentation('circle-a')?.detail?.name).toBe(
+      'Alpha',
+    );
+
+    clearCircleWorkspaceCache();
+    expect(readCircleWorkspacePresentation('circle-a')).toBeNull();
   });
 });

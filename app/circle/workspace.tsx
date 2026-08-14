@@ -214,7 +214,7 @@ export default function CircleWorkspaceScreen() {
     };
   }, []);
 
-  async function loadWorkspace(options?: { silent?: boolean }) {
+  async function loadWorkspace(options?: { silent?: boolean; revalidate?: boolean }) {
     const generation = workspaceGeneration.current.next();
     const accessToken = String(token ?? '').trim();
     // Logout / unauthenticated: quiet no-op (do not console.error or generic error).
@@ -242,7 +242,11 @@ export default function CircleWorkspaceScreen() {
     }
 
     try {
-      const nextCircle = await getCircleDetail(accessToken, circleId);
+      const nextCircle = await getCircleDetail(
+        accessToken,
+        circleId,
+        options?.revalidate ? { revalidate: true } : undefined,
+      );
       if (!workspaceGeneration.current.isCurrent(generation)) {
         return;
       }
@@ -290,7 +294,7 @@ export default function CircleWorkspaceScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await loadWorkspace({ silent: true });
+      await loadWorkspace({ silent: true, revalidate: true });
       setRefreshNonce((n) => n + 1);
     } finally {
       setRefreshing(false);

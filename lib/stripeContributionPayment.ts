@@ -51,6 +51,34 @@ export type StripeContributionPaymentOutcome =
   | { kind: 'pending_settlement'; handId: string }
   | { kind: 'error'; message: string; handId: string };
 
+export type ContributionSettlementPhase = null | 'confirming' | 'pending';
+
+/** PaymentSheet success that has not webhook-confirmed must keep the pay lock. */
+export function shouldHoldPaymentLockAfterOutcome(
+  kind: StripeContributionPaymentOutcome['kind'],
+): boolean {
+  return kind === 'pending_settlement';
+}
+
+/** Confirming or pending settlement must not start another PI or manual submit. */
+export function shouldBlockContributionPayActions(input: {
+  payingStripe?: boolean;
+  submitting?: boolean;
+  settlementPhase?: ContributionSettlementPhase;
+}): boolean {
+  return (
+    input.payingStripe === true ||
+    input.submitting === true ||
+    input.settlementPhase === 'confirming' ||
+    input.settlementPhase === 'pending'
+  );
+}
+
+/** Pending UI/lock clears only when a fresh schedule says confirmed. */
+export function shouldClearPendingSettlement(status: string): boolean {
+  return isContributionConfirmedStatus(status);
+}
+
 /** Synchronous mutual-exclusion for PaymentIntent + PaymentSheet (not React state). */
 export class PaymentSessionLock {
   private locked = false;

@@ -25,9 +25,42 @@ export type CircleWorkspacePresentation = {
 };
 
 const store = new Map<string, CircleWorkspaceCacheEntry>();
+let cacheUserId = '';
 
 function normalizeCircleId(circleId: string | null | undefined): string {
   return String(circleId ?? '').trim();
+}
+
+function normalizeUserId(userId: string | null | undefined): string {
+  return String(userId ?? '').trim();
+}
+
+export function circleWorkspaceCacheKey(
+  circleId: string,
+  userId: string = cacheUserId,
+): string {
+  const id = normalizeCircleId(circleId);
+  const user = normalizeUserId(userId);
+  if (!id || !user) {
+    return '';
+  }
+  return `${user}:${id}`;
+}
+
+/** Isolate warm rows to the signed-in user. Changing users clears the map. */
+export function bindCircleWorkspaceCacheUser(
+  userId: string | null | undefined,
+): void {
+  const next = normalizeUserId(userId);
+  if (next === cacheUserId) {
+    return;
+  }
+  store.clear();
+  cacheUserId = next;
+}
+
+export function clearCircleWorkspaceCache(): void {
+  store.clear();
 }
 
 export function isCircleWorkspaceCacheExpired(
@@ -83,19 +116,21 @@ export function seedCircleWorkspaceCache(input: {
   detail?: BackendCircleDetail | null;
   schedule?: BackendRoundSnapshot | null;
   now?: number;
+  userId?: string;
 }): void {
   const circleId = normalizeCircleId(input.circleId);
-  if (!circleId) {
+  const key = circleWorkspaceCacheKey(circleId, input.userId ?? cacheUserId);
+  if (!circleId || !key) {
     return;
   }
 
-  const previous = store.get(circleId);
+  const previous = store.get(key);
   const detail =
     input.detail !== undefined ? input.detail : previous?.detail ?? null;
   const schedule =
     input.schedule !== undefined ? input.schedule : previous?.schedule ?? null;
 
-  store.set(circleId, {
+  store.set(key, {
     circleId,
     storedAt: input.now ?? Date.now(),
     detail,
@@ -105,14 +140,15 @@ export function seedCircleWorkspaceCache(input: {
 
 export function readCircleWorkspaceCache(
   circleId: string,
-  options?: { now?: number; ttlMs?: number },
+  options?: { now?: number; ttlMs?: number; userId?: string },
 ): CircleWorkspaceCacheEntry | null {
   const id = normalizeCircleId(circleId);
-  if (!id) {
+  const key = circleWorkspaceCacheKey(id, options?.userId ?? cacheUserId);
+  if (!id || !key) {
     return null;
   }
 
-  const entry = store.get(id);
+  const entry = store.get(key);
   if (!entry) {
     return null;
   }
@@ -124,7 +160,7 @@ export function readCircleWorkspaceCache(
       options?.ttlMs ?? CIRCLE_WORKSPACE_CACHE_TTL_MS,
     )
   ) {
-    store.delete(id);
+    store.delete(key);
     return null;
   }
 
@@ -134,7 +170,7 @@ export function readCircleWorkspaceCache(
 /** Synchronous first-paint snapshot. Financial grants are always stripped. */
 export function readCircleWorkspacePresentation(
   circleId: string,
-  options?: { now?: number; ttlMs?: number },
+  options?: { now?: number; ttlMs?: number; userId?: string },
 ): CircleWorkspacePresentation | null {
   const entry = readCircleWorkspaceCache(circleId, options);
   if (!entry) {
@@ -152,4 +188,5 @@ export function readCircleWorkspacePresentation(
 
 export function resetCircleWorkspaceCacheForTests(): void {
   store.clear();
+  cacheUserId = '';
 }

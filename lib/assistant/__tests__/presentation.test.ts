@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import path from 'path';
+
 import {
   assistantComposerOwnsDraft,
   assistantMessageRowUnchanged,
@@ -7,6 +10,7 @@ import {
   isAssistantUpgradeEntitlementError,
   shouldAnimateAssistantMessage,
   shouldRefreshAssistantEntitlements,
+  shouldReloadAssistantHistory,
 } from '../presentation';
 
 describe('Susu AI presentation', () => {
@@ -27,6 +31,38 @@ describe('Susu AI presentation', () => {
 
   it('uses virtualized rendering for long histories', () => {
     expect(assistantThreadListKind()).toBe('virtualized');
+  });
+
+  it('does not reload history when only welcome copy or entitlements change', () => {
+    const identity = {
+      token: 'tok',
+      circleId: 'circle-1',
+      locale: 'en',
+    };
+    expect(
+      shouldReloadAssistantHistory({
+        previous: identity,
+        next: identity,
+      }),
+    ).toBe(false);
+    expect(
+      shouldReloadAssistantHistory({
+        previous: identity,
+        next: { ...identity, token: 'tok-2' },
+      }),
+    ).toBe(true);
+    expect(
+      shouldReloadAssistantHistory({
+        previous: identity,
+        next: { ...identity, circleId: 'circle-2' },
+      }),
+    ).toBe(true);
+    expect(
+      shouldReloadAssistantHistory({
+        previous: identity,
+        next: { ...identity, locale: 'es' },
+      }),
+    ).toBe(true);
   });
 
   it('does not refresh entitlements on an ordinary successful reply', () => {
@@ -81,5 +117,17 @@ describe('Susu AI presentation', () => {
     const fresh = buildAssistantSendOptions(null);
     expect(fresh.conversationId).toBeNull();
     expect(fresh.idempotencyKey).not.toBe(withId.idempotencyKey);
+  });
+
+  it('keeps assistant history load independent of welcome copy', () => {
+    const source = readFileSync(
+      path.join(__dirname, '..', '..', '..', 'app', 'circle', 'assistant.tsx'),
+      'utf8',
+    );
+    expect(source).toMatch(/welcomeMessageRef\.current = welcomeMessage/);
+    expect(source).toMatch(/\[token, circleId, apiLocale, t\]/);
+    expect(source).not.toMatch(
+      /\[token, circleId, apiLocale, welcomeMessage, t\]/,
+    );
   });
 });

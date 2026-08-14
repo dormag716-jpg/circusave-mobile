@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,16 @@ import { useTranslation } from 'react-i18next';
 
 import { getActivity, getCircleDetail } from '@/lib/api';
 import { shouldLoadActivity } from '@/lib/activityAuthGate';
+import {
+  shouldShowActivityListError,
+  shouldUseSilentActivityRefresh,
+} from '@/lib/activityPaint';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+  shouldShowBlockingLoadState,
+} from '@/lib/requestGeneration';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import { activityEventSentence } from '@/lib/i18n/financial-presentation';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
@@ -36,61 +45,106 @@ export default function ActivityScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasLastKnownStateRef = useRef(false);
   const token = session?.session.token;
   // Entitlements only — never session.user.role for Premium unlock.
   const hasFullActivityHistory = hasCapability('fullActivityHistory');
 
-  const loadActivity = useCallback(async (isRefresh = false) => {
-    const accessToken = String(token ?? '').trim();
-    // Logout / unauthenticated transition: quiet no-op (not a user-facing error).
-    if (!shouldLoadActivity({ status, token: accessToken })) {
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
+  const loadActivity = useCallback(
+    async (options?: { silent?: boolean; revalidate?: boolean }) => {
+      const generation = requestGeneration.current.next();
+      const accessToken = String(token ?? '').trim();
+      // Logout / unauthenticated transition: quiet no-op (not a user-facing error).
+      if (!shouldLoadActivity({ status, token: accessToken })) {
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+        return;
+      }
 
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const response = await getActivity(accessToken);
-      setEntries(response.items);
+      const firstPaint = !hasLastKnownStateRef.current;
+      if (!options?.silent && firstPaint) {
+        setLoading(true);
+      }
+      if (requestGeneration.current.isCurrent(generation)) {
+        setError(null);
+      }
 
-      const circleIds = Array.from(new Set(response.items.map(e => e.circleId).filter(Boolean)));
-      const details = await Promise.all(
-        circleIds.map(id => getCircleDetail(accessToken, id).catch(() => null))
-      );
-      
-      const newMemberMap: Record<string, string> = {};
-      for (const detail of details) {
-        if (detail && detail.members) {
-          for (const member of detail.members) {
-            const name =
-              member.full_name ||
-              member.name ||
-              t('activity:unknownMember');
-            newMemberMap[member.id] = name;
-            if (member.userId) {
-              newMemberMap[member.userId] = name;
+      try {
+        const getOptions = options?.revalidate ? { revalidate: true } : undefined;
+        const response = await getActivity(accessToken, getOptions);
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
+        hasLastKnownStateRef.current = true;
+        setEntries(response.items);
+        setLoading(false);
+
+        const circleIds = Array.from(
+          new Set(response.items.map((entry) => entry.circleId).filter(Boolean)),
+        );
+        const details = await Promise.all(
+          circleIds.map((id) =>
+            getCircleDetail(accessToken, id, getOptions).catch(() => null),
+          ),
+        );
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
+        const newMemberMap: Record<string, string> = {};
+        for (const detail of details) {
+          if (detail && detail.members) {
+            for (const member of detail.members) {
+              const name =
+                member.full_name ||
+                member.name ||
+                t('activity:unknownMember');
+              newMemberMap[member.id] = name;
+              if (member.userId) {
+                newMemberMap[member.userId] = name;
+              }
             }
           }
         }
+        setMemberMap(newMemberMap);
+      } catch (loadError) {
+        console.error('Unable to load activity', loadError);
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+        setError(t('financialErrors:loadActivity'));
+        if (shouldReplaceFinancialStateOnError(hasLastKnownStateRef.current)) {
+          setEntries([]);
+          setMemberMap({});
+        }
+      } finally {
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
+        }
       }
-      setMemberMap(newMemberMap);
-    } catch (loadError) {
-      console.error('Unable to load activity', loadError);
-      setError(t('financialErrors:loadActivity'));
+    },
+    [status, token, t],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadActivity({
+        silent: shouldUseSilentActivityRefresh(hasLastKnownStateRef.current),
+      });
+    }, [loadActivity]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadActivity({ silent: true, revalidate: true });
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
-  }, [status, token, t]);
-
-  useEffect(() => {
-    void loadActivity();
   }, [loadActivity]);
 
   let visibleEntries = entries.filter((entry) => {
@@ -118,7 +172,7 @@ export default function ActivityScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => void loadActivity(true)}
+            onRefresh={() => void onRefresh()}
             tintColor={colors.primary}
           />
         }
@@ -146,6 +200,27 @@ export default function ActivityScreen() {
                 onPress={() => setActiveFilter('payouts')}
               />
             </View>
+
+            {shouldShowActivityListError({
+              error,
+              entryCount: entries.length,
+            }) ? (
+              <View style={styles.inlineErrorBanner}>
+                <FontAwesome name="warning" size={14} color={colors.warning} />
+                <Text style={styles.inlineErrorText}>{error}</Text>
+                <Pressable
+                  onPress={() =>
+                    void loadActivity({ silent: true, revalidate: true })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={t('activity:retryA11y')}
+                >
+                  <Text style={styles.inlineErrorRetry}>
+                    {t('activity:retry')}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
             
             {visibleEntries.length > 0 && (
               <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, marginTop: 16, paddingTop: 8 }} />
@@ -153,7 +228,10 @@ export default function ActivityScreen() {
           </>
         }
         ListEmptyComponent={
-          loading && !refreshing ? (
+          shouldShowBlockingLoadState(
+            loading && !refreshing,
+            hasLastKnownStateRef.current || entries.length > 0,
+          ) ? (
             <View style={styles.statusCard}>
               <ActivityIndicator color={colors.primary} />
               <Text style={styles.statusText}>{t('activity:loading')}</Text>
@@ -166,7 +244,14 @@ export default function ActivityScreen() {
               <Text style={styles.statusText}>{error}</Text>
               <Pressable
                 style={styles.retryButton}
-                onPress={() => void loadActivity()}
+                onPress={() =>
+                  void loadActivity({
+                    silent: shouldUseSilentActivityRefresh(
+                      hasLastKnownStateRef.current,
+                    ),
+                    revalidate: true,
+                  })
+                }
                 accessibilityRole="button"
                 accessibilityLabel={t('activity:retryA11y')}
               >
@@ -383,6 +468,30 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 20,
+  },
+  inlineErrorBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warning,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inlineErrorText: {
+    color: colors.warningText,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  inlineErrorRetry: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
   },
   filterPill: {
     backgroundColor: colors.card,

@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,17 @@ import {
 } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import { seedCircleWorkspaceCache } from '@/lib/circleWorkspaceCache';
+import {
+  mergeRetainedCircleDetails,
+  selectCircleDetailTargets,
+  shouldUseSilentCirclesRefresh,
+} from '@/lib/circlesListPaint';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+  shouldShowBlockingLoadState,
+} from '@/lib/requestGeneration';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
 import { useEntitlements } from '@/lib/entitlementsContext';
@@ -60,6 +71,8 @@ export default function CirclesScreen() {
   const [circleDetails, setCircleDetails] = useState<
     Record<string, BackendCircleDetail>
   >({});
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasLastKnownStateRef = useRef(false);
   const token = session?.session.token;
   const userId = session?.user?.id;
 
@@ -176,54 +189,88 @@ export default function CirclesScreen() {
     t,
   ]);
 
-  const loadCircles = useCallback(async () => {
-    const accessToken = String(token ?? '').trim();
-    // Logout / unauthenticated: quiet no-op (not sessionMissing).
-    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const summaries = await getCircles(accessToken);
-      setCircles(summaries);
-
-      const detailTargets = summaries.filter((c) => {
-        const lifecycle = getCircleListLifecycle(c.status, c.pot_status);
-        return (
-          lifecycle === 'active' ||
-          lifecycle === 'setup' ||
-          lifecycle === 'paused' ||
-          lifecycle === 'closed'
-        );
-      });
-      const details = await Promise.all(
-        detailTargets.map((c) =>
-          getCircleDetail(accessToken, c.id).catch(() => null),
-        ),
-      );
-
-      const detailsMap: Record<string, BackendCircleDetail> = {};
-      detailTargets.forEach((circle, index) => {
-        const detail = details[index];
-        if (detail) {
-          detailsMap[circle.id] = detail;
+  const loadCircles = useCallback(
+    async (options?: { silent?: boolean; revalidate?: boolean }) => {
+      const generation = requestGeneration.current.next();
+      const accessToken = String(token ?? '').trim();
+      // Logout / unauthenticated: quiet no-op (not sessionMissing).
+      if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
         }
-      });
-      setCircleDetails(detailsMap);
-    } catch {
-      setError(t('loadError'));
-    } finally {
-      setLoading(false);
-    }
-  }, [status, t, token]);
+        return;
+      }
+
+      const firstPaint = !hasLastKnownStateRef.current;
+      if (!options?.silent && firstPaint) {
+        setLoading(true);
+      }
+      if (requestGeneration.current.isCurrent(generation)) {
+        setError(null);
+      }
+
+      try {
+        const getOptions = options?.revalidate ? { revalidate: true } : undefined;
+        const summaries = await getCircles(accessToken, getOptions);
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
+        hasLastKnownStateRef.current = true;
+        setCircles(summaries);
+        setLoading(false);
+
+        const toLoad = selectCircleDetailTargets(summaries);
+        const details = await Promise.all(
+          toLoad.map((circle) =>
+            getCircleDetail(accessToken, circle.id, getOptions).catch(() => null),
+          ),
+        );
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
+        const incoming: Record<string, BackendCircleDetail> = {};
+        toLoad.forEach((circle, index) => {
+          const detail = details[index];
+          if (detail) {
+            incoming[circle.id] = detail;
+            seedCircleWorkspaceCache({
+              circleId: circle.id,
+              detail,
+            });
+          }
+        });
+        setCircleDetails((current) =>
+          mergeRetainedCircleDetails({
+            current,
+            incoming,
+            circleIds: summaries.map((circle) => circle.id),
+          }),
+        );
+      } catch {
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+        setError(t('loadError'));
+        if (shouldReplaceFinancialStateOnError(hasLastKnownStateRef.current)) {
+          setCircles([]);
+          setCircleDetails({});
+        }
+      } finally {
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
+        }
+      }
+    },
+    [status, t, token],
+  );
 
   useFocusEffect(
     useCallback(() => {
-      void loadCircles();
+      void loadCircles({
+        silent: shouldUseSilentCirclesRefresh(hasLastKnownStateRef.current),
+      });
     }, [loadCircles]),
   );
 
@@ -258,7 +305,7 @@ export default function CirclesScreen() {
     setPurgingSetup(true);
     try {
       const result = await deleteAllSetupDrafts(token);
-      await loadCircles();
+      await loadCircles({ silent: true, revalidate: true });
       Alert.alert(
         t('setupRemovedTitle'),
         result.deletedCount > 0
@@ -288,7 +335,7 @@ export default function CirclesScreen() {
           onPress: async () => {
             try {
               await deleteCircle(token, circle.id);
-              await loadCircles();
+              await loadCircles({ silent: true, revalidate: true });
             } catch {
               Alert.alert(
                 t('deleteErrorTitle'),
@@ -358,10 +405,31 @@ export default function CirclesScreen() {
                 <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>{t('joinByCode')}</Text>
               </Pressable>
             </View>
+            {error && hasAnyCircles ? (
+              <View style={styles.inlineErrorBanner}>
+                <FontAwesome name="warning" size={14} color={colors.warning} />
+                <Text style={styles.inlineErrorText}>{error}</Text>
+                <Pressable
+                  onPress={() =>
+                    void loadCircles({
+                      silent: true,
+                      revalidate: true,
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={t('retryCircles')}
+                >
+                  <Text style={styles.inlineErrorRetry}>{t('retry')}</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
-          loading ? (
+          shouldShowBlockingLoadState(
+            loading,
+            hasLastKnownStateRef.current || hasAnyCircles,
+          ) ? (
             <View style={styles.centerCard}>
               <ActivityIndicator color={colors.primary} />
               <Text style={styles.centerText}>{t('loading')}</Text>
@@ -373,7 +441,14 @@ export default function CirclesScreen() {
               <Text style={styles.emptySubtitle}>{error}</Text>
               <Pressable
                 style={styles.retryButton}
-                onPress={() => void loadCircles()}
+                onPress={() =>
+                  void loadCircles({
+                    silent: shouldUseSilentCirclesRefresh(
+                      hasLastKnownStateRef.current,
+                    ),
+                    revalidate: true,
+                  })
+                }
                 accessibilityRole="button"
                 accessibilityLabel={t('retryCircles')}
               >
@@ -778,6 +853,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginTop: 8,
+  },
+  inlineErrorBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warning,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inlineErrorText: {
+    color: colors.warningText,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  inlineErrorRetry: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
   },
   purgeSetupBtn: {
     alignSelf: 'flex-start',

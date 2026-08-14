@@ -12,6 +12,21 @@ export function assistantComposerOwnsDraft(): true {
   return true;
 }
 
+/**
+ * History fetch identity. Welcome copy updates locally and must not
+ * retrigger listAssistantConversations / listAssistantMessages.
+ */
+export function shouldReloadAssistantHistory(input: {
+  previous: { token?: string; circleId?: string; locale?: string };
+  next: { token?: string; circleId?: string; locale?: string };
+}): boolean {
+  return (
+    String(input.previous.token || '') !== String(input.next.token || '') ||
+    String(input.previous.circleId || '') !== String(input.next.circleId || '') ||
+    String(input.previous.locale || '') !== String(input.next.locale || '')
+  );
+}
+
 export function shouldAnimateAssistantMessage(input: {
   source: AssistantMessageSource;
 }): boolean {

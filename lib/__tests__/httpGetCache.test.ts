@@ -5,9 +5,11 @@ import {
   isAuthoritativeFinancialGet,
   isCachedGetAuthoritative,
   isChatOrAssistantGet,
+  isDevicePushTokenPath,
   readCachedGet,
   resetHttpGetCacheForTests,
   runDedupedGet,
+  shouldInvalidateCachedGetsOnMutation,
   shouldUseHttpGetCache,
 } from '../httpGetCache';
 import {
@@ -17,6 +19,9 @@ import {
   getEntitlements,
   getLedgerEntries,
   logout,
+  markConversationRead,
+  registerPushToken,
+  sendConversationMessage,
 } from '../api';
 
 describe('shared GET cache and in-flight dedupe', () => {
@@ -103,6 +108,39 @@ describe('shared GET cache and in-flight dedupe', () => {
     expect(shouldUseHttpGetCache('GET', '/ledger/c1')).toBe(false);
   });
 
+  it('does not flush list caches for chat, assistant, or push-token mutations', () => {
+    expect(
+      shouldInvalidateCachedGetsOnMutation(
+        'POST',
+        '/groups/c1/conversations/x/messages',
+      ),
+    ).toBe(false);
+    expect(
+      shouldInvalidateCachedGetsOnMutation(
+        'POST',
+        '/groups/c1/conversations/x/read',
+      ),
+    ).toBe(false);
+    expect(
+      shouldInvalidateCachedGetsOnMutation('POST', '/groups/c1/chat'),
+    ).toBe(false);
+    expect(
+      shouldInvalidateCachedGetsOnMutation(
+        'POST',
+        '/assistant/circles/c1/messages',
+      ),
+    ).toBe(false);
+    expect(isDevicePushTokenPath('/auth/device/push-token')).toBe(true);
+    expect(
+      shouldInvalidateCachedGetsOnMutation('POST', '/auth/device/push-token'),
+    ).toBe(false);
+    expect(shouldInvalidateCachedGetsOnMutation('POST', '/groups')).toBe(true);
+    expect(shouldInvalidateCachedGetsOnMutation('POST', '/auth/logout')).toBe(
+      true,
+    );
+    expect(shouldInvalidateCachedGetsOnMutation('GET', '/groups')).toBe(false);
+  });
+
   it('shares one in-flight GET for identical path and token', async () => {
     let calls = 0;
     const fetcher = jest.fn(async () => {
@@ -167,6 +205,35 @@ describe('shared GET cache and in-flight dedupe', () => {
     invalidateCachedGets();
     await runDedupedGet({ path: '/groups', token: 'tok', fetcher });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let a post-mutation GET join a pre-mutation in-flight promise', async () => {
+    let resolveFetch: (value: { id: string }) => void = () => {};
+    const staleFetcher = jest.fn(
+      () =>
+        new Promise<{ id: string }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const pending = runDedupedGet({
+      path: '/groups',
+      token: 'tok',
+      fetcher: staleFetcher,
+    });
+
+    invalidateCachedGets();
+    const freshFetcher = jest.fn(async () => ({ id: 'fresh' }));
+    const fresh = runDedupedGet({
+      path: '/groups',
+      token: 'tok',
+      fetcher: freshFetcher,
+    });
+
+    resolveFetch({ id: 'stale' });
+    await expect(pending).resolves.toEqual({ id: 'stale' });
+    await expect(fresh).resolves.toEqual({ id: 'fresh' });
+    expect(freshFetcher).toHaveBeenCalledTimes(1);
+    expect(readCachedGet('/groups', 'tok')).toEqual({ id: 'fresh' });
   });
 
   it('does not store a late GET that finishes after invalidation', async () => {
@@ -426,6 +493,85 @@ describe('requestJson GET cache wiring', () => {
     expect(
       (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
         String(url).endsWith('/groups/c1'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('revalidates persisted list and detail GETs when pull-to-refresh asks', async () => {
+    let groupsPayload = [{ id: 'stale' }];
+    let detailPayload = { id: 'c1', name: 'Stale' };
+    global.fetch = jest.fn((url: string) => {
+      if (String(url).endsWith('/groups/c1')) {
+        return Promise.resolve(mockJson(detailPayload));
+      }
+      if (String(url).endsWith('/groups')) {
+        return Promise.resolve(mockJson(groupsPayload));
+      }
+      return Promise.resolve(mockJson({}));
+    }) as unknown as typeof fetch;
+
+    await expect(getCircles('tok')).resolves.toEqual([{ id: 'stale' }]);
+    await expect(getCircles('tok')).resolves.toEqual([{ id: 'stale' }]);
+    expect(
+      (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).endsWith('/groups'),
+      ),
+    ).toHaveLength(1);
+
+    groupsPayload = [{ id: 'fresh' }];
+    await expect(getCircles('tok', { revalidate: true })).resolves.toEqual([
+      { id: 'fresh' },
+    ]);
+    await expect(getCircles('tok')).resolves.toEqual([{ id: 'fresh' }]);
+    expect(
+      (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).endsWith('/groups'),
+      ),
+    ).toHaveLength(2);
+
+    await expect(getCircleDetail('tok', 'c1')).resolves.toEqual({
+      id: 'c1',
+      name: 'Stale',
+    });
+    detailPayload = { id: 'c1', name: 'Fresh' };
+    await expect(
+      getCircleDetail('tok', 'c1', { revalidate: true }),
+    ).resolves.toEqual({ id: 'c1', name: 'Fresh' });
+    expect(
+      (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).endsWith('/groups/c1'),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('keeps persisted /groups after chat send, mark-read, and push-token POSTs', async () => {
+    global.fetch = jest.fn((url: string) => {
+      if (String(url).includes('/conversations/')) {
+        return Promise.resolve(
+          mockJson({
+            id: 'm1',
+            conversationId: 'conv-1',
+            unreadCount: 0,
+            readAt: '2026-08-14T00:00:00Z',
+            notificationsUpdated: 0,
+          }),
+        );
+      }
+      if (String(url).includes('/push-token')) {
+        return Promise.resolve(mockJson({ ok: true }));
+      }
+      return Promise.resolve(mockJson([{ id: 'c1' }]));
+    }) as unknown as typeof fetch;
+
+    await getCircles('tok');
+    await sendConversationMessage('c1', 'conv-1', 'tok', 'hello');
+    await markConversationRead('c1', 'conv-1', 'tok');
+    await registerPushToken('tok', 'ExponentPushToken[test]');
+    await getCircles('tok');
+
+    expect(
+      (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).endsWith('/groups'),
       ),
     ).toHaveLength(1);
   });

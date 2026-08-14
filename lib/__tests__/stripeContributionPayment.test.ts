@@ -4,6 +4,9 @@ import {
   pollHandUntilConfirmed,
   runStripeContributionPayment,
   sanitizePaymentUserMessage,
+  shouldBlockContributionPayActions,
+  shouldClearPendingSettlement,
+  shouldHoldPaymentLockAfterOutcome,
 } from '../stripeContributionPayment';
 
 describe('PaymentSessionLock', () => {
@@ -280,6 +283,35 @@ describe('runStripeContributionPayment', () => {
       loadHandStatus: jest.fn(async () => 'due'),
     });
     expect(outcome.kind).toBe('error');
+  });
+});
+
+describe('pending settlement pay lock', () => {
+  test('holds the session lock only after pending settlement', () => {
+    expect(shouldHoldPaymentLockAfterOutcome('pending_settlement')).toBe(true);
+    expect(shouldHoldPaymentLockAfterOutcome('confirmed')).toBe(false);
+    expect(shouldHoldPaymentLockAfterOutcome('canceled')).toBe(false);
+    expect(shouldHoldPaymentLockAfterOutcome('error')).toBe(false);
+  });
+
+  test('blocks pay and manual submit while confirming or pending', () => {
+    expect(
+      shouldBlockContributionPayActions({ settlementPhase: 'pending' }),
+    ).toBe(true);
+    expect(
+      shouldBlockContributionPayActions({ settlementPhase: 'confirming' }),
+    ).toBe(true);
+    expect(shouldBlockContributionPayActions({ payingStripe: true })).toBe(true);
+    expect(shouldBlockContributionPayActions({ submitting: true })).toBe(true);
+    expect(shouldBlockContributionPayActions({ settlementPhase: null })).toBe(
+      false,
+    );
+  });
+
+  test('clears pending only when a fresh status is confirmed', () => {
+    expect(shouldClearPendingSettlement('confirmed')).toBe(true);
+    expect(shouldClearPendingSettlement('due')).toBe(false);
+    expect(shouldClearPendingSettlement('submitted')).toBe(false);
   });
 });
 

@@ -147,7 +147,7 @@ export default function DashboardScreen() {
   });
 
   const loadDashboard = useCallback(
-    async (options?: { silent?: boolean }) => {
+    async (options?: { silent?: boolean; revalidate?: boolean }) => {
       const generation = requestGeneration.current.next();
       const accessToken = String(token ?? '').trim();
       // Logout / unauthenticated: quiet no-op (not sessionMissing).
@@ -169,9 +169,10 @@ export default function DashboardScreen() {
       }
 
       try {
+        const getOptions = options?.revalidate ? { revalidate: true } : undefined;
         const [nextSummary, nextCircles] = await Promise.all([
-          getDashboardSummary(accessToken),
-          getCircles(accessToken),
+          getDashboardSummary(accessToken, getOptions),
+          getCircles(accessToken, getOptions),
         ]);
         if (!requestGeneration.current.isCurrent(generation)) {
           return;
@@ -190,7 +191,7 @@ export default function DashboardScreen() {
         const [details, schedules] = await Promise.all([
           Promise.all(
             toLoad.map((c) =>
-              getCircleDetail(accessToken, c.id).catch(() => null),
+              getCircleDetail(accessToken, c.id, getOptions).catch(() => null),
             ),
           ),
           Promise.all(
@@ -259,7 +260,7 @@ export default function DashboardScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadDashboard({ silent: true });
+      await loadDashboard({ silent: true, revalidate: true });
     } finally {
       setRefreshing(false);
     }

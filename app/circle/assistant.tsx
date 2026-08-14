@@ -217,6 +217,8 @@ export default function CircleAssistantScreen() {
   const welcomeMessage = entitlements.capabilities.aiAssistant
     ? t('assistant:welcome.premium')
     : t('assistant:welcome.intro');
+  const welcomeMessageRef = useRef(welcomeMessage);
+  welcomeMessageRef.current = welcomeMessage;
 
   const showSuggestedPrompts =
     items.length === 1 && items[0]?.id === WELCOME_ID && !historyLoading;
@@ -335,7 +337,7 @@ export default function CircleAssistantScreen() {
       );
       if (!resume) {
         setConversationId(null);
-        setItems([welcomeItem(welcomeMessage)]);
+        setItems([welcomeItem(welcomeMessageRef.current)]);
         return;
       }
 
@@ -347,7 +349,7 @@ export default function CircleAssistantScreen() {
       );
       setConversationId(resume.id);
       if (mapped.length === 0) {
-        setItems([welcomeItem(welcomeMessage)]);
+        setItems([welcomeItem(welcomeMessageRef.current)]);
       } else {
         setItems(mapped);
       }
@@ -355,13 +357,13 @@ export default function CircleAssistantScreen() {
       if (requestId !== historyRequestId.current) return;
       setConversationId(null);
       setHistoryError(t('assistant:errors.historyLoad'));
-      setItems([welcomeItem(welcomeMessage)]);
+      setItems([welcomeItem(welcomeMessageRef.current)]);
     } finally {
       if (requestId === historyRequestId.current) {
         setHistoryLoading(false);
       }
     }
-  }, [token, circleId, apiLocale, welcomeMessage, t]);
+  }, [token, circleId, apiLocale, t]);
 
   useEffect(() => {
     void loadHistory();

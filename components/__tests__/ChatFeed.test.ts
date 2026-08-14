@@ -2,6 +2,14 @@
  * Structural expectations for circle chat message list keyboard behavior.
  * (Avoid react-test-renderer + RN host trees in this suite.)
  */
+import { readFileSync } from 'fs';
+import path from 'path';
+
+import {
+  COMPOSER_VISUAL_CLEARANCE,
+  floatingComposerListPadding,
+} from '@/lib/chatKeyboard';
+
 describe('ChatFeed keyboard contract', () => {
   test('defaults match the flex chat surface requirements', () => {
     // ChatFeed is implemented with:
@@ -22,5 +30,24 @@ describe('ChatFeed keyboard contract', () => {
     expect(defaults.keyboardDismissMode).toBe('on-drag');
     expect(defaults.listFlex).toBe(1);
     expect(defaults.listMinHeight).toBe(0);
+  });
+
+  test('card inset, not list padding, keeps the last message above the composer', () => {
+    const cardInset = floatingComposerListPadding(72, 0);
+    expect(cardInset).toBeGreaterThanOrEqual(72 + COMPOSER_VISUAL_CLEARANCE);
+  });
+
+  test('chip collapse hides the thread without unmounting ChatFeed or ChatInput', () => {
+    const source = readFileSync(
+      path.join(__dirname, '..', 'ConversationChat.tsx'),
+      'utf8',
+    );
+    expect(source).toMatch(/shouldKeepConversationSurfaceMounted/);
+    expect(source).toMatch(/workspaceChromeLayoutStyle\(!chatPanelExpanded\)/);
+    expect(source).not.toMatch(
+      /selectedConversation && chatPanelExpanded \?/,
+    );
+    expect(source).toMatch(/<ChatFeed/);
+    expect(source).toMatch(/<ChatInput/);
   });
 });

@@ -43,6 +43,9 @@ import {
   PaymentSessionLock,
   runStripeContributionPayment,
   sanitizePaymentUserMessage,
+  shouldBlockContributionPayActions,
+  shouldClearPendingSettlement,
+  shouldHoldPaymentLockAfterOutcome,
 } from '@/lib/stripeContributionPayment';
 import { colors, radii, spacing } from '@/lib/theme';
 import {
@@ -83,8 +86,10 @@ export default function ContributionPaymentScreen() {
   const requestStreams = useRef(createContributionRequestStreams());
   const hasLastKnownStateRef = useRef(false);
 
+  const pendingHandIdRef = useRef<string | null>(null);
+
   const loadContribution = useCallback(
-    async (options?: { silent?: boolean }) => {
+    async (options?: { silent?: boolean; revalidate?: boolean }) => {
       const loadGeneration = requestStreams.current.contributionLoad.next();
       const accessToken = String(token ?? '').trim();
       // Logout / unauthenticated: quiet no-op (no payment error, no PI).
@@ -121,8 +126,9 @@ export default function ContributionPaymentScreen() {
         },
       });
       try {
+        const getOptions = options?.revalidate ? { revalidate: true } : undefined;
         const [circleResponse, scheduleResponse] = await Promise.all([
-          getCircleDetail(accessToken, circleId),
+          getCircleDetail(accessToken, circleId, getOptions),
           getCircleSchedule(accessToken, circleId),
         ]);
         const applied = applyContributionLoadResult({
@@ -189,10 +195,13 @@ export default function ContributionPaymentScreen() {
     requestStreams.current.contributionLoad.next();
     requestStreams.current.settlementStatus.next();
     hasLastKnownStateRef.current = false;
+    pendingHandIdRef.current = null;
+    paymentLockRef.current.release();
     setCircle(null);
     setSnapshot(null);
     setError(null);
     setLoading(true);
+    setSettlementPhase(null);
   }, [circleId]);
 
   useEffect(() => {
@@ -237,8 +246,21 @@ export default function ContributionPaymentScreen() {
     ['due', 'missed', 'rejected'].includes(String(activeHand?.status || ''));
   // Pattern: backend true AND local hand-due condition (never reverse).
   const canSubmit = backendCanSubmit && handDue;
+  const payActionsBlocked = shouldBlockContributionPayActions({
+    payingStripe,
+    submitting,
+    settlementPhase,
+  });
+  const payDisabled = !canSubmit || payActionsBlocked;
 
   async function handleSubmitContribution() {
+    if (shouldBlockContributionPayActions({
+      payingStripe,
+      submitting,
+      settlementPhase,
+    })) {
+      return;
+    }
     const accessToken = String(token ?? '').trim();
     if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
       return;
@@ -286,6 +308,13 @@ export default function ContributionPaymentScreen() {
   }
 
   async function handleStripePayment() {
+    if (shouldBlockContributionPayActions({
+      payingStripe,
+      submitting,
+      settlementPhase,
+    })) {
+      return;
+    }
     const accessToken = String(token ?? '').trim();
     if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
       return;
@@ -311,6 +340,7 @@ export default function ContributionPaymentScreen() {
 
     setPayingStripe(true);
     setSettlementPhase(null);
+    let holdLock = false;
     try {
       const outcome = await runStripeContributionPayment(
         {
@@ -332,6 +362,8 @@ export default function ContributionPaymentScreen() {
         },
       );
 
+      holdLock = shouldHoldPaymentLockAfterOutcome(outcome.kind);
+
       if (outcome.kind === 'canceled') {
         return;
       }
@@ -348,6 +380,7 @@ export default function ContributionPaymentScreen() {
       }
 
       if (outcome.kind === 'confirmed') {
+        pendingHandIdRef.current = null;
         setSettlementPhase(null);
         Alert.alert(
           t('contributions:paymentConfirmedTitle'),
@@ -363,6 +396,7 @@ export default function ContributionPaymentScreen() {
       }
 
       // PaymentSheet succeeded; webhook has not confirmed yet.
+      pendingHandIdRef.current = frozenHandId;
       setSettlementPhase('pending');
       Alert.alert(
         t('contributions:paymentPendingSettlementTitle'),
@@ -381,7 +415,9 @@ export default function ContributionPaymentScreen() {
         financialClientErrorMessage(err, t('financialErrors:stripePayment')),
       );
     } finally {
-      paymentLockRef.current.release();
+      if (!holdLock) {
+        paymentLockRef.current.release();
+      }
       setPayingStripe(false);
     }
   }
@@ -389,13 +425,16 @@ export default function ContributionPaymentScreen() {
   async function onPullRefresh() {
     setRefreshing(true);
     try {
-      const loaded = await loadContribution({ silent: true });
-      if (loaded && activeHandId) {
+      const loaded = await loadContribution({ silent: true, revalidate: true });
+      const handId = pendingHandIdRef.current ?? activeHandId;
+      if (loaded && handId) {
         const contribution = loaded.snapshot.contributions?.find(
-          (entry) => entry.memberId === activeHandId,
+          (entry) => entry.memberId === handId,
         );
-        if (String(contribution?.status || '').toLowerCase() === 'confirmed') {
+        if (shouldClearPendingSettlement(String(contribution?.status || ''))) {
+          pendingHandIdRef.current = null;
           setSettlementPhase(null);
+          paymentLockRef.current.release();
         }
       }
     } finally {
@@ -564,12 +603,12 @@ export default function ContributionPaymentScreen() {
                     !due && styles.handRowSettled,
                   ]}
                   onPress={() => {
-                    if (payingStripe || settlementPhase === 'confirming') {
+                    if (payActionsBlocked) {
                       return;
                     }
                     setSelectedHandId(hand.id);
                   }}
-                  disabled={payingStripe || settlementPhase === 'confirming'}
+                  disabled={payActionsBlocked}
                   accessibilityRole="button"
                   accessibilityLabel={t('contributions:selectHand', {
                     name: hand.label,
@@ -647,27 +686,14 @@ export default function ContributionPaymentScreen() {
           <Pressable
             style={[
               styles.primaryButton,
-              (!canSubmit ||
-                payingStripe ||
-                submitting ||
-                settlementPhase === 'confirming') &&
-                styles.disabledButton,
+              payDisabled && styles.disabledButton,
             ]}
-            disabled={
-              !canSubmit ||
-              payingStripe ||
-              submitting ||
-              settlementPhase === 'confirming'
-            }
+            disabled={payDisabled}
             onPress={() => void handleStripePayment()}
             accessibilityRole="button"
             accessibilityState={{
-              busy: payingStripe || settlementPhase === 'confirming',
-              disabled:
-                !canSubmit ||
-                payingStripe ||
-                submitting ||
-                settlementPhase === 'confirming',
+              busy: payActionsBlocked,
+              disabled: payDisabled,
             }}
             accessibilityLabel={t('contributions:payWithStripe')}
           >
@@ -684,9 +710,9 @@ export default function ContributionPaymentScreen() {
         <Pressable
           style={[
             isStripeSupported ? styles.secondaryButton : styles.primaryButton,
-            (!canSubmit || payingStripe || submitting) && styles.disabledButton,
+            payDisabled && styles.disabledButton,
           ]}
-          disabled={!canSubmit || payingStripe || submitting}
+          disabled={payDisabled}
           onPress={() => void handleSubmitContribution()}
           accessibilityRole="button"
           accessibilityLabel={t('contributions:submitA11y')}

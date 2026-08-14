@@ -1,21 +1,24 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import type { Href } from 'expo-router';
 
 import {
-  bootstrapAuthSession,
   logoutSession,
   persistAuthSession,
+  restoreAuthSession,
 } from './auth';
 import type { AuthResponse } from './api';
 import { registerPushToken } from './api';
 import { registerForPushNotifications } from './notifications';
+import { bindUserPresentationCaches } from './userPresentationCaches';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error';
 
@@ -37,18 +40,43 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [postAuthTarget, setPostAuthTarget] = useState<Href | null>(null);
+  const restoreGeneration = useRef(0);
 
-  async function refreshSession() {
-    setStatus('loading');
-    setError(null);
+  const runRestore = useCallback(async (showLoading: boolean) => {
+    const generation = ++restoreGeneration.current;
+    if (showLoading) {
+      setStatus('loading');
+      setError(null);
+    }
 
     try {
-      const nextSession = await bootstrapAuthSession();
+      const nextSession = await restoreAuthSession({
+        onOptimistic: (localSession) => {
+          if (generation !== restoreGeneration.current) {
+            return;
+          }
+          bindUserPresentationCaches(localSession.user.id);
+          setSession(localSession);
+          setStatus('authenticated');
+          setError(null);
+        },
+        shouldAbort: () => generation !== restoreGeneration.current,
+      });
+      if (generation !== restoreGeneration.current) {
+        return nextSession;
+      }
+      bindUserPresentationCaches(nextSession?.user.id ?? null);
       setSession(nextSession);
       setStatus(nextSession ? 'authenticated' : 'unauthenticated');
+      setError(null);
       return nextSession;
     } catch (refreshError) {
-      setStatus('error');
+      if (generation !== restoreGeneration.current) {
+        return null;
+      }
+      setStatus((current) =>
+        current === 'authenticated' ? 'authenticated' : 'error',
+      );
       setError(
         refreshError instanceof Error
           ? refreshError.message
@@ -56,11 +84,13 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       );
       return null;
     }
-  }
+  }, []);
+
+  const refreshSession = useCallback(() => runRestore(false), [runRestore]);
 
   useEffect(() => {
-    void refreshSession();
-  }, []);
+    void runRestore(true);
+  }, [runRestore]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -70,6 +100,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       postAuthTarget,
       setPostAuthTarget,
       setAuthenticatedSession: async (nextSession) => {
+        bindUserPresentationCaches(nextSession.user.id);
         await persistAuthSession(nextSession);
         setSession(nextSession);
         setStatus('authenticated');
@@ -90,9 +121,11 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       },
       refreshSession,
       signOut: async () => {
+        restoreGeneration.current += 1;
         try {
           await logoutSession();
         } finally {
+          bindUserPresentationCaches(null);
           setPostAuthTarget(null);
           setSession(null);
           setStatus('unauthenticated');
@@ -100,7 +133,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [error, postAuthTarget, session, status],
+    [error, postAuthTarget, refreshSession, session, status],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import {
   createDirectChatConversation,
@@ -12,6 +13,8 @@ import {
 import {
   areConversationsEquivalent,
   chatPollIntervalMs,
+  chatThreadPollFocused,
+  isChatPollAppActive,
   mergeChatMessages,
   shouldRunUnreadConversationPoll,
 } from './circleChatState';
@@ -25,13 +28,37 @@ import {
   subscribeCircleChatSnapshot,
 } from './circleChatStore';
 
+function useChatPollAppActive(): boolean {
+  const [appActive, setAppActive] = useState(() =>
+    isChatPollAppActive(AppState.currentState),
+  );
+
+  useEffect(() => {
+    const onChange = (next: AppStateStatus) => {
+      setAppActive(isChatPollAppActive(next));
+    };
+    const subscription = AppState.addEventListener('change', onChange);
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  return appActive;
+}
+
 export function useConversations(
   circleId: string,
   token: string,
   initialConversationId?: string,
-  options?: { focused?: boolean },
+  options?: { focused?: boolean; threadVisible?: boolean },
 ) {
   const focused = options?.focused !== false;
+  const threadVisible = options?.threadVisible !== false;
+  const appActive = useChatPollAppActive();
+  const messagesFocused = chatThreadPollFocused({
+    tabFocused: focused,
+    panelExpanded: threadVisible,
+  });
   const [conversations, setConversations] = useState<BackendChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
     initialConversationId ?? null,
@@ -161,6 +188,9 @@ export function useConversations(
   }, [circleId]);
 
   useEffect(() => {
+    if (!appActive) {
+      return;
+    }
     if (!hasConversationSnapshot.current) {
       setLoading(true);
     }
@@ -168,6 +198,7 @@ export function useConversations(
     const intervalMs = chatPollIntervalMs({
       kind: 'conversations',
       focused,
+      appActive,
     });
     if (intervalMs <= 0) {
       return;
@@ -176,7 +207,7 @@ export function useConversations(
       void loadConversations();
     }, intervalMs);
     return () => clearInterval(interval);
-  }, [focused, loadConversations]);
+  }, [appActive, focused, loadConversations]);
 
   useEffect(() => {
     if (!selectedConversationId) {
@@ -189,10 +220,14 @@ export function useConversations(
   }, [loadMessages, selectedConversationId]);
 
   useEffect(() => {
-    if (!selectedConversationId) {
+    if (!selectedConversationId || !appActive) {
       return;
     }
-    const intervalMs = chatPollIntervalMs({ kind: 'messages', focused });
+    const intervalMs = chatPollIntervalMs({
+      kind: 'messages',
+      focused: messagesFocused,
+      appActive,
+    });
     if (intervalMs <= 0) {
       return;
     }
@@ -200,7 +235,7 @@ export function useConversations(
       void loadMessages(selectedConversationId, { quiet: true });
     }, intervalMs);
     return () => clearInterval(interval);
-  }, [focused, loadMessages, selectedConversationId]);
+  }, [appActive, loadMessages, messagesFocused, selectedConversationId]);
 
   const selectConversation = useCallback((conversationId: string) => {
     activeConversationId.current = conversationId;
@@ -277,6 +312,7 @@ export function useConversations(
 }
 
 export function useConversationUnreadCount(circleId: string, token: string) {
+  const appActive = useChatPollAppActive();
   const [unreadCount, setUnreadCount] = useState(
     () => getCircleChatSnapshot(circleId)?.unreadCount ?? 0,
   );
@@ -316,15 +352,28 @@ export function useConversationUnreadCount(circleId: string, token: string) {
   }, [circleId, token]);
 
   useEffect(() => {
-    if (!shouldRunUnreadConversationPoll({ chatClientActive })) {
+    if (
+      !shouldRunUnreadConversationPoll({
+        chatClientActive,
+        appActive,
+      })
+    ) {
       return;
     }
     void loadUnreadCount();
+    const intervalMs = chatPollIntervalMs({
+      kind: 'conversations',
+      focused: true,
+      appActive,
+    });
+    if (intervalMs <= 0) {
+      return;
+    }
     const interval = setInterval(() => {
       void loadUnreadCount();
-    }, chatPollIntervalMs({ kind: 'conversations', focused: true }));
+    }, intervalMs);
     return () => clearInterval(interval);
-  }, [chatClientActive, loadUnreadCount]);
+  }, [appActive, chatClientActive, loadUnreadCount]);
 
   return { unreadCount, refreshUnreadCount: loadUnreadCount };
 }

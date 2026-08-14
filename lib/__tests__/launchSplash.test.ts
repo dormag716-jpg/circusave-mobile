@@ -1,3 +1,4 @@
+import { publicAuthStatusFromRestorePhase } from '../authSessionRestore';
 import { shouldHideLaunchSplash } from '../launchSplash';
 
 describe('shouldHideLaunchSplash', () => {
@@ -26,6 +27,21 @@ describe('shouldHideLaunchSplash', () => {
         deviceLockInitializing: false,
       }),
     ).toBe(true);
+  });
+
+  it('hides the splash once a locally valid session is restored', () => {
+    expect(
+      shouldHideLaunchSplash({
+        authStatus: publicAuthStatusFromRestorePhase('authenticated-local'),
+        deviceLockInitializing: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldHideLaunchSplash({
+        authStatus: publicAuthStatusFromRestorePhase('restoring'),
+        deviceLockInitializing: false,
+      }),
+    ).toBe(false);
   });
 
   it('hides the splash for the unauthenticated landing', () => {

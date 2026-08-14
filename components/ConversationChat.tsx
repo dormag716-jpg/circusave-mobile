@@ -4,12 +4,14 @@ import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Keyboard,
+  LayoutAnimation,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
   View,
   type KeyboardEvent,
 } from 'react-native';
@@ -19,8 +21,13 @@ import type { BackendCircleMember } from '@/lib/api';
 import {
   FLOATING_COMPOSER_RESTING_HEIGHT,
   floatingComposerBottomOffset,
+  floatingComposerDockOffset,
   floatingComposerListPadding,
 } from '@/lib/chatKeyboard';
+import {
+  shouldKeepConversationSurfaceMounted,
+  toggleConversationPanel,
+} from '@/lib/circleChatState';
 import {
   shouldApplyKeyboardGeometry,
   workspaceChromeLayoutStyle,
@@ -51,7 +58,26 @@ type ConversationChatProps = {
  * - Message list scrolls inside the thread card.
  * - Composer is a floating dock that lifts by measured keyboard overlap so
  *   typed text always stays visible above the software keyboard.
+ * - Conversation chips toggle a vertical thread panel without clearing state.
  */
+
+let androidLayoutAnimationEnabled = false;
+
+function animateConversationPanel() {
+  if (
+    Platform.OS === 'android' &&
+    !androidLayoutAnimationEnabled &&
+    typeof UIManager.setLayoutAnimationEnabledExperimental === 'function'
+  ) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+    androidLayoutAnimationEnabled = true;
+  }
+  LayoutAnimation.configureNext({
+    duration: 180,
+    update: { type: LayoutAnimation.Types.easeInEaseOut },
+  });
+}
+
 export default function ConversationChat({
   circleId,
   token,
@@ -70,10 +96,12 @@ export default function ConversationChat({
   const [pickerError, setPickerError] = useState<string | null>(null);
   /** Extra bottom offset so the floating dock sits above the keyboard. */
   const [composerLift, setComposerLift] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [composerHeight, setComposerHeight] = useState(
     FLOATING_COMPOSER_RESTING_HEIGHT,
   );
   const [sendScrollNonce, setSendScrollNonce] = useState(0);
+  const [chatPanelExpanded, setChatPanelExpanded] = useState(true);
 
   const {
     conversations,
@@ -87,7 +115,10 @@ export default function ConversationChat({
     createDirectConversation,
     sendMessage,
     refresh,
-  } = useConversations(circleId, token, initialConversationId, { focused });
+  } = useConversations(circleId, token, initialConversationId, {
+    focused,
+    threadVisible: chatPanelExpanded,
+  });
 
   const availableMembers = useMemo(() => {
     const seenUserIds = new Set<string>();
@@ -120,12 +151,13 @@ export default function ConversationChat({
     });
   }, []);
 
-    const applyKeyboardFrame = useCallback(
+  const applyKeyboardFrame = useCallback(
     (event: KeyboardEvent | null) => {
       const height = event?.endCoordinates.height;
       if (!event || !shouldApplyKeyboardGeometry(height)) {
         keyboardMetricsRef.current = null;
         setComposerLift(0);
+        setKeyboardVisible(false);
         return;
       }
 
@@ -133,6 +165,7 @@ export default function ConversationChat({
         topY: event.endCoordinates.screenY,
         height: event.endCoordinates.height,
       };
+      setKeyboardVisible(true);
 
       // Measure after layout so we know how much of *this* chat root is covered.
       requestAnimationFrame(() => {
@@ -172,11 +205,40 @@ export default function ConversationChat({
     return () => cancelAnimationFrame(handle);
   }, [chromeCollapsed, remeasureComposerLift]);
 
+  useEffect(() => {
+    if (initialConversationId) {
+      setChatPanelExpanded(true);
+    }
+  }, [initialConversationId]);
+
+  const toggleChatPanel = useCallback(
+    (conversationId: string) => {
+      const next = toggleConversationPanel({
+        chatPanelExpanded,
+        selectedId: selectedConversation?.id ?? null,
+        tappedId: conversationId,
+      });
+      if (next.dismissKeyboard) {
+        Keyboard.dismiss();
+      }
+      if (next.chatPanelExpanded !== chatPanelExpanded) {
+        animateConversationPanel();
+      }
+      if (next.shouldSelect && next.selectedId) {
+        selectConversation(next.selectedId);
+      }
+      setChatPanelExpanded(next.chatPanelExpanded);
+    },
+    [chatPanelExpanded, selectConversation, selectedConversation?.id],
+  );
+
   async function startDirectChat(member: BackendCircleMember) {
     setCreatingMemberId(member.id);
     setPickerError(null);
     try {
       await createDirectConversation(member.id);
+      animateConversationPanel();
+      setChatPanelExpanded(true);
       setPickerVisible(false);
     } catch (createError) {
       setPickerError(
@@ -189,13 +251,14 @@ export default function ConversationChat({
     }
   }
 
-  const listBottomPadding = floatingComposerListPadding(
-    selectedConversation ? composerHeight : 0,
-    // List lives inside the flex root; when the window resizes, lift is 0 and
-    // the dock still needs its own height reserved. When the window does not
-    // resize, lift pushes the dock up and the list needs that space too.
-    selectedConversation ? composerLift : 0,
+  const dockBottom = floatingComposerDockOffset(
+    composerLift,
+    keyboardVisible,
   );
+  const cardBottomInset =
+    selectedConversation && chatPanelExpanded
+      ? floatingComposerListPadding(composerHeight, dockBottom)
+      : 0;
 
   if (loading && conversations.length === 0) {
     return (
@@ -241,10 +304,7 @@ export default function ConversationChat({
         </View>
       </View>
 
-      <View
-        style={workspaceChromeLayoutStyle(chromeCollapsed)}
-        collapsable={false}
-      >
+      <View collapsable={false}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -262,7 +322,7 @@ export default function ConversationChat({
                   selected && styles.conversationChipSelected,
                   pressed && styles.pressed,
                 ]}
-                onPress={() => selectConversation(conversation.id)}
+                onPress={() => toggleChatPanel(conversation.id)}
                 accessibilityRole="button"
                 accessibilityLabel={t('chat.openConversationA11y', {
                   name: conversation.title,
@@ -322,8 +382,18 @@ export default function ConversationChat({
         </Pressable>
       ) : null}
 
-      {selectedConversation ? (
-        <View style={styles.threadCard}>
+      {shouldKeepConversationSurfaceMounted({
+        hasSelectedConversation: selectedConversation != null,
+      }) && selectedConversation ? (
+        <View
+          style={[
+            styles.conversationPanel,
+            workspaceChromeLayoutStyle(!chatPanelExpanded),
+          ]}
+          pointerEvents={chatPanelExpanded ? 'auto' : 'none'}
+          collapsable={false}
+        >
+        <View style={[styles.threadCard, { marginBottom: cardBottomInset }]}>
           <View
             style={workspaceChromeLayoutStyle(chromeCollapsed)}
             collapsable={false}
@@ -366,16 +436,10 @@ export default function ConversationChat({
             <ChatFeed
               messages={messages}
               currentUserId={currentUserId}
-              bottomPadding={listBottomPadding}
               pinToBottomNonce={sendScrollNonce}
             />
           ) : (
-            <View
-              style={[
-                styles.emptyThread,
-                { paddingBottom: listBottomPadding + 24 },
-              ]}
-            >
+            <View style={styles.emptyThread}>
               <FontAwesome
                 name={
                   selectedConversation.type === 'group'
@@ -396,36 +460,34 @@ export default function ConversationChat({
             </View>
           )}
         </View>
+
+          <View
+            style={[styles.composerDock, { bottom: dockBottom }]}
+            onLayout={(e) => {
+              const next = Math.ceil(e.nativeEvent.layout.height);
+              if (next > 0 && next !== composerHeight) {
+                setComposerHeight(next);
+              }
+            }}
+          >
+            <ChatInput
+              onSend={async (text) => {
+                await sendMessage(text);
+                setSendScrollNonce((current) => current + 1);
+              }}
+              isLoading={sending}
+              placeholder={t('chat.placeholder')}
+              applyBottomInset={!keyboardVisible}
+              floating
+            />
+          </View>
+        </View>
       ) : (
         <View style={styles.emptyThread}>
           <Text style={styles.emptyTitle}>{t('chat.noConversationTitle')}</Text>
           <Text style={styles.emptyText}>{t('chat.noConversationBody')}</Text>
         </View>
       )}
-
-      {/* Floating chat console — rides above the keyboard via measured lift. */}
-      {selectedConversation ? (
-        <View
-          style={[styles.composerDock, { bottom: composerLift }]}
-          onLayout={(e) => {
-            const next = Math.ceil(e.nativeEvent.layout.height);
-            if (next > 0 && next !== composerHeight) {
-              setComposerHeight(next);
-            }
-          }}
-        >
-          <ChatInput
-            onSend={async (text) => {
-              await sendMessage(text);
-              setSendScrollNonce((current) => current + 1);
-            }}
-            isLoading={sending}
-            placeholder={t('chat.placeholder')}
-            applyBottomInset={composerLift === 0}
-            floating
-          />
-        </View>
-      ) : null}
 
       <Modal
         visible={pickerVisible}
@@ -679,6 +741,11 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 11,
     marginTop: 2,
+  },
+  conversationPanel: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
   },
   emptyThread: {
     alignItems: 'center',

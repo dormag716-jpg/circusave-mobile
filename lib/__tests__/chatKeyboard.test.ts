@@ -1,8 +1,10 @@
 import {
+  COMPOSER_VISUAL_CLEARANCE,
   FLOATING_COMPOSER_RESTING_HEIGHT,
   circleChatKeyboardBehavior,
   circleChatKeyboardVerticalOffset,
   floatingComposerBottomOffset,
+  floatingComposerDockOffset,
   floatingComposerListPadding,
 } from '@/lib/chatKeyboard';
 
@@ -50,15 +52,56 @@ describe('floatingComposerBottomOffset', () => {
   });
 });
 
+describe('composer visual clearance', () => {
+  test('preserves a resting gap between the chat card and composer', () => {
+    expect(COMPOSER_VISUAL_CLEARANCE).toBeGreaterThan(0);
+    expect(floatingComposerDockOffset(0, false)).toBe(0);
+    expect(
+      floatingComposerListPadding(FLOATING_COMPOSER_RESTING_HEIGHT, 0),
+    ).toBe(FLOATING_COMPOSER_RESTING_HEIGHT + COMPOSER_VISUAL_CLEARANCE);
+  });
+
+  test('reserves enough card/list space so the last message is not under the composer', () => {
+    const composerHeight = 80;
+    const reserved = floatingComposerListPadding(composerHeight, 0);
+    expect(reserved).toBe(composerHeight + COMPOSER_VISUAL_CLEARANCE);
+    expect(reserved).toBeGreaterThan(composerHeight);
+
+    const keyboardOpenNoResize = floatingComposerListPadding(
+      composerHeight,
+      floatingComposerDockOffset(300, true),
+    );
+    expect(keyboardOpenNoResize).toBe(
+      composerHeight + 300 + COMPOSER_VISUAL_CLEARANCE * 2,
+    );
+  });
+
+  test('Android keyboard lift includes the visual clearance on both resize branches', () => {
+    const resized = floatingComposerBottomOffset(500, 500, 300, 'android');
+    const uncovered = floatingComposerBottomOffset(800, 500, 300, 'android');
+    expect(resized).toBe(0);
+    expect(uncovered).toBe(300);
+    expect(floatingComposerDockOffset(resized, true)).toBe(
+      COMPOSER_VISUAL_CLEARANCE,
+    );
+    expect(floatingComposerDockOffset(uncovered, true)).toBe(
+      300 + COMPOSER_VISUAL_CLEARANCE,
+    );
+  });
+});
+
 describe('floatingComposerListPadding', () => {
-  test('reserves space for composer plus keyboard lift', () => {
-    expect(floatingComposerListPadding(72, 300)).toBe(372);
+  test('reserves space for composer, keyboard lift, and visual clearance', () => {
+    expect(floatingComposerListPadding(72, 300)).toBe(
+      372 + COMPOSER_VISUAL_CLEARANCE,
+    );
     expect(floatingComposerListPadding(FLOATING_COMPOSER_RESTING_HEIGHT, 0)).toBe(
-      FLOATING_COMPOSER_RESTING_HEIGHT,
+      FLOATING_COMPOSER_RESTING_HEIGHT + COMPOSER_VISUAL_CLEARANCE,
     );
   });
 
   test('never returns negative padding', () => {
-    expect(floatingComposerListPadding(-10, -20)).toBe(0);
+    expect(floatingComposerListPadding(-10, -20)).toBe(COMPOSER_VISUAL_CLEARANCE);
+    expect(floatingComposerListPadding(-10, -20, 0)).toBe(0);
   });
 });

@@ -14,6 +14,10 @@ import { useTranslation } from 'react-i18next';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  shouldArmDeviceLockOnAppState,
+  shouldLockOnAppForeground,
+} from '@/lib/deviceLockState';
 import { colors, radii, spacing } from '@/lib/theme';
 
 const SECURE_STORE_KEY = 'circusave_require_local_auth';
@@ -41,6 +45,8 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   const [isInitializing, setIsInitializing] = useState(true);
   const [lockError, setLockError] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
+  const lockArmedRef = useRef(false);
+  const authenticatingRef = useRef(false);
 
   useEffect(() => {
     void (async () => {
@@ -62,6 +68,10 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const authenticate = async () => {
+    if (authenticatingRef.current) {
+      return;
+    }
+    authenticatingRef.current = true;
     setLockError(null);
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -87,20 +97,27 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
     } catch {
       // If biometric API fails for any reason, fail open so the user isn't locked out
       setIsLocked(false);
+    } finally {
+      authenticatingRef.current = false;
     }
   };
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (shouldArmDeviceLockOnAppState(nextAppState)) {
+        lockArmedRef.current = true;
+      }
       if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
+        shouldLockOnAppForeground({
+          armed: lockArmedRef.current,
+          next: nextAppState,
+          lockEnabled: isLockEnabled,
+          authenticating: authenticatingRef.current,
+        })
       ) {
-        // App has come to the foreground
-        if (isLockEnabled) {
-          setIsLocked(true);
-          void authenticate();
-        }
+        lockArmedRef.current = false;
+        setIsLocked(true);
+        void authenticate();
       }
       appState.current = nextAppState;
     });

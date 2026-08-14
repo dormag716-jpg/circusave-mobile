@@ -1,5 +1,7 @@
 import {
+  COMPOSER_VISUAL_CLEARANCE,
   floatingComposerBottomOffset,
+  floatingComposerDockOffset,
   FLOATING_COMPOSER_RESTING_HEIGHT,
   floatingComposerListPadding,
 } from '../chatKeyboard';
@@ -48,10 +50,13 @@ describe('composer geometry remains unchanged', () => {
     expect(floatingComposerBottomOffset(800, 500, 300, 'android')).toBe(300);
   });
 
-  it('still reserves list space from composer height plus lift', () => {
+  it('still reserves list space from composer height plus lift and clearance', () => {
     expect(
       floatingComposerListPadding(FLOATING_COMPOSER_RESTING_HEIGHT, 0),
-    ).toBe(FLOATING_COMPOSER_RESTING_HEIGHT);
-    expect(floatingComposerListPadding(72, 300)).toBe(372);
+    ).toBe(FLOATING_COMPOSER_RESTING_HEIGHT + COMPOSER_VISUAL_CLEARANCE);
+    expect(floatingComposerListPadding(72, 300)).toBe(
+      372 + COMPOSER_VISUAL_CLEARANCE,
+    );
+    expect(floatingComposerDockOffset(0, true)).toBe(COMPOSER_VISUAL_CLEARANCE);
   });
 });

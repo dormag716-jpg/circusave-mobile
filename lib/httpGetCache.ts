@@ -75,6 +75,28 @@ export function isChatOrAssistantGet(path: string): boolean {
   return false;
 }
 
+/** Device push registration does not change list/summary/detail presentation. */
+export function isDevicePushTokenPath(path: string): boolean {
+  return normalizePath(path) === '/auth/device/push-token';
+}
+
+/**
+ * Chat send/read, Susu AI, and push-token POSTs must not flush Dashboard
+ * / Circles / Activity persist keys. Financial and circle mutations still do.
+ */
+export function shouldInvalidateCachedGetsOnMutation(
+  method: string,
+  path: string,
+): boolean {
+  if (String(method || 'GET').toUpperCase() === 'GET') {
+    return false;
+  }
+  if (isChatOrAssistantGet(path) || isDevicePushTokenPath(path)) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Persist only list/summary/detail GETs that stampede across Dashboard,
  * Circles, Create, Completed, Activity, and workspace chrome.
@@ -134,10 +156,11 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** Successful mutations bump this so late GETs cannot persist. */
+/** Successful mutations bump this so late GETs cannot persist or be joined. */
 export function invalidateCachedGets(): void {
   epoch += 1;
   cache.clear();
+  inflight.clear();
 }
 
 export function resetHttpGetCacheForTests(): void {
@@ -211,6 +234,8 @@ export async function runDedupedGet<T>(input: {
   try {
     return cloneJson(await pending) as T;
   } finally {
-    inflight.delete(key);
+    if (inflight.get(key) === pending) {
+      inflight.delete(key);
+    }
   }
 }

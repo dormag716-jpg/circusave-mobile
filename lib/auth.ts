@@ -2,19 +2,19 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import {
-  ApiError,
   getAuthSession,
   logout as logoutApi,
   type AuthResponse,
 } from './api';
+import {
+  evaluateStoredAuthSession,
+  parseStoredAuthSessionRaw,
+  runAuthSessionRestore,
+  runLogoutSession,
+} from './authSessionRestore';
 
 const AUTH_SESSION_KEY = 'circusave.auth.session.v1';
 let webSession: AuthResponse | null = null;
-
-function isExpired(expiresAt: string) {
-  const expiresAtMs = Date.parse(expiresAt);
-  return Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
-}
 
 async function writeSessionValue(value: string) {
   if (Platform.OS === 'web') {
@@ -42,6 +42,14 @@ async function deleteSessionValue() {
   await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
 }
 
+async function readRawStoredAuthSession(): Promise<unknown> {
+  if (Platform.OS === 'web') {
+    return webSession;
+  }
+
+  return parseStoredAuthSessionRaw(await readSessionValue());
+}
+
 export async function persistAuthSession(session: AuthResponse) {
   if (!session.session.token) {
     throw new Error('Cannot persist an authentication session without a bearer token.');
@@ -53,37 +61,15 @@ export async function persistAuthSession(session: AuthResponse) {
 }
 
 export async function readStoredAuthSession(): Promise<AuthResponse | null> {
-  if (Platform.OS === 'web') {
-    return webSession;
-  }
-
-  const stored = await readSessionValue();
-  if (!stored) {
+  const evaluation = evaluateStoredAuthSession(await readRawStoredAuthSession());
+  if (!evaluation.ok) {
+    if (evaluation.reason !== 'missing') {
+      await clearAuthSession();
+    }
     return null;
   }
 
-  try {
-    const session = JSON.parse(stored) as AuthResponse;
-    if (
-      !session?.user?.id ||
-      !session.session?.id ||
-      !session.session.token ||
-      !session.session.expires_at
-    ) {
-      await clearAuthSession();
-      return null;
-    }
-
-    if (isExpired(session.session.expires_at)) {
-      await clearAuthSession();
-      return null;
-    }
-
-    return session;
-  } catch {
-    await clearAuthSession();
-    return null;
-  }
+  return evaluation.session;
 }
 
 export async function clearAuthSession() {
@@ -91,44 +77,34 @@ export async function clearAuthSession() {
   await deleteSessionValue();
 }
 
-export async function bootstrapAuthSession(): Promise<AuthResponse | null> {
-  const stored = await readStoredAuthSession();
-  const token = stored?.session.token;
-  if (!stored || !token) {
-    return null;
-  }
+export async function restoreAuthSession(options?: {
+  onOptimistic?: (session: AuthResponse) => void;
+  shouldAbort?: () => boolean;
+  now?: number;
+}): Promise<AuthResponse | null> {
+  return runAuthSessionRestore({
+    readStored: readRawStoredAuthSession,
+    clearStored: clearAuthSession,
+    persist: persistAuthSession,
+    verifyRemote: getAuthSession,
+    onOptimistic: options?.onOptimistic,
+    shouldAbort: options?.shouldAbort,
+    now: options?.now,
+  });
+}
 
-  try {
-    const remote = await getAuthSession(token);
-    return persistAuthSession({
-      user: remote.user,
-      session: {
-        ...remote.session,
-        token,
-      },
-    });
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      await clearAuthSession();
-      return null;
-    }
-    throw error;
-  }
+export async function bootstrapAuthSession(options?: {
+  onOptimistic?: (session: AuthResponse) => void;
+  shouldAbort?: () => boolean;
+  now?: number;
+}): Promise<AuthResponse | null> {
+  return restoreAuthSession(options);
 }
 
 export async function logoutSession() {
-  const stored = await readStoredAuthSession();
-  const token = stored?.session.token;
-
-  try {
-    if (token) {
-      await logoutApi(token);
-    }
-  } catch (error) {
-    if (!(error instanceof ApiError && error.status === 401)) {
-      throw error;
-    }
-  } finally {
-    await clearAuthSession();
-  }
+  return runLogoutSession({
+    readStored: readRawStoredAuthSession,
+    clearStored: clearAuthSession,
+    logoutRemote: logoutApi,
+  });
 }

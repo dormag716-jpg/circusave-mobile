@@ -11,6 +11,7 @@ import {
 import {
   invalidateCachedGets,
   runDedupedGet,
+  shouldInvalidateCachedGetsOnMutation,
   shouldUseHttpGetCache,
 } from './httpGetCache';
 
@@ -765,11 +766,26 @@ function logDevApiResponse(method: string, url: string, status: number, body: un
   });
 }
 
+export type ApiGetOptions = {
+  /** Skip persist hit; fetch fresh; write persist if policy allows. */
+  revalidate?: boolean;
+};
+
+type JsonRequestOptions = RequestInit & {
+  token?: string;
+  revalidate?: boolean;
+};
+
 async function requestJsonUncached<T>(
   path: string,
-  options: RequestInit & { token?: string } = {},
+  options: JsonRequestOptions = {},
 ): Promise<T> {
-  const { token, headers: providedHeaders, ...requestOptions } = options;
+  const {
+    token,
+    headers: providedHeaders,
+    revalidate: _revalidate,
+    ...requestOptions
+  } = options;
   const headers = new Headers(providedHeaders);
   headers.set('Accept', 'application/json');
   headers.set('X-CircuSave-Client', 'mobile');
@@ -819,7 +835,7 @@ async function requestJsonUncached<T>(
 
 async function requestJson<T>(
   path: string,
-  options: RequestInit & { token?: string } = {},
+  options: JsonRequestOptions = {},
 ): Promise<T> {
   const method = (options.method ?? 'GET').toUpperCase();
   if (shouldUseHttpGetCache(method, path)) {
@@ -827,10 +843,11 @@ async function requestJson<T>(
       path,
       token: options.token,
       fetcher: () => requestJsonUncached<T>(path, options),
+      revalidate: options.revalidate === true,
     });
   }
   const payload = await requestJsonUncached<T>(path, options);
-  if (method !== 'GET') {
+  if (shouldInvalidateCachedGetsOnMutation(method, path)) {
     invalidateCachedGets();
   }
   return payload;
@@ -1038,23 +1055,45 @@ export function registerPushToken(
   });
 }
 
-export function getDashboardSummary(token: string): Promise<DashboardSummary> {
-  return requestJson<DashboardSummary>('/dashboard/summary', { token });
+export function getDashboardSummary(
+  token: string,
+  options?: ApiGetOptions,
+): Promise<DashboardSummary> {
+  return requestJson<DashboardSummary>('/dashboard/summary', {
+    token,
+    revalidate: options?.revalidate,
+  });
 }
 
-export function getActivity(token: string): Promise<ActivityResponse> {
-  return requestJson<ActivityResponse>('/activity', { token });
+export function getActivity(
+  token: string,
+  options?: ApiGetOptions,
+): Promise<ActivityResponse> {
+  return requestJson<ActivityResponse>('/activity', {
+    token,
+    revalidate: options?.revalidate,
+  });
 }
 
-export function getCircles(token: string): Promise<BackendCircleSummary[]> {
-  return requestJson<BackendCircleSummary[]>('/groups', { token });
+export function getCircles(
+  token: string,
+  options?: ApiGetOptions,
+): Promise<BackendCircleSummary[]> {
+  return requestJson<BackendCircleSummary[]>('/groups', {
+    token,
+    revalidate: options?.revalidate,
+  });
 }
 
 export function getCircleDetail(
   token: string,
   circleId: string,
+  options?: ApiGetOptions,
 ): Promise<BackendCircleDetail> {
-  return requestJson<BackendCircleDetail>(`/groups/${circleId}`, { token });
+  return requestJson<BackendCircleDetail>(`/groups/${circleId}`, {
+    token,
+    revalidate: options?.revalidate,
+  });
 }
 
 export function updateCircleSettings(

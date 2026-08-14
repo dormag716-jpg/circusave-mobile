@@ -11,6 +11,14 @@
 export const FLOATING_COMPOSER_RESTING_HEIGHT = 72;
 
 /**
+ * Shared air between the chat card and composer, and between the composer
+ * and the software keyboard. Applied on top of measured keyboard overlap so
+ * Gboard, suggestion rows, emoji/number keyboards, and either Android nav
+ * mode keep a visible gap without per-device pixel hacks.
+ */
+export const COMPOSER_VISUAL_CLEARANCE = 12;
+
+/**
  * Legacy KAV helpers kept for Susu AI and any remaining callers.
  * Circle group/private chat uses the floating dock instead.
  */
@@ -63,14 +71,31 @@ export function floatingComposerBottomOffset(
 }
 
 /**
- * Bottom padding for the message list so the last bubbles clear the
- * floating composer (+ optional keyboard lift when the list does not resize).
+ * Extra bottom offset for the floating dock. Geometry stays in
+ * floatingComposerBottomOffset; this only adds visual clearance while the
+ * keyboard is showing (including Android adjustResize, where overlap is 0).
+ */
+export function floatingComposerDockOffset(
+  keyboardOverlap: number,
+  keyboardVisible: boolean,
+): number {
+  if (!keyboardVisible) {
+    return 0;
+  }
+  return Math.max(0, keyboardOverlap) + COMPOSER_VISUAL_CLEARANCE;
+}
+
+/**
+ * Bottom inset for the chat card/list so the last bubbles and the card
+ * itself sit above the floating composer (+ keyboard lift when needed).
  */
 export function floatingComposerListPadding(
   composerHeight: number,
   keyboardLift: number,
+  visualClearance: number = COMPOSER_VISUAL_CLEARANCE,
 ): number {
   const safeComposer = Math.max(0, composerHeight);
   const safeLift = Math.max(0, keyboardLift);
-  return safeComposer + safeLift;
+  const safeClearance = Math.max(0, visualClearance);
+  return safeComposer + safeLift + safeClearance;
 }
