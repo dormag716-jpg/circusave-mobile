@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +53,14 @@ import {
   shouldHoldPaymentLockAfterOutcome,
 } from '@/lib/stripeContributionPayment';
 import { colors, radii, spacing } from '@/lib/theme';
+import { DecisionSheet } from '@/components/DecisionSheet';
+import { PaymentDestinationList } from '@/components/PaymentDestinationList';
+import {
+  buildManualContributionSubmitPayload,
+  MAX_PAYMENT_REFERENCE_LENGTH,
+} from '@/lib/contributionClaim';
+import { buildContributionPaymentRails } from '@/lib/contributionPaymentRails';
+import { contributionCopy } from '@/lib/i18n/contributionCopy';
 import {
   contributionStatusLabel,
   contributionTotal,
@@ -66,10 +75,16 @@ export default function ContributionPaymentScreen() {
     'people',
   ]);
   const { session, status } = useAuthSession();
-  const params = useLocalSearchParams<{ circleId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    circleId?: string | string[];
+    handId?: string | string[];
+  }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
     : params.circleId;
+  const requestedHandId = Array.isArray(params.handId)
+    ? params.handId[0]
+    : params.handId;
   const token = session?.session.token;
   const userId = session?.user.id;
 
@@ -84,9 +99,18 @@ export default function ContributionPaymentScreen() {
     null | 'confirming' | 'pending'
   >(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedHandId, setSelectedHandId] = useState<string | null>(
+    requestedHandId ?? null,
+  );
   const [reviewExpanded, setReviewExpanded] = useState<boolean>(
     shouldStartContributionReviewExpanded(),
   );
+  const [meaningExpanded, setMeaningExpanded] = useState(false);
+  const [selectedDestinationIndex, setSelectedDestinationIndex] = useState<
+    number | null
+  >(null);
+  const [paymentReferenceDraft, setPaymentReferenceDraft] = useState('');
+  const [confirmMarkAsSentVisible, setConfirmMarkAsSentVisible] = useState(false);
   const stripe = useStripe();
   // Synchronous lock: React state alone can allow a second tap before re-render.
   const paymentLockRef = useRef(new PaymentSessionLock());
@@ -209,7 +233,8 @@ export default function ContributionPaymentScreen() {
     setError(null);
     setLoading(true);
     setSettlementPhase(null);
-  }, [circleId]);
+    setSelectedHandId(requestedHandId ?? null);
+  }, [circleId, requestedHandId]);
 
   useEffect(() => {
     void loadContribution();
@@ -233,7 +258,6 @@ export default function ContributionPaymentScreen() {
   const dueHands = viewerHands.filter((hand) =>
     ['due', 'missed', 'rejected'].includes(hand.status),
   );
-  const [selectedHandId, setSelectedHandId] = useState<string | null>(null);
   const activeHandId =
     selectedHandId && dueHands.some((h) => h.id === selectedHandId)
       ? selectedHandId
@@ -259,6 +283,39 @@ export default function ContributionPaymentScreen() {
     settlementPhase,
   });
   const payDisabled = !canSubmit || payActionsBlocked;
+  const rails = buildContributionPaymentRails({
+    paymentInstructions: circle?.paymentInstructions,
+    paymentDestinations: circle?.paymentDestinations,
+    stripeSupported: isStripeSupported,
+  });
+  const selectedDestination =
+    rails.destinations.length === 1
+      ? rails.destinations[0]
+      : selectedDestinationIndex != null
+        ? rails.destinations[selectedDestinationIndex] ?? null
+        : null;
+
+  function promptMarkContributionSent() {
+    if (shouldBlockContributionPayActions({
+      payingStripe,
+      submitting,
+      settlementPhase,
+    })) {
+      return;
+    }
+    if (payDisabled || !activeHand) {
+      return;
+    }
+    if (rails.destinations.length > 1 && !selectedDestination) {
+      Alert.alert(
+        contributionCopy(t, 'markAsSent.selectDestinationTitle'),
+        contributionCopy(t, 'markAsSent.selectDestinationBody'),
+      );
+      return;
+    }
+
+    setConfirmMarkAsSentVisible(true);
+  }
 
   async function handleSubmitContribution() {
     if (shouldBlockContributionPayActions({
@@ -289,7 +346,15 @@ export default function ContributionPaymentScreen() {
 
     setSubmitting(true);
     try {
-      await submitContribution(accessToken, circle.id, activeHand.id);
+      await submitContribution(
+        accessToken,
+        circle.id,
+        activeHand.id,
+        buildManualContributionSubmitPayload(
+          selectedDestination,
+          paymentReferenceDraft,
+        ),
+      );
       Alert.alert(
         t('contributions:submittedTitle'),
         t('contributions:submittedBody', { hand: activeHand.label }),
@@ -714,52 +779,191 @@ export default function ContributionPaymentScreen() {
           </Text>
         ) : null}
 
-        {isStripeSupported ? (
-          <Pressable
-            style={[
-              styles.primaryButton,
-              payDisabled && styles.disabledButton,
-            ]}
-            disabled={payDisabled}
-            onPress={() => void handleStripePayment()}
-            accessibilityRole="button"
-            accessibilityState={{
-              busy: payActionsBlocked,
-              disabled: payDisabled,
-            }}
-            accessibilityLabel={t('contributions:payWithStripe')}
-          >
-            <Text style={styles.primaryButtonText}>
-              {payingStripe || settlementPhase === 'confirming'
-                ? settlementPhase === 'confirming'
-                  ? t('contributions:confirmingStatus')
-                  : t('contributions:processing')
-                : t('contributions:payWithStripe')}
+        {rails.showStripeRail ? (
+          <View style={styles.railCard}>
+            <Text style={styles.railTitle}>
+              {contributionCopy(t, 'rails.payInTitle')}
             </Text>
-          </Pressable>
+            <Text style={styles.railBody}>
+              {contributionCopy(t, 'rails.payInBody')}
+            </Text>
+            <Pressable
+              style={[
+                styles.primaryButton,
+                styles.railAction,
+                payDisabled && styles.disabledButton,
+              ]}
+              disabled={payDisabled}
+              onPress={() => void handleStripePayment()}
+              accessibilityRole="button"
+              accessibilityState={{
+                busy: payActionsBlocked,
+                disabled: payDisabled,
+              }}
+              accessibilityLabel={contributionCopy(t, 'rails.payInAction')}
+            >
+              <Text style={styles.primaryButtonText}>
+                {payingStripe || settlementPhase === 'confirming'
+                  ? settlementPhase === 'confirming'
+                    ? t('contributions:confirmingStatus')
+                    : t('contributions:processing')
+                  : contributionCopy(t, 'rails.payInAction')}
+              </Text>
+            </Pressable>
+          </View>
         ) : null}
 
-        <Pressable
-          style={[
-            isStripeSupported ? styles.secondaryButton : styles.primaryButton,
-            payDisabled && styles.disabledButton,
-          ]}
-          disabled={payDisabled}
-          onPress={() => void handleSubmitContribution()}
-          accessibilityRole="button"
-          accessibilityLabel={t('contributions:submitA11y')}
-        >
-          <Text style={isStripeSupported ? styles.secondaryButtonText : styles.primaryButtonText}>
-            {submitting
-              ? t('contributions:submitting')
-              : isStripeSupported
-                ? t('contributions:confirmManual')
-                : canSubmit
-                  ? t('contributions:submit')
-                  : statusLabel}
-          </Text>
-        </Pressable>
+        {rails.showManualRail ? (
+          <View style={styles.railCard}>
+            <Text style={styles.railTitle}>
+              {contributionCopy(t, 'rails.payOutsideTitle')}
+            </Text>
+            <Text style={styles.railBody}>
+              {contributionCopy(t, 'rails.payOutsideBody')}
+            </Text>
+            {rails.hasInstructions ? (
+              <View style={styles.instructionsBox}>
+                <Text style={styles.instructionsTitle}>
+                  {rails.destinations.length > 1
+                    ? contributionCopy(t, 'markAsSent.selectDestinationTitle')
+                    : contributionCopy(t, 'workspace.instructionsTitle')}
+                </Text>
+                {rails.destinations.length > 1 ? (
+                  <View style={styles.destinationChoices}>
+                    {rails.destinations.map((destination, index) => {
+                      const selected = selectedDestinationIndex === index;
+                      return (
+                        <Pressable
+                          key={`${destination.method}-${destination.destination}-${index}`}
+                          style={[
+                            styles.destinationChoice,
+                            selected && styles.destinationChoiceSelected,
+                          ]}
+                          onPress={() => setSelectedDestinationIndex(index)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                        >
+                          <Text style={styles.destinationChoiceMethod}>
+                            {contributionCopy(
+                              t,
+                              `paymentSetup.methods.${destination.method}`,
+                            )}
+                          </Text>
+                          {destination.destination ? (
+                            <Text style={styles.destinationChoiceHandle}>
+                              {destination.destination}
+                            </Text>
+                          ) : null}
+                          {destination.memo ? (
+                            <Text style={styles.destinationChoiceMemo}>
+                              {destination.memo}
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <PaymentDestinationList
+                    destinations={rails.destinations}
+                    fallbackText={rails.instructions}
+                  />
+                )}
+              </View>
+            ) : (
+              <View style={styles.instructionsBox}>
+                <Text style={styles.instructionsTitle}>
+                  {contributionCopy(t, 'workspace.instructionsMissingTitle')}
+                </Text>
+                <Text style={styles.instructionsText}>
+                  {contributionCopy(t, 'workspace.instructionsMissingBody')}
+                </Text>
+              </View>
+            )}
+            <Text style={styles.railBody}>
+              {contributionCopy(t, 'workspace.circuSaveDoesNotSend')}
+            </Text>
+            <Pressable
+              style={styles.meaningHeader}
+              onPress={() => setMeaningExpanded((open) => !open)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: meaningExpanded }}
+              accessibilityLabel={
+                meaningExpanded
+                  ? contributionCopy(t, 'rails.collapseMeaning')
+                  : contributionCopy(t, 'rails.expandMeaning')
+              }
+            >
+              <Text style={styles.meaningTitle}>
+                {contributionCopy(t, 'rails.markAsSentMeaningTitle')}
+              </Text>
+              <FontAwesome
+                name={meaningExpanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.subtle}
+              />
+            </Pressable>
+            {meaningExpanded ? (
+              <Text style={styles.railBody}>
+                {contributionCopy(t, 'rails.markAsSentMeaningBody')}
+              </Text>
+            ) : null}
+            <Pressable
+              style={[
+                rails.showStripeRail ? styles.secondaryButton : styles.primaryButton,
+                styles.railAction,
+                payDisabled && styles.disabledButton,
+              ]}
+              disabled={payDisabled}
+              onPress={promptMarkContributionSent}
+              accessibilityRole="button"
+              accessibilityLabel={t('contributions:submitA11y')}
+            >
+              <Text
+                style={
+                  rails.showStripeRail
+                    ? styles.secondaryButtonText
+                    : styles.primaryButtonText
+                }
+              >
+                {submitting
+                  ? t('contributions:submitting')
+                  : contributionCopy(t, 'workspace.markAsSent')}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
+      <DecisionSheet
+        visible={confirmMarkAsSentVisible}
+        onClose={() => setConfirmMarkAsSentVisible(false)}
+        icon="check-circle-o"
+        iconTone="primary"
+        title={contributionCopy(t, 'markAsSent.confirmTitle')}
+        body={contributionCopy(t, 'markAsSent.confirmBody', {
+          amount: formatCurrency(
+            amountPerHand,
+            i18n.resolvedLanguage || i18n.language,
+          ),
+        })}
+        primaryLabel={contributionCopy(t, 'workspace.markAsSent')}
+        secondaryLabel={contributionCopy(t, 'alerts.cancel')}
+        busy={submitting}
+        onPrimary={() => {
+          setConfirmMarkAsSentVisible(false);
+          void handleSubmitContribution();
+        }}
+      >
+        <TextInput
+          value={paymentReferenceDraft}
+          onChangeText={setPaymentReferenceDraft}
+          placeholder={contributionCopy(t, 'markAsSent.referencePlaceholder')}
+          accessibilityLabel={contributionCopy(t, 'markAsSent.referenceA11y')}
+          placeholderTextColor={colors.muted}
+          maxLength={MAX_PAYMENT_REFERENCE_LENGTH}
+          style={styles.referenceInput}
+        />
+      </DecisionSheet>
     </SafeAreaView>
   );
 }
@@ -1073,6 +1277,104 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     marginTop: 4,
+  },
+  railCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 16,
+    paddingHorizontal: spacing.card,
+    paddingVertical: 16,
+  },
+  railTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  railBody: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  instructionsBox: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  instructionsTitle: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  instructionsText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 21,
+  },
+  destinationChoices: { gap: 8 },
+  destinationChoice: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  destinationChoiceSelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  destinationChoiceMethod: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  destinationChoiceHandle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  destinationChoiceMemo: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  referenceInput: {
+    borderColor: colors.cardBorder,
+    borderRadius: 14,
+    borderWidth: 1,
+    color: colors.textStrong,
+    fontSize: 15,
+    marginTop: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  meaningHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 40,
+  },
+  meaningTitle: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  railAction: {
+    marginTop: 8,
   },
   primaryButton: {
     alignItems: 'center',

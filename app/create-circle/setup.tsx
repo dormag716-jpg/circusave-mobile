@@ -39,6 +39,7 @@ import {
 import {
   circleWorkspaceHref,
   createCircleHref,
+  createCircleSuccessDestinations,
 } from '@/lib/navigation';
 import { colors, radii, spacing } from '@/lib/theme';
 import { Avatar } from '@/components/Avatar';
@@ -612,11 +613,21 @@ export default function CircleSetupWizardScreen() {
         iconTone="success"
         title={t('success.title')}
         body={t('success.body')}
-        primaryLabel={t('actions.continueSetup')}
-        secondaryLabel={null}
+        primaryLabel={t('actions.setContributionInstructions')}
+        secondaryLabel={t('actions.continueSetup')}
+        onSecondary={() => {
+          if (createdCircleId) {
+            router.replace(
+              createCircleSuccessDestinations(createdCircleId).continueSetup,
+            );
+          }
+        }}
         onPrimary={() => {
           if (createdCircleId) {
-            router.replace(circleWorkspaceHref(createdCircleId, 'people'));
+            router.replace(
+              createCircleSuccessDestinations(createdCircleId)
+                .contributionPaymentSetup,
+            );
           }
         }}
       />

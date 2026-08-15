@@ -61,6 +61,7 @@ import {
   shouldShowMemberAgreementBanner,
   type MemberAgreementPrompt,
 } from '@/lib/circleAgreements';
+import { PaymentDestinationList } from '@/components/PaymentDestinationList';
 import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
@@ -99,6 +100,8 @@ import {
 } from '@/lib/circleLifecycleCopy';
 import {
   buildCircleSetupProgress,
+  canEditContributionPaymentInstructions,
+  hasContributionPaymentInstructions,
   orderedParticipatingHands,
   splitWaitlistRequests,
   type SetupStepStatus,
@@ -127,10 +130,38 @@ import {
   validateCurrentPayoutOrder,
 } from '@/lib/peopleWorkspace';
 import { useConversationUnreadCount } from '@/lib/useConversations';
+import { contributionCopy } from '@/lib/i18n/contributionCopy';
+import {
+  buildManualContributionSubmitPayload,
+  claimedPaymentMethodLabelKey,
+  MAX_PAYMENT_REFERENCE_LENGTH,
+} from '@/lib/contributionClaim';
 import {
   contributionStatusLabel,
+  presentManualContribution,
   roundStatusLabel,
 } from '@/lib/i18n/financial-presentation';
+import {
+  buildMemberContributionCardModel,
+  collectViewerParticipatingHands,
+  formatContributionReportedAt,
+  type MemberContributionCardModel,
+} from '@/lib/memberContributionCard';
+import {
+  canStartMarkAsSentSubmit,
+  isAlreadyReportedSubmissionError,
+  resolveMarkAsSentContributionHrefHandId,
+  resolveMarkAsSentTarget,
+} from '@/lib/markContributionSent';
+import {
+  ORGANIZER_REJECT_REASON_CODES,
+  buildOrganizerReviewRowModel,
+  organizerRejectReasonLabel,
+  organizerRejectReasonPayload,
+  presentRejectReasonForMember,
+  shouldShowOrganizerHandLabel,
+  type OrganizerRejectReasonCode,
+} from '@/lib/organizerContributionReview';
 import {
   formatCurrency,
   formatDateTime as formatLocalizedDate,
@@ -479,7 +510,15 @@ function WorkspaceContent({
   const ledgerGeneration = useRef(createRequestGeneration());
   const hasLastKnownSectionsRef = useRef(Boolean(warmSections?.schedule));
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
+  const [paymentSheet, setPaymentSheet] = useState<
+    | null
+    | { kind: 'mark_as_sent'; handId: string }
+    | { kind: 'confirm_received'; member: BackendCircleMember }
+    | { kind: 'record_paid'; member: BackendCircleMember }
+  >(null);
+  const [paymentReferenceDraft, setPaymentReferenceDraft] = useState('');
   const paymentInstructions = circle.paymentInstructions ?? null;
+  const paymentDestinations = circle.paymentDestinations ?? null;
   const { unreadCount: chatUnreadCount } = useConversationUnreadCount(
     circle.id,
     token,
@@ -792,6 +831,40 @@ function WorkspaceContent({
     currentRoundNumber,
     t,
   );
+  const viewerParticipatingHands = collectViewerParticipatingHands({
+    userId,
+    members: orderedMembers,
+    viewerHands: circle.viewerHands,
+  });
+  const memberContributionCard = buildMemberContributionCardModel({
+    hands: viewerParticipatingHands,
+    contributions: scheduleData?.contributions,
+    currentRoundNumber,
+    contributionAmount: circle.contributionAmount,
+    paymentInstructions,
+    paymentDestinations,
+    statusByHandId: Object.fromEntries(
+      viewerParticipatingHands.map((hand) => {
+        const contribution = findContribution(
+          scheduleData?.contributions,
+          hand.id,
+          currentRoundNumber,
+        );
+        return [
+          hand.id,
+          contributionStatus(
+            contribution,
+            roundWallet,
+            ledgerEntries,
+            hand.id,
+            currentRoundNumber,
+            t,
+          ).raw,
+        ];
+      }),
+    ),
+    t,
+  });
   const viewerPayoutPosition = viewerMember
     ? orderedMembers.findIndex((m) => m.id === viewerMember.id) + 1
     : null;
@@ -866,7 +939,7 @@ function WorkspaceContent({
   );
   const memberCanSubmitContribution = canShowBackendGatedAction(
     viewerPermissions?.canSubmitOwnContribution,
-    ['due', 'missed', 'rejected'].includes(viewerContributionStatus.raw),
+    memberContributionCard.anyReportable,
   );
   const hasSchedule = Boolean(scheduleData?.schedule?.length);
 
@@ -888,6 +961,14 @@ function WorkspaceContent({
         viewerRole={viewerState}
       />
     );
+  }
+
+  function promptConfirmReceived(member: BackendCircleMember) {
+    setPaymentSheet({ kind: 'confirm_received', member });
+  }
+
+  function promptRecordPaid(member: BackendCircleMember) {
+    setPaymentSheet({ kind: 'record_paid', member });
   }
 
   async function handleConfirmContribution(member: BackendCircleMember) {
@@ -944,6 +1025,80 @@ function WorkspaceContent({
         financialActionErrorMessage(
           markPaidError,
           t('financialErrors:recordPayment'),
+        ),
+      );
+    } finally {
+      setActionMemberId(null);
+    }
+  }
+
+  function handleMarkContributionSent(handId: string) {
+    const navigationHandId = resolveMarkAsSentContributionHrefHandId(
+      memberContributionCard,
+      handId,
+      memberContributionCard.destinations.length,
+    );
+    if (navigationHandId) {
+      router.push(contributionHref(circle.id, navigationHandId));
+      return;
+    }
+
+    promptMarkContributionSent(handId);
+  }
+
+  function promptMarkContributionSent(handId: string) {
+    const target = resolveMarkAsSentTarget(memberContributionCard, handId);
+    if (
+      !canStartMarkAsSentSubmit({
+        canSubmit: memberCanSubmitContribution,
+        target,
+        inflightHandId: actionMemberId,
+      }) ||
+      !target
+    ) {
+      return;
+    }
+
+    setPaymentReferenceDraft('');
+    setPaymentSheet({ kind: 'mark_as_sent', handId: target.handId });
+  }
+
+  async function submitMarkContributionSent(handId: string) {
+    const target = resolveMarkAsSentTarget(memberContributionCard, handId);
+    if (
+      !canStartMarkAsSentSubmit({
+        canSubmit: memberCanSubmitContribution,
+        target,
+        inflightHandId: actionMemberId,
+      }) ||
+      !target
+    ) {
+      return;
+    }
+
+    setActionMemberId(target.handId);
+    try {
+      await submitContribution(
+        token,
+        circle.id,
+        target.handId,
+        buildManualContributionSubmitPayload(
+          memberContributionCard.destinations[0] ?? null,
+          paymentReferenceDraft,
+        ),
+      );
+      await Promise.all([onReload(), loadBackendSections()]);
+    } catch (submitError) {
+      if (isAlreadyReportedSubmissionError(submitError)) {
+        await Promise.all([onReload(), loadBackendSections()]);
+        return;
+      }
+      console.error('Unable to report contribution as sent', submitError);
+      Alert.alert(
+        t('contributions:markAsSent.failedTitle'),
+        financialActionErrorMessage(
+          submitError,
+          t('financialErrors:submitContribution'),
         ),
       );
     } finally {
@@ -1073,6 +1228,8 @@ function WorkspaceContent({
   async function runMemberAction(
     member: BackendCircleMember,
     action: 'reject' | 'remind-sms' | 'remind-whatsapp' | 'remind-app',
+    reason?: string,
+    reasonCode?: string,
   ) {
     if (action === 'remind-sms' && member.phone) {
       const message = t('contributions:reminderMessage', {
@@ -1096,7 +1253,10 @@ function WorkspaceContent({
     setActionMemberId(member.id);
     try {
       if (action === 'reject') {
-        await rejectContribution(token, circle.id, member.id);
+        await rejectContribution(token, circle.id, member.id, {
+          reason,
+          reasonCode,
+        });
       } else {
         await sendContributionReminder(token, circle.id, member.id);
         Alert.alert(
@@ -1292,9 +1452,11 @@ function WorkspaceContent({
               displayRoundStatus={displayRoundStatus}
               dueDate={dueDate}
               memberCanSubmitContribution={memberCanSubmitContribution}
-              onApprove={(member) => void handleConfirmContribution(member)}
-              onMarkPaid={(member) => void handleMarkPaid(member)}
-              onReject={(member) => void runMemberAction(member, 'reject')}
+              onApprove={promptConfirmReceived}
+              onMarkPaid={promptRecordPaid}
+              onReject={(member, reason, reasonCode) =>
+                void runMemberAction(member, 'reject', reason, reasonCode)
+              }
               onRemind={handleRemindPress}
               onReleasePayout={handleReleasePayout}
               payoutAmount={payoutAmount}
@@ -1310,6 +1472,8 @@ function WorkspaceContent({
               viewerPayoutPosition={viewerPayoutPosition}
               processingMemberId={actionMemberId}
               paymentInstructions={paymentInstructions}
+              memberContributionCard={memberContributionCard}
+              onMarkContributionSent={handleMarkContributionSent}
             />
           </>
         ) : !scheduleData && secondaryLoading ? (
@@ -1397,6 +1561,94 @@ function WorkspaceContent({
     </View>
   ) : null;
 
+  const markAsSentTarget =
+    paymentSheet?.kind === 'mark_as_sent'
+      ? resolveMarkAsSentTarget(memberContributionCard, paymentSheet.handId)
+      : null;
+  const paymentDecisionSheets = (
+    <>
+      <DecisionSheet
+        visible={paymentSheet?.kind === 'mark_as_sent'}
+        onClose={() => setPaymentSheet(null)}
+        icon="check-circle-o"
+        iconTone="primary"
+        title={t('contributions:markAsSent.confirmTitle')}
+        body={t('contributions:markAsSent.confirmBody', {
+          amount: formatCurrency(markAsSentTarget?.amount ?? 0, language),
+        })}
+        primaryLabel={t('contributions:workspace.markAsSent')}
+        secondaryLabel={t('contributions:alerts.cancel')}
+        busy={actionMemberId != null}
+        onPrimary={() => {
+          const handId =
+            paymentSheet?.kind === 'mark_as_sent' ? paymentSheet.handId : null;
+          setPaymentSheet(null);
+          if (handId) {
+            void submitMarkContributionSent(handId);
+          }
+        }}
+      >
+        <TextInput
+          value={paymentReferenceDraft}
+          onChangeText={setPaymentReferenceDraft}
+          placeholder={t('contributions:markAsSent.referencePlaceholder')}
+          accessibilityLabel={t('contributions:markAsSent.referenceA11y')}
+          placeholderTextColor={colors.muted}
+          maxLength={MAX_PAYMENT_REFERENCE_LENGTH}
+          style={{
+            borderColor: colors.cardBorder,
+            borderRadius: 14,
+            borderWidth: 1,
+            color: colors.textStrong,
+            fontSize: 15,
+            marginTop: 8,
+            minHeight: 44,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+          }}
+        />
+      </DecisionSheet>
+      <DecisionSheet
+        visible={paymentSheet?.kind === 'confirm_received'}
+        onClose={() => setPaymentSheet(null)}
+        icon="check"
+        iconTone="success"
+        title={t('contributions:workspace.review.confirmTitle')}
+        body={t('contributions:workspace.review.confirmBody')}
+        primaryLabel={t('contributions:workspace.review.confirmAction')}
+        secondaryLabel={t('contributions:alerts.cancel')}
+        busy={actionMemberId != null}
+        onPrimary={() => {
+          const member =
+            paymentSheet?.kind === 'confirm_received' ? paymentSheet.member : null;
+          setPaymentSheet(null);
+          if (member) {
+            void handleConfirmContribution(member);
+          }
+        }}
+      />
+      <DecisionSheet
+        visible={paymentSheet?.kind === 'record_paid'}
+        onClose={() => setPaymentSheet(null)}
+        icon="check-circle"
+        iconTone="success"
+        title={t('contributions:workspace.review.recordPaidTitle')}
+        body={t('contributions:workspace.review.recordPaidBody')}
+        primaryLabel={t('contributions:workspace.recordPaid')}
+        secondaryLabel={t('contributions:alerts.cancel')}
+        busy={actionMemberId != null}
+        onPrimary={() => {
+          const member =
+            paymentSheet?.kind === 'record_paid' ? paymentSheet.member : null;
+          setPaymentSheet(null);
+          if (member) {
+            void handleMarkPaid(member);
+          }
+        }}
+      />
+    </>
+  );
+
   if (activeTab === 'chat') {
     return (
       <View style={styles.workspaceBody}>
@@ -1412,6 +1664,7 @@ function WorkspaceContent({
           {chrome}
         </View>
         {chatSurface}
+        {paymentDecisionSheets}
       </View>
     );
   }
@@ -1436,6 +1689,345 @@ function WorkspaceContent({
         {nonChatBody}
       </ScrollView>
       {chatSurface}
+      {paymentDecisionSheets}
+    </View>
+  );
+}
+
+function MemberContributionCard({
+  card,
+  currentRoundNumber,
+  language,
+  memberCanSubmitContribution,
+  onMarkAsSent,
+  onPayInApp,
+  payoutPosition,
+  submittingHandId,
+}: {
+  card: MemberContributionCardModel;
+  currentRoundNumber?: number;
+  language: string;
+  memberCanSubmitContribution: boolean;
+  onMarkAsSent: (handId: string) => void;
+  onPayInApp: (handId: string) => void;
+  payoutPosition?: number | null;
+  submittingHandId: string | null;
+}) {
+  const { t } = useTranslation(['contributions', 'people']);
+  const firstHand = card.hands[0];
+  const awaitingHands = card.hands.filter((hand) => hand.presentation.awaitingOrganizer);
+  const rejectedHands = card.hands.filter((hand) => hand.presentation.needsAttention);
+  const showPayOutside = card.anyReportable;
+  const reportedAt = awaitingHands
+    .map((hand) => formatContributionReportedAt(hand.submittedAt, language))
+    .find(Boolean);
+  const rejectNote = rejectedHands
+    .map((hand) =>
+      presentRejectReasonForMember(
+        {
+          rejectReason: hand.rejectReason,
+          rejectReasonCode: hand.rejectReasonCode,
+        },
+        t,
+      ),
+    )
+    .find(Boolean);
+
+  return (
+    <View style={styles.sectionCard}>
+      <Text style={styles.sectionTitle}>
+        {card.hands.length > 1
+          ? contributionCopy(t, 'workspace.myContributions')
+          : contributionCopy(t, 'workspace.myContribution')}
+      </Text>
+
+      <Text style={styles.memberDueAmount}>
+        {card.anyReportable
+          ? contributionCopy(
+              t,
+              card.hands.length > 1 ? 'workspace.totalDue' : 'workspace.amountDue',
+              {
+                amount: formatCurrency(
+                  card.hands.length > 1 ? card.totalDue : firstHand?.amount ?? 0,
+                  language,
+                ),
+              },
+            )
+          : firstHand?.presentation.primaryLabel ?? ''}
+      </Text>
+
+      <Text style={styles.sectionSubtitle}>
+        {[
+          typeof currentRoundNumber === 'number'
+            ? contributionCopy(t, 'workspace.roundLabel', {
+                round: currentRoundNumber,
+              })
+            : null,
+          payoutPosition
+            ? contributionCopy(t, 'workspace.payoutTurn', {
+                position: formatOrdinal(payoutPosition, language),
+              })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      </Text>
+
+      <Text style={styles.memberEducation}>
+        {contributionCopy(t, 'workspace.markAsSentEducation')}
+      </Text>
+
+      {card.hands.map((hand, index) => (
+        <View
+          key={hand.handId}
+          style={[
+            styles.memberHandRow,
+            index < card.hands.length - 1 && styles.memberHandRowDivider,
+          ]}
+        >
+          <View style={styles.memberHandCopy}>
+            <View style={styles.memberHandTitleRow}>
+              <Text style={styles.memberHandTitle}>
+                {contributionCopy(t, 'workspace.handLabel', {
+                  number: hand.handNumber,
+                })}
+              </Text>
+              <Text style={styles.memberHandAmount}>
+                {formatCurrency(hand.amount, language)}
+              </Text>
+            </View>
+            <View style={styles.memberHandStatusRow}>
+              <View style={styles.memberHandStatusCopy}>
+                <Text style={styles.memberHandMeta}>
+                  {hand.presentation.primaryLabel}
+                </Text>
+                {hand.presentation.secondaryLabel ? (
+                  <Text style={styles.memberHandSecondary}>
+                    {hand.presentation.secondaryLabel}
+                  </Text>
+                ) : null}
+              </View>
+              {memberCanSubmitContribution &&
+              hand.presentation.canReportPayment ? (
+                <Pressable
+                  style={[
+                    styles.memberHandInlineButton,
+                    submittingHandId != null && styles.saveButtonDisabled,
+                  ]}
+                  disabled={submittingHandId != null}
+                  onPress={() => onMarkAsSent(hand.handId)}
+                  accessibilityRole="button"
+                  accessibilityLabel={contributionCopy(
+                    t,
+                    'workspace.markAsSentA11y',
+                    {
+                      hand: contributionCopy(t, 'workspace.handLabel', {
+                        number: hand.handNumber,
+                      }),
+                    },
+                  )}
+                >
+                  {submittingHandId === hand.handId ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : (
+                    <Text style={styles.memberHandInlineButtonText}>
+                      {contributionCopy(t, 'workspace.markAsSent')}
+                    </Text>
+                  )}
+                </Pressable>
+              ) : null}
+            </View>
+            {memberCanSubmitContribution &&
+            hand.presentation.canReportPayment &&
+            card.reportableHandCount <= 1 ? (
+              <Pressable
+                style={styles.memberHandTextAction}
+                disabled={submittingHandId != null}
+                onPress={() => onPayInApp(hand.handId)}
+                accessibilityRole="button"
+                accessibilityLabel={contributionCopy(
+                  t,
+                  'workspace.payInCircusaveA11y',
+                  {
+                    hand: contributionCopy(t, 'workspace.handLabel', {
+                      number: hand.handNumber,
+                    }),
+                  },
+                )}
+              >
+                <Text style={styles.memberHandTextActionLabel}>
+                  {contributionCopy(t, 'workspace.payInCircusave')}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ))}
+
+      {showPayOutside ? (
+        <View style={styles.paymentInstructions}>
+          <Text style={styles.paymentInstructionsTitle}>
+            {contributionCopy(t, 'workspace.payOutsideTitle')}
+          </Text>
+          {card.hasInstructions ? (
+            <>
+              <Text style={styles.memberHandSecondary}>
+                {contributionCopy(t, 'workspace.sendUsingInstructions')}
+              </Text>
+              <PaymentDestinationList
+                destinations={card.destinations}
+                fallbackText={card.instructions}
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.paymentInstructionsText}>
+                {contributionCopy(t, 'workspace.instructionsMissingTitle')}
+              </Text>
+              <Text style={styles.memberHandSecondary}>
+                {contributionCopy(t, 'workspace.instructionsMissingBody')}
+              </Text>
+            </>
+          )}
+          <Text style={styles.memberDisclosure}>
+            {contributionCopy(t, 'workspace.circuSaveDoesNotSend')}
+          </Text>
+          <Text style={styles.memberDisclosure}>
+            {contributionCopy(t, 'workspace.organizerVerifiesAfterReport')}
+          </Text>
+        </View>
+      ) : null}
+
+      {awaitingHands.length > 0 ? (
+        <View style={styles.pendingConfirmationCard}>
+          <FontAwesome name="clock-o" size={20} color={colors.warning} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.pendingConfirmationTitle}>
+              {awaitingHands.length === 1
+                ? awaitingHands[0].presentation.primaryLabel
+                : contributionCopy(t, 'manualPresentation.reported')}
+            </Text>
+            <Text style={styles.pendingConfirmationText}>
+              {contributionCopy(t, 'manualPresentation.waitingForOrganizer')}
+            </Text>
+            <Text style={styles.pendingConfirmationText}>
+              {contributionCopy(t, 'workspace.reportedNotConfirmed')}
+            </Text>
+            {reportedAt ? (
+              <Text style={styles.pendingConfirmationText}>
+                {contributionCopy(t, 'workspace.reportedAt', { when: reportedAt })}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {rejectedHands.length > 0 ? (
+        <View style={styles.pendingConfirmationCard}>
+          <FontAwesome name="exclamation-circle" size={20} color={colors.warning} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.pendingConfirmationTitle}>
+              {contributionCopy(t, 'manualPresentation.needsAttention')}
+            </Text>
+            {rejectNote ? (
+              <Text style={styles.pendingConfirmationText}>{rejectNote}</Text>
+            ) : null}
+            <Text style={styles.pendingConfirmationText}>
+              {contributionCopy(t, 'workspace.rejectedExplainer')}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {card.allConfirmed ? (
+        <Text style={styles.sectionSubtitle}>
+          {contributionCopy(t, 'workspace.confirmedExplainer')}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function openContributionPaymentSetup(circleId: string) {
+  router.push(circlePaymentSetupHref(circleId));
+}
+
+function OrganizerContributionInstructionsCard({
+  circleId,
+  paymentInstructions,
+  paymentDestinations,
+  paymentInstructionAudit,
+}: {
+  circleId: string;
+  paymentInstructions?: string | null;
+  paymentDestinations?: unknown;
+  paymentInstructionAudit?: Array<{ at?: string }> | null;
+}) {
+  const { t, i18n } = useTranslation(['contributions']);
+  const lastInstructionChangeAt = paymentInstructionAudit?.length
+    ? paymentInstructionAudit[paymentInstructionAudit.length - 1]?.at
+    : null;
+  const lastUpdatedLabel = lastInstructionChangeAt
+    ? formatLocalizedDate(lastInstructionChangeAt, i18n.resolvedLanguage || i18n.language)
+    : null;
+  const hasInstructions = hasContributionPaymentInstructions(
+    paymentInstructions,
+    paymentDestinations,
+  );
+  const actionLabel = hasInstructions
+    ? contributionCopy(t, 'workspace.organizerInstructions.editAction')
+    : contributionCopy(t, 'workspace.organizerInstructions.setAction');
+  const actionA11y = hasInstructions
+    ? contributionCopy(t, 'workspace.organizerInstructions.editA11y')
+    : contributionCopy(t, 'workspace.organizerInstructions.setA11y');
+
+  return (
+    <View style={styles.sectionCard}>
+      <Text style={styles.sectionTitle}>
+        {contributionCopy(t, 'workspace.organizerInstructions.title')}
+      </Text>
+      {hasInstructions ? (
+        <>
+          <PaymentDestinationList
+            destinations={
+              Array.isArray(paymentDestinations) ? paymentDestinations : []
+            }
+            fallbackText={String(paymentInstructions ?? '').trim()}
+          />
+          <Text style={styles.sectionSubtitle}>
+            {contributionCopy(t, 'workspace.organizerInstructions.membersSee')}
+          </Text>
+          {lastUpdatedLabel ? (
+            <Text style={styles.sectionSubtitle}>
+              {contributionCopy(t, 'workspace.organizerInstructions.lastUpdated', {
+                when: lastUpdatedLabel,
+              })}
+            </Text>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Text style={styles.organizerInstructionsEmptyTitle}>
+            {contributionCopy(t, 'workspace.organizerInstructions.emptyTitle')}
+          </Text>
+          <Text style={styles.sectionSubtitle}>
+            {contributionCopy(t, 'workspace.organizerInstructions.emptyBody')}
+          </Text>
+        </>
+      )}
+      <Pressable
+        style={styles.organizerInstructionsButton}
+        onPress={() => openContributionPaymentSetup(circleId)}
+        accessibilityRole="button"
+        accessibilityLabel={actionA11y}
+      >
+        <FontAwesome
+          name={hasInstructions ? 'pencil' : 'plus'}
+          size={14}
+          color={colors.onColor}
+        />
+        <Text style={styles.organizerInstructionsButtonText}>{actionLabel}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -1470,6 +2062,8 @@ function RoundTab({
   viewerMember,
   viewerPayoutPosition,
   paymentInstructions,
+  memberContributionCard,
+  onMarkContributionSent,
 }: {
   canReleasePayout: boolean;
   canRemindMembers: boolean;
@@ -1489,7 +2083,11 @@ function RoundTab({
   memberCanSubmitContribution: boolean;
   onApprove: (member: BackendCircleMember) => void;
   onMarkPaid: (member: BackendCircleMember) => void;
-  onReject: (member: BackendCircleMember) => void;
+  onReject: (
+    member: BackendCircleMember,
+    reason: string,
+    reasonCode?: string,
+  ) => void;
   onRemind: (member: BackendCircleMember) => void;
   onReleasePayout: (isManual?: boolean) => void;
   payoutAmount?: number;
@@ -1504,6 +2102,8 @@ function RoundTab({
   viewerMember?: BackendCircleMember;
   viewerPayoutPosition?: number | null;
   paymentInstructions?: string | null;
+  memberContributionCard: MemberContributionCardModel;
+  onMarkContributionSent: (handId: string) => void;
 }) {
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
@@ -1522,6 +2122,15 @@ function RoundTab({
   // Always start collapsed; only open when the user taps (reference terms, not live status).
   const [roundDetailsExpanded, setRoundDetailsExpanded] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<BackendCircleMember | null>(
+    null,
+  );
+  const [rejectReasonCode, setRejectReasonCode] =
+    useState<OrganizerRejectReasonCode>('not_received');
+  const [rejectOtherText, setRejectOtherText] = useState('');
+  const showOrganizerHandLabel = shouldShowOrganizerHandLabel(
+    currentRoundMembers.map(({ member }) => member),
+  );
 
   useEffect(() => {
     // New round or circle → keep details closed until needed.
@@ -1704,6 +2313,15 @@ function RoundTab({
           )}
         </View>
 
+        {canEditContributionPaymentInstructions(circle.userRole) ? (
+          <OrganizerContributionInstructionsCard
+            circleId={circle.id}
+            paymentInstructions={circle.paymentInstructions}
+            paymentDestinations={circle.paymentDestinations}
+            paymentInstructionAudit={circle.paymentInstructionAudit}
+          />
+        ) : null}
+
         <View style={[styles.sectionCard, { backgroundColor: colors.infoSoft, borderColor: colors.infoBorder }]}>
           <Text style={[styles.sectionTitle, { color: colors.infoText }]}>
             {t('circleWorkspace:setupRound.beforeStartTitle')}
@@ -1795,6 +2413,7 @@ function RoundTab({
     ) : null;
 
   return (
+    <>
     <View style={styles.section}>
       {lifecycleBanner}
       {/* Single hero: round status, recipient, pot, progress (no duplicate banners) */}
@@ -2019,80 +2638,21 @@ function RoundTab({
 
       {/* Members only: report own payment. Organizers manage everyone below.
           Hidden when financial actions are lifecycle-locked or backend denies submit. */}
-      {!financialActionsLocked && !canReviewContributions && viewerMember ? (
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>
-            {t('contributions:workspace.myContribution')}
-          </Text>
-          <Text style={styles.sectionSubtitle}>
-            {memberCanSubmitContribution
-              ? t('contributions:workspace.dueBody', {
-                  amount: formatCurrency(circle.contributionAmount, language),
-                })
-              : viewerContributionStatus.raw === 'confirmed'
-                ? t('contributions:workspace.confirmedBody')
-                : viewerContributionStatus.raw === 'submitted' ||
-                    viewerContributionStatus.raw === 'late'
-                  ? t('contributions:workspace.pendingBody')
-                  : t('contributions:workspace.statusBody', {
-                      status: viewerContributionStatus.label,
-                    })}
-            {viewerPayoutPosition
-              ? ` · ${t('contributions:workspace.payoutTurn', {
-                  position: formatOrdinal(viewerPayoutPosition, language),
-                })}`
-              : ''}
-          </Text>
-
-          {memberCanSubmitContribution ? (
-            <View style={styles.paymentInstructions}>
-              <FontAwesome
-                name="send"
-                size={14}
-                color={colors.primary}
-                style={{ marginBottom: 6 }}
-              />
-              <Text style={styles.paymentInstructionsTitle}>
-                {t('contributions:workspace.instructionsTitle')}
-              </Text>
-              <Text style={styles.paymentInstructionsText}>
-                {paymentInstructions ??
-                  t('contributions:workspace.instructionsFallback')}
-              </Text>
-            </View>
-          ) : null}
-
-          {viewerContributionStatus.raw === 'submitted' ||
-          viewerContributionStatus.raw === 'late' ? (
-            <View style={styles.pendingConfirmationCard}>
-              <FontAwesome name="clock-o" size={20} color={colors.warning} />
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={styles.pendingConfirmationTitle}>
-                  {t('contributions:workspace.reportedTitle')}
-                </Text>
-                <Text style={styles.pendingConfirmationText}>
-                  {t('contributions:workspace.reportedBody')}
-                </Text>
-              </View>
-            </View>
-          ) : memberCanSubmitContribution ? (
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => router.push(contributionHref(circle.id))}
-              accessibilityRole="button"
-              accessibilityLabel={t('contributions:workspace.sentAction')}
-            >
-              <Text style={styles.primaryButtonText}>
-                {t('contributions:workspace.sentAction')} ✓
-              </Text>
-            </Pressable>
-          ) : (
-            <StatusBadge
-              label={viewerContributionStatus.label}
-              tone={statusTone(viewerContributionStatus.raw)}
-            />
-          )}
-        </View>
+      {!financialActionsLocked &&
+      !canReviewContributions &&
+      memberContributionCard.hands.length > 0 ? (
+        <MemberContributionCard
+          card={memberContributionCard}
+          currentRoundNumber={currentRoundNumber}
+          language={language}
+          memberCanSubmitContribution={memberCanSubmitContribution}
+          onMarkAsSent={onMarkContributionSent}
+          onPayInApp={(handId) =>
+            router.push(contributionHref(circle.id, handId))
+          }
+          payoutPosition={viewerPayoutPosition}
+          submittingHandId={processingMemberId}
+        />
       ) : null}
 
       {/* Core payout release is free - gated only on backend permission/readiness. */}
@@ -2126,6 +2686,15 @@ function RoundTab({
         </Text>
       ) : null}
 
+      {canEditContributionPaymentInstructions(circle.userRole) ? (
+        <OrganizerContributionInstructionsCard
+          circleId={circle.id}
+          paymentInstructions={paymentInstructions}
+          paymentDestinations={circle.paymentDestinations}
+          paymentInstructionAudit={circle.paymentInstructionAudit}
+        />
+      ) : null}
+
       <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: colors.card, borderRadius: 20, marginBottom: 16 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 12 }}>
           <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textStrong }}>
@@ -2149,27 +2718,35 @@ function RoundTab({
             return 0;
           })
           .slice(0, showAllPaid ? undefined : 4)
-          .map(({ member, status }, index, arr) => {
+          .map(({ member, status, contribution }, index, arr) => {
+          const reviewRow = buildOrganizerReviewRowModel({
+            member,
+            contribution,
+            statusRaw: status.raw,
+            amount: circle.contributionAmount,
+            showHandLabel: showOrganizerHandLabel,
+            t,
+          });
           let badgeColor = colors.surfaceMuted;
           let textColor = colors.muted;
-          let badgeText = status.label;
           let icon = null;
 
           if (status.raw === 'confirmed') {
             badgeColor = colors.successSoft;
             textColor = colors.successText;
-            badgeText = t('contributions:statusLabels.confirmed');
           } else if (status.raw === 'submitted' || status.raw === 'late') {
             badgeColor = colors.warningSoft;
             textColor = colors.warningText;
-            badgeText = t('contributions:statusLabels.submitted');
           } else {
             badgeColor = colors.surfaceMuted;
             textColor = colors.muted;
-            badgeText = t('contributions:statusLabels.pending');
             icon = <FontAwesome name="clock-o" size={12} color={colors.muted} style={{ marginRight: 4 }} />;
           }
 
+          const reportedAt = formatContributionReportedAt(
+            reviewRow.submittedAt,
+            language,
+          );
           const isProcessing = processingMemberId === member.id;
           const canMarkPaid =
             !financialActionsLocked &&
@@ -2186,77 +2763,136 @@ function RoundTab({
           const showActions =
             !financialActionsLocked &&
             (canMarkPaid || canApprove || canReject);
+          const methodLabelKey = claimedPaymentMethodLabelKey(
+            reviewRow.paymentMethod,
+          );
+          const methodLabel = methodLabelKey
+            ? contributionCopy(t, methodLabelKey)
+            : reviewRow.paymentMethod;
 
           return (
             <View key={member.id}>
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
                 <View style={{ marginRight: 12 }}>
-                  <Avatar name={memberName(member)} size={40} />
+                  <Avatar name={reviewRow.displayName} size={40} />
                 </View>
-                <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: colors.textStrong }}>{memberName(member)}</Text>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong, marginRight: 16 }}>
-                  {formatCurrency(circle.contributionAmount, language)}
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong }}>
+                    {reviewRow.displayName}
+                  </Text>
+                  {reportedAt ? (
+                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                      {contributionCopy(t, 'workspace.review.reportedAt', {
+                        when: reportedAt,
+                      })}
+                    </Text>
+                  ) : null}
+                  {reviewRow.paymentMethod ? (
+                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                      {contributionCopy(t, 'workspace.review.paymentMethod', {
+                        method: methodLabel,
+                      })}
+                    </Text>
+                  ) : null}
+                  {reviewRow.claimedDestination ? (
+                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                      {contributionCopy(t, 'workspace.review.claimedDestination', {
+                        destination: reviewRow.claimedDestination,
+                      })}
+                    </Text>
+                  ) : null}
+                  {reviewRow.paymentReference ? (
+                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                      {contributionCopy(t, 'workspace.review.paymentReference', {
+                        reference: reviewRow.paymentReference,
+                      })}
+                    </Text>
+                  ) : null}
+                  {reviewRow.note ? (
+                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                      {reviewRow.note}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong, marginRight: 12 }}>
+                  {formatCurrency(reviewRow.amount, language)}
                 </Text>
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: badgeColor, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
                   {icon}
-                  <Text style={{ color: textColor, fontSize: 12, fontWeight: '800' }}>{badgeText}</Text>
+                  <Text style={{ color: textColor, fontSize: 12, fontWeight: '800' }}>{reviewRow.statusLabel}</Text>
                 </View>
               </View>
 
               {showActions && (
-                <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16, gap: 8, paddingLeft: 68 }}>
+                <View style={{ paddingHorizontal: 16, paddingBottom: 16, paddingLeft: 68, gap: 8 }}>
                   {canApprove || canReject ? (
                     <>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {canApprove ? (
+                          <Pressable
+                            style={{ flex: 1, backgroundColor: colors.success, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                            disabled={isProcessing}
+                            onPress={() => onApprove(member)}
+                          >
+                            <FontAwesome name="check-circle-o" size={14} color={colors.onColor} />
+                            <Text style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}>
+                              {contributionCopy(t, 'workspace.review.confirmAction')}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        {canReject ? (
+                          <Pressable
+                            style={{ flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.danger, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                            disabled={isProcessing}
+                            onPress={() => {
+                              setRejectReasonCode('not_received');
+                              setRejectOtherText('');
+                              setRejectTarget(member);
+                            }}
+                          >
+                            <FontAwesome name="times-circle-o" size={14} color={colors.danger} />
+                            <Text style={{ color: colors.danger, fontSize: 13, fontWeight: '800' }}>
+                              {contributionCopy(t, 'workspace.review.didntReceiveAction')}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                       {canApprove ? (
-                        <Pressable
-                          style={{ flex: 1, backgroundColor: colors.success, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
-                          disabled={isProcessing}
-                          onPress={() => onApprove(member)}
-                        >
-                          <FontAwesome name="check-circle-o" size={14} color={colors.onColor} />
-                          <Text style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}>
-                            {t('contributions:workspace.confirm')}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      {canReject ? (
-                        <Pressable
-                          style={{ flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.danger, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
-                          disabled={isProcessing}
-                          onPress={() => onReject(member)}
-                        >
-                          <FontAwesome name="times-circle-o" size={14} color={colors.danger} />
-                          <Text style={{ color: colors.danger, fontSize: 13, fontWeight: '800' }}>
-                            {t('contributions:workspace.reject')}
-                          </Text>
-                        </Pressable>
+                        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }}>
+                          {contributionCopy(t, 'workspace.review.confirmBody')}
+                        </Text>
                       ) : null}
                     </>
                   ) : canMarkPaid ? (
                     <>
-                      <Pressable
-                        style={{ flex: 1, backgroundColor: colors.info, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
-                        disabled={isProcessing}
-                        onPress={() => onMarkPaid(member)}
-                      >
-                        <FontAwesome name="check-circle-o" size={14} color={colors.onColor} />
-                        <Text style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}>
-                          {t('contributions:workspace.recordPaid')}
-                        </Text>
-                      </Pressable>
-                      {canRemindMembers ? (
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
                         <Pressable
-                          style={{ flex: 1, backgroundColor: colors.surfaceMuted, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                          style={{ flex: 1, backgroundColor: colors.info, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
                           disabled={isProcessing}
-                          onPress={() => onRemind(member)}
+                          onPress={() => onMarkPaid(member)}
                         >
-                          <FontAwesome name="bell-o" size={14} color={colors.muted} />
-                          <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '800' }}>
-                            {t('contributions:workspace.remind')}
+                          <FontAwesome name="check-circle-o" size={14} color={colors.onColor} />
+                          <Text style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}>
+                            {contributionCopy(t, 'workspace.recordPaid')}
                           </Text>
                         </Pressable>
-                      ) : null}
+                        {canRemindMembers ? (
+                          <Pressable
+                            style={{ flex: 1, backgroundColor: colors.surfaceMuted, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                            disabled={isProcessing}
+                            onPress={() => onRemind(member)}
+                          >
+                            <FontAwesome name="bell-o" size={14} color={colors.muted} />
+                            <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '800' }}>
+                              {contributionCopy(t, 'workspace.remind')}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }}>
+                        {contributionCopy(t, 'workspace.review.recordPaidHelper')}
+                      </Text>
                     </>
                   ) : null}
                 </View>
@@ -2537,6 +3173,85 @@ function RoundTab({
         ) : null}
       </View>
     </View>
+    <DecisionSheet
+      visible={rejectTarget != null}
+      onClose={() => setRejectTarget(null)}
+      icon="times-circle-o"
+      iconTone="warning"
+      title={contributionCopy(t, 'workspace.review.didntReceiveTitle')}
+      body={contributionCopy(t, 'workspace.review.didntReceiveBody')}
+      primaryLabel={contributionCopy(t, 'workspace.review.didntReceiveAction')}
+      secondaryLabel={t('contributions:alerts.cancel')}
+      onPrimary={() => {
+        if (!rejectTarget) {
+          return;
+        }
+        const { reason, reasonCode } = organizerRejectReasonPayload(
+          rejectReasonCode,
+          t,
+          rejectOtherText,
+        );
+        const member = rejectTarget;
+        setRejectTarget(null);
+        onReject(member, reason, reasonCode);
+      }}
+    >
+      <View style={{ gap: 8, paddingTop: 8 }}>
+        {ORGANIZER_REJECT_REASON_CODES.map((code) => {
+          const selected = rejectReasonCode === code;
+          return (
+            <Pressable
+              key={code}
+              onPress={() => setRejectReasonCode(code)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              style={{
+                borderColor: selected ? colors.primary : colors.cardBorder,
+                backgroundColor: selected ? colors.primarySoft : colors.card,
+                borderRadius: 14,
+                borderWidth: 1,
+                minHeight: 44,
+                justifyContent: 'center',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.textStrong,
+                  fontSize: 15,
+                  fontWeight: '800',
+                }}
+              >
+                {organizerRejectReasonLabel(code, t)}
+              </Text>
+            </Pressable>
+          );
+        })}
+        {rejectReasonCode === 'other' ? (
+          <TextInput
+            value={rejectOtherText}
+            onChangeText={setRejectOtherText}
+            placeholder={contributionCopy(
+              t,
+              'workspace.review.otherPlaceholder',
+            )}
+            placeholderTextColor={colors.muted}
+            style={{
+              borderColor: colors.cardBorder,
+              borderRadius: 14,
+              borderWidth: 1,
+              color: colors.textStrong,
+              fontSize: 15,
+              minHeight: 44,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          />
+        ) : null}
+      </View>
+    </DecisionSheet>
+    </>
   );
 }
 
@@ -3615,6 +4330,56 @@ function PeopleTab({
             </View>
           );
 
+        case 'set_contribution_instructions': {
+          const hasInstructions = hasContributionPaymentInstructions(
+            circle.paymentInstructions,
+            circle.paymentDestinations,
+          );
+          return (
+            <View style={styles.setupBody}>
+              {hasInstructions ? (
+                <>
+                  <Text style={styles.setupListHint}>
+                    {t('setup.paymentInstructions.previewLabel')}
+                  </Text>
+                  <PaymentDestinationList
+                    destinations={circle.paymentDestinations}
+                    fallbackText={String(circle.paymentInstructions ?? '').trim()}
+                  />
+                </>
+              ) : (
+                <Text style={styles.setupListHint}>
+                  {t('setup.paymentInstructions.emptyHint')}
+                </Text>
+              )}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.setupPrimaryBtn,
+                  pressed && { opacity: 0.88 },
+                ]}
+                onPress={() => openContributionPaymentSetup(circle.id)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  hasInstructions
+                    ? t('setup.paymentInstructions.editA11y')
+                    : t('setup.paymentInstructions.setA11y')
+                }
+              >
+                <FontAwesome
+                  name={hasInstructions ? 'pencil' : 'plus'}
+                  size={15}
+                  color={colors.onColor}
+                />
+                <Text style={styles.setupPrimaryBtnText}>
+                  {hasInstructions
+                    ? t('setup.paymentInstructions.editAction')
+                    : t('setup.paymentInstructions.setAction')}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        }
+
         default:
           return null;
       }
@@ -3768,6 +4533,28 @@ function PeopleTab({
               />
             ))}
           </View>
+        </View>
+
+        <View style={styles.peopleCard}>
+          <View style={styles.peopleCardHeader}>
+            <View style={[styles.peopleIconBubble, { backgroundColor: colors.primarySoft }]}>
+              <FontAwesome name="money" size={14} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.peopleCardTitle}>
+                {t('setup.paymentInstructions.title')}
+              </Text>
+              <Text style={styles.peopleCardSub}>
+                {hasContributionPaymentInstructions(
+                  circle.paymentInstructions,
+                  circle.paymentDestinations,
+                )
+                  ? t('setup.paymentInstructions.membersSee')
+                  : t('setup.paymentInstructions.emptyHint')}
+              </Text>
+            </View>
+          </View>
+          {renderSetupStepBody('set_contribution_instructions')}
         </View>
 
         {/* Finish setup + Start Circle */}
@@ -4627,6 +5414,8 @@ function localizeSetupNextAction(t: TFunction, action: string | null): string | 
     'Review and confirm payout order, then start the circle.':
       'setup.nextAction.reviewThenStart',
     'Start the circle when ready.': 'setup.nextAction.startWhenReady',
+    'Set contribution payment instructions so members know where to send money.':
+      'setup.nextAction.setContributionInstructions',
   };
   return keys[action] ? t(keys[action]) : t('setup.nextAction.fallback');
 }
@@ -6069,6 +6858,131 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     marginTop: 12,
+  },
+  memberDueAmount: {
+    color: colors.textStrong,
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  memberHandRow: {
+    paddingVertical: 10,
+  },
+  memberHandRowDivider: {
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: 1,
+  },
+  memberHandCopy: {
+    gap: 4,
+  },
+  memberHandTitleRow: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  memberHandTitle: {
+    color: colors.textStrong,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  memberHandAmount: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  memberHandStatusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 44,
+  },
+  memberHandStatusCopy: {
+    flex: 1,
+  },
+  memberHandMeta: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  memberHandSecondary: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  memberDisclosure: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  memberEducation: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  memberHandInlineButton: {
+    alignItems: 'center',
+    borderColor: colors.primary,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 12,
+  },
+  memberHandInlineButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  memberHandTextAction: {
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingRight: 8,
+  },
+  memberHandTextActionLabel: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  organizerInstructionsValue: {
+    color: colors.textStrong,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  organizerInstructionsEmptyTitle: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  organizerInstructionsButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 14,
+  },
+  organizerInstructionsButtonText: {
+    color: colors.onColor,
+    fontSize: 15,
+    fontWeight: '800',
   },
   paymentInstructions: {
     backgroundColor: 'rgba(64, 21, 163, 0.05)',

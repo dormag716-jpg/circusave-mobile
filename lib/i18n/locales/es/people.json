@@ -144,7 +144,18 @@
       "completePayout": "Primero completa la estructura del orden de pagos.",
       "reviewThenStart": "Revisa y confirma el orden de pagos; luego inicia el círculo.",
       "startWhenReady": "Inicia el círculo cuando esté listo.",
+      "setContributionInstructions": "Configura las instrucciones de pago de la contribución para que los miembros sepan dónde enviar el dinero.",
       "fallback": "Bloquea la membresía, las manos y el orden de pagos. Los aportes comienzan después de iniciar."
+    },
+    "paymentInstructions": {
+      "title": "Instrucciones de pago de la contribución",
+      "emptyHint": "No hay instrucciones de pago. Es posible que los miembros no sepan dónde enviar contribuciones fuera de la app.",
+      "membersSee": "Los miembros ven estas instrucciones cuando su contribución vence.",
+      "setAction": "Configurar instrucciones de pago",
+      "editAction": "Editar instrucciones",
+      "previewLabel": "Los miembros verán:",
+      "setA11y": "Configurar instrucciones de pago de la contribución",
+      "editA11y": "Editar instrucciones de pago de la contribución"
     }
   },
   "start": {

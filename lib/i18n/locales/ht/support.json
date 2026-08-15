@@ -1,0 +1,34 @@
+{
+  "title": "Èd ak sipò",
+  "backA11y": "Tounen",
+  "intro": "Gid pou voye, rapòte, epi konfime kontribisyon sèk yo.",
+  "contactTitle": "Ou toujou bezwen èd?",
+  "contactText": "Ekip sipò a la pou ou. Kontakte nou pou nenpòt kesyon oswa pwoblèm.",
+  "contactAction": "Kontakte sipò",
+  "sections": {
+    "gettingStarted": {
+      "title": "Kòmanse",
+      "body": "Ranpli pwofil ou, epi rantre oswa kreye yon sèk.\n\n1. Louvri Anviwònman epi tcheke non ak imèl ou.\n2. Aktive kadna aparèy la si ou vle plis vi prive.\n3. Kreye yon sèk oswa rantre ak yon kòd envitasyon."
+    },
+    "dashboard": {
+      "title": "Apèsi tablodbò",
+      "body": "Tablodbò a montre sa ki bezwen atansyon ou.\n\n• Peman pou verifye parèt pou òganizatè a lè yon manm rapòte yon peman.\n• Kontribisyon dwe parèt lè ou toujou bezwen voye oswa rapòte pwòp peman ou.\n• Pwochen peman yo parèt lè se tou ou pou resevwa."
+    },
+    "circles": {
+      "title": "Sèk ak wonn",
+      "body": "Yon sèk se yon gwoup ki sove ansanm.\n\nKreye yon sèk (òganizatè):\n1. Itilize Kreye pou nonmen sèk la, mete montan kontribisyon an, epi chwazi frekans lan.\n2. Envite manm yo epi mete enstriksyon peman pou yo konnen ki kote pou voye lajan andeyò CircuSave.\n3. Kòmanse premye wonn nan lè lis la pare.\n\nRantre nan yon sèk (manm):\n1. Aksepte envitasyon an oswa antre yon kòd.\n2. Tann òganizatè a kòmanse wonn nan."
+    },
+    "contributions": {
+      "title": "Kontribisyon ak peman",
+      "body": "CircuSave pa voye peman andeyò aplikasyon an pou ou. CircuSave pa sere resi oswa screenshot peman nonplis. Kenbe yo andeyò aplikasyon an.\n\nManm:\n1. Lè yon wonn vin dwe, voye kontribisyon an ak enstriksyon òganizatè a (Zelle, Cash App, lajan kach, oswa an pèsòn).\n2. Tape Make kòm voye. Sa rapòte ou deja peye. Li pa transfere lajan nan CircuSave.\n3. Tann òganizatè a konfime li resevwa li. Se lè sa a sèlman peman an konte.\n\nÒganizatè:\n1. Revize peman yo rapòte.\n2. Tape Konfime ou resevwa li sèlman apre lajan an rive vre.\n3. Tape Mwen pa resevwa li si li pa rive. Manm nan ka make li kòm voye ankò.\n4. Lè tout kontribisyon obligatwa yo konfime, Lage peman an dewouke. Voye fon an rete yon lòt aksyon."
+    },
+    "activity": {
+      "title": "Aktivite ak dosye",
+      "body": "Aktivite montre evènman resan ou yo. Dosye sèk la montre liv sa a pou manm yo ka wè sa ki rapòte, konfime, oswa lage."
+    },
+    "settings": {
+      "title": "Anviwònman ak sekirite",
+      "body": "Anviwònman se pou kont ou, lang, ak sekirite.\n\nPreferans peman nan Anviwònman se pou resevwa yon fon. Se pa kote manm yo voye kontribisyon regilye. Enstriksyon kontribisyon yo nan ekran Konfigirasyon peman sèk la."
+    }
+  }
+}

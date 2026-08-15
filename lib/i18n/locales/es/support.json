@@ -1,0 +1,34 @@
+{
+  "title": "Ayuda y soporte",
+  "backA11y": "Volver",
+  "intro": "Guías para enviar, informar y confirmar las contribuciones del círculo.",
+  "contactTitle": "¿Todavía necesitas ayuda?",
+  "contactText": "Nuestro equipo de soporte está para ayudarte. Escríbenos con cualquier pregunta o problema.",
+  "contactAction": "Contactar soporte",
+  "sections": {
+    "gettingStarted": {
+      "title": "Primeros pasos",
+      "body": "Completa tu perfil y luego únete o crea un círculo.\n\n1. Abre Ajustes y revisa tu nombre y correo.\n2. Activa el bloqueo del dispositivo si quieres más privacidad.\n3. Crea un círculo o únete con un código de invitación."
+    },
+    "dashboard": {
+      "title": "Resumen del panel",
+      "body": "El panel muestra lo que necesita tu atención.\n\n• Los pagos por verificar aparecen para el organizador cuando un miembro informa un pago.\n• Contribución pendiente aparece cuando aún debes enviar o informar tu propio pago.\n• Los próximos pagos aparecen cuando te toca recibir."
+    },
+    "circles": {
+      "title": "Círculos y rondas",
+      "body": "Un círculo es un grupo de ahorro.\n\nCrear un círculo (organizador):\n1. Usa Crear para nombrar el círculo, fijar el monto y elegir la frecuencia.\n2. Invita miembros y configura las instrucciones de pago para que sepan dónde enviar el dinero fuera de CircuSave.\n3. Inicia la primera ronda cuando el grupo esté listo.\n\nUnirse a un círculo (miembro):\n1. Acepta la invitación o ingresa un código.\n2. Espera a que el organizador inicie la ronda."
+    },
+    "contributions": {
+      "title": "Contribuciones y pagos",
+      "body": "CircuSave no envía por ti los pagos fuera de la app. CircuSave tampoco guarda recibos ni capturas de pago. Consérvalos fuera de la app.\n\nMiembros:\n1. Cuando vence una ronda, envía la contribución con las instrucciones del organizador (Zelle, Cash App, efectivo o en persona).\n2. Toca Marcar como enviado. Eso informa que ya pagaste. No transfiere dinero por CircuSave.\n3. Espera a que el organizador confirme que lo recibió. Solo entonces cuenta el pago.\n\nOrganizadores:\n1. Revisa los pagos informados.\n2. Toca Confirmar recibido solo después de que el dinero haya llegado.\n3. Toca No lo recibí si no llegó. El miembro puede marcarlo como enviado otra vez.\n4. Cuando todas las contribuciones requeridas estén confirmadas, se desbloquea Liberar pago. Enviar el fondo sigue siendo una acción aparte."
+    },
+    "activity": {
+      "title": "Actividad y registros",
+      "body": "Actividad muestra tus eventos recientes. Los registros del círculo muestran el libro de ese círculo para que todos vean lo informado, confirmado o liberado."
+    },
+    "settings": {
+      "title": "Ajustes y seguridad",
+      "body": "Ajustes es para tu cuenta, idioma y seguridad.\n\nPreferencias de pago en Ajustes son datos para recibir un fondo. No es donde los miembros envían la contribución regular. Esas instrucciones están en Configuración de pago del círculo."
+    }
+  }
+}

@@ -13,20 +13,25 @@
     "body": "Kontribisyon pa ou pou tou {{round}} anreta."
   },
   "payment_submitted": {
-    "title": "Peman soumèt",
-    "body": "Peman pa ou a ap tann revizyon òganizatè a."
+    "title": "Peman pou verifye",
+    "body": "{{name}} rapòte yon peman pou verifye."
   },
   "payment_confirmed": {
-    "title": "Peman konfime",
-    "body": "Kontribisyon pa ou a konfime."
+    "title": "Peman resevwa",
+    "body": "Òganizatè a konfime li resevwa peman ou a."
   },
   "payment_rejected": {
-    "title": "Peman rejte",
-    "body": "Kontribisyon pa ou bezwen atansyon."
+    "title": "Peman an bezwen atansyon",
+    "body": "Òganizatè a pa resevwa peman sa a.",
+    "bodyWithReason": "Òganizatè a pa resevwa peman sa a. Rezon: {{reason}}"
+  },
+  "payment_instructions_updated": {
+    "title": "Enstriksyon peman yo chanje",
+    "body": "{{circle}} chanje kote pou voye kontribisyon ou."
   },
   "organizer_review_required": {
-    "title": "Revizyon peman nesesè",
-    "body": "{{name}} soumèt yon peman pou revizyon."
+    "title": "Peman pou verifye",
+    "body": "{{name}} rapòte yon peman pou verifye."
   },
   "payout_ready": {
     "title": "Peman pare",

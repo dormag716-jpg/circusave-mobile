@@ -144,7 +144,18 @@
       "completePayout": "Fini estrikti lòd peman an anvan.",
       "reviewThenStart": "Revize epi konfime lòd peman an, apre sa kòmanse gwoup la.",
       "startWhenReady": "Kòmanse gwoup la lè li pare.",
+      "setContributionInstructions": "Mete enstriksyon peman kontribisyon pou manm yo konnen ki kote pou voye lajan an.",
       "fallback": "Sa bloke manm, men, ak lòd peman an. Kontribisyon yo kòmanse apre sa."
+    },
+    "paymentInstructions": {
+      "title": "Enstriksyon peman kontribisyon",
+      "emptyHint": "Enstriksyon peman poko mete. Manm yo ka pa konnen ki kote pou voye kontribisyon andeyò aplikasyon an.",
+      "membersSee": "Manm yo wè enstriksyon sa yo lè kontribisyon yo vin dwe.",
+      "setAction": "Mete enstriksyon peman",
+      "editAction": "Modifye enstriksyon yo",
+      "previewLabel": "Manm yo pral wè:",
+      "setA11y": "Mete enstriksyon peman kontribisyon",
+      "editA11y": "Modifye enstriksyon peman kontribisyon"
     }
   },
   "start": {

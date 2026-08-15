@@ -108,7 +108,7 @@
   },
   "success": {
     "title": "Borrador del círculo creado",
-    "body": "Tu círculo está listo para configurarlo. Invita miembros, revisa solicitudes y manos adicionales, y luego define el orden de pagos antes de comenzar."
+    "body": "Tu círculo está listo para configurarlo. Indica cómo deben enviar los miembros su contribución habitual fuera de CircuSave y luego continúa invitando en la pestaña Personas."
   },
   "actions": {
     "startFresh": "Empezar de nuevo",
@@ -118,6 +118,7 @@
     "createCircle": "Crear círculo",
     "reviewAgain": "Volver y revisar",
     "continueSetup": "Continuar configuración",
+    "setContributionInstructions": "Configurar instrucciones de contribución",
     "addMember": "Agregar miembro",
     "back": "Atrás",
     "continue": "Continuar"

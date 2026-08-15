@@ -1,6 +1,8 @@
 import {
   buildCircleSetupProgress,
+  canEditContributionPaymentInstructions,
   deriveOrganizerParticipates,
+  hasContributionPaymentInstructions,
   isPayoutOrderComplete,
   orderedParticipatingHands,
   setupStepStatusLabel,
@@ -50,7 +52,7 @@ describe('circleSetupProgress', () => {
     ).toBeNull();
   });
 
-  test('builds seven ordered setup steps during setup', () => {
+  test('builds eight ordered setup steps during setup', () => {
     const progress = buildCircleSetupProgress({
       circle: draftCircle(),
       members: baseMembers,
@@ -64,6 +66,7 @@ describe('circleSetupProgress', () => {
       'confirm_member_access',
       'review_additional_hands',
       'verify_structure',
+      'set_contribution_instructions',
       'finalize_payout_order',
       'review_and_start',
     ]);
@@ -342,6 +345,107 @@ describe('circleSetupProgress', () => {
     expect(setupStepStatusLabel('action_required')).toBe('Action required');
     expect(setupStepStatusLabel('waiting')).toBe('Waiting on member');
     expect(setupStepStatusLabel('blocked')).toBe('Blocked');
+  });
+
+  test('only organizers may edit contribution payment instructions', () => {
+    expect(canEditContributionPaymentInstructions('organizer')).toBe(true);
+    expect(canEditContributionPaymentInstructions('ORGANIZER')).toBe(true);
+    expect(canEditContributionPaymentInstructions('participant')).toBe(false);
+    expect(canEditContributionPaymentInstructions('member')).toBe(false);
+    expect(canEditContributionPaymentInstructions(null)).toBe(false);
+    expect(canEditContributionPaymentInstructions(undefined)).toBe(false);
+    expect(canEditContributionPaymentInstructions('')).toBe(false);
+  });
+
+  test('hasContributionPaymentInstructions treats blank text as missing', () => {
+    expect(hasContributionPaymentInstructions(null)).toBe(false);
+    expect(hasContributionPaymentInstructions(undefined)).toBe(false);
+    expect(hasContributionPaymentInstructions('')).toBe(false);
+    expect(hasContributionPaymentInstructions('   ')).toBe(false);
+    expect(hasContributionPaymentInstructions('Zelle: organizer@example.com')).toBe(
+      true,
+    );
+    expect(
+      hasContributionPaymentInstructions(null, [
+        { method: 'cash', destination: '' },
+      ]),
+    ).toBe(true);
+  });
+
+  test('missing contribution instructions require action but do not block start', () => {
+    const missing = buildCircleSetupProgress({
+      circle: draftCircle(),
+      members: [
+        {
+          id: ORG_MEMBERSHIP_ID,
+          isParticipating: true,
+          userId: ORG_USER_ID,
+          name: 'Organizer',
+        },
+        { id: 'm_peer', isParticipating: true, userId: 'u_peer', name: 'Peer' },
+      ],
+      waitlist: [],
+      payoutOrderReviewed: true,
+    });
+    const step = missing!.steps.find(
+      (s) => s.id === 'set_contribution_instructions',
+    )!;
+    expect(step.status).toBe('action_required');
+    expect(step.reason).toMatch(/not set/i);
+    expect(step.nextAction).toMatch(/contribution payment instructions/i);
+    expect(missing!.startBlockReason).toBeNull();
+    expect(missing!.steps.find((s) => s.id === 'review_and_start')!.status).toBe(
+      'action_required',
+    );
+    expect(missing!.blockingReasons).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/payment instructions/i)]),
+    );
+  });
+
+  test('saved contribution instructions complete the setup step', () => {
+    const progress = buildCircleSetupProgress({
+      circle: draftCircle({
+        paymentInstructions: 'Zelle: organizer@example.com',
+      }),
+      members: [
+        {
+          id: ORG_MEMBERSHIP_ID,
+          isParticipating: true,
+          userId: ORG_USER_ID,
+          name: 'Organizer',
+        },
+        { id: 'm_peer', isParticipating: true, userId: 'u_peer', name: 'Peer' },
+      ],
+      waitlist: [],
+    });
+    const step = progress!.steps.find(
+      (s) => s.id === 'set_contribution_instructions',
+    )!;
+    expect(step.status).toBe('complete');
+    expect(step.reason).toMatch(/members will see/i);
+    expect(step.nextAction).toBeUndefined();
+  });
+
+  test('structured destinations complete the contribution instructions step', () => {
+    const progress = buildCircleSetupProgress({
+      circle: draftCircle({
+        paymentDestinations: [{ method: 'zelle', destination: 'pay@example.com' }],
+      }),
+      members: [
+        {
+          id: ORG_MEMBERSHIP_ID,
+          isParticipating: true,
+          userId: ORG_USER_ID,
+          name: 'Organizer',
+        },
+        { id: 'm_peer', isParticipating: true, userId: 'u_peer', name: 'Peer' },
+      ],
+      waitlist: [],
+    });
+    const step = progress!.steps.find(
+      (s) => s.id === 'set_contribution_instructions',
+    )!;
+    expect(step.status).toBe('complete');
   });
 
   test('nextAction prefers first action_required step', () => {

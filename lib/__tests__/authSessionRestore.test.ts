@@ -340,7 +340,9 @@ describe('logout clears local session', () => {
     const logoutRemote = jest.fn(async () => undefined);
 
     await runLogoutSession({
-      readStored: async () => validSession(),
+      // runLogoutSession uses Date.now(); the default fixture expires 2026-08-14.
+      readStored: async () =>
+        validSession({ expiresAt: '2099-01-01T00:00:00.000Z' }),
       clearStored,
       logoutRemote,
     });
@@ -353,7 +355,8 @@ describe('logout clears local session', () => {
     const clearStored = jest.fn(async () => undefined);
 
     await runLogoutSession({
-      readStored: async () => validSession(),
+      readStored: async () =>
+        validSession({ expiresAt: '2099-01-01T00:00:00.000Z' }),
       clearStored,
       logoutRemote: async () => {
         throw new ApiError('Unauthorized', 401);

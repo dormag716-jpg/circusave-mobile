@@ -24,6 +24,7 @@ export function DecisionSheet({
   primaryLabel,
   onPrimary,
   secondaryLabel = 'Cancel',
+  onSecondary,
   busy = false,
 }: {
   visible: boolean;
@@ -36,6 +37,8 @@ export function DecisionSheet({
   primaryLabel: string;
   onPrimary: () => void;
   secondaryLabel?: string | null;
+  /** When omitted, the secondary button uses onClose (Cancel / dismiss). */
+  onSecondary?: () => void;
   busy?: boolean;
 }) {
   const tone = {
@@ -58,7 +61,7 @@ export function DecisionSheet({
           {children ? <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>{children}</ScrollView> : null}
           <View style={styles.actions}>
             {secondaryLabel ? (
-              <Pressable style={({ pressed }) => [styles.secondary, pressed && styles.pressed]} onPress={onClose} disabled={busy} accessibilityRole="button">
+              <Pressable style={({ pressed }) => [styles.secondary, pressed && styles.pressed]} onPress={onSecondary ?? onClose} disabled={busy} accessibilityRole="button">
                 <Text style={styles.secondaryText}>{secondaryLabel}</Text>
               </Pressable>
             ) : null}

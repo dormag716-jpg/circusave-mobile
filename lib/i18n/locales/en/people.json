@@ -144,7 +144,18 @@
       "completePayout": "Complete the payout order structure first.",
       "reviewThenStart": "Review and confirm payout order, then start the circle.",
       "startWhenReady": "Start the circle when ready.",
+      "setContributionInstructions": "Set contribution payment instructions so members know where to send money.",
       "fallback": "Locks membership, hands, and payout order. Contributions begin after start."
+    },
+    "paymentInstructions": {
+      "title": "Contribution payment instructions",
+      "emptyHint": "Payment instructions are not set. Members may not know where to send outside-app contributions.",
+      "membersSee": "Members see these instructions when their contribution is due.",
+      "setAction": "Set payment instructions",
+      "editAction": "Edit instructions",
+      "previewLabel": "Members will see:",
+      "setA11y": "Set contribution payment instructions",
+      "editA11y": "Edit contribution payment instructions"
     }
   },
   "start": {

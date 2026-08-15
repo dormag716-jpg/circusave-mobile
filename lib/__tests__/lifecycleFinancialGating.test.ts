@@ -179,4 +179,19 @@ describe('lifecycle financial gating (P0.5.3)', () => {
     expect(isReadOnlyLifecyclePhase('active')).toBe(false);
     expect(isReadOnlyLifecyclePhase('setup')).toBe(false);
   });
+
+  test('a locally reportable viewer hand cannot override canSubmitOwnContribution=false', () => {
+    // Mirrors workspace.tsx: canShowBackendGatedAction(
+    //   viewerPermissions?.canSubmitOwnContribution,
+    //   memberContributionCard.anyReportable,
+    // )
+    // anyReportable is AND-restricted, never OR'd with the backend flag.
+    // due / missed / rejected all set anyReportable=true; none may promote a deny.
+    const anyReportable = true;
+    expect(canShowBackendGatedAction(false, anyReportable)).toBe(false);
+    expect(canShowBackendGatedAction(undefined, anyReportable)).toBe(false);
+    expect(canShowBackendGatedAction(null, anyReportable)).toBe(false);
+    expect(canShowBackendGatedAction(true, true)).toBe(true);
+    expect(canShowBackendGatedAction(true, false)).toBe(false);
+  });
 });

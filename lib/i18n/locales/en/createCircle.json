@@ -108,7 +108,7 @@
   },
   "success": {
     "title": "Draft circle created",
-    "body": "Your circle is ready for setup. Invite members, review claims and additional hands, then finalize payout order before starting."
+    "body": "Your circle is ready for setup. Tell members how to send their regular contribution outside CircuSave, then continue inviting people on the People tab."
   },
   "actions": {
     "startFresh": "Start fresh",
@@ -118,6 +118,7 @@
     "createCircle": "Create Circle",
     "reviewAgain": "Go back and review",
     "continueSetup": "Continue setup",
+    "setContributionInstructions": "Set contribution instructions",
     "addMember": "Add Member",
     "back": "Back",
     "continue": "Continue"

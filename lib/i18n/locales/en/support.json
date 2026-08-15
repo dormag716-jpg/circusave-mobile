@@ -1,0 +1,34 @@
+{
+  "title": "Help & Support",
+  "backA11y": "Go back",
+  "intro": "Guides for sending, reporting, and confirming circle contributions.",
+  "contactTitle": "Still need help?",
+  "contactText": "Our support team is here for you. Reach out with any questions or issues.",
+  "contactAction": "Contact Support",
+  "sections": {
+    "gettingStarted": {
+      "title": "Getting started",
+      "body": "Complete your profile, then join or create a circle.\n\n1. Open Settings and check your display name and email.\n2. Turn on Device Lock if you want extra privacy.\n3. Create a circle or join with an invite code."
+    },
+    "dashboard": {
+      "title": "Dashboard overview",
+      "body": "Your Dashboard shows what needs attention.\n\n• Payments to verify appear for organizers when a member reports a payment.\n• Contribution due appears when you still need to send or report your own payment.\n• Upcoming payouts appear when it is your turn to receive."
+    },
+    "circles": {
+      "title": "Circles & rounds",
+      "body": "A circle is a group saving pool.\n\nCreating a circle (organizer):\n1. Use Create to name the circle, set the contribution amount, and choose the frequency.\n2. Invite members and set contribution payment instructions so people know where to send money outside CircuSave.\n3. Start the first round when the roster is ready.\n\nJoining a circle (member):\n1. Accept the invite or enter a code.\n2. Wait for the organizer to start the round."
+    },
+    "contributions": {
+      "title": "Contributions & payouts",
+      "body": "CircuSave does not send outside-app payments for you. CircuSave also does not store payment receipts or screenshots. Keep those outside the app.\n\nMembers:\n1. When a round is due, send the contribution using the organizer's instructions (Zelle, Cash App, cash, or in person).\n2. Tap Mark as sent. That reports you already paid. It does not transfer money through CircuSave.\n3. Wait for the organizer to confirm receipt. Only then does the payment count.\n\nOrganizers:\n1. Review reported payments.\n2. Tap Confirm received only after the money actually arrived.\n3. Tap Didn't receive if it did not arrive. The member can mark it as sent again.\n4. When every required contribution is confirmed, Release payout unlocks. Sending the pot is still a separate action."
+    },
+    "activity": {
+      "title": "Activity & records",
+      "body": "Activity shows your recent circle events. Circle Records shows the ledger for that circle so members can see what was reported, confirmed, or released."
+    },
+    "settings": {
+      "title": "Settings & security",
+      "body": "Settings is for your account, language, and security.\n\nPayment Preferences in Settings are payout handles for receiving a pot. They are not where members send regular contributions. Contribution instructions live on the circle Payment Setup screen."
+    }
+  }
+}

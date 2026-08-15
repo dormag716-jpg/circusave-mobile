@@ -13,20 +13,25 @@
     "body": "Tu contribución para la ronda {{round}} está vencida."
   },
   "payment_submitted": {
-    "title": "Pago enviado",
-    "body": "Tu pago espera la revisión del organizador."
+    "title": "Pago por verificar",
+    "body": "{{name}} informó un pago para verificar."
   },
   "payment_confirmed": {
-    "title": "Pago confirmado",
-    "body": "Tu contribución fue confirmada."
+    "title": "Pago recibido",
+    "body": "El organizador confirmó que recibió tu pago."
   },
   "payment_rejected": {
-    "title": "Pago rechazado",
-    "body": "Tu contribución requiere atención."
+    "title": "El pago necesita atención",
+    "body": "El organizador no recibió este pago.",
+    "bodyWithReason": "El organizador no recibió este pago. Motivo: {{reason}}"
+  },
+  "payment_instructions_updated": {
+    "title": "Instrucciones de pago actualizadas",
+    "body": "{{circle}} actualizó dónde enviar tu contribución."
   },
   "organizer_review_required": {
-    "title": "Se requiere revisar un pago",
-    "body": "{{name}} envió un pago para revisión."
+    "title": "Pago por verificar",
+    "body": "{{name}} informó un pago para verificar."
   },
   "payout_ready": {
     "title": "Pago listo",

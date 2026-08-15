@@ -176,7 +176,7 @@ describe('createCircleWizard', () => {
 
   test('Continue Setup navigation target is workspace People tab', () => {
     // Mirrors lib/navigation.circleWorkspaceHref(id, 'people') without importing
-    // expo-linking (breaks pure Jest). setup.tsx calls that helper after create.
+    // expo-linking (breaks pure Jest). setup.tsx still offers this after create.
     const href = {
       pathname: '/circle/workspace' as const,
       params: { circleId: 'circle_123', tab: 'people' },

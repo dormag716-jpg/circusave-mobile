@@ -23,6 +23,7 @@ import peopleEn from './locales/en/people.json';
 import roundsEn from './locales/en/rounds.json';
 import scheduleEn from './locales/en/schedule.json';
 import settingsEn from './locales/en/settings.json';
+import supportEn from './locales/en/support.json';
 import walletEn from './locales/en/wallet.json';
 import activityEs from './locales/es/activity.json';
 import authEs from './locales/es/auth.json';
@@ -46,6 +47,7 @@ import peopleEs from './locales/es/people.json';
 import roundsEs from './locales/es/rounds.json';
 import scheduleEs from './locales/es/schedule.json';
 import settingsEs from './locales/es/settings.json';
+import supportEs from './locales/es/support.json';
 import walletEs from './locales/es/wallet.json';
 import activityHt from './locales/ht/activity.json';
 import authHt from './locales/ht/auth.json';
@@ -69,6 +71,7 @@ import peopleHt from './locales/ht/people.json';
 import roundsHt from './locales/ht/rounds.json';
 import scheduleHt from './locales/ht/schedule.json';
 import settingsHt from './locales/ht/settings.json';
+import supportHt from './locales/ht/support.json';
 import walletHt from './locales/ht/wallet.json';
 import { readLanguagePreference, writeLanguagePreference } from './language-storage';
 import { resolveCurrentLanguage } from './locale';
@@ -102,6 +105,7 @@ const resources = {
     rounds: roundsEn,
     schedule: scheduleEn,
     settings: settingsEn,
+    support: supportEn,
     wallet: walletEn,
   },
   es: {
@@ -127,6 +131,7 @@ const resources = {
     rounds: roundsEs,
     schedule: scheduleEs,
     settings: settingsEs,
+    support: supportEs,
     wallet: walletEs,
   },
   ht: {
@@ -152,14 +157,25 @@ const resources = {
     rounds: roundsHt,
     schedule: scheduleHt,
     settings: settingsHt,
+    support: supportHt,
     wallet: walletHt,
   },
 } as const;
 
 let initializationPromise: Promise<SupportedLanguage> | null = null;
 
+function syncI18nResourceBundles() {
+  (Object.keys(resources) as SupportedLanguage[]).forEach((language) => {
+    const bundles = resources[language];
+    (Object.keys(bundles) as Array<keyof typeof bundles>).forEach((namespace) => {
+      i18n.addResourceBundle(language, namespace, bundles[namespace], true, true);
+    });
+  });
+}
+
 async function ensureInitialized(language: SupportedLanguage): Promise<void> {
   if (i18n.isInitialized) {
+    syncI18nResourceBundles();
     await i18n.changeLanguage(language);
     return;
   }
@@ -192,6 +208,7 @@ async function ensureInitialized(language: SupportedLanguage): Promise<void> {
       'rounds',
       'schedule',
       'settings',
+      'support',
       'wallet',
     ],
     interpolation: {
@@ -225,6 +242,10 @@ export async function changeLanguagePreference(
   await writeLanguagePreference(preference);
   await ensureInitialized(language);
   return language;
+}
+
+if (i18n.isInitialized) {
+  syncI18nResourceBundles();
 }
 
 export { i18n };

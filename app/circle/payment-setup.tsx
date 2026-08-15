@@ -19,19 +19,40 @@ import { useTranslation } from 'react-i18next';
 
 import { getCircleDetail, updateCircleSettings } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { contributionCopy } from '@/lib/i18n/contributionCopy';
+import { formatDateTime } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/navigation';
+import {
+  destinationsForPaymentSetupEditor,
+  MAX_PAYMENT_DESTINATION_LENGTH,
+  MAX_PAYMENT_DESTINATION_MEMO_LENGTH,
+  MAX_PAYMENT_DESTINATIONS,
+  PAYMENT_DESTINATION_METHODS,
+  type PaymentDestinationMethod,
+} from '@/lib/paymentDestinations';
 import { saveCirclePaymentInstructions } from '@/lib/paymentSetupSave';
 import { colors, radii, spacing } from '@/lib/theme';
 
-const EXAMPLES = [
-  { label: 'Zelle', placeholder: 'Zelle: organizer@email.com' },
-  { label: 'CashApp', placeholder: 'CashApp: $yourtag' },
-  { label: 'Venmo', placeholder: 'Venmo: @yourusername' },
-  { label: 'Bank', placeholder: 'Wire to Acct# 1234 / Routing# 5678' },
-];
+type DestinationDraft = {
+  key: string;
+  method: PaymentDestinationMethod;
+  destination: string;
+  memo: string;
+};
+
+let draftSeq = 0;
+
+function createDraft(
+  method: PaymentDestinationMethod = 'zelle',
+  destination = '',
+  memo = '',
+): DestinationDraft {
+  draftSeq += 1;
+  return { key: `dest-${draftSeq}`, method, destination, memo };
+}
 
 export default function PaymentSetupScreen() {
-  const { t } = useTranslation(['contributions', 'financialErrors']);
+  const { t, i18n } = useTranslation(['contributions', 'financialErrors']);
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId) ? params.circleId[0] : params.circleId;
@@ -39,8 +60,12 @@ export default function PaymentSetupScreen() {
 
   const [circleName, setCircleName] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [drafts, setDrafts] = useState<DestinationDraft[]>([createDraft()]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [instructionAudit, setInstructionAudit] = useState<
+    Array<{ at?: string; nextInstructions?: string | null }>
+  >([]);
 
   useEffect(() => {
     async function load() {
@@ -52,9 +77,25 @@ export default function PaymentSetupScreen() {
         // Try backend first
         const circle = await getCircleDetail(token, circleId);
         setCircleName(circle.name);
+        const editorRows = destinationsForPaymentSetupEditor({
+          paymentInstructions: circle.paymentInstructions,
+          paymentDestinations: circle.paymentDestinations,
+        });
+        if (editorRows.length > 0) {
+          setDrafts(
+            editorRows.map((row) =>
+              createDraft(row.method, row.destination, row.memo ?? ''),
+            ),
+          );
+        }
         if (circle.paymentInstructions) {
           setInstructions(circle.paymentInstructions);
         }
+        setInstructionAudit(
+          Array.isArray(circle.paymentInstructionAudit)
+            ? circle.paymentInstructionAudit
+            : [],
+        );
       } catch {
         // Fallback or error handled upstream
       } finally {
@@ -73,6 +114,7 @@ export default function PaymentSetupScreen() {
         token,
         circleId,
         instructions,
+        destinations: drafts,
         updateCircleSettings,
       });
 
@@ -166,49 +208,163 @@ export default function PaymentSetupScreen() {
             <View style={styles.explainerIcon}>
               <FontAwesome name="info-circle" size={20} color={colors.primary} />
             </View>
-            <Text style={styles.explainerText}>
-              {t('contributions:paymentSetup.explainer')}
-            </Text>
+            <View style={{ flex: 1, gap: 8 }}>
+              <Text style={styles.explainerText}>
+                {t('contributions:paymentSetup.explainer')}
+              </Text>
+              <Text style={styles.explainerText}>
+                {t('contributions:paymentSetup.notPayoutPreferences')}
+              </Text>
+            </View>
           </View>
 
-          {/* Input */}
           <View style={styles.formCard}>
             <Text style={styles.fieldLabel}>
-              {t('contributions:paymentSetup.fieldLabel')}
+              {contributionCopy(t, 'paymentSetup.fieldLabel')}
             </Text>
-            <TextInput
-              style={styles.textInput}
-              value={instructions}
-              onChangeText={setInstructions}
-              placeholder={t('contributions:paymentSetup.placeholder')}
-              accessibilityLabel={t('contributions:paymentSetup.inputA11y')}
-              placeholderTextColor={colors.muted}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-              maxLength={280}
-            />
-            <Text style={styles.charCount}>{instructions.length}/280</Text>
+            {drafts.map((draft, index) => (
+              <View key={draft.key} style={styles.destinationCard}>
+                <View style={styles.destinationHeader}>
+                  <Text style={styles.destinationIndex}>
+                    {contributionCopy(t, 'paymentSetup.methodLabel')}
+                  </Text>
+                  {drafts.length > 1 ? (
+                    <Pressable
+                      onPress={() =>
+                        setDrafts((current) =>
+                          current.filter((row) => row.key !== draft.key),
+                        )
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={contributionCopy(
+                        t,
+                        'paymentSetup.removeA11y',
+                      )}
+                    >
+                      <Text style={styles.removeText}>
+                        {contributionCopy(t, 'paymentSetup.removeDestination')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                <View style={styles.methodWrap}>
+                  {PAYMENT_DESTINATION_METHODS.map((method) => {
+                    const selected = draft.method === method;
+                    return (
+                      <Pressable
+                        key={method}
+                        style={[
+                          styles.methodChip,
+                          selected && styles.methodChipSelected,
+                        ]}
+                        onPress={() =>
+                          setDrafts((current) =>
+                            current.map((row) =>
+                              row.key === draft.key ? { ...row, method } : row,
+                            ),
+                          )
+                        }
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                      >
+                        <Text
+                          style={[
+                            styles.methodChipText,
+                            selected && styles.methodChipTextSelected,
+                          ]}
+                        >
+                          {contributionCopy(t, `paymentSetup.methods.${method}`)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.subLabel}>
+                  {contributionCopy(t, 'paymentSetup.destinationLabel')}
+                </Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={draft.destination}
+                  onChangeText={(value) =>
+                    setDrafts((current) =>
+                      current.map((row) =>
+                        row.key === draft.key
+                          ? { ...row, destination: value }
+                          : row,
+                      ),
+                    )
+                  }
+                  placeholder={contributionCopy(
+                    t,
+                    `paymentSetup.destinationPlaceholder.${draft.method}`,
+                  )}
+                  accessibilityLabel={contributionCopy(
+                    t,
+                    'paymentSetup.destinationA11y',
+                  )}
+                  placeholderTextColor={colors.muted}
+                  maxLength={MAX_PAYMENT_DESTINATION_LENGTH}
+                />
+                <Text style={styles.subLabel}>
+                  {contributionCopy(t, 'paymentSetup.memoLabel')}
+                </Text>
+                <TextInput
+                  style={styles.memoInput}
+                  value={draft.memo}
+                  onChangeText={(value) =>
+                    setDrafts((current) =>
+                      current.map((row) =>
+                        row.key === draft.key ? { ...row, memo: value } : row,
+                      ),
+                    )
+                  }
+                  placeholder={contributionCopy(
+                    t,
+                    'paymentSetup.memoPlaceholder',
+                  )}
+                  accessibilityLabel={contributionCopy(t, 'paymentSetup.memoA11y')}
+                  placeholderTextColor={colors.muted}
+                  maxLength={MAX_PAYMENT_DESTINATION_MEMO_LENGTH}
+                />
+                {index < drafts.length - 1 ? <View style={styles.rowDivider} /> : null}
+              </View>
+            ))}
+            {drafts.length < MAX_PAYMENT_DESTINATIONS ? (
+              <Pressable
+                style={styles.addButton}
+                onPress={() => setDrafts((current) => [...current, createDraft()])}
+                accessibilityRole="button"
+                accessibilityLabel={contributionCopy(t, 'paymentSetup.addA11y')}
+              >
+                <FontAwesome name="plus" size={14} color={colors.primary} />
+                <Text style={styles.addButtonText}>
+                  {contributionCopy(t, 'paymentSetup.addDestination')}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.charCount}>
+                {contributionCopy(t, 'paymentSetup.maxDestinations', {
+                  count: MAX_PAYMENT_DESTINATIONS,
+                })}
+              </Text>
+            )}
           </View>
 
-          {/* Examples */}
-          <View style={styles.examplesCard}>
-            <Text style={styles.examplesTitle}>
-              {t('contributions:paymentSetup.examples')}
-            </Text>
-            {EXAMPLES.map((ex) => (
-              <Pressable
-                key={ex.label}
-                style={styles.exampleRow}
-                onPress={() => setInstructions(ex.placeholder)}
-              >
-                <View style={styles.exampleIcon}>
-                  <FontAwesome name="arrow-right" size={12} color={colors.primary} />
-                </View>
-                <Text style={styles.exampleText}>{ex.placeholder}</Text>
-              </Pressable>
-            ))}
-          </View>
+          {instructionAudit.length > 0 ? (
+            <View style={styles.formCard}>
+              <Text style={styles.fieldLabel}>
+                {contributionCopy(t, 'paymentSetup.recentChanges')}
+              </Text>
+              {instructionAudit.slice(-3).reverse().map((event, index) => (
+                <Text key={`${event.at || 'audit'}-${index}`} style={styles.charCount}>
+                  {event.at
+                    ? formatDateTime(event.at, i18n.resolvedLanguage || i18n.language)
+                    : ''}
+                  {event.nextInstructions ? ` · ${event.nextInstructions}` : ''}
+                </Text>
+              ))}
+            </View>
+          ) : null}
 
           {/* Save */}
           <Pressable
@@ -267,7 +423,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   explainerIcon: { marginTop: 2 },
-  explainerText: { flex: 1, fontSize: 14, color: colors.primaryDark, lineHeight: 20 },
+  explainerText: { fontSize: 14, color: colors.primaryDark, lineHeight: 20 },
 
   formCard: {
     backgroundColor: colors.card,
@@ -283,6 +439,41 @@ const styles = StyleSheet.create({
     color: colors.textStrong,
     marginBottom: 12,
   },
+  destinationCard: { gap: 10, marginBottom: 16 },
+  destinationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  destinationIndex: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  removeText: { fontSize: 13, fontWeight: '800', color: colors.danger },
+  methodWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  methodChip: {
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.background,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  methodChipSelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  methodChipText: { fontSize: 13, fontWeight: '700', color: colors.text },
+  methodChipTextSelected: { color: colors.primaryDark },
+  subLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textStrong,
+    marginTop: 4,
+  },
   textInput: {
     backgroundColor: colors.background,
     borderRadius: 12,
@@ -290,46 +481,37 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
     color: colors.text,
     fontSize: 16,
-    minHeight: 90,
+    minHeight: 48,
     padding: 14,
   },
+  memoInput: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    color: colors.text,
+    fontSize: 15,
+    minHeight: 44,
+    padding: 14,
+  },
+  rowDivider: {
+    height: 1,
+    backgroundColor: colors.cardBorder,
+    marginTop: 8,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  addButtonText: { fontSize: 15, fontWeight: '800', color: colors.primary },
   charCount: {
     textAlign: 'right',
     fontSize: 12,
     color: colors.muted,
     marginTop: 6,
   },
-
-  examplesCard: {
-    backgroundColor: colors.card,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    padding: 20,
-    marginBottom: 24,
-    gap: 14,
-  },
-  examplesTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  exampleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  exampleIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exampleText: { fontSize: 15, color: colors.text, flex: 1 },
 
   saveButton: {
     backgroundColor: colors.primary,

@@ -3,14 +3,26 @@
  * Keeps success/error/navigation decisions free of React Native so unit tests can cover them.
  */
 
+import {
+  composePaymentInstructions,
+  normalizePaymentDestinations,
+  type PaymentDestination,
+} from '@/lib/paymentDestinations';
+
+export type PaymentSetupSettings = {
+  paymentInstructions?: string;
+  paymentDestinations?: PaymentDestination[];
+};
+
 export type PaymentSetupSaveInput = {
   token: string | null | undefined;
   circleId: string;
   instructions: string;
+  destinations?: unknown;
   updateCircleSettings: (
     token: string,
     circleId: string,
-    settings: { paymentInstructions: string },
+    settings: PaymentSetupSettings,
   ) => Promise<unknown>;
 };
 
@@ -40,8 +52,15 @@ export type PaymentSetupSaveResult =
 export async function saveCirclePaymentInstructions(
   input: PaymentSetupSaveInput,
 ): Promise<PaymentSetupSaveResult> {
-  const preservedInstructions = input.instructions;
-  const trimmed = input.instructions.trim();
+  const usingDestinations = input.destinations !== undefined;
+  const destinations = usingDestinations
+    ? normalizePaymentDestinations(input.destinations)
+    : null;
+  const composed = destinations ? composePaymentInstructions(destinations) : '';
+  const trimmed = usingDestinations ? composed : input.instructions.trim();
+  const preservedInstructions = usingDestinations
+    ? composed || input.instructions
+    : input.instructions;
 
   if (!trimmed) {
     return {
@@ -59,10 +78,15 @@ export async function saveCirclePaymentInstructions(
     };
   }
 
+  const settings: PaymentSetupSettings = destinations
+    ? {
+        paymentDestinations: destinations,
+        paymentInstructions: trimmed,
+      }
+    : { paymentInstructions: trimmed };
+
   try {
-    await input.updateCircleSettings(input.token, input.circleId, {
-      paymentInstructions: trimmed,
-    });
+    await input.updateCircleSettings(input.token, input.circleId, settings);
   } catch (error) {
     return {
       status: 'error',

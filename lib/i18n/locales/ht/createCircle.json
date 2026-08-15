@@ -108,7 +108,7 @@
   },
   "success": {
     "title": "Bouyon gwoup la kreye",
-    "body": "Gwoup ou a pare pou konfigirasyon. Envite manm, verifye demann ak lòt men yo, epi fikse lòd peman an anvan ou kòmanse."
+    "body": "Gwoup ou a pare pou konfigirasyon. Di manm yo kijan pou yo voye kontribisyon regilye yo andeyò CircuSave, epi kontinye envite moun nan onglet Moun."
   },
   "actions": {
     "startFresh": "Rekòmanse",
@@ -118,6 +118,7 @@
     "createCircle": "Kreye gwoup la",
     "reviewAgain": "Tounen verifye",
     "continueSetup": "Kontinye konfigirasyon",
+    "setContributionInstructions": "Mete enstriksyon kontribisyon",
     "addMember": "Ajoute manm",
     "back": "Retounen",
     "continue": "Kontinye"

@@ -9,6 +9,7 @@ export type NotificationType =
   | 'payment_submitted'
   | 'payment_confirmed'
   | 'payment_rejected'
+  | 'payment_instructions_updated'
   | 'organizer_review_required'
   | 'payout_ready'
   | 'payout_completed'
@@ -27,17 +28,201 @@ export function contributionTotal(input: {
     : input.amountPerHand * input.handCount;
 }
 
-export function contributionStatusLabel(status: unknown, t: TFunction): string {
-  const normalized = String(status || 'unavailable').trim().toLowerCase();
-  const supported = new Set([
-    'due',
-    'submitted',
-    'confirmed',
-    'late',
-    'missed',
-    'rejected',
-    'pending',
-  ]);
+export type ManualContributionAudience = 'member' | 'organizer';
+
+export type ManualContributionSemanticState =
+  | 'due'
+  | 'overdue'
+  | 'reported'
+  | 'reported_late'
+  | 'needs_attention'
+  | 'confirmed'
+  | 'unknown';
+
+export type ManualContributionPresentation = {
+  rawStatus: string;
+  semanticState: ManualContributionSemanticState;
+  primaryLabel: string;
+  secondaryLabel: string | null;
+  awaitingOrganizer: boolean;
+  canReportPayment: boolean;
+  isConfirmed: boolean;
+  needsAttention: boolean;
+  isOverdue: boolean;
+  isLateReport: boolean;
+};
+
+const MANUAL_CONTRIBUTION_STATUSES = new Set([
+  'due',
+  'missed',
+  'submitted',
+  'late',
+  'rejected',
+  'confirmed',
+]);
+
+const STRIPE_LIFECYCLE_STATUSES = new Set([
+  'disputed',
+  'refunded',
+  'chargeback',
+  'partially_refunded',
+  'restored',
+]);
+
+function normalizeContributionStatus(status: unknown): string {
+  return String(status || '').trim().toLowerCase();
+}
+
+/**
+ * User-facing manual contribution presentation.
+ * Describes status only — does not decide whether mutations are allowed.
+ */
+export function presentManualContribution(
+  status: unknown,
+  t: TFunction,
+  options?: { audience?: ManualContributionAudience },
+): ManualContributionPresentation {
+  const rawStatus = normalizeContributionStatus(status) || 'unavailable';
+  const audience = options?.audience === 'organizer' ? 'organizer' : 'member';
+
+  if (STRIPE_LIFECYCLE_STATUSES.has(rawStatus)) {
+    return {
+      rawStatus,
+      semanticState: 'unknown',
+      primaryLabel: t('contributions:statusLabels.unavailable'),
+      secondaryLabel: null,
+      awaitingOrganizer: false,
+      canReportPayment: false,
+      isConfirmed: false,
+      needsAttention: false,
+      isOverdue: false,
+      isLateReport: false,
+    };
+  }
+
+  if (rawStatus === 'due') {
+    return {
+      rawStatus,
+      semanticState: 'due',
+      primaryLabel: t('contributions:manualPresentation.due'),
+      secondaryLabel: null,
+      awaitingOrganizer: false,
+      canReportPayment: true,
+      isConfirmed: false,
+      needsAttention: false,
+      isOverdue: false,
+      isLateReport: false,
+    };
+  }
+
+  if (rawStatus === 'missed') {
+    return {
+      rawStatus,
+      semanticState: 'overdue',
+      primaryLabel: t('contributions:manualPresentation.overdue'),
+      secondaryLabel: null,
+      awaitingOrganizer: false,
+      canReportPayment: true,
+      isConfirmed: false,
+      needsAttention: false,
+      isOverdue: true,
+      isLateReport: false,
+    };
+  }
+
+  if (rawStatus === 'submitted') {
+    return {
+      rawStatus,
+      semanticState: 'reported',
+      primaryLabel:
+        audience === 'organizer'
+          ? t('contributions:manualPresentation.organizerReported')
+          : t('contributions:manualPresentation.reported'),
+      secondaryLabel: t('contributions:manualPresentation.waitingForOrganizer'),
+      awaitingOrganizer: true,
+      canReportPayment: false,
+      isConfirmed: false,
+      needsAttention: false,
+      isOverdue: false,
+      isLateReport: false,
+    };
+  }
+
+  if (rawStatus === 'late') {
+    return {
+      rawStatus,
+      semanticState: 'reported_late',
+      primaryLabel:
+        audience === 'organizer'
+          ? t('contributions:manualPresentation.organizerReportedLate')
+          : t('contributions:manualPresentation.reportedLate'),
+      secondaryLabel: t('contributions:manualPresentation.waitingForOrganizer'),
+      awaitingOrganizer: true,
+      canReportPayment: false,
+      isConfirmed: false,
+      needsAttention: false,
+      isOverdue: false,
+      isLateReport: true,
+    };
+  }
+
+  if (rawStatus === 'rejected') {
+    return {
+      rawStatus,
+      semanticState: 'needs_attention',
+      primaryLabel: t('contributions:manualPresentation.needsAttention'),
+      secondaryLabel: null,
+      awaitingOrganizer: false,
+      canReportPayment: true,
+      isConfirmed: false,
+      needsAttention: true,
+      isOverdue: false,
+      isLateReport: false,
+    };
+  }
+
+  if (rawStatus === 'confirmed') {
+    return {
+      rawStatus,
+      semanticState: 'confirmed',
+      primaryLabel: t('contributions:manualPresentation.confirmed'),
+      secondaryLabel: null,
+      awaitingOrganizer: false,
+      canReportPayment: false,
+      isConfirmed: true,
+      needsAttention: false,
+      isOverdue: false,
+      isLateReport: false,
+    };
+  }
+
+  const legacyPending = rawStatus === 'pending';
+  return {
+    rawStatus,
+    semanticState: 'unknown',
+    primaryLabel: t(
+      `contributions:statusLabels.${legacyPending ? 'pending' : 'unavailable'}`,
+    ),
+    secondaryLabel: null,
+    awaitingOrganizer: false,
+    canReportPayment: false,
+    isConfirmed: false,
+    needsAttention: false,
+    isOverdue: false,
+    isLateReport: false,
+  };
+}
+
+export function contributionStatusLabel(
+  status: unknown,
+  t: TFunction,
+  options?: { audience?: ManualContributionAudience },
+): string {
+  const normalized = normalizeContributionStatus(status) || 'unavailable';
+  if (MANUAL_CONTRIBUTION_STATUSES.has(normalized)) {
+    return presentManualContribution(normalized, t, options).primaryLabel;
+  }
+  const supported = new Set(['pending']);
   return t(
     `contributions:statusLabels.${supported.has(normalized) ? normalized : 'unavailable'}`,
   );
@@ -149,7 +334,12 @@ export function activityEventSentence(
 
 export function notificationCopy(
   type: string,
-  data: { name?: string; round?: number | string; circle?: string },
+  data: {
+    name?: string;
+    round?: number | string;
+    circle?: string;
+    reason?: string;
+  },
   t: TFunction,
 ): { title: string; body: string } {
   const supported: NotificationType[] = [
@@ -158,6 +348,7 @@ export function notificationCopy(
     'payment_submitted',
     'payment_confirmed',
     'payment_rejected',
+    'payment_instructions_updated',
     'organizer_review_required',
     'payout_ready',
     'payout_completed',
@@ -171,8 +362,13 @@ export function notificationCopy(
       body: t('notifications:fallback.body'),
     };
   }
+  const reason = String(data.reason || '').trim();
+  const bodyKey =
+    type === 'payment_rejected' && reason
+      ? 'notifications:payment_rejected.bodyWithReason'
+      : `notifications:${type}.body`;
   return {
     title: t(`notifications:${type}.title`, data),
-    body: t(`notifications:${type}.body`, data),
+    body: t(bodyKey, data),
   };
 }

@@ -13,20 +13,25 @@
     "body": "Your contribution for Round {{round}} is overdue."
   },
   "payment_submitted": {
-    "title": "Payment submitted",
-    "body": "Your payment is waiting for organizer review."
+    "title": "Payment to verify",
+    "body": "{{name}} reported a payment to verify."
   },
   "payment_confirmed": {
-    "title": "Payment confirmed",
-    "body": "Your contribution was confirmed."
+    "title": "Payment received",
+    "body": "The organizer confirmed they received your payment."
   },
   "payment_rejected": {
-    "title": "Payment rejected",
-    "body": "Your contribution needs attention."
+    "title": "Payment needs attention",
+    "body": "The organizer did not receive this payment.",
+    "bodyWithReason": "The organizer did not receive this payment. Reason: {{reason}}"
+  },
+  "payment_instructions_updated": {
+    "title": "Payment instructions updated",
+    "body": "{{circle}} updated where to send your contribution."
   },
   "organizer_review_required": {
-    "title": "Payment review required",
-    "body": "{{name}} submitted a payment for review."
+    "title": "Payment to verify",
+    "body": "{{name}} reported a payment to verify."
   },
   "payout_ready": {
     "title": "Payout ready",

@@ -29,10 +29,15 @@ export function circleInviteHref(circleId: string): Href {
   };
 }
 
-export function contributionHref(circleId: string): Href {
+export function contributionHref(circleId: string, handId?: string): Href {
+  const params: Record<string, string> = { circleId };
+  const safeHandId = String(handId || '').trim();
+  if (safeHandId) {
+    params.handId = safeHandId;
+  }
   return {
     pathname: '/payment/contribution',
-    params: { circleId },
+    params,
   };
 }
 
@@ -40,6 +45,17 @@ export function circlePaymentSetupHref(circleId: string): Href {
   return {
     pathname: '/circle/payment-setup',
     params: { circleId },
+  };
+}
+
+/** Post-create destinations: set contribution instructions or continue setup. */
+export function createCircleSuccessDestinations(circleId: string): {
+  contributionPaymentSetup: Href;
+  continueSetup: Href;
+} {
+  return {
+    contributionPaymentSetup: circlePaymentSetupHref(circleId),
+    continueSetup: circleWorkspaceHref(circleId, 'people'),
   };
 }
 

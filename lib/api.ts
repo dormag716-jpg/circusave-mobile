@@ -189,6 +189,19 @@ export type BackendCircleDetail = {
   totalRounds?: number;
   organizerId: string;
   paymentInstructions?: string | null;
+  paymentDestinations?: Array<{
+    method: string;
+    destination: string;
+    memo?: string;
+  }> | null;
+  paymentInstructionAudit?: Array<{
+    at?: string;
+    actorUserId?: string;
+    previousInstructions?: string | null;
+    nextInstructions?: string | null;
+    previousDestinations?: unknown;
+    nextDestinations?: unknown;
+  }> | null;
   pot_status?: string;
   startDate: string;
   /** Null/absent before Start Circle; set when the circle starts. */
@@ -370,6 +383,9 @@ export type BackendRoundContribution = {
   memberId: string;
   note?: string | null;
   paymentMethod?: string | null;
+  paymentReference?: string | null;
+  rejectReason?: string | null;
+  rejectReasonCode?: string | null;
   round: number;
   status: string;
   submittedAt?: string | null;
@@ -1099,7 +1115,14 @@ export function getCircleDetail(
 export function updateCircleSettings(
   token: string,
   circleId: string,
-  settings: { paymentInstructions?: string },
+  settings: {
+    paymentInstructions?: string;
+    paymentDestinations?: Array<{
+      method: string;
+      destination: string;
+      memo?: string;
+    }>;
+  },
 ): Promise<unknown> {
   return requestJson<unknown>(`/groups/${circleId}`, {
     method: 'PATCH',
@@ -1287,7 +1310,7 @@ export function rejectContribution(
   token: string,
   circleId: string,
   memberId: string,
-  input: { reason?: string } = {},
+  input: { reason?: string; reasonCode?: string } = {},
 ): Promise<unknown> {
   return requestJson<unknown>(`/contributions/${circleId}/${memberId}/reject`, {
     method: 'POST',
@@ -1301,7 +1324,7 @@ export function submitContribution(
   token: string,
   circleId: string,
   memberId: string,
-  input: { note?: string; paymentMethod?: string } = {},
+  input: { note?: string; paymentMethod?: string; paymentReference?: string } = {},
 ): Promise<unknown> {
   return requestJson<unknown>(`/contributions/${circleId}/${memberId}/submit`, {
     method: 'POST',

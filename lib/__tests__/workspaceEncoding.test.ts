@@ -23,23 +23,111 @@ describe('workspace UTF-8 source encoding', () => {
     expect(workspaceSource).not.toMatch(MOJIBAKE);
   });
 
-  test('due-body and payout-turn are joined with a middle dot in source', () => {
-    expect(workspaceSource).toContain("t('contributions:workspace.dueBody'");
+  test('member card uses localized hierarchy keys, not contact-organizer fallback', () => {
+    expect(workspaceSource).toContain("contributionCopy(t, 'workspace.payOutsideTitle')");
     expect(workspaceSource).toContain(
-      "` · ${t('contributions:workspace.payoutTurn'",
+      "contributionCopy(t, 'workspace.instructionsMissingTitle')",
+    );
+    expect(workspaceSource).toContain(
+      "contributionCopy(t, 'workspace.circuSaveDoesNotSend')",
     );
     expect(workspaceSource).not.toContain(
-      "` Ã‚· ${t('contributions:workspace.payoutTurn'",
+      "t('contributions:workspace.instructionsFallback')",
+    );
+    expect(workspaceSource).not.toContain("{t('workspace.myContributions')}");
+    expect(workspaceSource).not.toContain("{t('workspace.amountDue'");
+  });
+
+  test('member card uses compact rows instead of nested per-hand cards', () => {
+    expect(workspaceSource).toContain('styles.memberHandInlineButton');
+    expect(workspaceSource).toContain('styles.memberHandRowDivider');
+    expect(workspaceSource).not.toContain('styles.memberHandPrimaryButton');
+    expect(workspaceSource).not.toContain('onMarkAsSent(firstHand.handId)');
+  });
+
+  test('organizer payment-setup navigation is wired, not an unused import', () => {
+    expect(workspaceSource).toContain('circlePaymentSetupHref');
+    expect(workspaceSource).toContain('circlePaymentSetupHref(circleId)');
+    expect(workspaceSource).toContain('set_contribution_instructions');
+  });
+
+  test('create-circle success offers payment-setup via the shared helper', () => {
+    const createSetupSource = readFileSync(
+      path.join(__dirname, '..', '..', 'app', 'create-circle', 'setup.tsx'),
+      'utf8',
+    );
+    expect(createSetupSource).toContain('createCircleSuccessDestinations');
+    expect(createSetupSource).toContain('contributionPaymentSetup');
+    expect(createSetupSource).toContain('setContributionInstructions');
+  });
+
+  test('Mark as sent is the primary CTA and I sent it checkmark is gone', () => {
+    expect(workspaceSource).toContain("contributionCopy(t, 'workspace.markAsSent')");
+    expect(workspaceSource).toContain("t('contributions:workspace.markAsSent')");
+    expect(workspaceSource).toContain('submitContribution(');
+    expect(workspaceSource).toContain('buildManualContributionSubmitPayload');
+    expect(workspaceSource).not.toContain(
+      "{t('contributions:workspace.sentAction')} ✓",
+    );
+    expect(workspaceSource).not.toContain('I sent it ✓');
+    expect(workspaceSource).not.toMatch(/createPaymentIntent|runStripeContributionPayment/);
+    expect(workspaceSource).toContain("t('contributions:markAsSent.confirmTitle')");
+    expect(workspaceSource).toContain("kind: 'mark_as_sent'");
+  });
+
+  test('single-hand Mark as sent confirms before submitting the exact hand', () => {
+    expect(workspaceSource).toContain('function promptMarkContributionSent');
+    expect(workspaceSource).toContain('function submitMarkContributionSent');
+    expect(workspaceSource).toContain(
+      'resolveMarkAsSentTarget(memberContributionCard, handId)',
+    );
+    expect(workspaceSource).toContain(
+      "t('contributions:markAsSent.confirmTitle')",
+    );
+    expect(workspaceSource).toContain(
+      "t('contributions:markAsSent.confirmBody'",
+    );
+    expect(workspaceSource).toContain("kind: 'mark_as_sent'");
+    expect(workspaceSource).toContain('void submitMarkContributionSent(handId)');
+    expect(workspaceSource.indexOf('function promptMarkContributionSent')).toBeLessThan(
+      workspaceSource.indexOf('void submitMarkContributionSent(handId)'),
+    );
+    expect(workspaceSource).toContain(
+      'onMarkAsSent(hand.handId)',
     );
   });
 
-  test('sent-action button uses a check mark after the translation, not mojibake', () => {
+  test('multi-hand Mark as sent navigates the exact hand to contribution.tsx', () => {
+    expect(workspaceSource).toContain('function handleMarkContributionSent');
+    expect(workspaceSource).toContain('resolveMarkAsSentContributionHrefHandId');
     expect(workspaceSource).toContain(
-      "{t('contributions:workspace.sentAction')} ✓",
+      'router.push(contributionHref(circle.id, navigationHandId))',
+    );
+    expect(workspaceSource).toContain('onMarkAsSent(hand.handId)');
+    expect(workspaceSource.indexOf('function handleMarkContributionSent')).toBeLessThan(
+      workspaceSource.indexOf('promptMarkContributionSent(handId)'),
     );
     expect(workspaceSource).not.toContain(
-      "{t('contributions:workspace.sentAction')} Ã¢",
+      'submitContribution(token, circle.id, viewerMember',
     );
+    expect(workspaceSource).not.toMatch(
+      /submitContribution\(token, circle\.id, hand\.handId\)/,
+    );
+  });
+
+  test('success refreshes authoritative state and failure does not fake reported', () => {
+    expect(workspaceSource).toContain('await submitContribution(');
+    expect(workspaceSource).toContain('target.handId');
+    expect(workspaceSource).toContain('buildManualContributionSubmitPayload');
+    expect(workspaceSource).toContain(
+      'await Promise.all([onReload(), loadBackendSections()])',
+    );
+    expect(workspaceSource).toContain('isAlreadyReportedSubmissionError');
+    expect(workspaceSource).toContain(
+      "t('contributions:markAsSent.failedTitle')",
+    );
+    expect(workspaceSource).not.toContain("status: 'confirmed'");
+    expect(workspaceSource).not.toContain("status: 'submitted'");
   });
 
   test('other visible workspace separators use a middle dot', () => {
@@ -79,8 +167,9 @@ describe('workspace UTF-8 source encoding', () => {
 
       expect(workspace.dueBody).toContain('{{amount}}');
       expect(workspace.payoutTurn).toContain('{{position}}');
-      expect(workspace.sentAction.length).toBeGreaterThan(0);
-      expect(workspace.sentAction).not.toMatch(MOJIBAKE);
+      expect(workspace.markAsSent.length).toBeGreaterThan(0);
+      expect(workspace.markAsSent).not.toMatch(MOJIBAKE);
+      expect(workspace.markAsSent).not.toContain('✓');
       expect(workspace.dueBody).not.toMatch(MOJIBAKE);
       expect(workspace.payoutTurn).not.toMatch(MOJIBAKE);
     },
@@ -100,6 +189,23 @@ describe('workspace UTF-8 source encoding', () => {
       'Your $1,000 contribution is due this round. · Your payout turn is 5th.',
     );
     expect(composed).not.toMatch(MOJIBAKE);
-    expect(`${contributionsEn.workspace.sentAction} ✓`).toBe('I sent it ✓');
+    expect(contributionsEn.workspace.markAsSent).toBe('Mark as sent');
+    expect(contributionsEn.workspace.markAsSent).not.toContain('✓');
+    expect(contributionsEn.markAsSent.confirmTitle).toBe('Mark payment as sent?');
+    expect(contributionsEn.markAsSent.confirmBody).toContain(
+      'already sent {{amount}} outside CircuSave',
+    );
+    expect(contributionsEn.markAsSent.confirmBody).toContain(
+      'does not transfer money',
+    );
+    expect(contributionsEn.markAsSent.confirmBody).toContain(
+      'organizer must verify receipt',
+    );
+    expect(contributionsEn.markAsSent.failedTitle).toBe('Unable to report payment');
+    expect(contributionsEn.alerts.cancel).toBe('Cancel');
+    expect(contributionsEs.markAsSent.confirmTitle.length).toBeGreaterThan(0);
+    expect(contributionsHt.markAsSent.confirmTitle.length).toBeGreaterThan(0);
+    expect(contributionsEs.markAsSent.failedTitle.length).toBeGreaterThan(0);
+    expect(contributionsHt.markAsSent.failedTitle.length).toBeGreaterThan(0);
   });
 });

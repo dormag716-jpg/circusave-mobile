@@ -1,89 +1,26 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '@/lib/theme';
 
-const supportSections = [
-  {
-    id: 'getting-started',
-    title: 'Getting Started',
-    icon: 'rocket',
-    content: `Welcome to CircuSave! To begin, make sure your profile is complete. 
-    
-1. Go to the Profile tab.
-2. Check your display name and email.
-3. Configure your Security settings (highly recommended to enable Device Lock for privacy).`,
-  },
-  {
-    id: 'dashboard',
-    title: 'Dashboard Overview',
-    icon: 'home',
-    content: `Your Dashboard gives you a quick snapshot of your financial activity.
-
-• Total Saved: Lifetime total of all payouts you've received across all completed rounds.
-• Active Circles: The number of circles you are currently participating in.
-• Upcoming Action: If you have a contribution due, or if you are scheduled to receive a payout, it will appear front and center on the Dashboard.`,
-  },
-  {
-    id: 'circles',
-    title: 'Circles & Rounds',
-    icon: 'users',
-    content: `A Circle is a group saving pool (often known as a Susu, Tanda, or Pardner). 
-    
-Creating a Circle (Organizer):
-1. Tap the '+' Create tab at the bottom.
-2. Set the Circle Name, Contribution Amount (how much each person pays per round), and Frequency (Weekly, Biweekly, or Monthly).
-3. Invite members to join.
-4. Once members accept, you can start the first Round!
-
-Joining a Circle (Member):
-1. When invited, the Circle will appear on your Circles tab under "Pending Invites".
-2. Accept the invite to join.
-3. Wait for the Organizer to start the round.`,
-  },
-  {
-    id: 'contributions',
-    title: 'Contributions & Payouts',
-    icon: 'money',
-    content: `Managing money flow in a Round:
-
-Members:
-1. When a round starts, your contribution is "Due".
-2. Make your payment to the Organizer outside the app (e.g., CashApp, Zelle, Cash).
-3. Tap "I Sent It" in the Circle Workspace to submit your contribution for review.
-
-Organizers:
-1. Review submitted contributions.
-2. Confirm receipt once the funds actually arrive in your account.
-3. When all members have paid, the "Release Payout" button unlocks.
-4. Send the total collected pot to the recipient for that round!`,
-  },
-  {
-    id: 'activity',
-    title: 'Activity & Records',
-    icon: 'list-alt',
-    content: `Keeping track of payments:
-
-• The Global Activity Tab (bottom menu) shows a chronological feed of all your personal contributions and payouts across all circles.
-• The Circle Records Tab (inside a Circle Workspace) shows the immutable ledger for that specific circle, ensuring full transparency for all members.`,
-  },
-  {
-    id: 'settings',
-    title: 'Settings & Security',
-    icon: 'cog',
-    content: `Customizing your experience:
-
-• Cultural Terminology: Go to Profile -> Cultural Terminology to change what the app calls a Circle (e.g., Susu, Tanda) to match your heritage.
-• Security: Go to Profile -> Security to enable FaceID, TouchID, or PIN locks, ensuring your financial data stays private.
-• Subscription: Manage your organizer limits (Free vs Premium) in the Subscription menu.`,
-  },
-];
+const SUPPORT_SECTIONS = [
+  { id: 'gettingStarted', icon: 'rocket' },
+  { id: 'dashboard', icon: 'home' },
+  { id: 'circles', icon: 'users' },
+  { id: 'contributions', icon: 'money' },
+  { id: 'activity', icon: 'list-alt' },
+  { id: 'settings', icon: 'cog' },
+] as const;
 
 export default function SupportScreen() {
-  const [expandedSection, setExpandedSection] = useState<string | null>('getting-started');
+  const { t } = useTranslation('support');
+  const [expandedSection, setExpandedSection] = useState<string | null>(
+    'contributions',
+  );
 
   const toggleSection = (id: string) => {
     setExpandedSection(expandedSection === id ? null : id);
@@ -96,21 +33,19 @@ export default function SupportScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('backA11y')}
         >
           <FontAwesome name="chevron-left" size={20} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>Help & Support</Text>
+        <Text style={styles.title}>{t('title')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.intro}>
-          Step-by-step guides and documentation to help you get the most out of CircuSave.
-        </Text>
+        <Text style={styles.intro}>{t('intro')}</Text>
 
         <View style={styles.accordion}>
-          {supportSections.map((section) => {
+          {SUPPORT_SECTIONS.map((section) => {
             const isExpanded = expandedSection === section.id;
             return (
               <View key={section.id} style={styles.sectionContainer}>
@@ -123,7 +58,9 @@ export default function SupportScreen() {
                     <View style={styles.iconContainer}>
                       <FontAwesome name={section.icon as any} size={18} color={colors.primary} />
                     </View>
-                    <Text style={styles.sectionTitle}>{section.title}</Text>
+                    <Text style={styles.sectionTitle}>
+                      {t(`sections.${section.id}.title`)}
+                    </Text>
                   </View>
                   <FontAwesome
                     name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -134,7 +71,9 @@ export default function SupportScreen() {
                 
                 {isExpanded && (
                   <View style={styles.sectionContent}>
-                    <Text style={styles.contentText}>{section.content}</Text>
+                    <Text style={styles.contentText}>
+                      {t(`sections.${section.id}.body`)}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -144,12 +83,10 @@ export default function SupportScreen() {
         
         <View style={styles.contactCard}>
           <FontAwesome name="envelope-o" size={24} color={colors.primary} />
-          <Text style={styles.contactTitle}>Still need help?</Text>
-          <Text style={styles.contactText}>
-            Our support team is here for you. Reach out to us with any questions or issues.
-          </Text>
+          <Text style={styles.contactTitle}>{t('contactTitle')}</Text>
+          <Text style={styles.contactText}>{t('contactText')}</Text>
           <Pressable style={styles.contactButton} onPress={() => alert('Emailing support@circusave.com')}>
-            <Text style={styles.contactButtonText}>Contact Support</Text>
+            <Text style={styles.contactButtonText}>{t('contactAction')}</Text>
           </Pressable>
         </View>
       </ScrollView>

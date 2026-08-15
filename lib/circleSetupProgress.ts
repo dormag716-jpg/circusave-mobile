@@ -5,6 +5,7 @@
  * UI consumes this now; AI Susu can consume the same model later.
  */
 
+import { presentCirclePaymentInstructions } from './paymentDestinations';
 import {
   getParticipatingHands,
   getStartCircleBlockReason,
@@ -29,6 +30,7 @@ export type SetupStepId =
   | 'confirm_member_access'
   | 'review_additional_hands'
   | 'verify_structure'
+  | 'set_contribution_instructions'
   | 'finalize_payout_order'
   | 'review_and_start';
 
@@ -107,6 +109,12 @@ export type CircleSetupProgressInput = {
       maxHands?: number;
       usedHands?: number;
     } | null;
+    /**
+     * Circle-level contribution destination text (how members pay outside the app).
+     * Distinct from account-level Settings → Payment Preferences (payout handles).
+     */
+    paymentInstructions?: string | null;
+    paymentDestinations?: unknown;
   };
   members: StartCircleMemberLike[];
   waitlist?: StartCircleWaitlistLike[];
@@ -123,9 +131,32 @@ const STEP_TITLES: Record<SetupStepId, string> = {
   confirm_member_access: 'Confirm member access',
   review_additional_hands: 'Review additional-hand requests',
   verify_structure: 'Verify people, hands, rounds, and pot',
+  set_contribution_instructions: 'Set contribution payment instructions',
   finalize_payout_order: 'Finalize payout order',
   review_and_start: 'Review and start',
 };
+
+/** True when the circle has non-empty contribution payment instructions. */
+export function hasContributionPaymentInstructions(
+  paymentInstructions?: string | null,
+  paymentDestinations?: unknown,
+): boolean {
+  return presentCirclePaymentInstructions({
+    paymentInstructions,
+    paymentDestinations,
+  }).hasInstructions;
+}
+
+/**
+ * Who may open Payment Setup to edit circle contribution instructions.
+ * Backend PATCH remains authoritative; this only hides the organizer CTA.
+ * Settings → Payment Preferences (payout handles) is a different feature.
+ */
+export function canEditContributionPaymentInstructions(
+  userRole?: string | null,
+): boolean {
+  return String(userRole || '').trim().toLowerCase() === 'organizer';
+}
 
 export function splitWaitlistRequests<T extends StartCircleWaitlistLike>(waitlist: T[] = []): {
   joinRequests: T[];
@@ -303,6 +334,10 @@ export function buildCircleSetupProgress(
     buildMemberAccessStep(hands.length, claimedHands, unclaimed.length),
     buildAdditionalHandsStep(additionalHandRequests.length),
     buildVerifyStructureStep(structure),
+    buildContributionInstructionsStep(
+      input.circle.paymentInstructions,
+      input.circle.paymentDestinations,
+    ),
     buildPayoutOrderStep(payoutOrderComplete, payoutOrderReviewed, hands.length),
     buildReviewAndStartStep(
       startBlockReason,
@@ -475,6 +510,35 @@ function buildVerifyStructureStep(
     title,
     status: 'complete',
     reason: `${structure.peopleCount} people · ${structure.handCount} hands · ${structure.totalRounds} rounds · pot ${structure.potPerRound}.`,
+  };
+}
+
+function buildContributionInstructionsStep(
+  paymentInstructions?: string | null,
+  paymentDestinations?: unknown,
+): CircleSetupStep {
+  const id: SetupStepId = 'set_contribution_instructions';
+  const title = STEP_TITLES[id];
+
+  // Missing instructions are a warning, never a start block. Cash / in-person
+  // circles may start without a written destination.
+  if (!hasContributionPaymentInstructions(paymentInstructions, paymentDestinations)) {
+    return {
+      id,
+      title,
+      status: 'action_required',
+      reason:
+        'Payment instructions are not set. Members may not know where to send outside-app contributions.',
+      nextAction:
+        'Set contribution payment instructions so members know where to send money.',
+    };
+  }
+
+  return {
+    id,
+    title,
+    status: 'complete',
+    reason: 'Members will see these instructions when their contribution is due.',
   };
 }
 

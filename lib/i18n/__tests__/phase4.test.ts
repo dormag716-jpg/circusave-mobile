@@ -68,9 +68,9 @@ describe('Phase 4 financial localization', () => {
     i18n.addResource('en', 'wallet', 'fallbackProbe', 'Wallet fallback');
     await changeLanguagePreference('ht');
     expect(i18n.t('wallet:fallbackProbe')).toBe('Wallet fallback');
-    expect(contributionStatusLabel('confirmed', i18n.t)).toBe('Konfime');
+    expect(contributionStatusLabel('confirmed', i18n.t)).toBe('Peman konfime');
     await changeLanguagePreference('es');
-    expect(contributionStatusLabel('confirmed', i18n.t)).toBe('Confirmada');
+    expect(contributionStatusLabel('confirmed', i18n.t)).toBe('Pago confirmado');
   });
 
   test('maps contribution, round, ledger, and wallet machine values without mutation', async () => {
@@ -91,7 +91,9 @@ describe('Phase 4 financial localization', () => {
     };
     const before = structuredClone({ ledger, transaction });
 
-    expect(contributionStatusLabel('rejected', i18n.t)).toBe('Rechazada');
+    expect(contributionStatusLabel('rejected', i18n.t)).toBe(
+      'El pago necesita atención',
+    );
     expect(roundStatusLabel('active', i18n.t)).toBe('Ronda en curso');
     expect(ledgerEventLabel(ledger, i18n.t)).toBe('Contribución confirmada');
     expect(walletTransactionLabel(transaction, i18n.t)).toBe('Pago recibido');

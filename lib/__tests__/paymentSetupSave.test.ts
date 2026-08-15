@@ -99,6 +99,74 @@ describe('saveCirclePaymentInstructions (payment-setup save flow)', () => {
     expect(result.shouldNavigate).toBe(false);
   });
 
+  test('8a. empty instructions are rejected and do not call the API', async () => {
+    const updateCircleSettings = jest.fn();
+    const result = await saveCirclePaymentInstructions({
+      token: 'tok_valid',
+      circleId,
+      instructions: '   ',
+      updateCircleSettings,
+    });
+
+    expect(result.status).toBe('empty_instructions');
+    expect(result.shouldNavigate).toBe(false);
+    expect(updateCircleSettings).not.toHaveBeenCalled();
+  });
+
+  test('8b. 280-character instructions are forwarded unchanged', async () => {
+    const updateCircleSettings = jest.fn().mockResolvedValue({});
+    const maxLength = 'x'.repeat(280);
+    const result = await saveCirclePaymentInstructions({
+      token: 'tok_valid',
+      circleId,
+      instructions: maxLength,
+      updateCircleSettings,
+    });
+
+    expect(result.status).toBe('success');
+    expect(updateCircleSettings).toHaveBeenCalledWith('tok_valid', circleId, {
+      paymentInstructions: maxLength,
+    });
+  });
+
+  test('9. structured destinations are saved and compose the free-text fallback', async () => {
+    const updateCircleSettings = jest.fn().mockResolvedValue({});
+    const result = await saveCirclePaymentInstructions({
+      token: 'tok_valid',
+      circleId,
+      instructions: '',
+      destinations: [
+        { method: 'zelle', destination: 'organizer@example.com', memo: 'Include your name' },
+        { method: 'cashapp', destination: '$greg' },
+      ],
+      updateCircleSettings,
+    });
+
+    expect(result.status).toBe('success');
+    expect(updateCircleSettings).toHaveBeenCalledWith('tok_valid', circleId, {
+      paymentDestinations: [
+        { method: 'zelle', destination: 'organizer@example.com', memo: 'Include your name' },
+        { method: 'cashapp', destination: '$greg' },
+      ],
+      paymentInstructions:
+        'Zelle: organizer@example.com\nInclude your name\nCash App: $greg',
+    });
+  });
+
+  test('10. empty destinations do not call the API', async () => {
+    const updateCircleSettings = jest.fn();
+    const result = await saveCirclePaymentInstructions({
+      token: 'tok_valid',
+      circleId,
+      instructions: entered,
+      destinations: [{ method: 'venmo', destination: '   ' }],
+      updateCircleSettings,
+    });
+
+    expect(result.status).toBe('empty_instructions');
+    expect(updateCircleSettings).not.toHaveBeenCalled();
+  });
+
   test('8. entered payment instructions remain after failure', async () => {
     const result = await saveCirclePaymentInstructions({
       token: 'tok_valid',
