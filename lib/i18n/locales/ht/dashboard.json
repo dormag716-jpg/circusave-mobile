@@ -57,6 +57,7 @@
   "daysOverdue_one": "1 jou an reta",
   "daysOverdue_other": "{{count}} jou an reta",
   "noUpcomingPayout": "Pa gen pèman k ap vini",
+  "payoutNotReleased": "Peman an poko lage",
   "frequency": {
     "weekly": "Chak semèn",
     "biweekly": "Chak de semèn",

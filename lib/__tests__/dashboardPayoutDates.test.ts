@@ -1,9 +1,16 @@
+import { readFileSync } from 'fs';
+import path from 'path';
+
 import {
   calendarDaysFromToday,
   formatPayoutDateWithRelative,
+  isCurrentPayoutOverdue,
   parseCalendarDateOnly,
+  presentDashboardClockPayout,
   relativePayoutLabel,
   resolveCircleRoundPayoutDate,
+  resolveDashboardClockPayout,
+  type CircleClockPayoutInput,
 } from '../dashboardPayoutDates';
 
 /** Fixed "now" as local calendar via Date with local Y-M-D components. */
@@ -22,6 +29,14 @@ const tEn = (key: string, options?: Record<string, unknown>): string => {
       return count === 1 ? `In ${count} day` : `In ${count} days`;
     case 'daysOverdue':
       return count === 1 ? '1 day overdue' : `${count} days overdue`;
+    case 'receives':
+      return `${options?.name} receives`;
+    case 'payoutNotReleased':
+      return 'Payout not released';
+    case 'noUpcomingPayout':
+      return 'No upcoming payout';
+    case 'nextPayout':
+      return 'Next Payout';
     default:
       return key;
   }
@@ -185,33 +200,45 @@ describe('countdown vs hero date sources (semantic)', () => {
     expect(relativePayoutLabel(currentRound, tEn, now)).not.toBe('Today');
   });
 
-  test('countdown recipient must come from upcomingPayout.recipientName only', () => {
-    type Upcoming = {
-      payoutDate: string;
-      recipientName: string | null;
-      circleName: string;
-    } | null;
-
-    function countdownLabel(upcoming: Upcoming, t: typeof tEn): string {
-      if (!upcoming) {
-        return 'No upcoming payout';
-      }
-      if (upcoming.recipientName) {
-        return `${upcoming.recipientName} receives`;
-      }
-      return upcoming.circleName || 'Next Payout';
-    }
-
-    const upcoming = {
-      payoutDate: '2026-08-03',
-      recipientName: 'Renee Jenkins',
-      circleName: 'Family Circle',
-    };
+  test('clock recipient is never mixed with a different-round upcoming name', () => {
     const firstDetailRecipient = 'Someone Else';
+    const clock = resolveDashboardClockPayout({
+      now: localNoon(2026, 7, 28),
+      circles: [
+        {
+          circleId: 'c1',
+          circleName: 'Family Circle',
+          currentRound: 1,
+          nextPayout: {
+            round: 1,
+            memberId: 'm-overdue',
+            payoutDate: '2026-07-27',
+            status: 'scheduled',
+          },
+          detail: {
+            currentRound: 1,
+            members: [
+              { id: 'm-overdue', full_name: 'Alex Rivera' },
+              { id: 'm-later', full_name: firstDetailRecipient },
+            ],
+          },
+        },
+      ],
+      summaryUpcoming: {
+        circleId: 'c1',
+        circleName: 'Family Circle',
+        payoutDate: '2026-08-03',
+        recipientName: firstDetailRecipient,
+        recipientMemberId: 'm-later',
+      },
+    });
 
-    expect(countdownLabel(upcoming, tEn)).toBe('Renee Jenkins receives');
-    expect(countdownLabel(upcoming, tEn)).not.toContain(firstDetailRecipient);
-    expect(countdownLabel(null, tEn)).toBe('No upcoming payout');
+    expect(clock?.payoutDate).toBe('2026-07-27');
+    expect(clock?.recipientName).toBe('Alex Rivera');
+    expect(clock?.recipientName).not.toBe(firstDetailRecipient);
+    expect(presentDashboardClockPayout(clock, tEn, localNoon(2026, 7, 28)).label).toBe(
+      'Alex Rivera receives',
+    );
   });
 
   test('no upcoming payout produces no fabricated recipient', () => {
@@ -224,5 +251,404 @@ describe('countdown vs hero date sources (semantic)', () => {
     const name = upcoming?.recipientName ?? null;
     expect(name).toBeNull();
     expect(relativePayoutLabel(undefined, tEn, now)).toBe('—');
+  });
+});
+
+describe('dashboard clock current-round payout', () => {
+  const now = localNoon(2026, 7, 28);
+
+  function circle(overrides: Partial<CircleClockPayoutInput> = {}): CircleClockPayoutInput {
+    return {
+      circleId: 'c1',
+      circleName: 'Family Circle',
+      currentRound: 1,
+      nextPayout: {
+        round: 1,
+        memberId: 'm-alex',
+        payoutDate: '2026-08-03',
+        status: 'scheduled',
+      },
+      detail: {
+        currentRound: 1,
+        members: [{ id: 'm-alex', full_name: 'Alex Rivera' }],
+      },
+      ...overrides,
+    };
+  }
+
+  test('future current payout shows In N days from the current round', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [circle()],
+      summaryUpcoming: {
+        payoutDate: '2026-08-10',
+        recipientName: 'Later Person',
+        circleName: 'Other Circle',
+      },
+    });
+    const presented = presentDashboardClockPayout(clock, tEn, now);
+    expect(clock?.source).toBe('current_round');
+    expect(clock?.payoutDate).toBe('2026-08-03');
+    expect(clock?.recipientName).toBe('Alex Rivera');
+    expect(clock?.overdue).toBe(false);
+    expect(presented.value).toBe('In 6 days');
+    expect(presented.label).toBe('Alex Rivera receives');
+    expect(presented.detail).toBeNull();
+  });
+
+  test('payout due tomorrow is Tomorrow', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        circle({
+          nextPayout: {
+            round: 1,
+            memberId: 'm-alex',
+            payoutDate: '2026-07-29',
+            status: 'scheduled',
+          },
+        }),
+      ],
+    });
+    expect(presentDashboardClockPayout(clock, tEn, now).value).toBe('Tomorrow');
+    expect(clock?.overdue).toBe(false);
+  });
+
+  test('payout due today is Today and not overdue', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        circle({
+          nextPayout: {
+            round: 1,
+            memberId: 'm-alex',
+            payoutDate: '2026-07-28',
+            status: 'scheduled',
+          },
+        }),
+      ],
+    });
+    const presented = presentDashboardClockPayout(clock, tEn, now);
+    expect(clock?.overdue).toBe(false);
+    expect(presented.value).toBe('Today');
+    expect(presented.detail).toBeNull();
+    expect(isCurrentPayoutOverdue('2026-07-28', false, now)).toBe(false);
+  });
+
+  test('overdue unreleased payout shows N days overdue and payout not released', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        circle({
+          nextPayout: {
+            round: 1,
+            memberId: 'm-alex',
+            payoutDate: '2026-07-22',
+            status: 'scheduled',
+          },
+          schedule: {
+            currentRound: 1,
+            roundWorkspace: { currentRoundNumber: 1, payoutReleased: false },
+            schedule: [
+              {
+                round: 1,
+                payoutDate: '2026-07-22',
+                recipientMemberId: 'm-alex',
+                recipientName: 'Alex Rivera',
+                status: 'active',
+              },
+            ],
+          },
+        }),
+      ],
+    });
+    const presented = presentDashboardClockPayout(clock, tEn, now);
+    expect(clock?.source).toBe('current_round');
+    expect(clock?.overdue).toBe(true);
+    expect(presented.value).toBe('6 days overdue');
+    expect(presented.label).toBe('Alex Rivera receives');
+    expect(presented.detail).toBe('Payout not released');
+    expect(presented.overdue).toBe(true);
+  });
+
+  test('released payout advances to the next round', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        circle({
+          currentRound: 2,
+          nextPayout: {
+            round: 2,
+            memberId: 'm-jordan',
+            payoutDate: '2026-08-03',
+            status: 'scheduled',
+          },
+          schedule: {
+            currentRound: 2,
+            currentRoundSummary: {
+              dueDate: '2026-08-03',
+              recipientMemberId: 'm-jordan',
+              payoutReleased: false,
+              roundNumber: 2,
+            },
+            roundWorkspace: {
+              currentRoundNumber: 2,
+              currentRecipientMemberId: 'm-jordan',
+              currentRecipientName: 'Jordan Blake',
+              payoutReleased: false,
+            },
+            schedule: [
+              {
+                round: 1,
+                payoutDate: '2026-07-22',
+                recipientMemberId: 'm-alex',
+                recipientName: 'Alex Rivera',
+                status: 'released',
+              },
+              {
+                round: 2,
+                payoutDate: '2026-08-03',
+                recipientMemberId: 'm-jordan',
+                recipientName: 'Jordan Blake',
+                status: 'scheduled',
+              },
+            ],
+          },
+          detail: {
+            currentRound: 2,
+            currentRoundSummary: {
+              dueDate: '2026-08-03',
+              recipientMemberId: 'm-jordan',
+              payoutReleased: false,
+              roundNumber: 2,
+            },
+            members: [
+              { id: 'm-alex', full_name: 'Alex Rivera' },
+              { id: 'm-jordan', full_name: 'Jordan Blake' },
+            ],
+          },
+        }),
+      ],
+    });
+    const presented = presentDashboardClockPayout(clock, tEn, now);
+    expect(clock?.payoutDate).toBe('2026-08-03');
+    expect(clock?.recipientName).toBe('Jordan Blake');
+    expect(clock?.overdue).toBe(false);
+    expect(presented.value).toBe('In 6 days');
+    expect(presented.detail).toBeNull();
+  });
+
+  test('a past date is not overdue after the backend marks the payout released', () => {
+    expect(isCurrentPayoutOverdue('2026-07-22', true, now)).toBe(false);
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        circle({
+          nextPayout: {
+            round: 1,
+            memberId: 'm-alex',
+            payoutDate: '2026-07-22',
+            status: 'released',
+          },
+          schedule: {
+            currentRound: 1,
+            currentRoundSummary: {
+              dueDate: '2026-07-22',
+              recipientMemberId: 'm-alex',
+              payoutReleased: true,
+              roundNumber: 1,
+            },
+            roundWorkspace: { currentRoundNumber: 1, payoutReleased: true },
+            schedule: [
+              {
+                round: 1,
+                payoutDate: '2026-07-22',
+                recipientMemberId: 'm-alex',
+                status: 'released',
+              },
+            ],
+          },
+        }),
+      ],
+      summaryUpcoming: {
+        circleId: 'c1',
+        circleName: 'Family Circle',
+        payoutDate: '2026-08-03',
+        recipientName: 'Jordan Blake',
+      },
+    });
+    expect(clock?.source).toBe('summary_fallback');
+    expect(clock?.payoutDate).toBe('2026-08-03');
+    expect(clock?.overdue).toBe(false);
+  });
+
+  test('overdue current round beats a later summary.upcomingPayout', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        circle({
+          nextPayout: {
+            round: 1,
+            memberId: 'm-alex',
+            payoutDate: '2026-07-27',
+            status: 'scheduled',
+          },
+          schedule: {
+            currentRound: 1,
+            roundWorkspace: { currentRoundNumber: 1, payoutReleased: false },
+            schedule: [
+              {
+                round: 1,
+                payoutDate: '2026-07-27',
+                recipientMemberId: 'm-alex',
+                recipientName: 'Alex Rivera',
+                status: 'active',
+              },
+            ],
+          },
+        }),
+      ],
+      summaryUpcoming: {
+        circleId: 'c1',
+        circleName: 'Family Circle',
+        payoutDate: '2026-08-03',
+        recipientName: 'Jordan Blake',
+        recipientMemberId: 'm-jordan',
+      },
+    });
+    expect(clock?.source).toBe('current_round');
+    expect(clock?.payoutDate).toBe('2026-07-27');
+    expect(clock?.recipientName).toBe('Alex Rivera');
+    expect(clock?.overdue).toBe(true);
+    expect(clock?.recipientName).not.toBe('Jordan Blake');
+  });
+
+  test('recipient and date always come from the same current round', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        circle({
+          nextPayout: {
+            round: 2,
+            memberId: 'm-jordan',
+            payoutDate: '2026-08-03',
+            status: 'scheduled',
+          },
+          schedule: {
+            currentRound: 1,
+            currentRoundSummary: {
+              dueDate: '2026-07-22',
+              recipientMemberId: 'm-alex',
+              payoutReleased: false,
+              roundNumber: 1,
+            },
+            roundWorkspace: {
+              currentRoundNumber: 1,
+              currentRecipientMemberId: 'm-alex',
+              currentRecipientName: 'Alex Rivera',
+              payoutReleased: false,
+            },
+            schedule: [
+              {
+                round: 1,
+                payoutDate: '2026-07-22',
+                recipientMemberId: 'm-alex',
+                recipientName: 'Alex Rivera',
+                status: 'active',
+              },
+              {
+                round: 2,
+                payoutDate: '2026-08-03',
+                recipientMemberId: 'm-jordan',
+                recipientName: 'Jordan Blake',
+                status: 'scheduled',
+              },
+            ],
+          },
+          detail: {
+            currentRound: 1,
+            currentRoundSummary: {
+              dueDate: '2026-07-22',
+              recipientMemberId: 'm-alex',
+              payoutReleased: false,
+              roundNumber: 1,
+            },
+            members: [
+              { id: 'm-alex', full_name: 'Alex Rivera' },
+              { id: 'm-jordan', full_name: 'Jordan Blake' },
+            ],
+          },
+        }),
+      ],
+      summaryUpcoming: {
+        payoutDate: '2026-08-03',
+        recipientName: 'Jordan Blake',
+      },
+    });
+    expect(clock?.payoutDate).toBe('2026-07-22');
+    expect(clock?.recipientName).toBe('Alex Rivera');
+    expect(clock?.recipientName).not.toBe('Jordan Blake');
+  });
+
+  test('summary fallback when no current-round payout exists', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [
+        {
+          circleId: 'c-empty',
+          circleName: 'Setup Circle',
+          currentRound: 1,
+          nextPayout: null,
+        },
+      ],
+      summaryUpcoming: {
+        circleId: 'c-fallback',
+        circleName: 'Fallback Circle',
+        payoutDate: '2026-08-10',
+        recipientName: 'Sam Lee',
+        recipientMemberId: 'm-sam',
+      },
+    });
+    const presented = presentDashboardClockPayout(clock, tEn, now);
+    expect(clock?.source).toBe('summary_fallback');
+    expect(clock?.payoutDate).toBe('2026-08-10');
+    expect(clock?.recipientName).toBe('Sam Lee');
+    expect(clock?.overdue).toBe(false);
+    expect(presented.value).toBe('In 13 days');
+    expect(presented.label).toBe('Sam Lee receives');
+  });
+
+  test('empty current-round data and no summary fallback shows no upcoming payout', () => {
+    const clock = resolveDashboardClockPayout({
+      now,
+      circles: [{ circleId: 'c-empty', circleName: 'Empty', nextPayout: null }],
+      summaryUpcoming: null,
+    });
+    expect(clock).toBeNull();
+    expect(presentDashboardClockPayout(clock, tEn, now)).toEqual({
+      value: '—',
+      label: 'No upcoming payout',
+      overdue: false,
+      detail: null,
+    });
+  });
+
+  test('dashboard clock StatCard is wired to the current-round resolver', () => {
+    const source = readFileSync(
+      path.join(__dirname, '..', '..', 'app', '(tabs)', 'dashboard.tsx'),
+      'utf8',
+    );
+    expect(source).toMatch(/resolveDashboardClockPayout/);
+    expect(source).toMatch(/presentDashboardClockPayout/);
+    const statsRow = source.slice(source.indexOf('styles.statsRow'));
+    const firstCard = statsRow.slice(
+      statsRow.indexOf('<StatCard'),
+      statsRow.indexOf('<StatCard', statsRow.indexOf('<StatCard') + 1),
+    );
+    expect(firstCard).toMatch(/clockPresentation\.value/);
+    expect(firstCard).not.toMatch(/upcomingPayout\?\.payoutDate/);
+    expect(firstCard).not.toMatch(/upcomingPayout\?\.recipientName/);
+    expect(firstCard).toMatch(/clockPresentation\.overdue \? colors\.danger/);
+    expect(firstCard).toMatch(/clockPresentation\.detail/);
   });
 });

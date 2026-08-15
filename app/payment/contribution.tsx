@@ -40,6 +40,10 @@ import {
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
 import {
+  nextContributionReviewExpanded,
+  shouldStartContributionReviewExpanded,
+} from '@/lib/contributionReview';
+import {
   PaymentSessionLock,
   runStripeContributionPayment,
   sanitizePaymentUserMessage,
@@ -80,6 +84,9 @@ export default function ContributionPaymentScreen() {
     null | 'confirming' | 'pending'
   >(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [reviewExpanded, setReviewExpanded] = useState<boolean>(
+    shouldStartContributionReviewExpanded(),
+  );
   const stripe = useStripe();
   // Synchronous lock: React state alone can allow a second tap before re-render.
   const paymentLockRef = useRef(new PaymentSessionLock());
@@ -656,24 +663,49 @@ export default function ContributionPaymentScreen() {
         </View>
 
         <View style={styles.reviewCard}>
-          <Text style={styles.reviewTitle}>{t('contributions:review')}</Text>
-          <ReviewRow label={t('contributions:circle')} value={circle.name} />
-          <ReviewRow
-            label={t('contributions:round')}
-            value={formatRound(currentRound)}
-          />
-          <ReviewRow
-            label={t('contributions:selectedHand')}
-            value={activeHand?.label ?? '—'}
-          />
-          <ReviewRow
-            label={t('contributions:amountForHand')}
-            value={formatCurrency(
-              amountPerHand,
-              i18n.resolvedLanguage || i18n.language,
-            )}
-          />
-          <ReviewRow label={t('contributions:status')} value={statusLabel} />
+          <Pressable
+            style={styles.reviewHeader}
+            onPress={() =>
+              setReviewExpanded((open) => nextContributionReviewExpanded(open))
+            }
+            accessibilityRole="button"
+            accessibilityState={{ expanded: reviewExpanded }}
+            accessibilityLabel={
+              reviewExpanded
+                ? t('contributions:collapseReview')
+                : t('contributions:expandReview')
+            }
+          >
+            <Text style={styles.reviewTitle}>
+              {t('contributions:reviewPaymentDetails')}
+            </Text>
+            <FontAwesome
+              name={reviewExpanded ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={colors.subtle}
+            />
+          </Pressable>
+          {reviewExpanded ? (
+            <View>
+              <ReviewRow label={t('contributions:circle')} value={circle.name} />
+              <ReviewRow
+                label={t('contributions:round')}
+                value={formatRound(currentRound)}
+              />
+              <ReviewRow
+                label={t('contributions:selectedHand')}
+                value={activeHand?.label ?? '—'}
+              />
+              <ReviewRow
+                label={t('contributions:amountForHand')}
+                value={formatCurrency(
+                  amountPerHand,
+                  i18n.resolvedLanguage || i18n.language,
+                )}
+              />
+              <ReviewRow label={t('contributions:status')} value={statusLabel} />
+            </View>
+          ) : null}
         </View>
 
         {viewerHands.length === 0 ? (
@@ -1010,13 +1042,21 @@ const styles = StyleSheet.create({
     borderRadius: radii.card,
     borderWidth: 1,
     marginTop: 16,
-    padding: spacing.card,
+    paddingHorizontal: spacing.card,
+    paddingVertical: 6,
+  },
+  reviewHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 48,
+    paddingVertical: 10,
   },
   reviewTitle: {
     color: colors.text,
+    flex: 1,
     fontSize: 18,
     fontWeight: '900',
-    marginBottom: 4,
   },
   reviewRow: {
     borderBottomColor: colors.cardBorder,

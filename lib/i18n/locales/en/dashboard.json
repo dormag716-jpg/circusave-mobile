@@ -57,6 +57,7 @@
   "daysOverdue_one": "1 day overdue",
   "daysOverdue_other": "{{count}} days overdue",
   "noUpcomingPayout": "No upcoming payout",
+  "payoutNotReleased": "Payout not released",
   "frequency": {
     "weekly": "Weekly",
     "biweekly": "Bi-weekly",

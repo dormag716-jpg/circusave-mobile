@@ -57,6 +57,7 @@
   "daysOverdue_one": "1 día de atraso",
   "daysOverdue_other": "{{count}} días de atraso",
   "noUpcomingPayout": "Sin próximo pago",
+  "payoutNotReleased": "Pago no liberado",
   "frequency": {
     "weekly": "Semanal",
     "biweekly": "Cada dos semanas",

@@ -26,8 +26,9 @@ import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency, formatShortDate } from '@/lib/i18n/formatters';
 import {
   formatPayoutDateWithRelative,
-  relativePayoutLabel,
+  presentDashboardClockPayout,
   resolveCircleRoundPayoutDate,
+  resolveDashboardClockPayout,
 } from '@/lib/dashboardPayoutDates';
 import {
   circleWorkspaceHref,
@@ -133,8 +134,25 @@ export default function DashboardScreen() {
   const firstReviewTarget = reviewTargets[0];
   const firstDueCircle = personalDueCircles[0];
 
-  /** Global next future-or-today payout — only from dashboard summary (not first circle). */
-  const upcomingPayout = summary?.upcomingPayout ?? null;
+  const clockPayout = useMemo(
+    () =>
+      resolveDashboardClockPayout({
+        circles: activeCircles.map((circle) => ({
+          circleId: circle.id,
+          circleName: circle.name,
+          currentRound: circle.currentRound,
+          nextPayout: circle.nextPayout,
+          schedule: circleSchedules[circle.id],
+          detail: circleDetails[circle.id],
+        })),
+        summaryUpcoming: summary?.upcomingPayout ?? null,
+      }),
+    [activeCircles, circleDetails, circleSchedules, summary?.upcomingPayout],
+  );
+  const clockPresentation = useMemo(
+    () => presentDashboardClockPayout(clockPayout, t),
+    [clockPayout, t],
+  );
   const hasSnapshot = summary !== null || circles.length > 0;
   const showSkeleton = shouldShowDashboardSkeleton({ loading, hasSnapshot });
   const showEmptyCircles = shouldShowDashboardEmptyCircles({
@@ -483,19 +501,18 @@ export default function DashboardScreen() {
             <>
               <StatCard
                 icon="clock-o"
-                value={
-                  upcomingPayout?.payoutDate
-                    ? relativePayoutLabel(upcomingPayout.payoutDate, t)
-                    : '—'
+                value={clockPresentation.value}
+                label={clockPresentation.label}
+                color={
+                  clockPresentation.overdue ? colors.danger : colors.success
                 }
-                label={
-                  upcomingPayout?.recipientName
-                    ? t('receives', { name: upcomingPayout.recipientName })
-                    : upcomingPayout
-                      ? upcomingPayout.circleName || t('nextPayout')
-                      : t('noUpcomingPayout')
+                valueColor={
+                  clockPresentation.overdue ? colors.danger : undefined
                 }
-                color={colors.success}
+                detail={clockPresentation.detail ?? undefined}
+                detailColor={
+                  clockPresentation.overdue ? colors.danger : undefined
+                }
               />
               <StatCard
                 icon="users"
@@ -759,19 +776,31 @@ function StatCard({
   label,
   color,
   detail,
+  detailColor,
+  valueColor,
 }: {
   icon: IconName;
   value: string;
   label: string;
   color: string;
   detail?: string;
+  detailColor?: string;
+  valueColor?: string;
 }) {
   return (
     <View style={styles.statCard}>
       <FontAwesome name={icon} size={28} color={color} />
-      <Text style={styles.statValue}>{value}</Text>
+      <Text style={[styles.statValue, valueColor ? { color: valueColor } : null]}>
+        {value}
+      </Text>
       <Text style={styles.statLabel}>{label}</Text>
-      {detail ? <Text style={styles.statDetail}>{detail}</Text> : null}
+      {detail ? (
+        <Text
+          style={[styles.statDetail, detailColor ? { color: detailColor } : null]}
+        >
+          {detail}
+        </Text>
+      ) : null}
     </View>
   );
 }
