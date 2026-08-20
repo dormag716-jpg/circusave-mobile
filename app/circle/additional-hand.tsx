@@ -12,6 +12,7 @@ import {
 } from '@/lib/api';
 import { normalizeAgreementLanguage, shouldRefreshStaleSnapshot } from '@/lib/circleAgreements';
 import { useAuthSession } from '@/lib/authContext';
+import { logClientError } from '@/lib/errorLogging';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
@@ -40,7 +41,9 @@ export default function AdditionalHandConsentScreen() {
     try {
       setPreview(await getAdditionalHandPreview(token, circleId));
     } catch (requestError) {
-      console.error('Unable to load additional-hand obligation preview', requestError);
+      logClientError('Unable to load additional-hand obligation preview', requestError, {
+        circleId,
+      });
       setPreview(null);
       setError(t('genericError'));
     } finally {
@@ -66,7 +69,7 @@ export default function AdditionalHandConsentScreen() {
       });
       router.replace({ pathname: '/circle/workspace', params: { circleId, tab: 'people', additionalHandRequested: '1' } });
     } catch (requestError) {
-      console.error('Unable to request an additional hand', requestError);
+      logClientError('Unable to request an additional hand', requestError, { circleId });
       if (shouldRefreshStaleSnapshot(requestError)) {
         setError(t('previewExpired'));
         await loadPreview();

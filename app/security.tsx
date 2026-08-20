@@ -12,6 +12,7 @@ import { useDeviceLock } from '@/components/DeviceLock';
 import { exportUserData, deleteAccount } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
 import { colors, radii, spacing } from '@/lib/theme';
+import { logClientError } from '@/lib/errorLogging';
 
 export default function SecurityScreen() {
   const { session, signOut } = useAuthSession();
@@ -51,7 +52,7 @@ export default function SecurityScreen() {
           await copyText(archiveJson);
         }
       } catch (shareErr) {
-        console.error('Data export share failed, falling back to copy:', shareErr);
+        logClientError('Data export share failed, falling back to copy', shareErr);
         await copyText(archiveJson);
       }
 
@@ -63,7 +64,7 @@ export default function SecurityScreen() {
         [{ text: 'OK' }],
       );
     } catch (err) {
-      console.error('Data export failed:', err);
+      logClientError('Data export failed', err);
       Alert.alert('Export Error', 'Unable to export user data. Please check your connection.');
     } finally {
       setExporting(false);
@@ -101,7 +102,7 @@ export default function SecurityScreen() {
                 ],
               );
             } catch (err) {
-              console.error('Account deletion failed:', err);
+              logClientError('Account deletion failed', err);
               Alert.alert(
                 'Deletion Error',
                 'Unable to complete account deletion. Please verify your connection or try again.',

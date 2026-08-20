@@ -40,6 +40,7 @@ import {
   rejectContribution,
   sendContributionReminder,
   submitContribution,
+  ApiError,
   type BackendCircleDetail,
   type BackendCircleMember,
   type BackendJoinRequest,
@@ -55,6 +56,7 @@ import {
   startCircle,
   type CircleAgreementSnapshot,
 } from '@/lib/api';
+import { logClientError } from '@/lib/errorLogging';
 import {
   getMemberAgreementPrompt,
   memberCanOpenAgreementReview,
@@ -68,9 +70,11 @@ import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/workspaceAgreementLoad';
 import { useAuthSession } from '@/lib/authContext';
 import {
+  evictCircleWorkspaceCache,
   readCircleWorkspacePresentation,
   seedCircleWorkspaceCache,
 } from '@/lib/circleWorkspaceCache';
+import { invalidateCachedGets } from '@/lib/httpGetCache';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 import {
   isWorkspaceChromeCollapsed,
@@ -100,7 +104,6 @@ import {
 } from '@/lib/circleLifecycleCopy';
 import {
   buildCircleSetupProgress,
-  canEditContributionPaymentInstructions,
   hasContributionPaymentInstructions,
   orderedParticipatingHands,
   splitWaitlistRequests,
@@ -220,6 +223,7 @@ export default function CircleWorkspaceScreen() {
     warmPresentation?.detail ?? null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [loading, setLoading] = useState(!warmPresentation?.detail);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -283,13 +287,22 @@ export default function CircleWorkspaceScreen() {
         return;
       }
       hasLastKnownCircleRef.current = true;
+      setAccessDenied(false);
       setCircle(nextCircle);
       seedCircleWorkspaceCache({ circleId, detail: nextCircle });
     } catch (loadError) {
-      console.error('Unable to load circle workspace', loadError);
       if (!workspaceGeneration.current.isCurrent(generation)) {
         return;
       }
+      if (loadError instanceof ApiError && loadError.status === 403) {
+        invalidateCachedGets();
+        evictCircleWorkspaceCache(circleId);
+        setAccessDenied(true);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+      logClientError('Unable to load circle workspace', loadError, { circleId });
       setError(t('status.genericError'));
     } finally {
       if (
@@ -316,6 +329,7 @@ export default function CircleWorkspaceScreen() {
       setLoading(true);
     }
     setResolvedRound(null);
+    setAccessDenied(false);
     setError(null);
   }, [circleId]);
 
@@ -372,11 +386,22 @@ export default function CircleWorkspaceScreen() {
   // Chat tab needs a flex-bounded column (not a parent ScrollView) so the
   // composer can stay above the software keyboard on Android resize + iOS.
   // Keep last-known circle mounted across refetch errors and silent reloads.
-  const readyWorkspace = Boolean(circle && token);
+  const readyWorkspace = Boolean(circle && token && !accessDenied);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      {readyWorkspace ? (
+      {accessDenied ? (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {workspaceHeader}
+          <BlockedAccessCard
+            circleName={circle?.name || t('fallbackName')}
+            viewerRole="none"
+          />
+        </ScrollView>
+      ) : readyWorkspace ? (
         <View style={styles.workspaceShell}>
           <View
             style={[
@@ -483,6 +508,9 @@ function WorkspaceContent({
 }) {
   const { hasCapability } = useEntitlements();
   const canExportAdvancedReports = hasCapability('advancedReports');
+  const contributionPaymentsEnabled = hasCapability(
+    'contributionPaymentsEnabled',
+  );
   const isOrganizer = circle.userRole === 'organizer';
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
@@ -494,8 +522,15 @@ function WorkspaceContent({
   ]);
   const language = translation.resolvedLanguage || translation.language;
   const { t: tPeople } = useTranslation('people');
-  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
-  const [chatOpened, setChatOpened] = useState(initialTab === 'chat');
+  const hasChatMembership = (circle.members || []).some(
+    (member) => String(member.userId || '').trim() === userId,
+  );
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    initialTab === 'chat' && !hasChatMembership ? 'round' : initialTab,
+  );
+  const [chatOpened, setChatOpened] = useState(
+    initialTab === 'chat' && hasChatMembership,
+  );
   const warmSections = readCircleWorkspacePresentation(circle.id);
   const [scheduleData, setScheduleData] = useState<BackendRoundSnapshot | null>(
     warmSections?.schedule ?? null,
@@ -519,19 +554,34 @@ function WorkspaceContent({
   const [paymentReferenceDraft, setPaymentReferenceDraft] = useState('');
   const paymentInstructions = circle.paymentInstructions ?? null;
   const paymentDestinations = circle.paymentDestinations ?? null;
-  const { unreadCount: chatUnreadCount } = useConversationUnreadCount(
+  const {
+    unreadCount: chatUnreadCount,
+    accessDenied: chatAccessDenied,
+  } = useConversationUnreadCount(
     circle.id,
     token,
+    hasChatMembership,
   );
+  const chatAvailable = hasChatMembership && !chatAccessDenied;
+  const visibleTabs = chatAvailable
+    ? tabs
+    : tabs.filter((tab) => tab.id !== 'chat');
   const [workspaceAgreementSnapshot, setWorkspaceAgreementSnapshot] =
     useState<CircleAgreementSnapshot | null>(null);
   const [workspaceAgreementLoaded, setWorkspaceAgreementLoaded] = useState(false);
 
   useEffect(() => {
-    if (activeTab === 'chat') {
+    if (activeTab === 'chat' && chatAvailable) {
       setChatOpened(true);
     }
-  }, [activeTab]);
+  }, [activeTab, chatAvailable]);
+
+  useEffect(() => {
+    if (!chatAvailable && activeTab === 'chat') {
+      setActiveTab('round');
+      setChatOpened(false);
+    }
+  }, [activeTab, chatAvailable]);
 
   const workspaceParticipating = useMemo(
     () =>
@@ -573,7 +623,9 @@ function WorkspaceContent({
         ) {
           if (!cancelled) setWorkspaceAgreementSnapshot(null);
         } else {
-          console.error('Unable to load agreement snapshot for workspace banner', error);
+          logClientError('Unable to load agreement snapshot for workspace banner', error, {
+            circleId: circle.id,
+          });
           if (!cancelled) setWorkspaceAgreementSnapshot(null);
         }
       } finally {
@@ -676,7 +728,9 @@ function WorkspaceContent({
         schedule: scheduleResponse,
       });
     } catch (loadError) {
-      console.error('Unable to load circle workspace sections', loadError);
+      logClientError('Unable to load circle workspace sections', loadError, {
+        circleId: circle.id,
+      });
       if (!sectionsGeneration.current.isCurrent(generation)) {
         return;
       }
@@ -697,7 +751,7 @@ function WorkspaceContent({
       }
       setLedgerEntries(ledgerResponse.entries || []);
     } catch (loadError) {
-      console.error('Unable to load circle ledger', loadError);
+      logClientError('Unable to load circle ledger', loadError, { circleId: circle.id });
     }
   }, [token, circle.id]);
 
@@ -983,7 +1037,10 @@ function WorkspaceContent({
         await Promise.all([onReload(), loadBackendSections()]);
         return;
       }
-      console.error('Unable to confirm contribution', confirmError);
+      logClientError('Unable to confirm contribution', confirmError, {
+        circleId: circle.id,
+        memberId: member.id,
+      });
       Alert.alert(
         t('contributions:alerts.confirmFailedTitle'),
         financialActionErrorMessage(
@@ -1019,7 +1076,10 @@ function WorkspaceContent({
       }
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (markPaidError) {
-      console.error('Unable to record payment', markPaidError);
+      logClientError('Unable to record payment', markPaidError, {
+        circleId: circle.id,
+        memberId: member.id,
+      });
       Alert.alert(
         t('contributions:alerts.recordFailedTitle'),
         financialActionErrorMessage(
@@ -1093,7 +1153,10 @@ function WorkspaceContent({
         await Promise.all([onReload(), loadBackendSections()]);
         return;
       }
-      console.error('Unable to report contribution as sent', submitError);
+      logClientError('Unable to report contribution as sent', submitError, {
+        circleId: circle.id,
+        memberId: target.handId,
+      });
       Alert.alert(
         t('contributions:markAsSent.failedTitle'),
         financialActionErrorMessage(
@@ -1117,7 +1180,7 @@ function WorkspaceContent({
 
     const recipient = orderedMembers.find(m => m.id === recipientId);
     if (!recipient) {
-      console.error('Payout recipient membership was not found', {
+      logClientError('Payout recipient membership was not found', undefined, {
         circleId: circle.id,
         recipientId,
       });
@@ -1133,7 +1196,10 @@ function WorkspaceContent({
         });
         await Promise.all([onReload(), loadBackendSections()]);
       } catch (releaseError) {
-        console.error('Unable to release payout', releaseError);
+        logClientError('Unable to release payout', releaseError, {
+          circleId: circle.id,
+          recipientId,
+        });
         Alert.alert(
           t('financialErrors:releasePayout'),
           financialActionErrorMessage(
@@ -1269,9 +1335,10 @@ function WorkspaceContent({
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (actionError) {
       const isReject = action === 'reject';
-      console.error(
+      logClientError(
         isReject ? 'Unable to reject contribution' : 'Unable to send reminder',
         actionError,
+        { circleId: circle.id, memberId: member.id },
       );
       Alert.alert(
         isReject
@@ -1351,32 +1418,10 @@ function WorkspaceContent({
           <FontAwesome name="chevron-right" size={11} color={colors.premiumLavender} />
         </Pressable>
 
-        {isOrganizer ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.organizerTool,
-              pressed && styles.organizerToolPressed,
-            ]}
-            onPress={() =>
-              router.push(
-                `/circle/reminder-schedule?circleId=${encodeURIComponent(circle.id)}` as Href,
-              )
-            }
-          >
-            <View style={styles.organizerToolIcon}>
-              <FontAwesome name="bell" size={15} color={colors.primaryDark} />
-            </View>
-            <View style={styles.organizerToolText}>
-              <Text style={styles.organizerToolTitle}>Smart reminders</Text>
-              <Text style={styles.organizerToolCopy}>Automate follow-up</Text>
-            </View>
-            <FontAwesome name="chevron-right" size={11} color={colors.subtle} />
-          </Pressable>
-        ) : null}
       </View>
 
       <View style={styles.tabBar}>
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
             <Pressable
@@ -1452,6 +1497,7 @@ function WorkspaceContent({
               displayRoundStatus={displayRoundStatus}
               dueDate={dueDate}
               memberCanSubmitContribution={memberCanSubmitContribution}
+              contributionPaymentsEnabled={contributionPaymentsEnabled}
               onApprove={promptConfirmReceived}
               onMarkPaid={promptRecordPaid}
               onReject={(member, reason, reasonCode) =>
@@ -1536,7 +1582,7 @@ function WorkspaceContent({
     </>
   );
 
-  const chatSurface = chatOpened ? (
+  const chatSurface = chatAvailable && chatOpened ? (
     <View
       style={
         activeTab === 'chat'
@@ -1699,6 +1745,7 @@ function MemberContributionCard({
   currentRoundNumber,
   language,
   memberCanSubmitContribution,
+  contributionPaymentsEnabled,
   onMarkAsSent,
   onPayInApp,
   payoutPosition,
@@ -1708,6 +1755,7 @@ function MemberContributionCard({
   currentRoundNumber?: number;
   language: string;
   memberCanSubmitContribution: boolean;
+  contributionPaymentsEnabled: boolean;
   onMarkAsSent: (handId: string) => void;
   onPayInApp: (handId: string) => void;
   payoutPosition?: number | null;
@@ -1838,6 +1886,7 @@ function MemberContributionCard({
               ) : null}
             </View>
             {memberCanSubmitContribution &&
+            contributionPaymentsEnabled &&
             hand.presentation.canReportPayment &&
             card.reportableHandCount <= 1 ? (
               <Pressable
@@ -1952,86 +2001,6 @@ function openContributionPaymentSetup(circleId: string) {
   router.push(circlePaymentSetupHref(circleId));
 }
 
-function OrganizerContributionInstructionsCard({
-  circleId,
-  paymentInstructions,
-  paymentDestinations,
-  paymentInstructionAudit,
-}: {
-  circleId: string;
-  paymentInstructions?: string | null;
-  paymentDestinations?: unknown;
-  paymentInstructionAudit?: Array<{ at?: string }> | null;
-}) {
-  const { t, i18n } = useTranslation(['contributions']);
-  const lastInstructionChangeAt = paymentInstructionAudit?.length
-    ? paymentInstructionAudit[paymentInstructionAudit.length - 1]?.at
-    : null;
-  const lastUpdatedLabel = lastInstructionChangeAt
-    ? formatLocalizedDate(lastInstructionChangeAt, i18n.resolvedLanguage || i18n.language)
-    : null;
-  const hasInstructions = hasContributionPaymentInstructions(
-    paymentInstructions,
-    paymentDestinations,
-  );
-  const actionLabel = hasInstructions
-    ? contributionCopy(t, 'workspace.organizerInstructions.editAction')
-    : contributionCopy(t, 'workspace.organizerInstructions.setAction');
-  const actionA11y = hasInstructions
-    ? contributionCopy(t, 'workspace.organizerInstructions.editA11y')
-    : contributionCopy(t, 'workspace.organizerInstructions.setA11y');
-
-  return (
-    <View style={styles.sectionCard}>
-      <Text style={styles.sectionTitle}>
-        {contributionCopy(t, 'workspace.organizerInstructions.title')}
-      </Text>
-      {hasInstructions ? (
-        <>
-          <PaymentDestinationList
-            destinations={
-              Array.isArray(paymentDestinations) ? paymentDestinations : []
-            }
-            fallbackText={String(paymentInstructions ?? '').trim()}
-          />
-          <Text style={styles.sectionSubtitle}>
-            {contributionCopy(t, 'workspace.organizerInstructions.membersSee')}
-          </Text>
-          {lastUpdatedLabel ? (
-            <Text style={styles.sectionSubtitle}>
-              {contributionCopy(t, 'workspace.organizerInstructions.lastUpdated', {
-                when: lastUpdatedLabel,
-              })}
-            </Text>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <Text style={styles.organizerInstructionsEmptyTitle}>
-            {contributionCopy(t, 'workspace.organizerInstructions.emptyTitle')}
-          </Text>
-          <Text style={styles.sectionSubtitle}>
-            {contributionCopy(t, 'workspace.organizerInstructions.emptyBody')}
-          </Text>
-        </>
-      )}
-      <Pressable
-        style={styles.organizerInstructionsButton}
-        onPress={() => openContributionPaymentSetup(circleId)}
-        accessibilityRole="button"
-        accessibilityLabel={actionA11y}
-      >
-        <FontAwesome
-          name={hasInstructions ? 'pencil' : 'plus'}
-          size={14}
-          color={colors.onColor}
-        />
-        <Text style={styles.organizerInstructionsButtonText}>{actionLabel}</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 function RoundTab({
   canReleasePayout,
   canRemindMembers,
@@ -2045,6 +2014,7 @@ function RoundTab({
   dueDate,
   processingMemberId,
   memberCanSubmitContribution,
+  contributionPaymentsEnabled,
   onApprove,
   onMarkPaid,
   onReject,
@@ -2081,6 +2051,7 @@ function RoundTab({
   dueDate?: string | null;
   processingMemberId: string | null;
   memberCanSubmitContribution: boolean;
+  contributionPaymentsEnabled: boolean;
   onApprove: (member: BackendCircleMember) => void;
   onMarkPaid: (member: BackendCircleMember) => void;
   onReject: (
@@ -2312,15 +2283,6 @@ function RoundTab({
             ))
           )}
         </View>
-
-        {canEditContributionPaymentInstructions(circle.userRole) ? (
-          <OrganizerContributionInstructionsCard
-            circleId={circle.id}
-            paymentInstructions={circle.paymentInstructions}
-            paymentDestinations={circle.paymentDestinations}
-            paymentInstructionAudit={circle.paymentInstructionAudit}
-          />
-        ) : null}
 
         <View style={[styles.sectionCard, { backgroundColor: colors.infoSoft, borderColor: colors.infoBorder }]}>
           <Text style={[styles.sectionTitle, { color: colors.infoText }]}>
@@ -2646,6 +2608,7 @@ function RoundTab({
           currentRoundNumber={currentRoundNumber}
           language={language}
           memberCanSubmitContribution={memberCanSubmitContribution}
+          contributionPaymentsEnabled={contributionPaymentsEnabled}
           onMarkAsSent={onMarkContributionSent}
           onPayInApp={(handId) =>
             router.push(contributionHref(circle.id, handId))
@@ -2686,30 +2649,47 @@ function RoundTab({
         </Text>
       ) : null}
 
-      {canEditContributionPaymentInstructions(circle.userRole) ? (
-        <OrganizerContributionInstructionsCard
-          circleId={circle.id}
-          paymentInstructions={paymentInstructions}
-          paymentDestinations={circle.paymentDestinations}
-          paymentInstructionAudit={circle.paymentInstructionAudit}
-        />
-      ) : null}
-
-      <View style={[styles.sectionCard, { padding: 0, overflow: 'hidden', backgroundColor: colors.card, borderRadius: 20, marginBottom: 16 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 12 }}>
-          <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textStrong }}>
-            {t('contributions:workspace.whoPaid')}
-          </Text>
-          <Pressable onPress={() => setShowAllPaid(!showAllPaid)}>
-            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '800' }}>
-              {showAllPaid
-                ? t('contributions:workspace.showLess')
-                : t('contributions:workspace.viewAll')}
-            </Text>
-          </Pressable>
+      <View style={styles.paymentRosterCard}>
+        <View style={styles.paymentRosterHeader}>
+          <View style={styles.paymentRosterHeading}>
+            <View style={styles.paymentRosterIcon}>
+              <FontAwesome name="check" size={15} color={colors.successText} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.paymentRosterTitle}>
+                {t('contributions:workspace.whoPaid')}
+              </Text>
+              <Text style={styles.paymentRosterSummary}>
+                {t('rounds:confirmedCount', {
+                  confirmed: visibleConfirmedCount,
+                  total: expectedContributionsCount,
+                })}
+              </Text>
+            </View>
+          </View>
+          {currentRoundMembers.length > 4 ? (
+            <Pressable
+              style={styles.paymentRosterToggle}
+              onPress={() => setShowAllPaid(!showAllPaid)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showAllPaid }}
+            >
+              <Text style={styles.paymentRosterToggleText}>
+                {showAllPaid
+                  ? t('contributions:workspace.showLess')
+                  : t('contributions:workspace.viewAll')}
+              </Text>
+              <FontAwesome
+                name={showAllPaid ? 'chevron-up' : 'chevron-down'}
+                size={11}
+                color={colors.primary}
+              />
+            </Pressable>
+          ) : null}
         </View>
 
-        {[...currentRoundMembers]
+        <View style={styles.paymentRosterList}>
+          {[...currentRoundMembers]
           .sort((a, b) => {
             const aConfirmed = a.status.raw === 'confirmed';
             const bConfirmed = b.status.raw === 'confirmed';
@@ -2718,7 +2698,7 @@ function RoundTab({
             return 0;
           })
           .slice(0, showAllPaid ? undefined : 4)
-          .map(({ member, status, contribution }, index, arr) => {
+          .map(({ member, status, contribution }, index) => {
           const reviewRow = buildOrganizerReviewRowModel({
             member,
             contribution,
@@ -2729,18 +2709,19 @@ function RoundTab({
           });
           let badgeColor = colors.surfaceMuted;
           let textColor = colors.muted;
-          let icon = null;
+          let statusIcon: ComponentProps<typeof FontAwesome>['name'] = 'clock-o';
 
           if (status.raw === 'confirmed') {
             badgeColor = colors.successSoft;
             textColor = colors.successText;
+            statusIcon = 'check-circle';
           } else if (status.raw === 'submitted' || status.raw === 'late') {
             badgeColor = colors.warningSoft;
             textColor = colors.warningText;
+            statusIcon = 'hourglass-half';
           } else {
             badgeColor = colors.surfaceMuted;
             textColor = colors.muted;
-            icon = <FontAwesome name="clock-o" size={12} color={colors.muted} style={{ marginRight: 4 }} />;
           }
 
           const reportedAt = formatContributionReportedAt(
@@ -2769,63 +2750,94 @@ function RoundTab({
           const methodLabel = methodLabelKey
             ? contributionCopy(t, methodLabelKey)
             : reviewRow.paymentMethod;
+          const hasPaymentDetails = Boolean(
+            reportedAt ||
+              reviewRow.paymentMethod ||
+              reviewRow.claimedDestination ||
+              reviewRow.paymentReference ||
+              reviewRow.note,
+          );
 
           return (
-            <View key={member.id}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-                <View style={{ marginRight: 12 }}>
-                  <Avatar name={reviewRow.displayName} size={40} />
-                </View>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong }}>
+            <View
+              key={member.id}
+              style={[
+                styles.paymentRosterRow,
+                index > 0 && styles.paymentRosterRowSeparated,
+              ]}
+            >
+              <View style={styles.paymentRosterMemberLine}>
+                <Avatar name={reviewRow.displayName} size={42} />
+                <View style={styles.paymentRosterMember}>
+                  <Text style={styles.paymentRosterMemberName}>
                     {reviewRow.displayName}
                   </Text>
+                  <View
+                    style={[
+                      styles.paymentRosterStatus,
+                      { backgroundColor: badgeColor },
+                    ]}
+                  >
+                    <FontAwesome
+                      name={statusIcon}
+                      size={11}
+                      color={textColor}
+                    />
+                    <Text
+                      style={[
+                        styles.paymentRosterStatusText,
+                        { color: textColor },
+                      ]}
+                    >
+                      {reviewRow.statusLabel}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.paymentRosterAmount}>
+                  {formatCurrency(reviewRow.amount, language)}
+                </Text>
+              </View>
+
+              {hasPaymentDetails ? (
+                <View style={styles.paymentRosterDetails}>
                   {reportedAt ? (
-                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                    <Text style={styles.paymentRosterDetailText}>
                       {contributionCopy(t, 'workspace.review.reportedAt', {
                         when: reportedAt,
                       })}
                     </Text>
                   ) : null}
                   {reviewRow.paymentMethod ? (
-                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                    <Text style={styles.paymentRosterDetailText}>
                       {contributionCopy(t, 'workspace.review.paymentMethod', {
                         method: methodLabel,
                       })}
                     </Text>
                   ) : null}
                   {reviewRow.claimedDestination ? (
-                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                    <Text style={styles.paymentRosterDetailText}>
                       {contributionCopy(t, 'workspace.review.claimedDestination', {
                         destination: reviewRow.claimedDestination,
                       })}
                     </Text>
                   ) : null}
                   {reviewRow.paymentReference ? (
-                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                    <Text style={styles.paymentRosterDetailText}>
                       {contributionCopy(t, 'workspace.review.paymentReference', {
                         reference: reviewRow.paymentReference,
                       })}
                     </Text>
                   ) : null}
                   {reviewRow.note ? (
-                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                    <Text style={styles.paymentRosterDetailText}>
                       {reviewRow.note}
                     </Text>
                   ) : null}
                 </View>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textStrong, marginRight: 12 }}>
-                  {formatCurrency(reviewRow.amount, language)}
-                </Text>
-                
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: badgeColor, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
-                  {icon}
-                  <Text style={{ color: textColor, fontSize: 12, fontWeight: '800' }}>{reviewRow.statusLabel}</Text>
-                </View>
-              </View>
+              ) : null}
 
               {showActions && (
-                <View style={{ paddingHorizontal: 16, paddingBottom: 16, paddingLeft: 68, gap: 8 }}>
+                <View style={styles.paymentRosterActions}>
                   {canApprove || canReject ? (
                     <>
                       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -2898,12 +2910,10 @@ function RoundTab({
                 </View>
               )}
 
-              {index < arr.length - 1 ? (
-                <View style={{ height: 1, backgroundColor: colors.surfaceMuted, marginLeft: 68 }} />
-              ) : null}
             </View>
           );
         })}
+        </View>
       </View>
 
       {/* Reference-only details: no fields already shown in the hero */}
@@ -3436,7 +3446,10 @@ function PeopleTab({
       await onRefresh();
       Alert.alert(t('requests.approvedTitle'), t('requests.approvedBody'));
     } catch (e) {
-      console.error('Unable to approve circle request', e);
+      logClientError('Unable to approve circle request', e, {
+        circleId: circle.id,
+        requestId,
+      });
       setPeopleNotice({
         title: t('requests.approveErrorTitle'),
         body: t('errors.generic'),
@@ -3460,7 +3473,10 @@ function PeopleTab({
       setDeclineTarget(null);
       await onRefresh();
     } catch (error) {
-      console.error('Unable to decline circle request', error);
+      logClientError('Unable to decline circle request', error, {
+        circleId: circle.id,
+        requestId: declineTarget.requestId,
+      });
       Alert.alert(
         t('requests.declineErrorTitle'),
         t('errors.generic'),
@@ -3487,7 +3503,10 @@ function PeopleTab({
         }),
       });
     } catch (error) {
-      console.error('Unable to share claim invite', error);
+      logClientError('Unable to share claim invite', error, {
+        circleId: circle.id,
+        memberId: member.id,
+      });
       Alert.alert(
         t('errors.claimShareTitle'),
         t('errors.generic'),
@@ -3515,7 +3534,7 @@ function PeopleTab({
       }
       Alert.alert(t('invite.codeTitle'), shortCode);
     } catch (error) {
-      console.error('Unable to copy circle code', error);
+      logClientError('Unable to copy circle code', error, { circleId: circle.id });
       Alert.alert(
         t('invite.copyErrorTitle'),
         t('errors.generic'),
@@ -3601,7 +3620,7 @@ function PeopleTab({
       setPendingStartConfirmations(null);
       setPeopleNotice({ title: t('start.startedTitle'), body: t('start.startedBody'), tone: 'success' });
     } catch (error) {
-      console.error('Unable to start circle', error);
+      logClientError('Unable to start circle', error, { circleId: circle.id });
       setPendingStartConfirmations(null);
       setPeopleNotice({
         title: t('start.errorTitle'),
@@ -3632,7 +3651,10 @@ function PeopleTab({
       setPayoutOrderReviewed(false);
       await onRefresh();
     } catch (error) {
-      console.error('Unable to reorder payout hand', error);
+      logClientError('Unable to reorder payout hand', error, {
+        circleId: circle.id,
+        memberId,
+      });
       Alert.alert(
         t('payoutOrder:errors.reorderTitle'),
         t('errors.generic'),
@@ -6294,6 +6316,122 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 14,
   },
+  paymentRosterCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 22,
+    borderWidth: 1,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  paymentRosterHeader: {
+    alignItems: 'center',
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  paymentRosterHeading: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 11,
+  },
+  paymentRosterIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.successSoft,
+    borderRadius: 12,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  paymentRosterTitle: {
+    color: colors.textStrong,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  paymentRosterSummary: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  paymentRosterToggle: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+    marginLeft: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  paymentRosterToggleText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  paymentRosterList: {
+    paddingHorizontal: 14,
+  },
+  paymentRosterRow: {
+    paddingVertical: 14,
+  },
+  paymentRosterRowSeparated: {
+    borderTopColor: colors.cardBorder,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  paymentRosterMemberLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 11,
+  },
+  paymentRosterMember: {
+    alignItems: 'flex-start',
+    flex: 1,
+  },
+  paymentRosterMemberName: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  paymentRosterStatus: {
+    alignItems: 'center',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  paymentRosterStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  paymentRosterAmount: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  paymentRosterDetails: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    gap: 3,
+    marginLeft: 53,
+    marginTop: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
+  paymentRosterDetailText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  paymentRosterActions: {
+    gap: 8,
+    marginLeft: 53,
+    marginTop: 11,
+  },
   roundDetailsHeader: {
     alignItems: 'center',
     borderBottomColor: colors.cardBorder,
@@ -6953,36 +7091,6 @@ const styles = StyleSheet.create({
   },
   saveButtonDisabled: {
     opacity: 0.6,
-  },
-  organizerInstructionsValue: {
-    color: colors.textStrong,
-    fontSize: 16,
-    fontWeight: '700',
-    lineHeight: 22,
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  organizerInstructionsEmptyTitle: {
-    color: colors.textStrong,
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 6,
-    marginTop: 4,
-  },
-  organizerInstructionsButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingVertical: 14,
-  },
-  organizerInstructionsButtonText: {
-    color: colors.onColor,
-    fontSize: 15,
-    fontWeight: '800',
   },
   paymentInstructions: {
     backgroundColor: 'rgba(64, 21, 163, 0.05)',

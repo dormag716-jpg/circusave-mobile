@@ -19,6 +19,7 @@ describe('buildContributionPaymentRails', () => {
     const rails = buildContributionPaymentRails({
       paymentInstructions: 'Zelle: organizer@email.com',
       stripeSupported: true,
+      contributionPaymentsEnabled: true,
     });
     expect(rails.showStripeRail).toBe(true);
     expect(rails.showManualRail).toBe(true);
@@ -32,6 +33,7 @@ describe('buildContributionPaymentRails', () => {
       paymentInstructions: 'Legacy',
       paymentDestinations: [{ method: 'venmo', destination: '@circle' }],
       stripeSupported: true,
+      contributionPaymentsEnabled: true,
     });
     expect(rails.hasInstructions).toBe(true);
     expect(rails.destinations).toEqual([{ method: 'venmo', destination: '@circle' }]);
@@ -47,6 +49,22 @@ describe('buildContributionPaymentRails', () => {
     expect(rails.showManualRail).toBe(true);
     expect(rails.hasInstructions).toBe(false);
     expect(rails.instructions).toBeNull();
+  });
+
+  test('missing or false capability hides Stripe and keeps manual recording', () => {
+    const missing = buildContributionPaymentRails({
+      paymentInstructions: 'Cash to organizer',
+      stripeSupported: true,
+    });
+    const disabled = buildContributionPaymentRails({
+      paymentInstructions: 'Cash to organizer',
+      stripeSupported: true,
+      contributionPaymentsEnabled: false,
+    });
+    expect(missing.showStripeRail).toBe(false);
+    expect(disabled.showStripeRail).toBe(false);
+    expect(missing.showManualRail).toBe(true);
+    expect(disabled.showManualRail).toBe(true);
   });
 
   test('both rails target the same preselected hand', () => {
@@ -76,6 +94,11 @@ describe('contribution.tsx Step 5 screen split', () => {
     expect(contributionSource).toContain('buildManualContributionSubmitPayload');
     expect(contributionSource).toContain('selectedDestinationIndex');
     expect(contributionSource).toContain('handleStripePayment()');
+    expect(contributionSource).toContain(
+      'const contributionPaymentsEnabled = hasCapability(',
+    );
+    expect(contributionSource).toContain("'contributionPaymentsEnabled'");
+    expect(contributionSource).toContain('if (!contributionPaymentsEnabled)');
     expect(contributionSource).toContain('runStripeContributionPayment');
     expect(contributionSource).toContain('createPaymentIntent');
     expect(contributionSource).toContain('requestedHandId ?? null');
@@ -150,6 +173,15 @@ describe('contribution.tsx Step 5 screen split', () => {
     expect(contributionsHt.rails.payOutsideTitle).not.toBe(
       contributionsHt.rails.payInTitle,
     );
+    expect(contributionsEn.rails.contributionPaymentsDisabledBody).toBe(
+      'Pay the organizer outside CircuSave, then record your payment for organizer confirmation.',
+    );
+    expect(
+      contributionsEs.rails.contributionPaymentsDisabledBody.length,
+    ).toBeGreaterThan(0);
+    expect(
+      contributionsHt.rails.contributionPaymentsDisabledBody.length,
+    ).toBeGreaterThan(0);
   });
 
   test('Stripe PaymentSheet is not started by Mark as sent', () => {

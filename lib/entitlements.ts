@@ -34,6 +34,7 @@ export type EntitlementCapabilities = {
   advancedReports: boolean;
   premiumReminders: boolean;
   fullActivityHistory: boolean;
+  contributionPaymentsEnabled: boolean;
 };
 
 export type Entitlements = {
@@ -70,6 +71,7 @@ export function freeEntitlements(): Entitlements {
       advancedReports: false,
       premiumReminders: false,
       fullActivityHistory: false,
+      contributionPaymentsEnabled: false,
     },
   };
 }
@@ -156,6 +158,8 @@ export function normalizeEntitlements(raw: unknown): Entitlements {
         ...free.capabilities,
         // Free always keeps intro available unless backend says otherwise.
         aiIntroAvailable: capsRaw.aiIntroAvailable !== false,
+        contributionPaymentsEnabled:
+          capsRaw.contributionPaymentsEnabled === true,
       },
     };
   }
@@ -190,6 +194,8 @@ export function normalizeEntitlements(raw: unknown): Entitlements {
       advancedReports: capsRaw.advancedReports === true,
       premiumReminders: capsRaw.premiumReminders === true,
       fullActivityHistory: capsRaw.fullActivityHistory === true,
+      contributionPaymentsEnabled:
+        capsRaw.contributionPaymentsEnabled === true,
     },
   };
 }

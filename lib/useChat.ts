@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthSession } from './authContext';
+import { logClientError } from './errorLogging';
 import { getChatMessages, sendChatMessage, type BackendChatMessage } from './api';
 
 export function useChat(circleId: string) {
@@ -14,7 +15,7 @@ export function useChat(circleId: string) {
       const data = await getChatMessages(circleId, session.session.token);
       setMessages(data);
     } catch (e) {
-      console.error('Failed to fetch messages', e);
+      logClientError('Failed to fetch messages', e, { circleId });
     } finally {
       setLoading(false);
     }
@@ -51,7 +52,7 @@ export function useChat(circleId: string) {
       await sendChatMessage(circleId, session.session.token, text);
       await fetchMessages();
     } catch (e) {
-      console.error('Failed to send message', e);
+      logClientError('Failed to send message', e, { circleId });
     } finally {
       setSending(false);
     }

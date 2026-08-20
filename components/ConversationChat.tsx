@@ -3,15 +3,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
-  LayoutAnimation,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
   View,
   type KeyboardEvent,
 } from 'react-native';
@@ -25,14 +24,10 @@ import {
   floatingComposerListPadding,
 } from '@/lib/chatKeyboard';
 import {
-  shouldKeepConversationSurfaceMounted,
-  toggleConversationPanel,
-} from '@/lib/circleChatState';
-import {
   shouldApplyKeyboardGeometry,
   workspaceChromeLayoutStyle,
 } from '@/lib/workspaceKeyboardChrome';
-import { colors, radii, shadows } from '@/lib/theme';
+import { colors, radii } from '@/lib/theme';
 import { useConversations } from '@/lib/useConversations';
 
 import { Avatar } from './Avatar';
@@ -58,25 +53,8 @@ type ConversationChatProps = {
  * - Message list scrolls inside the thread card.
  * - Composer is a floating dock that lifts by measured keyboard overlap so
  *   typed text always stays visible above the software keyboard.
- * - Conversation chips toggle a vertical thread panel without clearing state.
+ * - Conversation chips switch threads without hiding the chat surface.
  */
-
-let androidLayoutAnimationEnabled = false;
-
-function animateConversationPanel() {
-  if (
-    Platform.OS === 'android' &&
-    !androidLayoutAnimationEnabled &&
-    typeof UIManager.setLayoutAnimationEnabledExperimental === 'function'
-  ) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-    androidLayoutAnimationEnabled = true;
-  }
-  LayoutAnimation.configureNext({
-    duration: 180,
-    update: { type: LayoutAnimation.Types.easeInEaseOut },
-  });
-}
 
 export default function ConversationChat({
   circleId,
@@ -101,7 +79,6 @@ export default function ConversationChat({
     FLOATING_COMPOSER_RESTING_HEIGHT,
   );
   const [sendScrollNonce, setSendScrollNonce] = useState(0);
-  const [chatPanelExpanded, setChatPanelExpanded] = useState(true);
 
   const {
     conversations,
@@ -110,14 +87,15 @@ export default function ConversationChat({
     loading,
     threadLoading,
     sending,
+    deletingMessageId,
     error,
     selectConversation,
     createDirectConversation,
     sendMessage,
+    deleteMessage,
     refresh,
   } = useConversations(circleId, token, initialConversationId, {
     focused,
-    threadVisible: chatPanelExpanded,
   });
 
   const availableMembers = useMemo(() => {
@@ -205,40 +183,11 @@ export default function ConversationChat({
     return () => cancelAnimationFrame(handle);
   }, [chromeCollapsed, remeasureComposerLift]);
 
-  useEffect(() => {
-    if (initialConversationId) {
-      setChatPanelExpanded(true);
-    }
-  }, [initialConversationId]);
-
-  const toggleChatPanel = useCallback(
-    (conversationId: string) => {
-      const next = toggleConversationPanel({
-        chatPanelExpanded,
-        selectedId: selectedConversation?.id ?? null,
-        tappedId: conversationId,
-      });
-      if (next.dismissKeyboard) {
-        Keyboard.dismiss();
-      }
-      if (next.chatPanelExpanded !== chatPanelExpanded) {
-        animateConversationPanel();
-      }
-      if (next.shouldSelect && next.selectedId) {
-        selectConversation(next.selectedId);
-      }
-      setChatPanelExpanded(next.chatPanelExpanded);
-    },
-    [chatPanelExpanded, selectConversation, selectedConversation?.id],
-  );
-
   async function startDirectChat(member: BackendCircleMember) {
     setCreatingMemberId(member.id);
     setPickerError(null);
     try {
       await createDirectConversation(member.id);
-      animateConversationPanel();
-      setChatPanelExpanded(true);
       setPickerVisible(false);
     } catch (createError) {
       setPickerError(
@@ -256,7 +205,7 @@ export default function ConversationChat({
     keyboardVisible,
   );
   const cardBottomInset =
-    selectedConversation && chatPanelExpanded
+    selectedConversation
       ? floatingComposerListPadding(composerHeight, dockBottom)
       : 0;
 
@@ -285,10 +234,7 @@ export default function ConversationChat({
         collapsable={false}
       >
         <View style={styles.header}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.title}>{t('chat.title')}</Text>
-            <Text style={styles.subtitle}>{t('chat.subtitle')}</Text>
-          </View>
+          <Text style={styles.title}>{t('chat.title')}</Text>
           <Pressable
             style={({ pressed }) => [
               styles.newChatButton,
@@ -298,8 +244,7 @@ export default function ConversationChat({
             accessibilityRole="button"
             accessibilityLabel={t('chat.newPrivateA11y')}
           >
-            <FontAwesome name="edit" size={15} color={colors.onColor} />
-            <Text style={styles.newChatButtonText}>{t('chat.newPrivate')}</Text>
+            <FontAwesome name="pencil" size={15} color={colors.primary} />
           </Pressable>
         </View>
       </View>
@@ -322,7 +267,7 @@ export default function ConversationChat({
                   selected && styles.conversationChipSelected,
                   pressed && styles.pressed,
                 ]}
-                onPress={() => toggleChatPanel(conversation.id)}
+                onPress={() => selectConversation(conversation.id)}
                 accessibilityRole="button"
                 accessibilityLabel={t('chat.openConversationA11y', {
                   name: conversation.title,
@@ -359,9 +304,6 @@ export default function ConversationChat({
                       ? t('chat.group')
                       : conversation.title}
                   </Text>
-                  <Text numberOfLines={1} style={styles.chipPreview}>
-                    {conversation.lastMessage?.text || t('chat.noMessages')}
-                  </Text>
                 </View>
               </Pressable>
             );
@@ -382,15 +324,9 @@ export default function ConversationChat({
         </Pressable>
       ) : null}
 
-      {shouldKeepConversationSurfaceMounted({
-        hasSelectedConversation: selectedConversation != null,
-      }) && selectedConversation ? (
+      {selectedConversation ? (
         <View
-          style={[
-            styles.conversationPanel,
-            workspaceChromeLayoutStyle(!chatPanelExpanded),
-          ]}
-          pointerEvents={chatPanelExpanded ? 'auto' : 'none'}
+          style={styles.conversationPanel}
           collapsable={false}
         >
         <View style={[styles.threadCard, { marginBottom: cardBottomInset }]}>
@@ -438,6 +374,23 @@ export default function ConversationChat({
               messages={messages}
               currentUserId={currentUserId}
               pinToBottomNonce={sendScrollNonce}
+              deletingMessageId={deletingMessageId}
+              onDeleteMessage={(message) => {
+                Alert.alert(
+                  t('chat.deleteTitle'),
+                  t('chat.deleteBody'),
+                  [
+                    { text: t('chat.deleteCancel'), style: 'cancel' },
+                    {
+                      text: t('chat.deleteConfirm'),
+                      style: 'destructive',
+                      onPress: () => {
+                        void deleteMessage(message.id).catch(() => undefined);
+                      },
+                    },
+                  ],
+                );
+              }}
             />
           ) : (
             <View style={styles.emptyThread}>
@@ -586,67 +539,53 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     minHeight: 0,
-    gap: 12,
+    gap: 8,
   },
   header: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  headerCopy: {
-    flex: 1,
-    paddingRight: 12,
+    minHeight: 40,
   },
   title: {
     color: colors.textStrong,
-    fontSize: 21,
+    fontSize: 20,
     fontWeight: '900',
-  },
-  subtitle: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 3,
   },
   newChatButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    gap: 7,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-  },
-  newChatButtonText: {
-    color: colors.onColor,
-    fontSize: 12,
-    fontWeight: '900',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
   },
   conversationStripScroll: {
     flexGrow: 0,
     flexShrink: 0,
   },
   conversationStrip: {
-    alignItems: 'stretch',
-    gap: 10,
-    paddingVertical: 2,
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 1,
   },
   conversationChip: {
     alignItems: 'center',
     alignSelf: 'flex-start',
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
-    borderRadius: radii.card,
+    borderRadius: radii.pill,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 8,
-    maxWidth: 140,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    gap: 7,
+    maxWidth: 156,
+    paddingHorizontal: 7,
+    paddingRight: 12,
+    paddingVertical: 6,
   },
   conversationChipSelected: {
     backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
+    borderColor: colors.primaryBorder,
   },
   chipAvatar: {
     position: 'relative',
@@ -680,39 +619,32 @@ const styles = StyleSheet.create({
   },
   chipCopy: {
     flexShrink: 1,
-    maxWidth: 78,
+    maxWidth: 96,
   },
   chipTitle: {
     color: colors.textStrong,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   chipTitleSelected: {
     color: colors.primaryDark,
   },
-  chipPreview: {
-    color: colors.muted,
-    fontSize: 11,
-    marginTop: 2,
-  },
   threadCard: {
     backgroundColor: colors.background,
-    borderColor: colors.cardBorder,
-    borderRadius: radii.card,
-    borderWidth: 1,
     flex: 1,
     minHeight: 0,
     overflow: 'hidden',
-    ...shadows.medium,
   },
   threadHeader: {
     alignItems: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: colors.background,
     borderBottomColor: colors.cardBorder,
     borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 14,
+    paddingBottom: 10,
+    paddingHorizontal: 4,
+    paddingTop: 4,
   },
   threadIdentity: {
     alignItems: 'center',
@@ -724,10 +656,10 @@ const styles = StyleSheet.create({
   groupAvatarLarge: {
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
-    borderRadius: 21,
-    height: 42,
+    borderRadius: 18,
+    height: 36,
     justifyContent: 'center',
-    width: 42,
+    width: 36,
   },
   threadHeaderCopy: {
     flex: 1,
@@ -735,7 +667,7 @@ const styles = StyleSheet.create({
   },
   threadTitle: {
     color: colors.textStrong,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
   },
   threadMeta: {
@@ -751,7 +683,7 @@ const styles = StyleSheet.create({
   emptyThread: {
     alignItems: 'center',
     flex: 1,
-    gap: 7,
+    gap: 6,
     justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 32,

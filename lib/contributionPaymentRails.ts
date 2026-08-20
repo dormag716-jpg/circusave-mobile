@@ -19,13 +19,16 @@ export function buildContributionPaymentRails(input: {
   paymentInstructions?: string | null;
   paymentDestinations?: unknown;
   stripeSupported: boolean;
+  contributionPaymentsEnabled?: unknown;
 }): ContributionPaymentRailsModel {
   const presented = presentCirclePaymentInstructions({
     paymentInstructions: input.paymentInstructions,
     paymentDestinations: input.paymentDestinations,
   });
   return {
-    showStripeRail: input.stripeSupported === true,
+    showStripeRail:
+      input.stripeSupported === true &&
+      input.contributionPaymentsEnabled === true,
     showManualRail: true,
     hasInstructions: presented.hasInstructions,
     instructions: presented.instructions,

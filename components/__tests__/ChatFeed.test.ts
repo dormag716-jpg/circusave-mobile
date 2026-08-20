@@ -37,17 +37,15 @@ describe('ChatFeed keyboard contract', () => {
     expect(cardInset).toBeGreaterThanOrEqual(72 + COMPOSER_VISUAL_CLEARANCE);
   });
 
-  test('chip collapse hides the thread without unmounting ChatFeed or ChatInput', () => {
+  test('chat surface stays mounted and supports message deletion', () => {
     const source = readFileSync(
       path.join(__dirname, '..', 'ConversationChat.tsx'),
       'utf8',
     );
-    expect(source).toMatch(/shouldKeepConversationSurfaceMounted/);
-    expect(source).toMatch(/workspaceChromeLayoutStyle\(!chatPanelExpanded\)/);
-    expect(source).not.toMatch(
-      /selectedConversation && chatPanelExpanded \?/,
-    );
+    expect(source).not.toMatch(/chatPanelExpanded/);
+    expect(source).not.toMatch(/toggleConversationPanel/);
     expect(source).toMatch(/<ChatFeed/);
+    expect(source).toMatch(/onDeleteMessage/);
     expect(source).toMatch(/<ChatInput/);
   });
 });

@@ -33,6 +33,8 @@ import {
 } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import { useEntitlements } from '@/lib/entitlementsContext';
+import { logClientError } from '@/lib/errorLogging';
 import {
   applyContributionLoadResult,
   createContributionRequestStreams,
@@ -75,6 +77,10 @@ export default function ContributionPaymentScreen() {
     'people',
   ]);
   const { session, status } = useAuthSession();
+  const { hasCapability } = useEntitlements();
+  const contributionPaymentsEnabled = hasCapability(
+    'contributionPaymentsEnabled',
+  );
   const params = useLocalSearchParams<{
     circleId?: string | string[];
     handId?: string | string[];
@@ -175,7 +181,7 @@ export default function ContributionPaymentScreen() {
           ? { circle: circleResponse, snapshot: scheduleResponse }
           : null;
       } catch (loadError) {
-        console.error('Unable to load contribution details', loadError);
+        logClientError('Unable to load contribution details', loadError);
         applyContributionLoadResult({
           streams: requestStreams.current,
           loadGeneration,
@@ -287,6 +293,7 @@ export default function ContributionPaymentScreen() {
     paymentInstructions: circle?.paymentInstructions,
     paymentDestinations: circle?.paymentDestinations,
     stripeSupported: isStripeSupported,
+    contributionPaymentsEnabled,
   });
   const selectedDestination =
     rails.destinations.length === 1
@@ -366,7 +373,7 @@ export default function ContributionPaymentScreen() {
         ],
       );
     } catch (submitError) {
-      console.error('Unable to submit contribution', submitError);
+      logClientError('Unable to submit contribution', submitError);
       Alert.alert(
         t('contributions:alerts.submitFailedTitle'),
         financialClientErrorMessage(
@@ -380,6 +387,9 @@ export default function ContributionPaymentScreen() {
   }
 
   async function handleStripePayment() {
+    if (!contributionPaymentsEnabled) {
+      return;
+    }
     if (shouldBlockContributionPayActions({
       payingStripe,
       submitting,
@@ -420,6 +430,7 @@ export default function ContributionPaymentScreen() {
           circleId: frozenCircleId,
           roundNumber: frozenRound,
           handId: frozenHandId,
+          contributionPaymentsEnabled,
         },
         {
           createPaymentIntent,
@@ -437,6 +448,10 @@ export default function ContributionPaymentScreen() {
       holdLock = shouldHoldPaymentLockAfterOutcome(outcome.kind);
 
       if (outcome.kind === 'canceled') {
+        return;
+      }
+
+      if (outcome.kind === 'disabled') {
         return;
       }
 
@@ -481,7 +496,7 @@ export default function ContributionPaymentScreen() {
         ],
       );
     } catch (err: unknown) {
-      console.error('Unable to complete Stripe contribution payment', err);
+      logClientError('Unable to complete Stripe contribution payment', err);
       Alert.alert(
         t('contributions:alerts.paymentFailedTitle'),
         financialClientErrorMessage(err, t('financialErrors:stripePayment')),
@@ -819,7 +834,12 @@ export default function ContributionPaymentScreen() {
               {contributionCopy(t, 'rails.payOutsideTitle')}
             </Text>
             <Text style={styles.railBody}>
-              {contributionCopy(t, 'rails.payOutsideBody')}
+              {contributionCopy(
+                t,
+                contributionPaymentsEnabled
+                  ? 'rails.payOutsideBody'
+                  : 'rails.contributionPaymentsDisabledBody',
+              )}
             </Text>
             {rails.hasInstructions ? (
               <View style={styles.instructionsBox}>

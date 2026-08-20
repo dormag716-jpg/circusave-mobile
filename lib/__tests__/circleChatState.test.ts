@@ -6,7 +6,6 @@ import {
   CIRCLE_CHAT_POLL_MS,
   areChatMessagesEquivalent,
   chatPollIntervalMs,
-  chatThreadPollFocused,
   composerDraftAfterSend,
   isChatPollAppActive,
   appendConversationMessage,
@@ -15,9 +14,7 @@ import {
   shouldAutoScrollChat,
   shouldClearMessagesOnConversationSwitch,
   storeConversationMessages,
-  shouldKeepConversationSurfaceMounted,
   shouldRunUnreadConversationPoll,
-  toggleConversationPanel,
 } from '../circleChatState';
 import {
   bindCircleChatStoreUser,
@@ -159,6 +156,13 @@ describe('circle chat message state', () => {
     ]);
   });
 
+  it('removes messages that are no longer returned by the server', () => {
+    const current = [message('1', 'keep'), message('2', 'deleted')];
+    expect(mergeChatMessages([message('1', 'keep')], current)).toEqual([
+      message('1', 'keep'),
+    ]);
+  });
+
   it('keeps each conversation thread when switching selections', () => {
     expect(shouldClearMessagesOnConversationSwitch()).toBe(false);
 
@@ -216,138 +220,13 @@ describe('circle chat auto-scroll', () => {
   });
 });
 
-describe('conversation chip panel toggle', () => {
-  const group = 'conv-group';
-  const direct = 'conv-direct';
-
-  it('collapses when the active expanded chip is tapped', () => {
-    const collapsed = toggleConversationPanel({
-      chatPanelExpanded: true,
-      selectedId: group,
-      tappedId: group,
-    });
-    expect(collapsed.chatPanelExpanded).toBe(false);
-    expect(collapsed.shouldSelect).toBe(false);
-    expect(collapsed.selectedId).toBe(group);
-    expect(collapsed.showThread).toBe(false);
-    expect(collapsed.showComposer).toBe(false);
-    expect(collapsed.dismissKeyboard).toBe(true);
-  });
-
-  it('reopens when the active collapsed chip is tapped', () => {
-    const reopened = toggleConversationPanel({
-      chatPanelExpanded: false,
-      selectedId: group,
-      tappedId: group,
-    });
-    expect(reopened.chatPanelExpanded).toBe(true);
-    expect(reopened.shouldSelect).toBe(false);
-    expect(reopened.selectedId).toBe(group);
-    expect(reopened.showThread).toBe(true);
-    expect(reopened.showComposer).toBe(true);
-    expect(reopened.dismissKeyboard).toBe(false);
-  });
-
-  it('selects a different chip and keeps or opens the panel', () => {
-    const whileOpen = toggleConversationPanel({
-      chatPanelExpanded: true,
-      selectedId: group,
-      tappedId: direct,
-    });
-    expect(whileOpen.chatPanelExpanded).toBe(true);
-    expect(whileOpen.shouldSelect).toBe(true);
-    expect(whileOpen.selectedId).toBe(direct);
-
-    const whileCollapsed = toggleConversationPanel({
-      chatPanelExpanded: false,
-      selectedId: group,
-      tappedId: direct,
-    });
-    expect(whileCollapsed.chatPanelExpanded).toBe(true);
-    expect(whileCollapsed.shouldSelect).toBe(true);
-    expect(whileCollapsed.selectedId).toBe(direct);
-  });
-
-  it('retains the selected conversation when collapsed', () => {
-    const messages = [message('1', 'hello')];
-    const collapsed = toggleConversationPanel({
-      chatPanelExpanded: true,
-      selectedId: group,
-      tappedId: group,
-    });
-    expect(collapsed.selectedId).toBe(group);
-    expect(collapsed.shouldSelect).toBe(false);
-    expect(messages).toEqual([message('1', 'hello')]);
-  });
-
-  it('hides both thread and composer when collapsed', () => {
-    const collapsed = toggleConversationPanel({
-      chatPanelExpanded: true,
-      selectedId: group,
-      tappedId: group,
-    });
-    expect(collapsed.showThread).toBe(false);
-    expect(collapsed.showComposer).toBe(false);
-    expect(collapsed.showThread).toBe(collapsed.showComposer);
-    expect(
-      shouldKeepConversationSurfaceMounted({ hasSelectedConversation: true }),
-    ).toBe(true);
-    expect(
-      shouldKeepConversationSurfaceMounted({ hasSelectedConversation: false }),
-    ).toBe(false);
-  });
-
-  it('invokes keyboard dismissal when collapsing', () => {
-    const collapsed = toggleConversationPanel({
-      chatPanelExpanded: true,
-      selectedId: group,
-      tappedId: group,
-    });
-    expect(collapsed.dismissKeyboard).toBe(true);
-
-    const reopen = toggleConversationPanel({
-      chatPanelExpanded: false,
-      selectedId: group,
-      tappedId: group,
-    });
-    expect(reopen.dismissKeyboard).toBe(false);
-
-    const switchChip = toggleConversationPanel({
-      chatPanelExpanded: true,
-      selectedId: group,
-      tappedId: direct,
-    });
-    expect(switchChip.dismissKeyboard).toBe(false);
-  });
-
-  it('uses the paused message poll while the panel is collapsed', () => {
-    expect(
-      chatThreadPollFocused({ tabFocused: true, panelExpanded: false }),
-    ).toBe(false);
-    expect(
-      chatPollIntervalMs({
-        kind: 'messages',
-        focused: chatThreadPollFocused({
-          tabFocused: true,
-          panelExpanded: false,
-        }),
-      }),
-    ).toBe(CIRCLE_CHAT_POLL_MS.messagesHidden);
-    expect(
-      chatPollIntervalMs({
-        kind: 'conversations',
-        focused: true,
-      }),
-    ).toBe(CIRCLE_CHAT_POLL_MS.conversationsFocused);
-    expect(
-      chatThreadPollFocused({ tabFocused: true, panelExpanded: true }),
-    ).toBe(true);
-  });
-});
-
 describe('circle chat send draft', () => {
   it('preserves the composer draft when send fails', () => {
     expect(composerDraftAfterSend('keep this', false)).toBe('keep this');
     expect(composerDraftAfterSend('sent', true)).toBe('');
+    expect(composerDraftAfterSend('new draft', true, 'sent draft')).toBe(
+      'new draft',
+    );
+    expect(composerDraftAfterSend('sent draft', true, 'sent draft')).toBe('');
   });
 });

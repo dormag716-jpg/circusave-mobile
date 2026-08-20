@@ -19,6 +19,7 @@ import { shouldHideLaunchSplash } from '@/lib/launchSplash';
 import { MarketProvider } from '@/lib/market';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
+import { logClientError } from '@/lib/errorLogging';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -48,7 +49,7 @@ export default function RootLayout() {
 
     void initializeI18n()
       .catch((initializationError) => {
-        console.error('Unable to initialize localization.', initializationError);
+        logClientError('Unable to initialize localization.', initializationError);
       })
       .finally(() => {
         if (active) {
@@ -172,6 +173,7 @@ function AuthenticatedStack() {
       <Stack.Screen name="circle/workspace" options={{ headerShown: false }} />
       <Stack.Screen name="circle/assistant" options={{ headerShown: false }} />
       <Stack.Screen name="circle/reminder-schedule" options={{ headerShown: false }} />
+      <Stack.Screen name="smart-reminders" options={{ headerShown: false }} />
       <Stack.Screen name="circle/invite" options={{ headerShown: false }} />
       <Stack.Screen name="invite/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="circle/payment-setup" options={{ headerShown: false }} />

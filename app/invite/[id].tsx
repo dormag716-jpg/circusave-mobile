@@ -18,6 +18,7 @@ import {
   type BackendInvitePreview,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { logClientError } from '@/lib/errorLogging';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import {
   shouldShowInvitePreviewSkeleton,
@@ -83,7 +84,7 @@ export default function JoinInviteScreen() {
       hasPreviewRef.current = true;
       setPreview(data);
     } catch (loadError) {
-      console.error('Unable to load public invite preview.', loadError);
+      logClientError('Unable to load public invite preview', loadError, { circleId });
       if (!requestGeneration.current.isCurrent(generation)) {
         return;
       }
@@ -148,7 +149,7 @@ export default function JoinInviteScreen() {
         ],
       );
     } catch (joinError) {
-      console.error('Unable to accept circle invitation.', joinError);
+      logClientError('Unable to accept circle invitation', joinError, { circleId });
       Alert.alert(t('invite:joinErrorTitle'), t('invite:genericError'));
     } finally {
       setJoining(false);

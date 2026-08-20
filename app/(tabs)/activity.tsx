@@ -21,6 +21,7 @@ import {
   shouldUseSilentActivityRefresh,
 } from '@/lib/activityPaint';
 import { useAuthSession } from '@/lib/authContext';
+import { logClientError } from '@/lib/errorLogging';
 import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
@@ -112,7 +113,7 @@ export default function ActivityScreen() {
         }
         setMemberMap(newMemberMap);
       } catch (loadError) {
-        console.error('Unable to load activity', loadError);
+        logClientError('Unable to load activity', loadError);
         if (!requestGeneration.current.isCurrent(generation)) {
           return;
         }

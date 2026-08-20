@@ -751,7 +751,10 @@ function errorMessage(payload: unknown, status: number) {
 }
 
 const DEV_API_LOG_REDACTED = '[redacted]';
-const DEV_API_LOG_SENSITIVE_KEY = /token|auth|password|secret|email|phone|name|user|member|payment|bank|card|account/i;
+// Shared with lib/errorLogging.ts so any place that logs API-shaped data
+// redacts the same set of PII / financial / auth-ish key names.
+export const SENSITIVE_LOG_KEY_PATTERN =
+  /token|auth|session|password|secret|email|phone|name|user|member|recipient|payment|contribution|wallet|stripe|bank|card|account|circle/i;
 
 function redactDevApiLogBody(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -761,7 +764,7 @@ function redactDevApiLogBody(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value).map(([key, entryValue]) => [
         key,
-        DEV_API_LOG_SENSITIVE_KEY.test(key)
+        SENSITIVE_LOG_KEY_PATTERN.test(key)
           ? DEV_API_LOG_REDACTED
           : redactDevApiLogBody(entryValue),
       ]),
@@ -1930,6 +1933,25 @@ export function sendConversationMessage(
       method: 'POST',
       token,
       body: JSON.stringify({ text }),
+    },
+  );
+}
+
+export function deleteConversationMessage(
+  circleId: string,
+  conversationId: string,
+  messageId: string,
+  token: string,
+): Promise<{
+  messageId: string;
+  deleted: boolean;
+  notificationsDeleted: number;
+}> {
+  return requestJson(
+    `/groups/${circleId}/conversations/${conversationId}/messages/${messageId}`,
+    {
+      method: 'DELETE',
+      token,
     },
   );
 }

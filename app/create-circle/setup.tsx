@@ -21,6 +21,7 @@ import type { TFunction } from 'i18next';
 
 import { createCircle, getCircleDetail, getCircles } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { logClientError } from '@/lib/errorLogging';
 import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import {
@@ -266,7 +267,7 @@ export default function CircleSetupWizardScreen() {
         setMembers(prefilledMembers);
         setOrganizerParticipates(true);
       } catch (error) {
-        console.error('Unable to load source circle for create-circle setup', error);
+        logClientError('Unable to load source circle for create-circle setup', error);
         // Start fresh on load failure.
       }
     }
@@ -423,7 +424,7 @@ export default function CircleSetupWizardScreen() {
           return;
         }
       } catch (error) {
-        console.error('Unable to check open-circle capacity before creation', error);
+        logClientError('Unable to check open-circle capacity before creation', error);
         // Server still enforces; continue if list fails.
       }
 
@@ -440,7 +441,7 @@ export default function CircleSetupWizardScreen() {
       clearDraft();
       setCreatedCircleId(createdCircle.id);
     } catch (error) {
-      console.error('Unable to create circle from setup wizard', error);
+      logClientError('Unable to create circle from setup wizard', error);
       Alert.alert(t('errors.createFailedTitle'), t('errors.createFailedBody'));
     } finally {
       setIsSubmitting(false);

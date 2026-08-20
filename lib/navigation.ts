@@ -41,10 +41,13 @@ export function contributionHref(circleId: string, handId?: string): Href {
   };
 }
 
-export function circlePaymentSetupHref(circleId: string): Href {
+export function circlePaymentSetupHref(
+  circleId: string,
+  returnTo?: 'payment-preferences',
+): Href {
   return {
     pathname: '/circle/payment-setup',
-    params: { circleId },
+    params: returnTo ? { circleId, returnTo } : { circleId },
   };
 }
 

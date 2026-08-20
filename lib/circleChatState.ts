@@ -7,81 +7,6 @@ export const CIRCLE_CHAT_POLL_MS = {
   messagesHidden: 0,
 } as const;
 
-export type ConversationChipToggleInput = {
-  chatPanelExpanded: boolean;
-  selectedId: string | null;
-  tappedId: string;
-};
-
-export type ConversationChipToggleResult = {
-  chatPanelExpanded: boolean;
-  selectedId: string | null;
-  shouldSelect: boolean;
-  dismissKeyboard: boolean;
-  showThread: boolean;
-  showComposer: boolean;
-};
-
-/**
- * Chip toggle for the conversation panel. Never clears the selected id.
- * Same chip while expanded collapses; otherwise the tapped conversation opens.
- */
-export function toggleConversationPanel(
-  input: ConversationChipToggleInput,
-): ConversationChipToggleResult {
-  const tappedId = String(input.tappedId || '').trim();
-  const selectedId = String(input.selectedId || '').trim() || null;
-  if (!tappedId) {
-    return {
-      chatPanelExpanded: input.chatPanelExpanded,
-      selectedId,
-      shouldSelect: false,
-      dismissKeyboard: false,
-      showThread: input.chatPanelExpanded,
-      showComposer: input.chatPanelExpanded,
-    };
-  }
-
-  const isActiveChip = selectedId === tappedId;
-  if (isActiveChip && input.chatPanelExpanded) {
-    return {
-      chatPanelExpanded: false,
-      selectedId,
-      shouldSelect: false,
-      dismissKeyboard: true,
-      showThread: false,
-      showComposer: false,
-    };
-  }
-
-  return {
-    chatPanelExpanded: true,
-    selectedId: tappedId,
-    shouldSelect: !isActiveChip,
-    dismissKeyboard: false,
-    showThread: true,
-    showComposer: true,
-  };
-}
-
-/**
- * Chip collapse hides the thread and composer. It must not unmount them,
- * or the composer draft and ChatFeed scroll position are destroyed.
- */
-export function shouldKeepConversationSurfaceMounted(input: {
-  hasSelectedConversation: boolean;
-}): boolean {
-  return input.hasSelectedConversation === true;
-}
-
-/** Message polls follow the hidden policy unless the tab and panel are both open. */
-export function chatThreadPollFocused(input: {
-  tabFocused: boolean;
-  panelExpanded: boolean;
-}): boolean {
-  return input.tabFocused === true && input.panelExpanded === true;
-}
-
 /** Chat polls run only while the process is in the foreground. */
 export function isChatPollAppActive(appState?: string | null): boolean {
   return String(appState || '').trim().toLowerCase() === 'active';
@@ -188,9 +113,7 @@ export function mergeChatMessages(
   if (areChatMessagesEquivalent(incoming, current)) {
     return current;
   }
-  const incomingIds = new Set(incoming.map((message) => message.id));
-  const missingCurrent = current.filter((message) => !incomingIds.has(message.id));
-  return missingCurrent.length > 0 ? [...incoming, ...missingCurrent] : incoming;
+  return incoming;
 }
 
 export function areConversationsEquivalent(
@@ -239,6 +162,10 @@ export function isPinnedNearBottom(input: {
 export function composerDraftAfterSend(
   current: string,
   succeeded: boolean,
+  sentDraft?: string,
 ): string {
-  return succeeded ? '' : current;
+  if (!succeeded) {
+    return current;
+  }
+  return sentDraft === undefined || current === sentDraft ? '' : current;
 }

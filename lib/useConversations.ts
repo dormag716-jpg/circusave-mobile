@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import {
+  ApiError,
   createDirectChatConversation,
+  deleteConversationMessage,
   getChatConversations,
   getConversationMessages,
   markConversationRead,
@@ -10,11 +12,11 @@ import {
   type BackendChatConversation,
   type BackendChatMessage,
 } from './api';
+import { logClientError } from './errorLogging';
 import {
   appendConversationMessage,
   areConversationsEquivalent,
   chatPollIntervalMs,
-  chatThreadPollFocused,
   isChatPollAppActive,
   messagesForSelectedConversation,
   shouldRunUnreadConversationPoll,
@@ -52,15 +54,10 @@ export function useConversations(
   circleId: string,
   token: string,
   initialConversationId?: string,
-  options?: { focused?: boolean; threadVisible?: boolean },
+  options?: { focused?: boolean },
 ) {
   const focused = options?.focused !== false;
-  const threadVisible = options?.threadVisible !== false;
   const appActive = useChatPollAppActive();
-  const messagesFocused = chatThreadPollFocused({
-    tabFocused: focused,
-    panelExpanded: threadVisible,
-  });
   const [conversations, setConversations] = useState<BackendChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
     initialConversationId ?? null,
@@ -73,6 +70,7 @@ export function useConversations(
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastMarkedMessageId = useRef<string | null>(null);
   const hasConversationSnapshot = useRef(false);
@@ -136,7 +134,7 @@ export function useConversations(
       });
       setError(null);
     } catch (loadError) {
-      console.error('Failed to load conversations', loadError);
+      logClientError('Failed to load conversations', loadError, { circleId });
       setError(loadError instanceof Error ? loadError.message : 'Unable to load chat.');
     } finally {
       setLoading(false);
@@ -182,7 +180,10 @@ export function useConversations(
         }
         setError(null);
       } catch (loadError) {
-        console.error('Failed to load conversation messages', loadError);
+        logClientError('Failed to load conversation messages', loadError, {
+          circleId,
+          conversationId,
+        });
         setError(loadError instanceof Error ? loadError.message : 'Unable to load messages.');
       } finally {
         if (
@@ -244,7 +245,7 @@ export function useConversations(
     }
     const intervalMs = chatPollIntervalMs({
       kind: 'messages',
-      focused: messagesFocused,
+      focused,
       appActive,
     });
     if (intervalMs <= 0) {
@@ -254,7 +255,7 @@ export function useConversations(
       void loadMessages(selectedConversationId, { quiet: true });
     }, intervalMs);
     return () => clearInterval(interval);
-  }, [appActive, loadMessages, messagesFocused, selectedConversationId]);
+  }, [appActive, focused, loadMessages, selectedConversationId]);
 
   const selectConversation = useCallback((conversationId: string) => {
     activeConversationId.current = conversationId;
@@ -276,7 +277,7 @@ export function useConversations(
         setError(null);
         return conversation;
       } catch (createError) {
-        console.error('Failed to create private conversation', createError);
+        logClientError('Failed to create private conversation', createError, { circleId });
         setError(
           createError instanceof Error
             ? createError.message
@@ -307,7 +308,10 @@ export function useConversations(
         await loadConversations();
         setError(null);
       } catch (sendError) {
-        console.error('Failed to send conversation message', sendError);
+        logClientError('Failed to send conversation message', sendError, {
+          circleId,
+          conversationId: selectedConversationId,
+        });
         setError(sendError instanceof Error ? sendError.message : 'Unable to send message.');
         throw sendError;
       } finally {
@@ -317,6 +321,50 @@ export function useConversations(
     [circleId, loadConversations, selectedConversationId, token],
   );
 
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!selectedConversationId || !messageId || deletingMessageId) return;
+      setDeletingMessageId(messageId);
+      try {
+        await deleteConversationMessage(
+          circleId,
+          selectedConversationId,
+          messageId,
+          token,
+        );
+        setMessagesByConversationId((current) => ({
+          ...current,
+          [selectedConversationId]: (
+            current[selectedConversationId] ?? []
+          ).filter((message) => message.id !== messageId),
+        }));
+        await loadConversations();
+        setError(null);
+      } catch (deleteError) {
+        logClientError('Failed to delete conversation message', deleteError, {
+          circleId,
+          conversationId: selectedConversationId,
+          messageId,
+        });
+        setError(
+          deleteError instanceof Error
+            ? deleteError.message
+            : 'Unable to delete message.',
+        );
+        throw deleteError;
+      } finally {
+        setDeletingMessageId(null);
+      }
+    },
+    [
+      circleId,
+      deletingMessageId,
+      loadConversations,
+      selectedConversationId,
+      token,
+    ],
+  );
+
   return {
     conversations,
     selectedConversation,
@@ -324,15 +372,21 @@ export function useConversations(
     loading,
     threadLoading,
     sending,
+    deletingMessageId,
     error,
     selectConversation,
     createDirectConversation,
     sendMessage,
+    deleteMessage,
     refresh: loadConversations,
   };
 }
 
-export function useConversationUnreadCount(circleId: string, token: string) {
+export function useConversationUnreadCount(
+  circleId: string,
+  token: string,
+  enabled = true,
+) {
   const appActive = useChatPollAppActive();
   const [unreadCount, setUnreadCount] = useState(
     () => getCircleChatSnapshot(circleId)?.unreadCount ?? 0,
@@ -340,6 +394,14 @@ export function useConversationUnreadCount(circleId: string, token: string) {
   const [chatClientActive, setChatClientActive] = useState(() =>
     isCircleChatClientActive(circleId),
   );
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  useEffect(() => {
+    setAccessDenied(false);
+    if (!enabled) {
+      setUnreadCount(0);
+    }
+  }, [circleId, enabled, token]);
 
   useEffect(() => {
     const sync = () => {
@@ -359,7 +421,7 @@ export function useConversationUnreadCount(circleId: string, token: string) {
   }, [circleId]);
 
   const loadUnreadCount = useCallback(async () => {
-    if (!circleId || !token) return;
+    if (!circleId || !token || !enabled || accessDenied) return;
     try {
       const response = await getChatConversations(circleId, token);
       publishCircleChatSnapshot(circleId, {
@@ -368,16 +430,23 @@ export function useConversationUnreadCount(circleId: string, token: string) {
       });
       setUnreadCount(response.unreadCount);
     } catch (error) {
-      console.error('Failed to load conversation unread count', error);
+      if (error instanceof ApiError && error.status === 403) {
+        setAccessDenied(true);
+        setUnreadCount(0);
+        return;
+      }
+      logClientError('Failed to load conversation unread count', error, { circleId });
     }
-  }, [circleId, token]);
+  }, [accessDenied, circleId, enabled, token]);
 
   useEffect(() => {
     if (
       !shouldRunUnreadConversationPoll({
         chatClientActive,
         appActive,
-      })
+      }) ||
+      !enabled ||
+      accessDenied
     ) {
       return;
     }
@@ -394,7 +463,11 @@ export function useConversationUnreadCount(circleId: string, token: string) {
       void loadUnreadCount();
     }, intervalMs);
     return () => clearInterval(interval);
-  }, [appActive, chatClientActive, loadUnreadCount]);
+  }, [accessDenied, appActive, chatClientActive, enabled, loadUnreadCount]);
 
-  return { unreadCount, refreshUnreadCount: loadUnreadCount };
+  return {
+    unreadCount,
+    accessDenied,
+    refreshUnreadCount: loadUnreadCount,
+  };
 }

@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 import { i18n } from './i18n';
+import { logClientWarning } from './errorLogging';
 import {
   notificationCopy,
   type NotificationType,
@@ -95,7 +96,7 @@ export async function registerForPushNotifications(): Promise<NotificationResult
        errMsg.includes('FCM credentials'));
        
     if (!isLocalDevMissingFirebase) {
-      console.warn('[CircuSave] Push token unavailable:', err);
+      logClientWarning('Push token unavailable', err);
     }
     
     return {

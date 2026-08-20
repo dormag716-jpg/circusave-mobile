@@ -28,6 +28,18 @@ describe('contribution payment-setup navigation', () => {
     });
   });
 
+  test('settings entry preserves its return destination', () => {
+    expect(
+      circlePaymentSetupHref('circle-abc', 'payment-preferences'),
+    ).toEqual({
+      pathname: '/circle/payment-setup',
+      params: {
+        circleId: 'circle-abc',
+        returnTo: 'payment-preferences',
+      },
+    });
+  });
+
   test('post-create primary action uses the same payment-setup href', () => {
     const destinations = createCircleSuccessDestinations('circle-new');
     expect(destinations.contributionPaymentSetup).toEqual(

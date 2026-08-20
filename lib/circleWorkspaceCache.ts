@@ -63,6 +63,16 @@ export function clearCircleWorkspaceCache(): void {
   store.clear();
 }
 
+export function evictCircleWorkspaceCache(
+  circleId: string,
+  userId: string = cacheUserId,
+): void {
+  const key = circleWorkspaceCacheKey(circleId, userId);
+  if (key) {
+    store.delete(key);
+  }
+}
+
 export function isCircleWorkspaceCacheExpired(
   storedAt: number,
   now: number = Date.now(),

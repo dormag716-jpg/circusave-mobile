@@ -22,6 +22,7 @@ import {
   type BackendInvitePreview,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { logClientError } from '@/lib/errorLogging';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import {
   shouldKeepJoinPreviewDuringLookup,
@@ -68,7 +69,7 @@ export default function JoinCircleScreen() {
       setPreview(p);
       setResolvedId(circleId);
     } catch (error) {
-      console.error('Unable to resolve circle code.', error);
+      logClientError('Unable to resolve circle code', error);
       Alert.alert(t('notFoundTitle'), t('notFoundMessage'));
     } finally {
       setResolving(false);
@@ -90,7 +91,7 @@ export default function JoinCircleScreen() {
       const result = await requestJoin(token, resolvedId, ack);
       setJoinOutcome(resolveJoinOutcome(result, viewerUserId));
     } catch (error) {
-      console.error('Unable to request circle membership.', error);
+      logClientError('Unable to request circle membership', error);
       Alert.alert(t('joinErrorTitle'), t('genericError'));
     } finally {
       setJoining(false);

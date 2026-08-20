@@ -22,7 +22,10 @@ import { colors, radii, spacing } from '@/lib/theme';
 export default function SettingsScreen() {
   const { i18n, t } = useTranslation(['settings', 'navigation']);
   const { session, signOut } = useAuthSession();
-  const { isPremium } = useEntitlements();
+  const { isPremium, hasCapability } = useEntitlements();
+  const contributionPaymentsEnabled = hasCapability(
+    'contributionPaymentsEnabled',
+  );
   const { market, setMarket } = useMarket();
   const [modalVisible, setModalVisible] = useState(false);
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
@@ -30,9 +33,12 @@ export default function SettingsScreen() {
     useState<LanguagePreference>('system');
 
   useEffect(() => {
-    if (!session?.session.token) return;
+    if (!session?.session.token || !contributionPaymentsEnabled) {
+      setAccounts([]);
+      return;
+    }
     getLinkedAccounts(session.session.token).then(setAccounts).catch(console.error);
-  }, [session?.session.token]);
+  }, [contributionPaymentsEnabled, session?.session.token]);
 
   useFocusEffect(
     useCallback(() => {
@@ -96,25 +102,40 @@ export default function SettingsScreen() {
         {/* Section: Financial */}
         <Text style={styles.sectionTitle}>{t('settings:financialPayments')}</Text>
         <View style={styles.sectionContainer}>
-          <MenuItem
-            icon="bank"
-            title={t('settings:automatedPayments')}
-            subtitle={accounts.length > 0 ? t('settings:bankLinked') : t('settings:connectBank')}
-            badge={accounts.length > 0 ? t('settings:connected') : undefined}
-            onPress={() => router.push('/automated-payments')}
-            isFirst
-          />
+          {contributionPaymentsEnabled ? (
+            <MenuItem
+              icon="bank"
+              title={t('settings:automatedPayments')}
+              subtitle={accounts.length > 0 ? t('settings:bankLinked') : t('settings:connectBank')}
+              badge={accounts.length > 0 ? t('settings:connected') : undefined}
+              onPress={() => router.push('/automated-payments')}
+              isFirst
+            />
+          ) : null}
           <MenuItem
             icon="credit-card"
             title={t('settings:paymentPreferences')}
-            subtitle="CashApp, Venmo, PayPal"
+            subtitle={t('settings:paymentPreferencesSubtitle')}
             onPress={() => router.push('/payment-preferences')}
+            isFirst={!contributionPaymentsEnabled}
           />
           <MenuItem
             icon="history"
             title={t('settings:completedCircles')}
             subtitle={t('settings:completedCirclesSubtitle')}
             onPress={() => router.push('/completed-circles')}
+            isLast
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>{t('settings:organizerTools')}</Text>
+        <View style={styles.sectionContainer}>
+          <MenuItem
+            icon="bell"
+            title={t('settings:smartReminders')}
+            subtitle={t('settings:smartRemindersSubtitle')}
+            onPress={() => router.push('/smart-reminders' as Href)}
+            isFirst
             isLast
           />
         </View>

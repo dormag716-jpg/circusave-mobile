@@ -41,6 +41,7 @@ describe('entitlements foundation', () => {
     expect(free.capabilities.maxParticipatingHands).toBe(20);
     expect(free.capabilities.maxOpenCircles).toBe(1);
     expect(free.capabilities.aiIntroAvailable).toBe(true);
+    expect(free.capabilities.contributionPaymentsEnabled).toBe(false);
     expect(isPremiumPlan(free)).toBe(false);
   });
 
@@ -63,12 +64,14 @@ describe('entitlements foundation', () => {
         advancedReports: true,
         premiumReminders: true,
         fullActivityHistory: true,
+        contributionPaymentsEnabled: true,
       },
     });
     expect(premium.plan).toBe('premium');
     expect(premium.source).toBe('stripe');
     expect(hasCapability(premium, 'advancedReports')).toBe(true);
     expect(hasCapability(premium, 'fullActivityHistory')).toBe(true);
+    expect(hasCapability(premium, 'contributionPaymentsEnabled')).toBe(true);
     expect(planTierFromEntitlements(premium)).toBe('premium');
   });
 
@@ -79,6 +82,7 @@ describe('entitlements foundation', () => {
     const partial = normalizeEntitlements({ plan: 'premium', capabilities: {} });
     expect(partial.plan).toBe('premium');
     expect(partial.capabilities.advancedReports).toBe(false);
+    expect(partial.capabilities.contributionPaymentsEnabled).toBe(false);
   });
 
   test('local role cannot forge access — freeEntitlements ignores role strings', () => {
@@ -91,6 +95,18 @@ describe('entitlements foundation', () => {
     expect(forged.plan).toBe('free');
     // Free plan path does not honor premium capability flags from payload.
     expect(forged.capabilities.advancedReports).toBe(false);
+  });
+
+  test('free plan can receive the independent contribution payment capability', () => {
+    const freeWithContributionPayments = normalizeEntitlements({
+      plan: 'free',
+      capabilities: { contributionPaymentsEnabled: true },
+    });
+    expect(freeWithContributionPayments.plan).toBe('free');
+    expect(
+      freeWithContributionPayments.capabilities.contributionPaymentsEnabled,
+    ).toBe(true);
+    expect(freeWithContributionPayments.capabilities.advancedReports).toBe(false);
   });
 
   test('getEntitlements fetches /auth/me/entitlements', async () => {
@@ -116,12 +132,14 @@ describe('entitlements foundation', () => {
             advancedReports: true,
             premiumReminders: true,
             fullActivityHistory: true,
+            contributionPaymentsEnabled: true,
           },
         }),
     }) as unknown as typeof fetch;
 
     const result = await getEntitlements('tok_abc');
     expect(result.plan).toBe('premium');
+    expect(result.capabilities.contributionPaymentsEnabled).toBe(true);
     const [url] = (global.fetch as jest.Mock).mock.calls[0] as [string];
     expect(url).toBe('http://127.0.0.1:5000/api/auth/me/entitlements');
   });
@@ -131,6 +149,7 @@ describe('entitlements foundation', () => {
     const result = await getEntitlements('tok_abc');
     expect(result.plan).toBe('free');
     expect(result.capabilities.fullActivityHistory).toBe(false);
+    expect(result.capabilities.contributionPaymentsEnabled).toBe(false);
   });
 
   test('expired user loses Premium UI capabilities after normalize', () => {

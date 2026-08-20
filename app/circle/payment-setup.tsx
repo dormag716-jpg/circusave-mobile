@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 
 import { getCircleDetail, updateCircleSettings } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { logClientError } from '@/lib/errorLogging';
 import { contributionCopy } from '@/lib/i18n/contributionCopy';
 import { formatDateTime } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/navigation';
@@ -54,8 +55,14 @@ function createDraft(
 export default function PaymentSetupScreen() {
   const { t, i18n } = useTranslation(['contributions', 'financialErrors']);
   const { session } = useAuthSession();
-  const params = useLocalSearchParams<{ circleId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    circleId?: string | string[];
+    returnTo?: string | string[];
+  }>();
   const circleId = Array.isArray(params.circleId) ? params.circleId[0] : params.circleId;
+  const returnTo = Array.isArray(params.returnTo)
+    ? params.returnTo[0]
+    : params.returnTo;
   const token = session?.session.token;
 
   const [circleName, setCircleName] = useState('');
@@ -135,10 +142,7 @@ export default function PaymentSetupScreen() {
       }
 
       if (result.status === 'error') {
-        console.error(
-          'Unable to save circle payment instructions',
-          result.error,
-        );
+        logClientError('Unable to save circle payment instructions', result.error);
         Alert.alert(
           t('contributions:paymentSetup.saveFailedTitle'),
           t('financialErrors:generic'),
@@ -153,7 +157,12 @@ export default function PaymentSetupScreen() {
         [
           {
             text: t('contributions:paymentSetup.done'),
-            onPress: () => router.replace(circleWorkspaceHref(circleId)),
+            onPress: () =>
+              router.replace(
+                returnTo === 'payment-preferences'
+                  ? '/payment-preferences'
+                  : circleWorkspaceHref(circleId),
+              ),
           },
         ],
       );
@@ -187,7 +196,14 @@ export default function PaymentSetupScreen() {
           <View style={styles.header}>
             <Pressable
               style={styles.backButton}
-              onPress={() => circleId && router.replace(circleWorkspaceHref(circleId))}
+              onPress={() =>
+                circleId &&
+                router.replace(
+                  returnTo === 'payment-preferences'
+                    ? '/payment-preferences'
+                    : circleWorkspaceHref(circleId),
+                )
+              }
               hitSlop={20}
               accessibilityLabel={t('contributions:paymentSetup.backA11y')}
             >

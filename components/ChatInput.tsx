@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -42,19 +42,41 @@ export default function ChatInput({
   style,
 }: ChatInputProps) {
   const [text, setText] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  const draftRef = useRef('');
+  const inputFocusedRef = useRef(false);
+  const sendAfterEndEditingRef = useRef(false);
   const insets = useSafeAreaInsets();
   const bottomPad = applyBottomInset
     ? Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0)
     : 8;
 
-  const handleSend = async () => {
-    if (!text.trim() || isLoading) return;
+  const sendDraft = async (draft: string) => {
+    if (!draft.trim() || isLoading) return;
     try {
-      await onSend(text);
-      setText((current) => composerDraftAfterSend(current, true));
+      await onSend(draft);
+      setText((current) => {
+        const next = composerDraftAfterSend(current, true, draft);
+        draftRef.current = next;
+        return next;
+      });
     } catch {
-      setText((current) => composerDraftAfterSend(current, false));
+      setText((current) => {
+        const next = composerDraftAfterSend(current, false, draft);
+        draftRef.current = next;
+        return next;
+      });
     }
+  };
+
+  const handleSendPress = () => {
+    if (isLoading || !draftRef.current.trim()) return;
+    if (inputFocusedRef.current) {
+      sendAfterEndEditingRef.current = true;
+      inputRef.current?.blur();
+      return;
+    }
+    void sendDraft(draftRef.current);
   };
 
   return (
@@ -72,15 +94,34 @@ export default function ChatInput({
         ]}
       >
         <TextInput
+          ref={inputRef}
           style={styles.input}
           placeholder={placeholder}
           placeholderTextColor={colors.muted}
           value={text}
-          onChangeText={setText}
+          onChangeText={(next) => {
+            draftRef.current = next;
+            setText(next);
+          }}
+          onFocus={() => {
+            inputFocusedRef.current = true;
+          }}
+          onEndEditing={(event) => {
+            inputFocusedRef.current = false;
+            const committedText = event.nativeEvent.text;
+            draftRef.current = committedText;
+            setText(committedText);
+            if (!sendAfterEndEditingRef.current) return;
+
+            sendAfterEndEditingRef.current = false;
+            requestAnimationFrame(() => inputRef.current?.focus());
+            void sendDraft(committedText);
+          }}
           multiline
           maxLength={4000}
           editable={!isLoading}
-          textAlignVertical="center"
+          textAlignVertical="top"
+          scrollEnabled
           blurOnSubmit={false}
         />
 
@@ -91,7 +132,7 @@ export default function ChatInput({
             pressed && styles.sendButtonPressed,
           ]}
           disabled={!text.trim() || isLoading}
-          onPress={() => void handleSend()}
+          onPress={handleSendPress}
           accessibilityRole="button"
           accessibilityLabel="Send message"
         >
@@ -112,41 +153,44 @@ export default function ChatInput({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingHorizontal: 4,
+    paddingTop: 8,
     backgroundColor: 'transparent',
   },
   composerPill: {
-    minHeight: 56,
-    maxHeight: 120,
+    minHeight: 54,
+    maxHeight: 132,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
-    paddingLeft: 18,
-    paddingRight: 6,
-    paddingVertical: 6,
+    paddingLeft: 16,
+    paddingRight: 5,
+    paddingVertical: 5,
     backgroundColor: colors.card,
-    borderRadius: 30,
+    borderRadius: 25,
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
   composerPillFloating: {
-    ...shadows.medium,
+    ...shadows.small,
   },
   input: {
     flex: 1,
-    minHeight: 44,
-    maxHeight: 108,
+    minHeight: 42,
+    maxHeight: 120,
+    minWidth: 0,
     fontSize: 16,
+    lineHeight: 22,
     color: colors.textStrong,
     paddingHorizontal: 0,
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 10,
     margin: 0,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',

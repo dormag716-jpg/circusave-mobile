@@ -43,9 +43,11 @@ export type StripeContributionPaymentInput = {
   roundNumber: number;
   /** Membership / hand id frozen at payment start. */
   handId: string;
+  contributionPaymentsEnabled?: unknown;
 };
 
 export type StripeContributionPaymentOutcome =
+  | { kind: 'disabled' }
   | { kind: 'canceled' }
   | { kind: 'confirmed'; handId: string }
   | { kind: 'pending_settlement'; handId: string }
@@ -177,6 +179,10 @@ export async function runStripeContributionPayment(
   input: StripeContributionPaymentInput,
   deps: StripeContributionPaymentDeps,
 ): Promise<StripeContributionPaymentOutcome> {
+  if (input.contributionPaymentsEnabled !== true) {
+    return { kind: 'disabled' };
+  }
+
   const handId = String(input.handId || '').trim();
   if (!handId) {
     return {

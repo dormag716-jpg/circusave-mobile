@@ -73,7 +73,51 @@ describe('runStripeContributionPayment', () => {
     circleId: 'circle-1',
     roundNumber: 2,
     handId: 'hand-selected',
+    contributionPaymentsEnabled: true,
   };
+
+  test('missing capability fails closed before any Stripe dependency runs', async () => {
+    const createPaymentIntent = jest.fn();
+    const initPaymentSheet = jest.fn();
+    const presentPaymentSheet = jest.fn();
+    const outcome = await runStripeContributionPayment(
+      {
+        token: 'tok',
+        circleId: 'circle-1',
+        roundNumber: 2,
+        handId: 'hand-selected',
+      },
+      {
+        createPaymentIntent,
+        initPaymentSheet,
+        presentPaymentSheet,
+        loadHandStatus: jest.fn(),
+      },
+    );
+    expect(outcome).toEqual({ kind: 'disabled' });
+    expect(createPaymentIntent).not.toHaveBeenCalled();
+    expect(initPaymentSheet).not.toHaveBeenCalled();
+    expect(presentPaymentSheet).not.toHaveBeenCalled();
+  });
+
+  test('disabled capability blocks direct navigation orchestration', async () => {
+    const createPaymentIntent = jest.fn();
+    const initPaymentSheet = jest.fn();
+    const presentPaymentSheet = jest.fn();
+    const outcome = await runStripeContributionPayment(
+      { ...baseInput, contributionPaymentsEnabled: false },
+      {
+        createPaymentIntent,
+        initPaymentSheet,
+        presentPaymentSheet,
+        loadHandStatus: jest.fn(),
+      },
+    );
+    expect(outcome).toEqual({ kind: 'disabled' });
+    expect(createPaymentIntent).not.toHaveBeenCalled();
+    expect(initPaymentSheet).not.toHaveBeenCalled();
+    expect(presentPaymentSheet).not.toHaveBeenCalled();
+  });
 
   test('rapid double acquire means only one createPaymentIntent when orchestrated with lock', async () => {
     const lock = new PaymentSessionLock();

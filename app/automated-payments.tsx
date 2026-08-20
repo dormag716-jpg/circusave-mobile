@@ -5,8 +5,10 @@ import { useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { useAuthSession } from '@/lib/authContext';
+import { useEntitlements } from '@/lib/entitlementsContext';
 import { createFinancialConnectionsSession, getLinkedAccounts, type BackendLinkedAccount, type AuthResponse } from '@/lib/api';
 import { colors, radii, spacing } from '@/lib/theme';
 
@@ -112,6 +114,11 @@ function LinkedAccountsList({ session }: { session: AuthResponse }) {
 
 export default function AutomatedPaymentsScreen() {
   const { session } = useAuthSession();
+  const { hasCapability } = useEntitlements();
+  const { t } = useTranslation('contributions');
+  const contributionPaymentsEnabled = hasCapability(
+    'contributionPaymentsEnabled',
+  );
 
   if (!session) return null;
 
@@ -134,12 +141,14 @@ export default function AutomatedPaymentsScreen() {
             <Text style={styles.bankTitle}>Automated Payments</Text>
           </View>
           <Text style={styles.bankDescription}>
-            Connect your bank account to automate contributions and receive payouts instantly.
+            {contributionPaymentsEnabled
+              ? 'Connect your bank account to automate contributions and receive payouts instantly.'
+              : t('rails.contributionPaymentsDisabledBody')}
           </Text>
           
-          {isStripeSupported ? (
+          {contributionPaymentsEnabled && isStripeSupported ? (
             <LinkedAccountsList session={session} />
-          ) : (
+          ) : contributionPaymentsEnabled ? (
             <Pressable 
               style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
               onPress={() => Alert.alert('Build Required', 'The Stripe SDK requires a native development build (eas build). It cannot run in Expo Go or Web.')}
@@ -148,7 +157,7 @@ export default function AutomatedPaymentsScreen() {
               <FontAwesome name="lock" size={16} color={colors.onColor} />
               <Text style={styles.connectButtonText}>Connect with Stripe</Text>
             </Pressable>
-          )}
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

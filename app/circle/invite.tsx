@@ -23,6 +23,7 @@ import {
   type BackendCircleMember,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { logClientError } from '@/lib/errorLogging';
 import {
   buildClaimInviteShareMessage,
   buildClaimInviteUrl,
@@ -64,7 +65,7 @@ export default function InviteMemberScreen() {
       const circleResponse = await getCircleDetail(token, circleId);
       setCircle(circleResponse);
     } catch (loadError) {
-      console.error('Unable to load organizer invite details.', loadError);
+      logClientError('Unable to load organizer invite details', loadError, { circleId });
       setError(t('organizer.loadError'));
     } finally {
       setLoading(false);
@@ -144,7 +145,7 @@ export default function InviteMemberScreen() {
         t('organizer.plannedAddedMessage'),
       );
     } catch (inviteError) {
-      console.error('Unable to add planned circle hand.', inviteError);
+      logClientError('Unable to add planned circle hand', inviteError, { circleId });
       Alert.alert(
         t('organizer.addErrorTitle'),
         t('genericError'),
@@ -208,7 +209,10 @@ export default function InviteMemberScreen() {
         }),
       });
     } catch (shareError) {
-      console.error('Unable to share planned-hand claim invite.', shareError);
+      logClientError('Unable to share planned-hand claim invite', shareError, {
+        circleId: circle.id,
+        memberId: member.id,
+      });
       Alert.alert(
         t('organizer.claimShareErrorTitle'),
         t('organizer.claimShareErrorMessage'),

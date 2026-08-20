@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -32,6 +33,7 @@ const LEGAL_ECONSENT_HREF = '/legal/electronic-consent' as Href;
 
 export default function CreateAccountScreen() {
   const { t } = useTranslation('auth');
+  const scrollRef = useRef<ScrollView>(null);
   const lastNameInputRef = useRef<TextInput>(null);
   const emailInputRef = useRef<TextInput>(null);
   const phoneInputRef = useRef<TextInput>(null);
@@ -47,6 +49,9 @@ export default function CreateAccountScreen() {
   const [acceptedFundsDisclosure, setAcceptedFundsDisclosure] = useState(false);
   const [acceptedElectronicConsent, setAcceptedElectronicConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const stepOpacity = useRef(new Animated.Value(1)).current;
+  const stepTranslateX = useRef(new Animated.Value(0)).current;
   const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
     useAuthSession();
   const incomingUrl = Linking.useURL();
@@ -57,6 +62,59 @@ export default function CreateAccountScreen() {
     acceptedElectronicConsent;
 
   const createDisabled = isSubmitting || !hasAcceptedRequiredPolicies;
+  const profileComplete =
+    Boolean(firstName.trim()) &&
+    Boolean(lastName.trim()) &&
+    Boolean(email.trim());
+  function showStep(nextStep: 1 | 2 | 3) {
+    if (nextStep === currentStep) return;
+    const direction = nextStep > currentStep ? 1 : -1;
+    Keyboard.dismiss();
+    stepOpacity.setValue(0);
+    stepTranslateX.setValue(direction * 36);
+    setCurrentStep(nextStep);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    requestAnimationFrame(() => {
+      Animated.parallel([
+        Animated.timing(stepOpacity, {
+          duration: 220,
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(stepTranslateX, {
+          duration: 220,
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }
+
+  function handleProfileContinue() {
+    if (!profileComplete) {
+      Alert.alert(
+        t('create.profileMissingTitle'),
+        t('create.profileMissingMessage'),
+      );
+      return;
+    }
+    showStep(2);
+  }
+
+  function handleSecurityContinue() {
+    if (password.length < 8) {
+      Alert.alert(t('create.weakPasswordTitle'), t('create.weakPasswordMessage'));
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert(
+        t('create.passwordMismatchTitle'),
+        t('create.passwordMismatchMessage'),
+      );
+      return;
+    }
+    showStep(3);
+  }
 
   async function handleCreateAccount() {
     if (isSubmitting) return;
@@ -135,14 +193,27 @@ export default function CreateAccountScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Pressable style={styles.backButton} onPress={() => router.back()} hitSlop={12}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() =>
+              currentStep === 1
+                ? router.back()
+                : showStep((currentStep - 1) as 1 | 2)
+            }
+            hitSlop={12}
+          >
             <FontAwesome name="chevron-left" size={18} color={colors.primary} />
-            <Text style={styles.backText}>{t('create.backToSignIn')}</Text>
+            <Text style={styles.backText}>
+              {currentStep === 1
+                ? t('create.backToSignIn')
+                : t('create.back')}
+            </Text>
           </Pressable>
 
           <View style={styles.header}>
@@ -167,22 +238,52 @@ export default function CreateAccountScreen() {
               </Text>
               <View style={styles.guideSteps}>
                 <View style={styles.guideStep}>
-                  <View style={styles.guideStepNumber}>
+                  <View
+                    style={[
+                      styles.guideStepNumber,
+                      currentStep !== 1 && styles.guideStepNumberComplete,
+                    ]}
+                  >
                     <Text style={styles.guideStepNumberText}>1</Text>
                   </View>
                   <Text style={styles.guideStepText}>{t('create.profile')}</Text>
                 </View>
                 <View style={styles.guideDivider} />
                 <View style={styles.guideStep}>
-                  <View style={styles.guideStepNumber}>
-                    <Text style={styles.guideStepNumberText}>2</Text>
+                  <View
+                    style={[
+                      styles.guideStepNumber,
+                      currentStep < 2 && styles.guideStepNumberPending,
+                      currentStep > 2 && styles.guideStepNumberComplete,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.guideStepNumberText,
+                        currentStep < 2 && styles.guideStepNumberTextPending,
+                      ]}
+                    >
+                      2
+                    </Text>
                   </View>
                   <Text style={styles.guideStepText}>{t('create.security')}</Text>
                 </View>
                 <View style={styles.guideDivider} />
                 <View style={styles.guideStep}>
-                  <View style={styles.guideStepNumber}>
-                    <Text style={styles.guideStepNumberText}>3</Text>
+                  <View
+                    style={[
+                      styles.guideStepNumber,
+                      currentStep < 3 && styles.guideStepNumberPending,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.guideStepNumberText,
+                        currentStep < 3 && styles.guideStepNumberTextPending,
+                      ]}
+                    >
+                      3
+                    </Text>
                   </View>
                   <Text style={styles.guideStepText}>{t('create.review')}</Text>
                 </View>
@@ -190,6 +291,13 @@ export default function CreateAccountScreen() {
             </View>
           </View>
 
+          <Animated.View
+            style={{
+              opacity: stepOpacity,
+              transform: [{ translateX: stepTranslateX }],
+            }}
+          >
+          {currentStep === 1 ? (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIcon}>
@@ -263,11 +371,22 @@ export default function CreateAccountScreen() {
               onChangeText={setPhone}
               keyboardType="phone-pad"
               autoComplete="tel"
-              returnKeyType="next"
-              onSubmitEditing={() => passwordInputRef.current?.focus()}
+              returnKeyType="done"
+              onSubmitEditing={handleProfileContinue}
             />
-          </View>
 
+            <Pressable
+              style={styles.primaryButton}
+              onPress={handleProfileContinue}
+              accessibilityRole="button"
+              accessibilityLabel={t('create.continue')}
+            >
+              <Text style={styles.primaryButtonText}>{t('create.continue')}</Text>
+            </Pressable>
+          </View>
+          ) : null}
+
+          {currentStep === 2 ? (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIcon}>
@@ -309,10 +428,34 @@ export default function CreateAccountScreen() {
               secureTextEntry
               autoComplete="new-password"
               returnKeyType="done"
-              onSubmitEditing={() => void handleCreateAccount()}
+              onSubmitEditing={handleSecurityContinue}
             />
-          </View>
 
+            <View style={styles.stepActions}>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => showStep(1)}
+                accessibilityRole="button"
+                accessibilityLabel={t('create.back')}
+              >
+                <Text style={styles.secondaryButtonText}>{t('create.back')}</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  styles.stepPrimaryButton,
+                ]}
+                onPress={handleSecurityContinue}
+                accessibilityRole="button"
+                accessibilityLabel={t('create.continue')}
+              >
+                <Text style={styles.primaryButtonText}>{t('create.continue')}</Text>
+              </Pressable>
+            </View>
+          </View>
+          ) : null}
+
+          {currentStep === 3 ? (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIcon}>
@@ -378,28 +521,47 @@ export default function CreateAccountScreen() {
               />
             </View>
 
-            <Pressable
-              style={[styles.primaryButton, createDisabled && styles.disabledButton]}
-              onPress={() => void handleCreateAccount()}
-              disabled={createDisabled}
-              accessibilityRole="button"
-              accessibilityState={{
-                busy: isSubmitting,
-                disabled: createDisabled,
-              }}
-              accessibilityLabel={t('create.createAccount')}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color={colors.onColor} />
-              ) : (
-                <Text style={styles.primaryButtonText}>{t('create.createAccount')}</Text>
-              )}
-            </Pressable>
+            <View style={styles.stepActions}>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => showStep(2)}
+                disabled={isSubmitting}
+                accessibilityRole="button"
+                accessibilityLabel={t('create.back')}
+              >
+                <Text style={styles.secondaryButtonText}>{t('create.back')}</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  styles.stepPrimaryButton,
+                  createDisabled && styles.disabledButton,
+                ]}
+                onPress={() => void handleCreateAccount()}
+                disabled={createDisabled}
+                accessibilityRole="button"
+                accessibilityState={{
+                  busy: isSubmitting,
+                  disabled: createDisabled,
+                }}
+                accessibilityLabel={t('create.createAccount')}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color={colors.onColor} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>
+                    {t('create.createAccount')}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
 
             <Text style={styles.note}>
               {t('create.legalNote')}
             </Text>
           </View>
+          ) : null}
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -504,6 +666,15 @@ const styles = StyleSheet.create({
     width: 20,
   },
   guideStepNumberText: { color: colors.onColor, fontSize: 11, fontWeight: '900' },
+  guideStepNumberTextPending: { color: colors.primary },
+  guideStepNumberPending: {
+    backgroundColor: colors.card,
+    borderColor: colors.primaryBorder,
+    borderWidth: 1,
+  },
+  guideStepNumberComplete: {
+    backgroundColor: colors.success,
+  },
   guideStepText: { color: colors.text, fontSize: 12, fontWeight: '800' },
   guideDivider: {
     backgroundColor: colors.primaryBorder,
@@ -585,6 +756,29 @@ const styles = StyleSheet.create({
   },
   disabledButton: { opacity: 0.65 },
   primaryButtonText: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
+  stepActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 24,
+  },
+  stepPrimaryButton: {
+    flex: 1,
+    marginTop: 0,
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    borderColor: colors.cardBorder,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 0.7,
+    justifyContent: 'center',
+    minHeight: 58,
+  },
+  secondaryButtonText: {
+    color: colors.textStrong,
+    fontSize: 16,
+    fontWeight: '800',
+  },
   note: {
     color: colors.muted,
     fontSize: 12,

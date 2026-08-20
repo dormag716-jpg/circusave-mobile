@@ -1,7 +1,7 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React, { useEffect, useRef } from 'react';
 import {
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -31,6 +31,8 @@ type ChatFeedProps = {
   bottomPadding?: number;
   /** Increment after a successful send to pin the list to the newest message. */
   pinToBottomNonce?: number;
+  deletingMessageId?: string | null;
+  onDeleteMessage?: (message: BackendChatMessage) => void;
   style?: FlatListProps<BackendChatMessage>['style'];
 };
 
@@ -40,6 +42,8 @@ export default function ChatFeed({
   scrollEnabled = true,
   bottomPadding = 0,
   pinToBottomNonce = 0,
+  deletingMessageId,
+  onDeleteMessage,
   style,
 }: ChatFeedProps) {
   const listRef = useRef<FlatList<BackendChatMessage>>(null);
@@ -130,7 +134,6 @@ export default function ChatFeed({
         if (item.isSystem || item.senderId === 'system') {
           return (
             <View style={styles.systemMessage}>
-              <FontAwesome name="info-circle" size={14} color={colors.muted} />
               <Text style={styles.systemText}>{item.text}</Text>
             </View>
           );
@@ -139,11 +142,26 @@ export default function ChatFeed({
         return (
           <View style={[styles.messageWrapper, isMe ? styles.messageWrapperMe : null]}>
             {!isMe && (
-              <View style={{ marginRight: 8 }}>
-                <Avatar name={item.senderName} size={32} />
+              <View style={styles.avatar}>
+                <Avatar name={item.senderName} size={28} />
               </View>
             )}
-            <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+            <Pressable
+              style={[
+                styles.bubble,
+                isMe ? styles.bubbleMe : styles.bubbleThem,
+                deletingMessageId === item.id ? styles.bubbleDeleting : null,
+              ]}
+              disabled={!isMe || !onDeleteMessage || deletingMessageId != null}
+              onLongPress={() => onDeleteMessage?.(item)}
+              delayLongPress={350}
+              accessibilityRole={isMe && onDeleteMessage ? 'button' : undefined}
+              accessibilityLabel={
+                isMe && onDeleteMessage
+                  ? `Message: ${item.text}. Press and hold to delete.`
+                  : undefined
+              }
+            >
               {!isMe && <Text style={styles.senderName}>{item.senderName}</Text>}
               <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
                 {item.text}
@@ -151,7 +169,7 @@ export default function ChatFeed({
               <Text style={[styles.timestamp, isMe && styles.timestampMe]}>
                 {item.timestamp}
               </Text>
-            </View>
+            </Pressable>
           </View>
         );
       }}
@@ -166,70 +184,70 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
+    paddingBottom: 16,
+    paddingHorizontal: 4,
+    paddingTop: 12,
   },
   messageWrapper: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: 12,
-    maxWidth: '85%',
+    marginBottom: 8,
+    maxWidth: '82%',
   },
   messageWrapperMe: {
     alignSelf: 'flex-end',
   },
+  avatar: {
+    marginRight: 7,
+  },
   bubble: {
-    padding: 12,
-    borderRadius: 18,
+    borderRadius: 17,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   bubbleThem: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderBottomLeftRadius: 4,
+    backgroundColor: colors.surfaceMuted,
+    borderBottomLeftRadius: 5,
   },
   bubbleMe: {
     backgroundColor: colors.primary,
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 5,
+  },
+  bubbleDeleting: {
+    opacity: 0.5,
   },
   senderName: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: colors.primary,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   messageText: {
     fontSize: 15,
     color: colors.textStrong,
-    lineHeight: 20,
+    lineHeight: 21,
   },
   messageTextMe: {
     color: colors.onColor,
   },
   timestamp: {
-    fontSize: 10,
+    fontSize: 9,
     color: colors.muted,
-    marginTop: 4,
+    marginTop: 3,
     alignSelf: 'flex-end',
   },
   timestampMe: {
     color: 'rgba(255,255,255,0.7)',
   },
   systemMessage: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.cardBorder,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 16,
     alignSelf: 'center',
-    marginVertical: 12,
-    gap: 6,
+    marginVertical: 10,
+    paddingHorizontal: 16,
   },
   systemText: {
-    fontSize: 12,
-    color: colors.text,
+    fontSize: 11,
+    color: colors.muted,
     fontWeight: '600',
+    textAlign: 'center',
   },
 });

@@ -5,6 +5,7 @@ import {
   bindCircleWorkspaceCacheUser,
   circleWorkspaceCacheKey,
   clearCircleWorkspaceCache,
+  evictCircleWorkspaceCache,
   isLedgerRequiredForRoundPresentation,
   isWorkspaceCacheAuthoritativeForPermissions,
   readCircleWorkspaceCache,
@@ -213,5 +214,23 @@ describe('circle workspace warm cache', () => {
 
     clearCircleWorkspaceCache();
     expect(readCircleWorkspacePresentation('circle-a')).toBeNull();
+  });
+
+  it('evicts only the inaccessible circle for the current user', () => {
+    seedCircleWorkspaceCache({
+      circleId: 'circle-a',
+      detail: detail('circle-a', 'Alpha'),
+    });
+    seedCircleWorkspaceCache({
+      circleId: 'circle-b',
+      detail: detail('circle-b', 'Beta'),
+    });
+
+    evictCircleWorkspaceCache('circle-a');
+
+    expect(readCircleWorkspacePresentation('circle-a')).toBeNull();
+    expect(readCircleWorkspacePresentation('circle-b')?.detail?.name).toBe(
+      'Beta',
+    );
   });
 });
