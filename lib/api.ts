@@ -1051,6 +1051,21 @@ export async function getEntitlements(token: string): Promise<Entitlements> {
   }
 }
 
+export async function getFreshContributionPaymentsCapability(
+  token: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const payload = await requestJson<unknown>('/auth/me/entitlements', {
+    token,
+    revalidate: true,
+    signal,
+  });
+  if (!isRecord(payload) || !isRecord(payload.capabilities)) {
+    return false;
+  }
+  return payload.capabilities.contributionPaymentsEnabled === true;
+}
+
 export async function logout(token: string): Promise<void> {
   await requestJson<unknown>('/auth/logout', {
     method: 'POST',

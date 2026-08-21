@@ -10,7 +10,10 @@ import {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { getEntitlements } from './api';
+import {
+  getEntitlements,
+  getFreshContributionPaymentsCapability,
+} from './api';
 import { useAuthSession } from './authContext';
 import {
   freeEntitlements,
@@ -28,11 +31,14 @@ type EntitlementsContextValue = {
   status: EntitlementsStatus;
   isPremium: boolean;
   refreshEntitlements: () => Promise<Entitlements>;
+  refreshContributionPaymentsCapability: () => Promise<boolean>;
+  revokeContributionPaymentsCapability: () => void;
   hasCapability: (capability: keyof EntitlementCapabilities) => boolean;
   planTier: 'free' | 'premium';
 };
 
 const EntitlementsContext = createContext<EntitlementsContextValue | null>(null);
+const CONTRIBUTION_CAPABILITY_TIMEOUT_MS = 5000;
 
 export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const { session, status: authStatus } = useAuthSession();
@@ -40,6 +46,16 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const [entitlements, setEntitlements] = useState<Entitlements>(freeEntitlements());
   const [status, setStatus] = useState<EntitlementsStatus>('idle');
   const appState = useRef(AppState.currentState);
+
+  const setContributionPaymentsCapability = useCallback((enabled: boolean) => {
+    setEntitlements((current) => ({
+      ...current,
+      capabilities: {
+        ...current.capabilities,
+        contributionPaymentsEnabled: enabled,
+      },
+    }));
+  }, []);
 
   const refreshEntitlements = useCallback(async () => {
     const accessToken = String(token ?? '').trim();
@@ -64,6 +80,41 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
       return free;
     }
   }, [authStatus, token]);
+
+  const refreshContributionPaymentsCapability = useCallback(async () => {
+    const accessToken = String(token ?? '').trim();
+    if (!accessToken || authStatus !== 'authenticated') {
+      setContributionPaymentsCapability(false);
+      return false;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      CONTRIBUTION_CAPABILITY_TIMEOUT_MS,
+    );
+    try {
+      const enabled = await getFreshContributionPaymentsCapability(
+        accessToken,
+        controller.signal,
+      );
+      setContributionPaymentsCapability(enabled);
+      return enabled;
+    } catch {
+      setContributionPaymentsCapability(false);
+      return false;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }, [
+    authStatus,
+    setContributionPaymentsCapability,
+    token,
+  ]);
+
+  const revokeContributionPaymentsCapability = useCallback(() => {
+    setContributionPaymentsCapability(false);
+  }, [setContributionPaymentsCapability]);
 
   // Load on login / session change.
   useEffect(() => {
@@ -98,10 +149,18 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
       status,
       isPremium: isPremiumPlan(entitlements),
       refreshEntitlements,
+      refreshContributionPaymentsCapability,
+      revokeContributionPaymentsCapability,
       hasCapability: (capability) => hasCapability(entitlements, capability),
       planTier: planTierFromEntitlements(entitlements),
     }),
-    [entitlements, refreshEntitlements, status],
+    [
+      entitlements,
+      refreshContributionPaymentsCapability,
+      refreshEntitlements,
+      revokeContributionPaymentsCapability,
+      status,
+    ],
   );
 
   return (

@@ -64,6 +64,7 @@ import {
   type MemberAgreementPrompt,
 } from '@/lib/circleAgreements';
 import { PaymentDestinationList } from '@/components/PaymentDestinationList';
+import { ContributionCapabilityGate } from '@/components/ContributionCapabilityGate';
 import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
@@ -1885,10 +1886,14 @@ function MemberContributionCard({
                 </Pressable>
               ) : null}
             </View>
-            {memberCanSubmitContribution &&
-            contributionPaymentsEnabled &&
-            hand.presentation.canReportPayment &&
-            card.reportableHandCount <= 1 ? (
+            <ContributionCapabilityGate
+              enabled={
+                memberCanSubmitContribution &&
+                contributionPaymentsEnabled &&
+                hand.presentation.canReportPayment &&
+                card.reportableHandCount <= 1
+              }
+            >
               <Pressable
                 style={styles.memberHandTextAction}
                 disabled={submittingHandId != null}
@@ -1908,7 +1913,7 @@ function MemberContributionCard({
                   {contributionCopy(t, 'workspace.payInCircusave')}
                 </Text>
               </Pressable>
-            ) : null}
+            </ContributionCapabilityGate>
           </View>
         </View>
       ))}

@@ -171,6 +171,23 @@ export function sanitizePaymentUserMessage(
   return firstLine;
 }
 
+function isContributionPaymentsDisabledError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const candidate = error as {
+    status?: unknown;
+    payload?: unknown;
+  };
+  if (candidate.status !== 503 || !candidate.payload || typeof candidate.payload !== 'object') {
+    return false;
+  }
+  return (
+    (candidate.payload as Record<string, unknown>).code ===
+    'contribution_payments_disabled'
+  );
+}
+
 /**
  * Full PaymentSheet flow with settlement polling.
  * Caller must hold PaymentSessionLock for the entire duration.
@@ -264,6 +281,9 @@ export async function runStripeContributionPayment(
     }
     return { kind: 'pending_settlement', handId };
   } catch (error) {
+    if (isContributionPaymentsDisabledError(error)) {
+      return { kind: 'disabled' };
+    }
     return {
       kind: 'error',
       message: sanitizePaymentUserMessage(

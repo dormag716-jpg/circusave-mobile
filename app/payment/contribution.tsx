@@ -33,8 +33,8 @@ import {
 } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
-import { useEntitlements } from '@/lib/entitlementsContext';
 import { logClientError } from '@/lib/errorLogging';
+import { useContributionPaymentCapability } from '@/lib/useContributionPaymentCapability';
 import {
   applyContributionLoadResult,
   createContributionRequestStreams,
@@ -77,10 +77,11 @@ export default function ContributionPaymentScreen() {
     'people',
   ]);
   const { session, status } = useAuthSession();
-  const { hasCapability } = useEntitlements();
-  const contributionPaymentsEnabled = hasCapability(
-    'contributionPaymentsEnabled',
-  );
+  const {
+    enabled: contributionPaymentsEnabled,
+    preflight: preflightContributionPayments,
+    revoke: revokeContributionPayments,
+  } = useContributionPaymentCapability();
   const params = useLocalSearchParams<{
     circleId?: string | string[];
     handId?: string | string[];
@@ -424,6 +425,11 @@ export default function ContributionPaymentScreen() {
     setSettlementPhase(null);
     let holdLock = false;
     try {
+      const freshCapability = await preflightContributionPayments();
+      if (!freshCapability) {
+        return;
+      }
+
       const outcome = await runStripeContributionPayment(
         {
           token: accessToken,
@@ -452,6 +458,7 @@ export default function ContributionPaymentScreen() {
       }
 
       if (outcome.kind === 'disabled') {
+        revokeContributionPayments();
         return;
       }
 
