@@ -94,11 +94,9 @@ describe('contribution.tsx Step 5 screen split', () => {
     expect(contributionSource).toContain('buildManualContributionSubmitPayload');
     expect(contributionSource).toContain('selectedDestinationIndex');
     expect(contributionSource).toContain('handleStripePayment()');
-    expect(contributionSource).toContain(
-      'const contributionPaymentsEnabled = hasCapability(',
-    );
-    expect(contributionSource).toContain("'contributionPaymentsEnabled'");
+    expect(contributionSource).toContain('useContributionPaymentCapability()');
     expect(contributionSource).toContain('if (!contributionPaymentsEnabled)');
+    expect(contributionSource).toContain('preflightContributionPayments()');
     expect(contributionSource).toContain('runStripeContributionPayment');
     expect(contributionSource).toContain('createPaymentIntent');
     expect(contributionSource).toContain('requestedHandId ?? null');

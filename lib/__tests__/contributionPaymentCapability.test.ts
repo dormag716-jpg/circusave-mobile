@@ -8,12 +8,10 @@ function readSource(...segments: string[]) {
 describe('contribution payment capability wiring', () => {
   test('direct contribution navigation cannot bypass the capability guard', () => {
     const source = readSource('app', 'payment', 'contribution.tsx');
-    expect(source).toContain(
-      'const contributionPaymentsEnabled = hasCapability(',
-    );
-    expect(source).toContain("'contributionPaymentsEnabled'");
+    expect(source).toContain('useContributionPaymentCapability()');
     expect(source).toContain('if (!contributionPaymentsEnabled)');
-    expect(source).toContain('contributionPaymentsEnabled,');
+    expect(source).toContain('preflightContributionPayments()');
+    expect(source).toContain('revokeContributionPayments()');
     expect(source).toContain('rails.showStripeRail');
   });
 
@@ -25,11 +23,14 @@ describe('contribution payment capability wiring', () => {
     expect(source).toContain("'contributionPaymentsEnabled'");
     const payAction = source.indexOf('onPress={() => onPayInApp(hand.handId)}');
     const capabilityGuard = source.lastIndexOf(
-      'contributionPaymentsEnabled &&',
+      '<ContributionCapabilityGate',
       payAction,
     );
     expect(payAction).toBeGreaterThan(-1);
     expect(capabilityGuard).toBeGreaterThan(-1);
+    expect(source.slice(capabilityGuard, payAction)).toContain(
+      'contributionPaymentsEnabled',
+    );
     expect(source).toContain('onMarkAsSent={onMarkContributionSent}');
   });
 

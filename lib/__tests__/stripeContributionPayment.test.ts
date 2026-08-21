@@ -119,6 +119,26 @@ describe('runStripeContributionPayment', () => {
     expect(presentPaymentSheet).not.toHaveBeenCalled();
   });
 
+  test('backend disabled response revokes before PaymentSheet initialization', async () => {
+    const initPaymentSheet = jest.fn();
+    const presentPaymentSheet = jest.fn();
+    const outcome = await runStripeContributionPayment(baseInput, {
+      createPaymentIntent: jest.fn(async () => {
+        throw {
+          status: 503,
+          payload: { code: 'contribution_payments_disabled' },
+        };
+      }),
+      initPaymentSheet,
+      presentPaymentSheet,
+      loadHandStatus: jest.fn(),
+    });
+
+    expect(outcome).toEqual({ kind: 'disabled' });
+    expect(initPaymentSheet).not.toHaveBeenCalled();
+    expect(presentPaymentSheet).not.toHaveBeenCalled();
+  });
+
   test('rapid double acquire means only one createPaymentIntent when orchestrated with lock', async () => {
     const lock = new PaymentSessionLock();
     let createCalls = 0;

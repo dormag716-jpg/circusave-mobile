@@ -5,7 +5,10 @@ import {
   normalizeEntitlements,
   planTierFromEntitlements,
 } from '../entitlements';
-import { getEntitlements } from '../api';
+import {
+  getEntitlements,
+  getFreshContributionPaymentsCapability,
+} from '../api';
 
 describe('entitlements foundation', () => {
   const originalFetch = global.fetch;
@@ -150,6 +153,39 @@ describe('entitlements foundation', () => {
     expect(result.plan).toBe('free');
     expect(result.capabilities.fullActivityHistory).toBe(false);
     expect(result.capabilities.contributionPaymentsEnabled).toBe(false);
+  });
+
+  test.each([
+    ['missing', {}],
+    ['missing capabilities', { plan: 'premium' }],
+    ['false', { capabilities: { contributionPaymentsEnabled: false } }],
+    ['invalid string', { capabilities: { contributionPaymentsEnabled: 'true' } }],
+    ['invalid number', { capabilities: { contributionPaymentsEnabled: 1 } }],
+  ])('fresh contribution capability fails closed for %s payload', async (_label, payload) => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    }) as unknown as typeof fetch;
+
+    await expect(
+      getFreshContributionPaymentsCapability('tok_abc'),
+    ).resolves.toBe(false);
+  });
+
+  test('fresh contribution capability accepts only explicit true', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          capabilities: { contributionPaymentsEnabled: true },
+        }),
+    }) as unknown as typeof fetch;
+
+    await expect(
+      getFreshContributionPaymentsCapability('tok_abc'),
+    ).resolves.toBe(true);
   });
 
   test('expired user loses Premium UI capabilities after normalize', () => {
