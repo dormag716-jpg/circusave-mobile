@@ -9,6 +9,9 @@ import {
   shortStatementId,
   OUTSTANDING_FIELD_NOTE,
 } from '@/lib/statementPresentation';
+import ledgerEn from '@/lib/i18n/locales/en/ledger.json';
+import ledgerEs from '@/lib/i18n/locales/es/ledger.json';
+import ledgerHt from '@/lib/i18n/locales/ht/ledger.json';
 
 describe('statementPresentation', () => {
   test('humanizes statuses and events without mutating source keys', () => {
@@ -93,5 +96,19 @@ describe('statementPresentation', () => {
 
   test('documents Outstanding mapping note for remaining obligations', () => {
     expect(OUTSTANDING_FIELD_NOTE).toMatch(/remainingObligations/);
+  });
+
+  test('localizes external-report provenance in all supported languages', () => {
+    expect(ledgerEn.provenance.pending).toBe(
+      'Externally reported by {{member}} on {{date}}. Awaiting organizer confirmation.',
+    );
+    expect(ledgerEn.provenance.confirmed).toContain('Confirmed by {{organizer}}');
+    expect(ledgerEn.provenance.rejected).toContain('This contribution remains due.');
+    expect(ledgerEs.provenance.pending).toContain('confirmación del organizador');
+    expect(ledgerEs.provenance.confirmed).toContain('Confirmado por');
+    expect(ledgerEs.provenance.rejected).toContain('sigue pendiente');
+    expect(ledgerHt.provenance.pending).toContain('konfimasyon òganizatè');
+    expect(ledgerHt.provenance.confirmed).toContain('konfime');
+    expect(ledgerHt.provenance.rejected).toContain('toujou dwe');
   });
 });

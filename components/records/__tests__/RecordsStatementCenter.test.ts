@@ -225,6 +225,19 @@ const previewSnapshot = {
             expectedDisplay: '$1,000',
             paidCents: 100000,
             paidDisplay: '$1,000',
+            paymentOrigin: 'external',
+            paymentOriginLabel: 'Externally reported payment',
+            verificationStatus: 'organizer_confirmed',
+            verificationLabel: 'Confirmed by organizer',
+            reportedBy: {
+              userId: 'user-antony',
+              displayName: 'Antony Powell',
+            },
+            reportedAt: '2026-07-27T11:00:00Z',
+            confirmedBy: {
+              userId: 'user-darius',
+              displayName: 'Darius Ward',
+            },
             confirmedAt: '2026-07-27T12:00:00Z',
           },
         ],
@@ -369,6 +382,45 @@ afterEach(() => {
 });
 
 describe('RecordsStatementCenter professional redesign', () => {
+  test('renders statement and activity provenance from additive backend fields', async () => {
+    const renderer = await renderCenter({
+      ledgerEntries: [
+        {
+          id: 'external-confirmation',
+          type: 'contribution_confirmed',
+          at: '2026-07-27T12:00:00Z',
+          amount: 1000,
+          round: 1,
+          memberId: 'hand-antony',
+          paymentOrigin: 'external',
+          verificationStatus: 'organizer_confirmed',
+          performedBy: {
+            userId: 'user-darius',
+            displayName: 'Darius Ward',
+          },
+        },
+      ],
+    });
+    await TestRenderer.act(async () => {
+      pressableWithText(renderer, 'Circle Overview').props.onPress();
+      await flushUpdates();
+    });
+    let text = visibleText(renderer);
+    expect(text).toContain('ledger:provenance.activityConfirmed');
+
+    const statementRenderer = await renderCenter();
+    await TestRenderer.act(async () => {
+      statementRenderer.root
+        .findByProps({
+          accessibilityLabel: 'Open statement for Antony Powell',
+        })
+        .props.onPress();
+      await flushUpdates();
+    });
+    text = visibleText(statementRenderer);
+    expect(text).toContain('ledger:provenance.confirmed');
+  });
+
   test('shows clean Records hierarchy, circle scope, totals, and humanized hand wording', async () => {
     const renderer = await renderCenter();
     const text = visibleText(renderer);

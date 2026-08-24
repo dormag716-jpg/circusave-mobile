@@ -94,12 +94,14 @@ export default function LoginScreen() {
 
       if (!otpRequested) {
         const result = await requestPasswordReset({ email: normalizedEmail });
-        if (!result.sent) throw new Error('Unable to send a password reset code.');
+        if (!result.accepted) {
+          throw new Error('Unable to initialize password recovery.');
+        }
 
         setOtpRequested(true);
         Alert.alert(
-          t('login.codeSentTitle'),
-          t('login.codeSentMessage'),
+          t('login.recoveryRequestedTitle'),
+          t('login.recoveryRequestedMessage'),
         );
         return;
       }

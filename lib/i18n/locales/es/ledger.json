@@ -42,6 +42,14 @@
     "rejected": "Rechazada",
     "completed": "Completado"
   },
+  "provenance": {
+    "unknownReporter": "Persona que informó desconocida",
+    "organizer": "Organizador",
+    "pending": "Pago externo informado por {{member}} el {{date}}. En espera de la confirmación del organizador.",
+    "confirmed": "Pago externo informado por {{member}} el {{reportedAt}}. Confirmado por {{organizer}} el {{confirmedAt}}.",
+    "activityConfirmed": "Informe de pago externo confirmado por {{organizer}} el {{date}}.",
+    "rejected": "Informe de pago externo rechazado por {{organizer}} el {{rejectedAt}}. Esta contribución sigue pendiente."
+  },
   "upgradeTitle": "Desbloquea el historial completo",
   "upgradeBody_one": "{{count}} actividad adicional está oculta en el plan gratuito.",
   "upgradeBody_other": "{{count}} actividades adicionales están ocultas en el plan gratuito.",

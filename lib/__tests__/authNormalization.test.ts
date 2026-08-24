@@ -2,7 +2,7 @@
  * Exercises private normalizeAuthResponse through the smallest public path:
  * getAuthSession → GET /auth/session → { user, session }.
  */
-import { getAuthSession } from '../api';
+import { getAuthSession, requestPasswordReset } from '../api';
 
 const baseUser = {
   id: 'usr_1',
@@ -147,5 +147,34 @@ describe('auth normalization preserves payment preferences (via getAuthSession)'
     // getAuthSession does not re-attach the request token; bootstrapAuthSession does.
     expect(result.session.token).toBeUndefined();
     expect(result.user.cashtag).toBe('$only-user');
+  });
+
+  test('password recovery accepts the generic backend acknowledgement', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          accepted: true,
+          challengeId: 'otp_0123456789',
+          expiresIn: 300,
+          message:
+            'If an eligible account exists, verification instructions will be sent.',
+        }),
+    }) as unknown as typeof fetch;
+
+    const result = await requestPasswordReset({
+      email: '  ADA@EXAMPLE.COM ',
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.challengeId).toMatch(/^otp_[0-9a-f]{10}$/);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/forgot-password/request'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'ada@example.com' }),
+      }),
+    );
   });
 });

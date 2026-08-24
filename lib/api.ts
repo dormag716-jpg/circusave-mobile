@@ -44,11 +44,10 @@ export type AuthResponse = {
 };
 
 export type PasswordResetRequestResult = {
-  sent: boolean;
-  challengeId?: string;
-  expiresIn?: number;
-  deliveryStatus?: string;
-  message?: string;
+  accepted: true;
+  challengeId: string;
+  expiresIn: number;
+  message: string;
   devCode?: string;
 };
 
@@ -475,6 +474,19 @@ export type BackendLedgerEntry = {
   note?: string | null;
   round?: number;
   type?: string;
+  title?: string;
+  message?: string;
+  createdAt?: string;
+  paymentOrigin?: 'external' | string | null;
+  paymentOriginLabel?: string | null;
+  verificationStatus?:
+    | 'pending_organizer_confirmation'
+    | 'organizer_confirmed'
+    | 'organizer_rejected'
+    | string
+    | null;
+  verificationLabel?: string | null;
+  performedBy?: StatementActor | null;
 };
 
 export type BackendLedgerPage = {
@@ -485,6 +497,11 @@ export type BackendLedgerPage = {
 
 /** Backend money field: cents number or the literal "Unavailable". */
 export type StatementMoney = number | 'Unavailable';
+
+export type StatementActor = {
+  userId: string;
+  displayName: string | null;
+};
 
 export type MemberStatementIndexRow = {
   subjectKey: string;
@@ -576,6 +593,7 @@ export type MemberStatementSnapshot = {
       rejectedDisplay: string;
       byRound: Array<{
         contributionId: string;
+        handId?: string;
         roundNumber: number;
         dueDate: string | null;
         status: string;
@@ -583,6 +601,32 @@ export type MemberStatementSnapshot = {
         expectedDisplay: string;
         paidCents: number;
         paidDisplay: string;
+        amountCents?: number;
+        amountDisplay?: string;
+        grossPaidCents?: number;
+        grossPaidDisplay?: string;
+        refundedCents?: number;
+        refundedDisplay?: string;
+        netPaidCents?: number;
+        netPaidDisplay?: string;
+        recognizedFundingCents?: number;
+        recognizedFundingDisplay?: string;
+        remainingDueCents?: number;
+        remainingDueDisplay?: string;
+        paymentOrigin?: 'external' | string | null;
+        paymentOriginLabel?: string | null;
+        verificationStatus?:
+          | 'pending_organizer_confirmation'
+          | 'organizer_confirmed'
+          | 'organizer_rejected'
+          | string
+          | null;
+        verificationLabel?: string | null;
+        reportedBy?: StatementActor | null;
+        reportedAt?: string | null;
+        confirmedBy?: StatementActor | null;
+        rejectedBy?: StatementActor | null;
+        rejectedAt?: string | null;
         paymentMethod?: string | null;
         submittedAt?: string | null;
         confirmedAt?: string | null;
@@ -630,6 +674,21 @@ export type MemberStatementSnapshot = {
     reference: string;
     statusOrNote: string | null;
     description: string | null;
+    paymentOrigin?: 'external' | string | null;
+    paymentOriginLabel?: string | null;
+    verificationStatus?:
+      | 'pending_organizer_confirmation'
+      | 'organizer_confirmed'
+      | 'organizer_rejected'
+      | string
+      | null;
+    verificationLabel?: string | null;
+    reportedBy?: StatementActor | null;
+    reportedAt?: string | null;
+    confirmedBy?: StatementActor | null;
+    confirmedAt?: string | null;
+    rejectedBy?: StatementActor | null;
+    rejectedAt?: string | null;
   }>;
   verification: {
     footerText: string;

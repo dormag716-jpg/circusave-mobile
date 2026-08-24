@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -159,6 +160,81 @@ function entryMemberName(
   if (!memberId) return '';
   const match = members.find((m) => m.id === memberId || m.userId === memberId);
   return String(match?.full_name || match?.name || '').trim();
+}
+
+type ExternalProvenance = {
+  paymentOrigin?: string | null;
+  verificationStatus?: string | null;
+  reportedBy?: { displayName: string | null } | null;
+  reportedAt?: string | null;
+  confirmedBy?: { displayName: string | null } | null;
+  confirmedAt?: string | null;
+  rejectedBy?: { displayName: string | null } | null;
+  rejectedAt?: string | null;
+};
+
+function externalContributionProvenanceText(
+  item: ExternalProvenance,
+  t: TFunction,
+): string | null {
+  if (item.paymentOrigin !== 'external') return null;
+  const reporter =
+    item.reportedBy?.displayName || t('ledger:provenance.unknownReporter');
+  const organizer =
+    item.confirmedBy?.displayName ||
+    item.rejectedBy?.displayName ||
+    t('ledger:provenance.organizer');
+
+  if (item.verificationStatus === 'pending_organizer_confirmation') {
+    return t('ledger:provenance.pending', {
+      member: reporter,
+      date: formatDisplayDateTime(item.reportedAt),
+    });
+  }
+  if (item.verificationStatus === 'organizer_confirmed') {
+    return t('ledger:provenance.confirmed', {
+      member: reporter,
+      reportedAt: formatDisplayDateTime(item.reportedAt),
+      organizer,
+      confirmedAt: formatDisplayDateTime(item.confirmedAt),
+    });
+  }
+  if (item.verificationStatus === 'organizer_rejected') {
+    return t('ledger:provenance.rejected', {
+      organizer,
+      rejectedAt: formatDisplayDateTime(item.rejectedAt),
+    });
+  }
+  return null;
+}
+
+function activityProvenanceText(
+  entry: BackendLedgerEntry,
+  t: TFunction,
+): string | null {
+  if (entry.paymentOrigin !== 'external') return null;
+  const actor =
+    entry.performedBy?.displayName || t('ledger:provenance.organizer');
+  const at = entry.createdAt || entry.created_at || entry.at;
+  if (entry.verificationStatus === 'pending_organizer_confirmation') {
+    return t('ledger:provenance.pending', {
+      member: actor,
+      date: formatDisplayDateTime(at),
+    });
+  }
+  if (entry.verificationStatus === 'organizer_confirmed') {
+    return t('ledger:provenance.activityConfirmed', {
+      organizer: actor,
+      date: formatDisplayDateTime(at),
+    });
+  }
+  if (entry.verificationStatus === 'organizer_rejected') {
+    return t('ledger:provenance.rejected', {
+      organizer: actor,
+      rejectedAt: formatDisplayDateTime(at),
+    });
+  }
+  return null;
 }
 
 async function saveAndSharePdf(
@@ -606,7 +682,9 @@ function CircleRecordsPanel({
           </Text>
         </View>
       ) : (
-        visibleEntries.map((entry, index) => (
+        visibleEntries.map((entry, index) => {
+          const provenanceText = activityProvenanceText(entry, t);
+          return (
           <View key={ledgerRenderKey(entry, index)}>
             <View style={styles.ledgerRow}>
               <View
@@ -631,6 +709,9 @@ function CircleRecordsPanel({
                       )
                     : '\u2014'}
                 </Text>
+                {provenanceText ? (
+                  <Text style={styles.rowMeta}>{provenanceText}</Text>
+                ) : null}
               </View>
               {typeof entry.amount === 'number' ? (
                 <Text style={[styles.rowAmount, { color: ledgerIconColor(entry) }]}>
@@ -640,7 +721,8 @@ function CircleRecordsPanel({
             </View>
             {index < visibleEntries.length - 1 ? <View style={styles.divider} /> : null}
           </View>
-        ))
+          );
+        })
       )}
 
       {hasMore ? (
@@ -1120,6 +1202,7 @@ function ExpandableSection({
 }
 
 function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
+  const { t } = useTranslation(['ledger']);
   const uniqueLedgerEntries = useMemo(
     () => dedupeById(snapshot.ledger || []),
     [snapshot.ledger],
@@ -1274,15 +1357,21 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
             {(hand.contributions.byRound || []).length > 0 ? (
               <>
                 <Text style={styles.miniLabel}>Contribution history</Text>
-                {hand.contributions.byRound.map((r) => (
+                {hand.contributions.byRound.map((r) => {
+                  const provenanceText = externalContributionProvenanceText(r, t);
+                  const awaitingConfirmation =
+                    r.verificationStatus === 'pending_organizer_confirmation';
+                  return (
                   <View key={r.contributionId} style={styles.roundRow}>
                     <Text style={styles.roundTitle}>Round {r.roundNumber}</Text>
                     <Text style={styles.roundMeta}>
                       {humanizeStatus(r.status)}
                     </Text>
                     <Text style={styles.roundAmount}>
-                      {displayMoney(r.paidDisplay)}
-                      {r.status !== 'confirmed'
+                      {displayMoney(
+                        awaitingConfirmation ? r.expectedDisplay : r.paidDisplay,
+                      )}
+                      {!awaitingConfirmation && r.status !== 'confirmed'
                         ? ` of ${displayMoney(r.expectedDisplay)}`
                         : ''}
                     </Text>
@@ -1291,8 +1380,12 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
                         r.confirmedAt || r.submittedAt || r.dueDate,
                       )}
                     </Text>
+                    {provenanceText ? (
+                      <Text style={styles.roundMeta}>{provenanceText}</Text>
+                    ) : null}
                   </View>
-                ))}
+                  );
+                })}
               </>
             ) : null}
           </View>
@@ -1336,7 +1429,9 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
             No related activity for this period.
           </Text>
         ) : (
-          uniqueLedgerEntries.slice(0, 50).map((entry, index) => (
+          uniqueLedgerEntries.slice(0, 50).map((entry, index) => {
+            const provenanceText = externalContributionProvenanceText(entry, t);
+            return (
             <View
               key={statementLedgerRenderKey(entry, index)}
               style={styles.ledgerPreviewRow}
@@ -1350,8 +1445,12 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
                 {' \u00B7 '}
                 {displayMoney(entry.amountDisplay)}
               </Text>
+              {provenanceText ? (
+                <Text style={styles.rowMeta}>{provenanceText}</Text>
+              ) : null}
             </View>
-          ))
+            );
+          })
         )}
       </ExpandableSection>
 

@@ -42,6 +42,14 @@
     "rejected": "Rejected",
     "completed": "Completed"
   },
+  "provenance": {
+    "unknownReporter": "Unknown reporter",
+    "organizer": "Organizer",
+    "pending": "Externally reported by {{member}} on {{date}}. Awaiting organizer confirmation.",
+    "confirmed": "Externally reported by {{member}} on {{reportedAt}}. Confirmed by {{organizer}} on {{confirmedAt}}.",
+    "activityConfirmed": "External payment report confirmed by {{organizer}} on {{date}}.",
+    "rejected": "External payment report rejected by {{organizer}} on {{rejectedAt}}. This contribution remains due."
+  },
   "upgradeTitle": "Unlock full history",
   "upgradeBody_one": "{{count}} more activity is hidden on the free tier.",
   "upgradeBody_other": "{{count}} more activities are hidden on the free tier.",

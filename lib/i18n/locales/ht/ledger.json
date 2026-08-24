@@ -42,6 +42,14 @@
     "rejected": "Rejte",
     "completed": "Fini"
   },
+  "provenance": {
+    "unknownReporter": "Moun ki rapòte a pa konnen",
+    "organizer": "Òganizatè",
+    "pending": "Se {{member}} ki rapòte peman ekstèn nan nan dat {{date}}. L ap tann konfimasyon òganizatè a.",
+    "confirmed": "Se {{member}} ki rapòte peman ekstèn nan nan dat {{reportedAt}}. {{organizer}} konfime li nan dat {{confirmedAt}}.",
+    "activityConfirmed": "{{organizer}} konfime rapò peman ekstèn nan nan dat {{date}}.",
+    "rejected": "{{organizer}} rejte rapò peman ekstèn nan nan dat {{rejectedAt}}. Kontribisyon sa a toujou dwe."
+  },
   "upgradeTitle": "Debloke tout istorik la",
   "upgradeBody_one": "{{count}} lòt aktivite kache nan plan gratis la.",
   "upgradeBody_other": "{{count}} lòt aktivite kache nan plan gratis la.",
