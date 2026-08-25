@@ -46,6 +46,7 @@ import {
 } from '@/lib/circleSummary';
 import { seedCircleWorkspaceCache } from '@/lib/circleWorkspaceCache';
 import {
+  dashboardCircleMembers,
   shouldReserveDashboardActionSlot,
   shouldShowDashboardEmptyCircles,
   shouldShowDashboardSkeleton,
@@ -550,10 +551,11 @@ export default function DashboardScreen() {
             <View style={styles.circleList}>
               {activeCircles.map((circle) => {
                 const detail = circleDetails[circle.id];
+                const members = dashboardCircleMembers(detail);
                 const progress = circle.currentRoundProgress?.percentConfirmed;
                 const currentRoundNumber = circle.currentRound;
-                const totalRounds = detail?.members?.length;
-                const viewerMember = detail?.members.find(
+                const totalRounds = members.length || undefined;
+                const viewerMember = members.find(
                   (m) => m.userId === userId,
                 );
                 const isViewerRecipient =
@@ -717,16 +719,19 @@ function deriveContributionActions(
     }
 
     const detail = circleDetails[circle.id];
+    const members = dashboardCircleMembers(detail);
+    const detailViewerMemberIds = members
+      .filter((member) => member.userId === userId)
+      .map((member) => member.id);
     const viewerMemberIds =
       schedule.roundWorkspace?.viewerMemberIds &&
       schedule.roundWorkspace.viewerMemberIds.length > 0
         ? schedule.roundWorkspace.viewerMemberIds
-        : detail?.members
-            .filter((member) => member.userId === userId)
-            .map((member) => member.id) ??
-          (schedule.roundWorkspace?.viewerMemberId
+        : detailViewerMemberIds.length > 0
+          ? detailViewerMemberIds
+          : schedule.roundWorkspace?.viewerMemberId
             ? [schedule.roundWorkspace.viewerMemberId]
-            : []);
+            : [];
 
     const currentRound =
       schedule.roundWorkspace?.currentRoundNumber ?? schedule.currentRound;
@@ -848,7 +853,7 @@ function getCurrentRecipientName(circle: BackendCircleDetail | null | undefined)
     return null;
   }
 
-  const recipient = circle?.members.find(
+  const recipient = dashboardCircleMembers(circle).find(
     (member) => member.id === recipientMemberId,
   );
   return recipient?.full_name || recipient?.name || null;

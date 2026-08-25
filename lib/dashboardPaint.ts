@@ -2,6 +2,13 @@
  * Dashboard first-paint and focus-refresh policy.
  * Empty "no circles" UI must not appear while a load is still pending.
  */
+import type { BackendCircleMember } from './api';
+
+export function dashboardCircleMembers(
+  detail: { members?: BackendCircleMember[] | null } | null | undefined,
+): BackendCircleMember[] {
+  return Array.isArray(detail?.members) ? detail.members : [];
+}
 
 export function shouldUseSilentDashboardRefresh(hasLastKnownState: boolean): boolean {
   return hasLastKnownState;

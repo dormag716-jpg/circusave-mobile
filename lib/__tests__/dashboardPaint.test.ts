@@ -1,4 +1,6 @@
+import type { BackendCircleMember } from '../api';
 import {
+  dashboardCircleMembers,
   shouldReserveDashboardActionSlot,
   shouldShowDashboardEmptyCircles,
   shouldShowDashboardSkeleton,
@@ -6,6 +8,15 @@ import {
 } from '../dashboardPaint';
 
 describe('dashboard first paint', () => {
+  it('treats partial circle details without members as an empty roster', () => {
+    expect(dashboardCircleMembers(undefined)).toEqual([]);
+    expect(dashboardCircleMembers({})).toEqual([]);
+    expect(dashboardCircleMembers({ members: null })).toEqual([]);
+
+    const members: BackendCircleMember[] = [{ id: 'member-1' }];
+    expect(dashboardCircleMembers({ members })).toBe(members);
+  });
+
   it('shows a skeleton on first load before any snapshot exists', () => {
     expect(
       shouldShowDashboardSkeleton({ loading: true, hasSnapshot: false }),
