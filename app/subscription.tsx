@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as WebBrowser from 'expo-web-browser';
-import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import {
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import appConfig from '@/app.json';
 import {
   cancelPremiumSubscription,
   createBillingCheckout,
@@ -23,6 +24,11 @@ import {
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
+import {
+  checkoutReturnStatusFromUrl,
+  pollForPremiumActivation,
+  type CheckoutReturnStatus,
+} from '@/lib/subscriptionCheckout';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 
 const fallbackPremium: BillingPlan = {
@@ -46,8 +52,15 @@ const fallbackPremium: BillingPlan = {
 };
 
 type BillingInterval = 'monthly' | 'annual';
+type CheckoutReturnState =
+  | 'idle'
+  | 'activating'
+  | 'activated'
+  | 'pending'
+  | 'canceled';
 
 export default function SubscriptionScreen() {
+  const params = useLocalSearchParams<{ checkout?: string | string[] }>();
   const { session } = useAuthSession();
   const { entitlements, isPremium, refreshEntitlements } = useEntitlements();
   const token = session?.session.token;
@@ -57,6 +70,9 @@ export default function SubscriptionScreen() {
   const [action, setAction] = useState<'checkout' | 'portal' | 'cancel' | null>(
     null,
   );
+  const [checkoutReturnState, setCheckoutReturnState] =
+    useState<CheckoutReturnState>('idle');
+  const handledCheckoutReturn = useRef<CheckoutReturnStatus | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -87,6 +103,33 @@ export default function SubscriptionScreen() {
     );
   }, [premium]);
 
+  const handleCheckoutReturn = useCallback(
+    async (status: CheckoutReturnStatus) => {
+      if (handledCheckoutReturn.current === status) return;
+      handledCheckoutReturn.current = status;
+
+      if (status === 'canceled') {
+        setCheckoutReturnState('canceled');
+        await refreshEntitlements();
+        return;
+      }
+
+      setCheckoutReturnState('activating');
+      const result = await pollForPremiumActivation(refreshEntitlements);
+      setCheckoutReturnState(result);
+    },
+    [refreshEntitlements],
+  );
+
+  useEffect(() => {
+    const rawCheckout = Array.isArray(params.checkout)
+      ? params.checkout[0]
+      : params.checkout;
+    if (rawCheckout === 'success' || rawCheckout === 'canceled') {
+      void handleCheckoutReturn(rawCheckout);
+    }
+  }, [handleCheckoutReturn, params.checkout]);
+
   async function openCheckout() {
     if (!token) return;
     setAction('checkout');
@@ -99,9 +142,24 @@ export default function SubscriptionScreen() {
       if (!checkout.checkoutUrl) {
         throw new Error('Checkout URL was unavailable.');
       }
-      await WebBrowser.openBrowserAsync(checkout.checkoutUrl, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-      });
+      handledCheckoutReturn.current = null;
+      setCheckoutReturnState('idle');
+      const returnUrl = `${appConfig.expo.scheme}://subscription`;
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        checkout.checkoutUrl,
+        returnUrl,
+        {
+          presentationStyle:
+            WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+        },
+      );
+      if (browserResult.type === 'success') {
+        const status = checkoutReturnStatusFromUrl(browserResult.url);
+        if (status) {
+          await handleCheckoutReturn(status);
+          return;
+        }
+      }
       await refreshEntitlements();
     } catch (error) {
       Alert.alert(
@@ -213,6 +271,50 @@ export default function SubscriptionScreen() {
               </Text>
             )}
           </Animated.View>
+
+          {checkoutReturnState !== 'idle' ? (
+            <View
+              style={[
+                styles.checkoutStatus,
+                checkoutReturnState === 'pending' && styles.checkoutStatusPending,
+                checkoutReturnState === 'canceled' && styles.checkoutStatusCanceled,
+              ]}
+            >
+              {checkoutReturnState === 'activating' ? (
+                <ActivityIndicator color={colors.primaryDark} />
+              ) : (
+                <FontAwesome
+                  name={
+                    checkoutReturnState === 'activated'
+                      ? 'check-circle'
+                      : 'info-circle'
+                  }
+                  size={17}
+                  color={colors.primaryDark}
+                />
+              )}
+              <View style={styles.checkoutStatusText}>
+                <Text style={styles.checkoutStatusTitle}>
+                  {checkoutReturnState === 'activating'
+                    ? 'Activating Organizer Pro…'
+                    : checkoutReturnState === 'activated'
+                      ? 'Organizer Pro is active'
+                      : checkoutReturnState === 'pending'
+                        ? 'Activation is still pending'
+                        : 'Checkout canceled'}
+                </Text>
+                <Text style={styles.checkoutStatusBody}>
+                  {checkoutReturnState === 'activating'
+                    ? 'We are waiting for Stripe and CircuSave to confirm your subscription.'
+                    : checkoutReturnState === 'activated'
+                      ? 'Your subscription was confirmed by CircuSave.'
+                      : checkoutReturnState === 'pending'
+                        ? 'Your payment may still be processing. Organizer Pro will unlock only after CircuSave confirms it.'
+                        : 'No subscription success was recorded. You can choose a plan whenever you are ready.'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {!isPremium ? (
             <Animated.View
@@ -535,6 +637,35 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(16,185,129,0.18)',
   },
   activePillText: { color: colors.successSoft, fontWeight: '800', fontSize: 12 },
+  checkoutStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.successSoft,
+    borderRadius: 18,
+    padding: 15,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  checkoutStatusPending: {
+    backgroundColor: colors.premiumLavenderBadge,
+  },
+  checkoutStatusCanceled: {
+    backgroundColor: colors.card,
+  },
+  checkoutStatusText: { flex: 1 },
+  checkoutStatusTitle: {
+    color: colors.primaryDark,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  checkoutStatusBody: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
   billingToggle: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.72)',

@@ -93,6 +93,7 @@ jest.mock('expo-router', () => {
   const ReactModule = require('react');
   return {
     router: { back: jest.fn(), push: mockRouterPush },
+    useLocalSearchParams: () => ({}),
     useFocusEffect: (effect: () => void | (() => void)) => {
       ReactModule.useEffect(effect, [effect]);
     },

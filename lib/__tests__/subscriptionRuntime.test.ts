@@ -17,8 +17,10 @@ const mockCreateBillingCheckout = jest.fn();
 const mockCreateBillingPortal = jest.fn();
 const mockCancelPremiumSubscription = jest.fn();
 const mockGetBillingPlans = jest.fn();
+const mockOpenAuthSessionAsync = jest.fn();
 const mockOpenBrowserAsync = jest.fn();
 const mockAlert = jest.fn();
+let mockCheckoutParam: string | undefined;
 
 jest.mock('react-native', () => {
   const ReactModule = require('react');
@@ -88,9 +90,11 @@ jest.mock('react-native-reanimated', () => {
 
 jest.mock('expo-router', () => ({
   router: { back: jest.fn() },
+  useLocalSearchParams: () => ({ checkout: mockCheckoutParam }),
 }));
 
 jest.mock('expo-web-browser', () => ({
+  openAuthSessionAsync: mockOpenAuthSessionAsync,
   openBrowserAsync: mockOpenBrowserAsync,
   WebBrowserPresentationStyle: { PAGE_SHEET: 'pageSheet' },
 }));
@@ -208,6 +212,8 @@ beforeEach(() => {
   mockCreateBillingPortal.mockResolvedValue({
     portalUrl: 'https://billing.example/portal',
   });
+  mockCheckoutParam = undefined;
+  mockOpenAuthSessionAsync.mockResolvedValue({ type: 'dismiss' });
   mockOpenBrowserAsync.mockResolvedValue({ type: 'dismiss' });
   mockRefreshEntitlements.mockResolvedValue(mockEntitlements);
   mockCancelPremiumSubscription.mockResolvedValue(undefined);
@@ -249,8 +255,9 @@ test.each([
       'subscriptionScreen',
     );
     expect(mockCreateBillingCheckout.mock.calls[0]).toHaveLength(3);
-    expect(mockOpenBrowserAsync).toHaveBeenCalledWith(
+    expect(mockOpenAuthSessionAsync).toHaveBeenCalledWith(
       'https://billing.example/checkout',
+      'circusavemobile://subscription',
       { presentationStyle: 'pageSheet' },
     );
   },
@@ -260,7 +267,7 @@ test.each(['cancel', 'dismiss'])(
   'browser %s alone keeps the user free and refreshes only after browser return',
   async (browserResult) => {
     let returnFromBrowser!: (value: { type: string }) => void;
-    mockOpenBrowserAsync.mockReturnValue(
+    mockOpenAuthSessionAsync.mockReturnValue(
       new Promise((resolve) => {
         returnFromBrowser = resolve;
       }),
@@ -298,6 +305,97 @@ test('Manage billing requests the authenticated portal, opens it, and refreshes 
     'https://billing.example/portal',
   );
   expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
+});
+
+test('successful return dismisses the auth session and activates only from backend-confirmed state', async () => {
+  mockOpenAuthSessionAsync.mockResolvedValue({
+    type: 'success',
+    url: 'circusavemobile://subscription?checkout=success',
+  });
+  mockRefreshEntitlements.mockResolvedValue({
+    ...mockEntitlements,
+    plan: 'premium',
+    subscriptionStatus: 'trialing',
+  });
+  await mount();
+
+  await press('Start my 7-day free trial');
+
+  expect(mockOpenAuthSessionAsync).toHaveBeenCalledTimes(1);
+  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
+  expect(visibleText()).toContain('Organizer Pro is active');
+  expect(visibleText()).toContain(
+    'Your subscription was confirmed by CircuSave.',
+  );
+});
+
+test('canceled Checkout return refreshes authority without showing subscription success', async () => {
+  mockOpenAuthSessionAsync.mockResolvedValue({
+    type: 'success',
+    url: 'circusavemobile://subscription?checkout=canceled',
+  });
+  await mount();
+
+  await press('Start my 7-day free trial');
+
+  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
+  expect(visibleText()).toContain('Checkout canceled');
+  expect(visibleText()).not.toContain(
+    'Your subscription was confirmed by CircuSave.',
+  );
+});
+
+test('delayed webhook shows activation progress and resolves after authoritative polling', async () => {
+  jest.useFakeTimers();
+  mockCheckoutParam = 'success';
+  mockRefreshEntitlements
+    .mockResolvedValueOnce(mockEntitlements)
+    .mockResolvedValueOnce(mockEntitlements)
+    .mockResolvedValueOnce({
+      ...mockEntitlements,
+      plan: 'premium',
+      subscriptionStatus: 'active',
+    });
+
+  await TestRenderer.act(async () => {
+    renderer = TestRenderer.create(React.createElement(SubscriptionScreen));
+    await flush();
+  });
+  expect(visibleText()).toContain('Activating Organizer Pro…');
+
+  await TestRenderer.act(async () => {
+    await jest.advanceTimersByTimeAsync(2500);
+    await flush();
+  });
+
+  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(3);
+  expect(visibleText()).toContain('Organizer Pro is active');
+  jest.useRealTimers();
+});
+
+test('forged success deep link cannot unlock Premium and times out safely', async () => {
+  jest.useFakeTimers();
+  mockCheckoutParam = 'success';
+  mockRefreshEntitlements.mockResolvedValue(mockEntitlements);
+
+  await TestRenderer.act(async () => {
+    renderer = TestRenderer.create(React.createElement(SubscriptionScreen));
+    await flush();
+  });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await TestRenderer.act(async () => {
+      await jest.advanceTimersByTimeAsync(1250);
+      await flush();
+    });
+  }
+
+  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(6);
+  expect(visibleText()).toContain('Activation is still pending');
+  expect(visibleText()).not.toContain(
+    'Your subscription was confirmed by CircuSave.',
+  );
+  expect(visibleText()).toContain('Start my 7-day free trial');
+  jest.useRealTimers();
 });
 
 test('cancel renewal preserves access wording through the paid period', async () => {
