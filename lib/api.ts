@@ -1125,10 +1125,11 @@ export async function getFreshContributionPaymentsCapability(
   return payload.capabilities.contributionPaymentsEnabled === true;
 }
 
-export async function logout(token: string): Promise<void> {
+export async function logout(token: string, signal?: AbortSignal): Promise<void> {
   await requestJson<unknown>('/auth/logout', {
     method: 'POST',
     token,
+    signal,
   });
 }
 
@@ -1140,11 +1141,26 @@ export async function logout(token: string): Promise<void> {
 export function registerPushToken(
   token: string,
   pushToken: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   return requestJson<unknown>('/auth/device/push-token', {
     method: 'POST',
     token,
+    signal,
     body: JSON.stringify({ pushToken, platform: 'expo' }),
+  });
+}
+
+export function unregisterPushToken(
+  token: string,
+  pushToken: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return requestJson<unknown>('/auth/device/push-token', {
+    method: 'DELETE',
+    token,
+    signal,
+    body: JSON.stringify({ pushToken }),
   });
 }
 

@@ -13,11 +13,13 @@ import 'react-native-reanimated';
 import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
+import { getCircleDetail } from '@/lib/api';
 import { EntitlementsProvider } from '@/lib/entitlementsContext';
 import { initializeI18n } from '@/lib/i18n';
 import { shouldHideLaunchSplash } from '@/lib/launchSplash';
 import { MarketProvider } from '@/lib/market';
-import { circleWorkspaceHref } from '@/lib/navigation';
+import { circleWorkspaceHref, dashboardHref } from '@/lib/navigation';
+import { authorizeNotificationNavigation } from '@/lib/notificationNavigation';
 import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
 import { logClientError } from '@/lib/errorLogging';
 
@@ -70,21 +72,6 @@ export default function RootLayout() {
     // Fire-and-forget — notification failure must never crash the app.
     void initializeNotifications();
 
-    const subPromise = setupNotificationListener((data) => {
-      if (data.screen === 'workspace' && data.circleId) {
-        router.push(
-          circleWorkspaceHref(
-            data.circleId,
-            data.tab,
-            data.conversationId,
-          ),
-        );
-      }
-    });
-
-    return () => {
-      subPromise.then((sub) => sub?.remove()).catch(() => {});
-    };
   }, [i18nReady, loaded]);
 
   if (!loaded || !i18nReady) {
@@ -125,12 +112,63 @@ function SessionTree() {
         <MarketProvider>
           <DeviceLockProvider>
             <LaunchSplashController />
+            <NotificationNavigationController />
             <AuthenticatedStack />
           </DeviceLockProvider>
         </MarketProvider>
       </EntitlementsProvider>
     </AuthSessionProvider>
   );
+}
+
+function NotificationNavigationController() {
+  const { session, status, setPostAuthTarget } = useAuthSession();
+  const authToken = session?.session.token;
+
+  useEffect(() => {
+    let active = true;
+    const subPromise = setupNotificationListener(async (data) => {
+      if (data.screen !== 'workspace' || !data.circleId) {
+        return;
+      }
+
+      const currentAuthToken = String(authToken || '').trim();
+      if (status !== 'authenticated' || !currentAuthToken) {
+        setPostAuthTarget(dashboardHref);
+        router.replace('/login');
+        return;
+      }
+
+      const decision = await authorizeNotificationNavigation({
+        authenticated: true,
+        authorize: () =>
+          getCircleDetail(currentAuthToken, data.circleId, {
+            revalidate: true,
+          }),
+      });
+      if (!active) {
+        return;
+      }
+      if (decision === 'workspace') {
+        router.push(
+          circleWorkspaceHref(
+            data.circleId,
+            data.tab,
+            data.conversationId,
+          ),
+        );
+      } else {
+        router.replace(dashboardHref);
+      }
+    });
+
+    return () => {
+      active = false;
+      subPromise.then((sub) => sub?.remove()).catch(() => {});
+    };
+  }, [authToken, setPostAuthTarget, status]);
+
+  return null;
 }
 
 function RootLayoutNav() {

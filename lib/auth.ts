@@ -14,6 +14,7 @@ import {
 } from './authSessionRestore';
 
 const AUTH_SESSION_KEY = 'circusave.auth.session.v1';
+const AUTH_NETWORK_TIMEOUT_MS = 8000;
 let webSession: AuthResponse | null = null;
 
 async function writeSessionValue(value: string) {
@@ -105,6 +106,17 @@ export async function logoutSession() {
   return runLogoutSession({
     readStored: readRawStoredAuthSession,
     clearStored: clearAuthSession,
-    logoutRemote: logoutApi,
+    logoutRemote: async (token) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(),
+        AUTH_NETWORK_TIMEOUT_MS,
+      );
+      try {
+        await logoutApi(token, controller.signal);
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
   });
 }

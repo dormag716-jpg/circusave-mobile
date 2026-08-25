@@ -107,6 +107,34 @@ export async function registerForPushNotifications(): Promise<NotificationResult
   return { ok: true, token: token ?? null };
 }
 
+export async function getExistingPushToken(): Promise<NotificationResult> {
+  if (isExpoGo) {
+    return {
+      ok: false,
+      reason: 'Push notifications require a development build.',
+    };
+  }
+
+  const Notifications = await import('expo-notifications');
+  const { granted } = await Notifications.getPermissionsAsync();
+  if (!granted) {
+    return { ok: false, reason: 'Notification permission was not granted.' };
+  }
+
+  try {
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
+    const tokenResult = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined,
+    );
+    return { ok: true, token: tokenResult.data ?? null };
+  } catch (error) {
+    logClientWarning('Existing push token unavailable', error);
+    return { ok: false, reason: 'Could not obtain the existing push token.' };
+  }
+}
+
 /**
  * Schedules a local (on-device) notification with an optional delay.
  * Works in development builds; silently fails in Expo Go.
@@ -191,7 +219,7 @@ export async function setupNotificationListener(
     circleId: string;
     tab?: string;
     conversationId?: string;
-  }) => void,
+  }) => void | Promise<void>,
 ) {
   if (isExpoGo) {
     return null;
@@ -224,7 +252,7 @@ export async function setupNotificationListener(
 
     // Direct screen routing
     if (typeof data.screen === 'string' && circleId) {
-      onNavigate({
+      void onNavigate({
         screen: data.screen,
         circleId,
         conversationId: conversationId || undefined,
@@ -235,14 +263,14 @@ export async function setupNotificationListener(
     // Action-based routing (Phase 5)
     if (notificationType === 'swap_request') {
       if (circleId) {
-        onNavigate({ screen: 'workspace', circleId, tab: 'people' });
+        void onNavigate({ screen: 'workspace', circleId, tab: 'people' });
       }
     } else if (
       notificationType === 'new_chat_message' ||
       notificationType === 'chat_message'
     ) {
       if (circleId) {
-        onNavigate({
+        void onNavigate({
           screen: 'workspace',
           circleId,
           tab: 'chat',

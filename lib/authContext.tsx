@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ReactNode,
 } from 'react';
 import type { Href } from 'expo-router';
@@ -16,8 +17,11 @@ import {
   restoreAuthSession,
 } from './auth';
 import type { AuthResponse } from './api';
-import { registerPushToken } from './api';
-import { registerForPushNotifications } from './notifications';
+import {
+  flushPendingPushTokenUnregister,
+  registerPushTokenForSession,
+  unregisterPushTokenForLogout,
+} from './pushTokenLifecycle';
 import { bindUserPresentationCaches } from './userPresentationCaches';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error';
@@ -35,12 +39,22 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function enqueueAuthTransition(
+  tail: MutableRefObject<Promise<void>>,
+  operation: () => Promise<void>,
+): Promise<void> {
+  const run = tail.current.then(operation, operation);
+  tail.current = run.catch(() => undefined);
+  return run;
+}
+
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthResponse | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [postAuthTarget, setPostAuthTarget] = useState<Href | null>(null);
   const restoreGeneration = useRef(0);
+  const authTransitionTail = useRef<Promise<void>>(Promise.resolve());
 
   const runRestore = useCallback(async (showLoading: boolean) => {
     const generation = ++restoreGeneration.current;
@@ -100,37 +114,54 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       postAuthTarget,
       setPostAuthTarget,
       setAuthenticatedSession: async (nextSession) => {
-        bindUserPresentationCaches(nextSession.user.id);
-        await persistAuthSession(nextSession);
-        setSession(nextSession);
-        setStatus('authenticated');
-        setError(null);
-
-        // Register push token with the backend after every successful login.
-        // Fire-and-forget: a failure here must never block the user from using the app.
-        void (async () => {
+        return enqueueAuthTransition(authTransitionTail, async () => {
+          restoreGeneration.current += 1;
+          const nextAuthToken = String(nextSession.session.token || '').trim();
           try {
-            const result = await registerForPushNotifications();
-            if (result.ok && result.token !== null && nextSession.session.token) {
-              await registerPushToken(nextSession.session.token, result.token);
-            }
+            await flushPendingPushTokenUnregister();
           } catch {
-            // Silent — push token registration is best-effort
+            // Authentication remains available while cleanup stays queued.
           }
-        })();
+
+          bindUserPresentationCaches(nextSession.user.id);
+          await persistAuthSession(nextSession);
+          setSession(nextSession);
+          setStatus('authenticated');
+          setError(null);
+
+          if (nextAuthToken) {
+            try {
+              await registerPushTokenForSession(nextAuthToken);
+            } catch {
+              // Permission denial, offline registration, and provider failures are nonfatal.
+            }
+          }
+        });
       },
       refreshSession,
       signOut: async () => {
-        restoreGeneration.current += 1;
-        try {
-          await logoutSession();
-        } finally {
-          bindUserPresentationCaches(null);
-          setPostAuthTarget(null);
-          setSession(null);
-          setStatus('unauthenticated');
-          setError(null);
-        }
+        return enqueueAuthTransition(authTransitionTail, async () => {
+          restoreGeneration.current += 1;
+          const authToken = String(session?.session.token || '').trim();
+          if (authToken) {
+            try {
+              await unregisterPushTokenForLogout(authToken);
+            } catch {
+              // The lifecycle writes its pending marker before the network request.
+            }
+          }
+          try {
+            await logoutSession();
+          } catch {
+            // Local logout is authoritative for device access when offline.
+          } finally {
+            bindUserPresentationCaches(null);
+            setPostAuthTarget(null);
+            setSession(null);
+            setStatus('unauthenticated');
+            setError(null);
+          }
+        });
       },
     }),
     [error, postAuthTarget, refreshSession, session, status],
