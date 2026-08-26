@@ -10,6 +10,7 @@ import { Avatar } from '@/components/Avatar';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
+import { logClientError } from '@/lib/errorLogging';
 import { readLanguagePreference } from '@/lib/i18n/language-storage';
 import {
   LANGUAGE_OPTIONS,
@@ -37,7 +38,11 @@ export default function SettingsScreen() {
       setAccounts([]);
       return;
     }
-    getLinkedAccounts(session.session.token).then(setAccounts).catch(console.error);
+    getLinkedAccounts(session.session.token)
+      .then(setAccounts)
+      .catch((error) => {
+        logClientError('Unable to load linked accounts', error);
+      });
   }, [contributionPaymentsEnabled, session?.session.token]);
 
   useFocusEffect(

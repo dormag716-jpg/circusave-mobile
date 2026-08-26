@@ -24,13 +24,30 @@ type LogContextValue = string | number | boolean | null | undefined;
 export type LogContext = Record<string, LogContextValue>;
 
 const REDACTED = '[redacted]';
+const SENSITIVE_MESSAGE_PATTERN =
+  /(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|pi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+|Bearer\s+[A-Za-z0-9._\-]+/gi;
+
+export function sanitizeLogMessage(message: string): string {
+  const trimmed = String(message || '').trim();
+  if (!trimmed) {
+    return 'Unknown error';
+  }
+  return trimmed.replace(SENSITIVE_MESSAGE_PATTERN, REDACTED);
+}
+
+function sanitizeContextValue(value: LogContextValue): LogContextValue {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  return value.replace(SENSITIVE_MESSAGE_PATTERN, REDACTED);
+}
 
 function safeMessage(error: unknown): string {
   if (error instanceof Error) {
-    return error.message || error.name || 'Unknown error';
+    return sanitizeLogMessage(error.message || error.name || 'Unknown error');
   }
   if (typeof error === 'string') {
-    return error;
+    return sanitizeLogMessage(error);
   }
   return 'Unknown error';
 }
@@ -49,7 +66,7 @@ function safeContext(context?: LogContext): LogContext | undefined {
     key,
     !SAFE_ID_KEY_PATTERN.test(key) && SENSITIVE_LOG_KEY_PATTERN.test(key)
       ? REDACTED
-      : value,
+      : sanitizeContextValue(value),
   ]);
   return Object.fromEntries(entries) as LogContext;
 }

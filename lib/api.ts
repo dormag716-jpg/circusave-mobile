@@ -815,9 +815,25 @@ const DEV_API_LOG_REDACTED = '[redacted]';
 export const SENSITIVE_LOG_KEY_PATTERN =
   /token|auth|session|password|secret|email|phone|name|user|member|recipient|payment|contribution|wallet|stripe|bank|card|account|circle/i;
 
-function redactDevApiLogBody(value: unknown): unknown {
+const SENSITIVE_LOG_VALUE_PATTERN =
+  /(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|pi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+|Bearer\s+[A-Za-z0-9._\-]+/i;
+
+function redactSensitiveLogValue(value: string): string {
+  if (!value) {
+    return value;
+  }
+  if (SENSITIVE_LOG_VALUE_PATTERN.test(value)) {
+    return DEV_API_LOG_REDACTED;
+  }
+  return value;
+}
+
+function redactDevApiLogValue(value: unknown, isRoot: boolean): unknown {
+  if (typeof value === 'string') {
+    return isRoot ? DEV_API_LOG_REDACTED : redactSensitiveLogValue(value);
+  }
   if (Array.isArray(value)) {
-    return value.map(redactDevApiLogBody);
+    return value.map((entry) => redactDevApiLogValue(entry, false));
   }
   if (isRecord(value)) {
     return Object.fromEntries(
@@ -825,11 +841,16 @@ function redactDevApiLogBody(value: unknown): unknown {
         key,
         SENSITIVE_LOG_KEY_PATTERN.test(key)
           ? DEV_API_LOG_REDACTED
-          : redactDevApiLogBody(entryValue),
+          : redactDevApiLogValue(entryValue, false),
       ]),
     );
   }
   return value;
+}
+
+/** Never emit raw response text. Objects are key-redacted; string bodies are dropped. */
+export function redactDevApiLogBody(value: unknown): unknown {
+  return redactDevApiLogValue(value, true);
 }
 
 function logDevApiResponse(method: string, url: string, status: number, body: unknown) {
