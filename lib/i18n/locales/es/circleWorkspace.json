@@ -30,7 +30,10 @@
     "emptyPrivate": "Envía un mensaje privado a {{name}}.",
     "noConversationTitle": "Ninguna conversación seleccionada",
     "noConversationBody": "Elige el chat grupal o inicia una conversación privada.",
-    "placeholder": "Envía un mensaje...",
+    "placeholder": "Envía un mensaje…",
+    "sendA11y": "Enviar mensaje",
+    "deleteA11y": "Mensaje tuyo. Mantén pulsado para eliminar.",
+    "deleteA11yHint": "Elimina este mensaje para todos",
     "deleteTitle": "¿Eliminar mensaje?",
     "deleteBody": "Este mensaje se eliminará permanentemente para todos.",
     "deleteCancel": "Cancelar",
@@ -97,5 +100,17 @@
     "roundCount_one": "{{count}} ronda en este ciclo",
     "roundCount_other": "{{count}} rondas en este ciclo",
     "lastRecipient": "Último destinatario registrado"
+  },
+  "history": {
+    "kicker": "Registros del círculo",
+    "title": "Centro de estados de cuenta",
+    "moved": "Movido",
+    "cardTitle": "El historial y los estados de cuenta están en Registros",
+    "body": "Usa la pestaña Registros del espacio del círculo para ver los registros, los estados de cuenta de miembros y los documentos. Los estados de cuenta del círculo los genera el backend a partir de instantáneas filtradas por permisos; no son un extracto bancario, un documento fiscal ni un comprobante de ingresos.",
+    "openRecords": "Abrir Registros",
+    "openRecordsA11y": "Abrir Registros",
+    "backToWorkspace": "Volver al espacio del círculo",
+    "backToCircles": "Volver a Mis círculos",
+    "backToCirclesAction": "Volver a Mis círculos"
   }
 }

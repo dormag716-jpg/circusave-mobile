@@ -3,6 +3,8 @@
   "loadContribution": "Nou pa kapab chaje detay kontribisyon yo.",
   "submitContribution": "Nou pa kapab soumèt kontribisyon an.",
   "stripePayment": "Nou pa kapab fini peman Stripe la.",
+  "stripeCanceled": "Peman an anile.",
+  "stripeSettlementDelay": "Peman resevwa. Konfimasyon an ka pran yon ti moman. Rale pou rafrechi.",
   "confirmContribution": "Nou pa kapab konfime kontribisyon an.",
   "recordPayment": "Nou pa kapab anrejistre peman an.",
   "rejectContribution": "Nou pa kapab rejte kontribisyon an.",

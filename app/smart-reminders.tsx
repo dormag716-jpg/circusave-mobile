@@ -15,11 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCircles } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { isOrganizer } from '@/lib/permissions';
+import { reminderMemberFrequencySummary } from '@/lib/reminderCircleSummary';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 import type { BackendCircleSummary } from '@/lib/types';
 
 export default function SmartRemindersScreen() {
-  const { t } = useTranslation('settings');
+  const { t } = useTranslation(['settings', 'circles', 'common']);
   const { session } = useAuthSession();
   const token = session?.session.token;
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
@@ -68,7 +69,7 @@ export default function SmartRemindersScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('common:goBack')}
         >
           <FontAwesome name="chevron-left" size={18} color={colors.textStrong} />
         </Pressable>
@@ -126,7 +127,7 @@ export default function SmartRemindersScreen() {
                 {item.name}
               </Text>
               <Text style={styles.circleMeta}>
-                {item.memberCount} members · {item.frequency}
+                {reminderMemberFrequencySummary(t, item.memberCount, item.frequency)}
               </Text>
             </View>
             <FontAwesome name="chevron-right" size={13} color={colors.subtle} />
@@ -157,9 +158,9 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
     borderRadius: 20,
     borderWidth: 1,
-    height: 40,
+    height: 44,
     justifyContent: 'center',
-    width: 40,
+    width: 44,
   },
   headerTitle: {
     color: colors.textStrong,
@@ -169,7 +170,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerSpacer: {
-    width: 40,
+    width: 44,
   },
   content: {
     flexGrow: 1,

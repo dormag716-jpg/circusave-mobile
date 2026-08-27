@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+import { useTranslation } from 'react-i18next';
+
 import { useAuthSession } from '@/lib/authContext';
 import { useDeviceLock } from '@/components/DeviceLock';
 import { exportUserData, deleteAccount } from '@/lib/api';
@@ -15,6 +17,7 @@ import { colors, radii, spacing } from '@/lib/theme';
 import { logClientError } from '@/lib/errorLogging';
 
 export default function SecurityScreen() {
+  const { t } = useTranslation(['security', 'common']);
   const { session, signOut } = useAuthSession();
   const token = session?.session.token;
   const { isLockEnabled, setLockEnabled } = useDeviceLock();
@@ -45,7 +48,7 @@ export default function SecurityScreen() {
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(file.uri, {
             mimeType: 'application/json',
-            dialogTitle: 'Export CircuSave Data Archive',
+            dialogTitle: t('exportDialogTitle'),
             UTI: 'public.json',
           });
         } else {
@@ -57,15 +60,17 @@ export default function SecurityScreen() {
       }
 
       Alert.alert(
-        'Data Export Ready',
-        `Your data export archive (v1.0) is ready to save or share.\n\nExport Summary:\n• Email: ${
-          typeof profile.email === 'string' ? profile.email : 'N/A'
-        }\n• Memberships: ${memberships.length}\n• Legal Audit Trail: ${legalAcceptances.length} accepted`,
-        [{ text: 'OK' }],
+        t('exportReadyTitle'),
+        t('exportReadyBody', {
+          email: typeof profile.email === 'string' ? profile.email : t('notAvailable'),
+          memberships: memberships.length,
+          legal: legalAcceptances.length,
+        }),
+        [{ text: t('common:ok') }],
       );
     } catch (err) {
       logClientError('Data export failed', err);
-      Alert.alert('Export Error', 'Unable to export user data. Please check your connection.');
+      Alert.alert(t('exportErrorTitle'), t('exportErrorBody'));
     } finally {
       setExporting(false);
     }
@@ -74,23 +79,23 @@ export default function SecurityScreen() {
   const handleDeleteAccount = () => {
     if (!token) return;
     Alert.alert(
-      'Delete Account?',
-      'Are you sure you want to permanently delete your account?\n\n• Your personal details (name, email, phone) will be anonymized.\n• Your active session will be revoked immediately.\n• Required financial transaction records will be retained for regulatory audit compliance.',
+      t('deleteConfirmTitle'),
+      t('deleteConfirmBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common:cancel'), style: 'cancel' },
         {
-          text: 'Delete Account',
+          text: t('deleteConfirmAction'),
           style: 'destructive',
           onPress: async () => {
             setDeleting(true);
             try {
               await deleteAccount(token);
               Alert.alert(
-                'Account Deleted',
-                'Your account has been deleted and anonymized.',
+                t('deletedTitle'),
+                t('deletedBody'),
                 [
                   {
-                    text: 'OK',
+                    text: t('common:ok'),
                     onPress: async () => {
                       try {
                         await signOut();
@@ -104,8 +109,8 @@ export default function SecurityScreen() {
             } catch (err) {
               logClientError('Account deletion failed', err);
               Alert.alert(
-                'Deletion Error',
-                'Unable to complete account deletion. Please verify your connection or try again.',
+                t('deleteErrorTitle'),
+                t('deleteErrorBody'),
               );
             } finally {
               setDeleting(false);
@@ -123,56 +128,56 @@ export default function SecurityScreen() {
           style={styles.backButton}
           onPress={() => router.back()}
           hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={t('common:goBack')}
         >
           <FontAwesome name="arrow-left" size={20} color={colors.textStrong} />
         </Pressable>
-        <Text style={styles.headerTitle}>Security & Privacy</Text>
+        <Text style={styles.headerTitle}>{t('title')}</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>Device Access</Text>
+        <Text style={styles.sectionTitle}>{t('deviceAccess')}</Text>
         <View style={styles.card}>
           <View style={styles.cardRow}>
             <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>App Lock</Text>
-              <Text style={styles.cardSubtitle}>
-                Require Face ID, Touch ID, or PIN to open the app.
-              </Text>
+              <Text style={styles.cardTitle}>{t('appLock')}</Text>
+              <Text style={styles.cardSubtitle}>{t('appLockSubtitle')}</Text>
             </View>
             <Switch
               value={isLockEnabled}
               onValueChange={(val) => void setLockEnabled(val)}
               trackColor={{ true: colors.primary, false: colors.cardBorder }}
+              accessibilityRole="switch"
+              accessibilityLabel={t('appLockA11y')}
+              accessibilityState={{ checked: isLockEnabled }}
             />
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Password & Recovery</Text>
+        <Text style={styles.sectionTitle}>{t('passwordRecovery')}</Text>
         <View style={styles.card}>
           <View style={styles.cardRow}>
             <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>Change Password</Text>
-              <Text style={styles.cardSubtitle}>
-                To change your password, sign out and select "Forgot Password" on the login screen. You will be sent a secure recovery code via email.
-              </Text>
+              <Text style={styles.cardTitle}>{t('changePassword')}</Text>
+              <Text style={styles.cardSubtitle}>{t('changePasswordBody')}</Text>
             </View>
           </View>
         </View>
 
-        {/* Section: Data & Privacy Rights */}
-        <Text style={styles.sectionTitle}>Data & Privacy Rights</Text>
+        <Text style={styles.sectionTitle}>{t('dataRights')}</Text>
         <View style={styles.card}>
           <Pressable
             style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
             onPress={handleExportData}
             disabled={exporting}
+            accessibilityRole="button"
+            accessibilityLabel={t('exportData')}
           >
             <View style={styles.actionText}>
-              <Text style={styles.cardTitle}>Export My Data</Text>
-              <Text style={styles.cardSubtitle}>
-                Download a complete JSON archive of your profile, circle participation, legal acceptances, and records.
-              </Text>
+              <Text style={styles.cardTitle}>{t('exportData')}</Text>
+              <Text style={styles.cardSubtitle}>{t('exportDataBody')}</Text>
             </View>
             {exporting ? (
               <ActivityIndicator size="small" color={colors.primary} />
@@ -187,12 +192,12 @@ export default function SecurityScreen() {
             style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
             onPress={handleDeleteAccount}
             disabled={deleting}
+            accessibilityRole="button"
+            accessibilityLabel={t('deleteAccount')}
           >
             <View style={styles.actionText}>
-              <Text style={[styles.cardTitle, { color: colors.danger }]}>Delete Account</Text>
-              <Text style={styles.cardSubtitle}>
-                Anonymize your personal information and delete your account in accordance with App Store & Google Play privacy policies.
-              </Text>
+              <Text style={[styles.cardTitle, { color: colors.danger }]}>{t('deleteAccount')}</Text>
+              <Text style={styles.cardSubtitle}>{t('deleteAccountBody')}</Text>
             </View>
             {deleting ? (
               <ActivityIndicator size="small" color={colors.danger} />
@@ -218,7 +223,13 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.cardBorder,
     backgroundColor: colors.card,
   },
-  backButton: { padding: 8, marginLeft: -8 },
+  backButton: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    marginLeft: -8,
+    width: 44,
+  },
   headerTitle: { fontSize: 18, fontWeight: '700', color: colors.textStrong },
   placeholder: { width: 36 },
   content: { padding: spacing.screenX, paddingBottom: 40 },

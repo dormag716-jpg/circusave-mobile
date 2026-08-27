@@ -15,6 +15,7 @@ import { colors, radii, spacing } from '@/lib/theme';
 const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
 
 function NativeStripeButton({ session, onSuccess, label }: { session: AuthResponse, onSuccess?: () => void, label?: string }) {
+  const { t } = useTranslation(['settings', 'common']);
   const [isLinkingBank, setIsLinkingBank] = useState(false);
   const { collectFinancialConnectionsAccounts } = useFinancialConnectionsSheet();
 
@@ -27,14 +28,14 @@ function NativeStripeButton({ session, onSuccess, label }: { session: AuthRespon
       const { error } = await collectFinancialConnectionsAccounts(clientSecret);
       
       if (error) {
-        Alert.alert('Connection Failed', error.message || 'Unknown error');
+        Alert.alert(t('connectionFailed'), error.message || t('unknownError'));
       } else {
-        Alert.alert('Success', 'Your bank account has been securely linked!');
+        Alert.alert(t('common:saved'), t('bankLinkedSuccess'));
         onSuccess?.();
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unable to initiate bank connection.';
-      Alert.alert('Error', msg);
+      const msg = err instanceof Error ? err.message : t('bankConnectError');
+      Alert.alert(t('common:error'), msg);
     } finally {
       setIsLinkingBank(false);
     }
@@ -53,13 +54,14 @@ function NativeStripeButton({ session, onSuccess, label }: { session: AuthRespon
         <FontAwesome name="lock" size={16} color={colors.onColor} />
       )}
       <Text style={styles.connectButtonText}>
-        {isLinkingBank ? 'Connecting...' : (label || 'Connect with Stripe')}
+        {isLinkingBank ? t('connecting') : (label || t('connectWithStripe'))}
       </Text>
     </Pressable>
   );
 }
 
 function LinkedAccountsList({ session }: { session: AuthResponse }) {
+  const { t } = useTranslation('settings');
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -90,7 +92,7 @@ function LinkedAccountsList({ session }: { session: AuthResponse }) {
 
   return (
     <View style={styles.linkedAccountsContainer}>
-      <Text style={styles.linkedAccountsTitle}>Linked Bank Accounts</Text>
+      <Text style={styles.linkedAccountsTitle}>{t('linkedBankAccounts')}</Text>
       {accounts.map(acc => (
         <View key={acc.id} style={styles.linkedAccountRow}>
           <View style={styles.linkedAccountIcon}>
@@ -100,14 +102,14 @@ function LinkedAccountsList({ session }: { session: AuthResponse }) {
             <Text style={styles.linkedAccountText}>{acc.bankName} •••• {acc.last4}</Text>
           </View>
           <View style={styles.connectedBadge}>
-            <Text style={styles.connectedBadgeText}>Connected</Text>
+            <Text style={styles.connectedBadgeText}>{t('connected')}</Text>
           </View>
         </View>
       ))}
       <Text style={styles.linkedAccountNote}>
-        Used for automated contributions when enabled.
+        {t('linkedAccountNote')}
       </Text>
-      <NativeStripeButton session={session} onSuccess={fetchAccounts} label="Connect another account" />
+      <NativeStripeButton session={session} onSuccess={fetchAccounts} label={t('connectAnotherAccount')} />
     </View>
   );
 }
@@ -115,7 +117,7 @@ function LinkedAccountsList({ session }: { session: AuthResponse }) {
 export default function AutomatedPaymentsScreen() {
   const { session } = useAuthSession();
   const { hasCapability } = useEntitlements();
-  const { t } = useTranslation('contributions');
+  const { t } = useTranslation(['settings', 'contributions', 'common']);
   const contributionPaymentsEnabled = hasCapability(
     'contributionPaymentsEnabled',
   );
@@ -125,10 +127,16 @@ export default function AutomatedPaymentsScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={20}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={20}
+          accessibilityRole="button"
+          accessibilityLabel={t('common:goBack')}
+        >
           <FontAwesome name="chevron-left" size={20} color={colors.textStrong} />
         </Pressable>
-        <Text style={styles.headerTitle}>Automated Payments</Text>
+        <Text style={styles.headerTitle}>{t('automatedPaymentsTitle')}</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -138,12 +146,12 @@ export default function AutomatedPaymentsScreen() {
             <View style={styles.bankIconContainer}>
               <FontAwesome name="bank" size={20} color={colors.primary} />
             </View>
-            <Text style={styles.bankTitle}>Automated Payments</Text>
+            <Text style={styles.bankTitle}>{t('automatedPaymentsTitle')}</Text>
           </View>
           <Text style={styles.bankDescription}>
             {contributionPaymentsEnabled
-              ? 'Connect your bank account to automate contributions and receive payouts instantly.'
-              : t('rails.contributionPaymentsDisabledBody')}
+              ? t('automatedPaymentsDescription')
+              : t('contributions:rails.contributionPaymentsDisabledBody')}
           </Text>
           
           {contributionPaymentsEnabled && isStripeSupported ? (
@@ -151,11 +159,11 @@ export default function AutomatedPaymentsScreen() {
           ) : contributionPaymentsEnabled ? (
             <Pressable 
               style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
-              onPress={() => Alert.alert('Build Required', 'The Stripe SDK requires a native development build (eas build). It cannot run in Expo Go or Web.')}
+              onPress={() => Alert.alert(t('buildRequiredTitle'), t('buildRequiredBody'))}
               accessibilityRole="button"
             >
               <FontAwesome name="lock" size={16} color={colors.onColor} />
-              <Text style={styles.connectButtonText}>Connect with Stripe</Text>
+              <Text style={styles.connectButtonText}>{t('connectWithStripe')}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -182,8 +190,11 @@ const styles = StyleSheet.create({
     color: colors.textStrong,
   },
   backButton: {
-    padding: 8,
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
     marginLeft: -8,
+    width: 44,
   },
   headerRight: {
     width: 40,

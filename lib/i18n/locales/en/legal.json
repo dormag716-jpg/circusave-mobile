@@ -1,0 +1,23 @@
+{
+  "title": "Legal & Policies",
+  "subtitle": "Review CircuSave product policies, disclosures, and terms of service.",
+  "version": "Document version {{version}}",
+  "docs": {
+    "terms": {
+      "shortTitle": "Terms of Service",
+      "subtitle": "Rules for using CircuSave"
+    },
+    "privacy": {
+      "shortTitle": "Privacy Policy",
+      "subtitle": "How we handle personal information"
+    },
+    "fundsDisclosure": {
+      "shortTitle": "How Money Moves",
+      "subtitle": "Funds, pots, and platform role"
+    },
+    "electronicConsent": {
+      "shortTitle": "Electronic Consent",
+      "subtitle": "Agreements and notices by electronic means"
+    }
+  }
+}

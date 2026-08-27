@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useTranslation } from 'react-i18next';
+
 import type { LegalSection } from '@/lib/legal';
 import { colors, shadows, spacing } from '@/lib/theme';
 
@@ -21,6 +23,7 @@ export function LegalDocumentScreen({
   sections,
   version,
 }: LegalDocumentScreenProps) {
+  const { t } = useTranslation(['legal', 'common']);
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <View style={styles.topBar}>
@@ -29,10 +32,10 @@ export function LegalDocumentScreen({
           onPress={() => router.back()}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('common:goBack')}
         >
           <FontAwesome name="chevron-left" size={18} color={colors.primary} />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{t('common:back')}</Text>
         </Pressable>
       </View>
 
@@ -44,7 +47,7 @@ export function LegalDocumentScreen({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.effectiveDate}>{effectiveDateLabel}</Text>
           {version ? (
-            <Text style={styles.version}>Document version {version}</Text>
+            <Text style={styles.version}>{t('version', { version })}</Text>
           ) : null}
 
           {intro ? <Text style={styles.intro}>{intro}</Text> : null}

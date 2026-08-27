@@ -53,6 +53,8 @@ export default function SupportScreen() {
                   style={styles.sectionHeader}
                   onPress={() => toggleSection(section.id)}
                   accessibilityRole="button"
+                  accessibilityState={{ expanded: isExpanded }}
+                  accessibilityLabel={t(`sections.${section.id}.title`)}
                 >
                   <View style={styles.sectionHeaderLeft}>
                     <View style={styles.iconContainer}>

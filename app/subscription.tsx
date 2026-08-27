@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import appConfig from '@/app.json';
 import {
@@ -29,7 +30,18 @@ import {
   pollForPremiumActivation,
   type CheckoutReturnStatus,
 } from '@/lib/subscriptionCheckout';
+import { formatCurrency } from '@/lib/i18n/formatters';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
+
+const FALLBACK_FEATURE_KEYS = [
+  'unlimitedCircles',
+  'hands',
+  'reminders',
+  'reports',
+  'records',
+  'history',
+  'assistant',
+] as const;
 
 const fallbackPremium: BillingPlan = {
   id: 'premium',
@@ -40,15 +52,7 @@ const fallbackPremium: BillingPlan = {
   annualPriceCents: 5999,
   annualSavingsCents: 3589,
   trialDays: 7,
-  features: [
-    'Unlimited open circles',
-    'Up to 50 participating hands',
-    'Scheduled and bulk reminders',
-    'Advanced organizer reports',
-    'Professional records and PDFs',
-    'Complete activity history',
-    'Ongoing AI organizer assistance',
-  ],
+  features: [...FALLBACK_FEATURE_KEYS],
 };
 
 type BillingInterval = 'monthly' | 'annual';
@@ -60,6 +64,8 @@ type CheckoutReturnState =
   | 'canceled';
 
 export default function SubscriptionScreen() {
+  const { t, i18n } = useTranslation(['subscription', 'common']);
+  const language = i18n.resolvedLanguage || i18n.language;
   const params = useLocalSearchParams<{ checkout?: string | string[] }>();
   const { session } = useAuthSession();
   const { entitlements, isPremium, refreshEntitlements } = useEntitlements();
@@ -140,7 +146,7 @@ export default function SubscriptionScreen() {
         'subscriptionScreen',
       );
       if (!checkout.checkoutUrl) {
-        throw new Error('Checkout URL was unavailable.');
+        throw new Error(t('checkoutUrlMissing'));
       }
       handledCheckoutReturn.current = null;
       setCheckoutReturnState('idle');
@@ -163,8 +169,8 @@ export default function SubscriptionScreen() {
       await refreshEntitlements();
     } catch (error) {
       Alert.alert(
-        'Checkout unavailable',
-        error instanceof Error ? error.message : 'Please try again.',
+        t('checkoutUnavailable'),
+        error instanceof Error ? error.message : t('pleaseTryAgain'),
       );
     } finally {
       setAction(null);
@@ -180,8 +186,8 @@ export default function SubscriptionScreen() {
       await refreshEntitlements();
     } catch (error) {
       Alert.alert(
-        'Billing unavailable',
-        error instanceof Error ? error.message : 'Please try again.',
+        t('billingUnavailable'),
+        error instanceof Error ? error.message : t('pleaseTryAgain'),
       );
     } finally {
       setAction(null);
@@ -191,12 +197,12 @@ export default function SubscriptionScreen() {
   function confirmCancellation() {
     if (!token) return;
     Alert.alert(
-      'Keep your organizer tools?',
-      'Your circles remain safe. Organizer Pro access will continue until the end of the paid period.',
+      t('keepToolsTitle'),
+      t('keepToolsBody'),
       [
-        { text: 'Keep Organizer Pro', style: 'cancel' },
+        { text: t('keepOrganizerPro'), style: 'cancel' },
         {
-          text: 'Cancel renewal',
+          text: t('cancelRenewal'),
           style: 'destructive',
           onPress: async () => {
             setAction('cancel');
@@ -204,13 +210,13 @@ export default function SubscriptionScreen() {
               await cancelPremiumSubscription(token);
               await refreshEntitlements();
               Alert.alert(
-                'Renewal canceled',
-                'Your Organizer Pro access remains active through the current period.',
+                t('renewalCanceled'),
+                t('renewalCanceledBody'),
               );
             } catch (error) {
               Alert.alert(
-                'Unable to cancel',
-                error instanceof Error ? error.message : 'Please try again.',
+                t('unableToCancel'),
+                error instanceof Error ? error.message : t('pleaseTryAgain'),
               );
             } finally {
               setAction(null);
@@ -235,6 +241,8 @@ export default function SubscriptionScreen() {
               onPress={() => router.back()}
               style={styles.iconButton}
               hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={t('common:goBack')}
             >
               <FontAwesome
                 name="chevron-left"
@@ -242,7 +250,7 @@ export default function SubscriptionScreen() {
                 color={colors.textStrong}
               />
             </Pressable>
-            <Text style={styles.topTitle}>Plans</Text>
+            <Text style={styles.topTitle}>{t('plans')}</Text>
             <View style={styles.iconButtonPlaceholder} />
           </View>
 
@@ -250,10 +258,8 @@ export default function SubscriptionScreen() {
             <View style={styles.crown}>
               <FontAwesome name="diamond" size={20} color={colors.premiumGold} />
             </View>
-            <Text style={styles.eyebrow}>CIRCUSAVE ORGANIZER PRO</Text>
-            <Text style={styles.heroTitle}>
-              Less chasing.{'\n'}More confidence.
-            </Text>
+            <Text style={styles.eyebrow}>{t('eyebrow')}</Text>
+            <Text style={styles.heroTitle}>{t('heroTitle')}</Text>
             <Text style={styles.heroCopy}>{premium.tagline}</Text>
 
             {isPremium ? (
@@ -261,13 +267,13 @@ export default function SubscriptionScreen() {
                 <FontAwesome name="check-circle" size={14} color={colors.successSoft} />
                 <Text style={styles.activePillText}>
                   {entitlements.subscriptionStatus === 'trialing'
-                    ? 'Your free trial is active'
-                    : 'Organizer Pro is active'}
+                    ? t('trialActive')
+                    : t('active')}
                 </Text>
               </View>
             ) : (
               <Text style={styles.trialCopy}>
-                Try every feature free for {premium.trialDays} days
+                {t('trialCopy', { days: premium.trialDays })}
               </Text>
             )}
           </Animated.View>
@@ -296,21 +302,21 @@ export default function SubscriptionScreen() {
               <View style={styles.checkoutStatusText}>
                 <Text style={styles.checkoutStatusTitle}>
                   {checkoutReturnState === 'activating'
-                    ? 'Activating Organizer Pro…'
+                    ? t('activatingTitle')
                     : checkoutReturnState === 'activated'
-                      ? 'Organizer Pro is active'
+                      ? t('activatedTitle')
                       : checkoutReturnState === 'pending'
-                        ? 'Activation is still pending'
-                        : 'Checkout canceled'}
+                        ? t('pendingTitle')
+                        : t('canceledTitle')}
                 </Text>
                 <Text style={styles.checkoutStatusBody}>
                   {checkoutReturnState === 'activating'
-                    ? 'We are waiting for Stripe and CircuSave to confirm your subscription.'
+                    ? t('activatingBody')
                     : checkoutReturnState === 'activated'
-                      ? 'Your subscription was confirmed by CircuSave.'
+                      ? t('activatedBody')
                       : checkoutReturnState === 'pending'
-                        ? 'Your payment may still be processing. Organizer Pro will unlock only after CircuSave confirms it.'
-                        : 'No subscription success was recorded. You can choose a plan whenever you are ready.'}
+                        ? t('pendingBody')
+                        : t('canceledBody')}
                 </Text>
               </View>
             </View>
@@ -323,13 +329,13 @@ export default function SubscriptionScreen() {
             >
               <IntervalButton
                 active={interval === 'monthly'}
-                label="Monthly"
+                label={t('monthly')}
                 onPress={() => setInterval('monthly')}
               />
               <IntervalButton
                 active={interval === 'annual'}
-                label="Annual"
-                badge={`SAVE ${savingsPercent}%`}
+                label={t('annual')}
+                badge={t('saveBadge', { percent: savingsPercent })}
                 onPress={() => setInterval('annual')}
               />
             </Animated.View>
@@ -341,30 +347,36 @@ export default function SubscriptionScreen() {
           >
             <View style={styles.priceHeader}>
               <View>
-                <Text style={styles.planName}>{premium.name}</Text>
-                <Text style={styles.planAudience}>Built for trusted organizers</Text>
+                <Text style={styles.planName}>{t('productName')}</Text>
+                <Text style={styles.planAudience}>{t('audience')}</Text>
               </View>
               <View style={styles.recommendedBadge}>
                 <FontAwesome name="star" size={10} color={colors.primaryDark} />
                 <Text style={styles.recommendedText}>
-                  {isPremium ? 'YOUR PLAN' : 'BEST VALUE'}
+                  {isPremium ? t('yourPlan') : t('bestValue')}
                 </Text>
               </View>
             </View>
 
             {!isPremium ? (
               <View style={styles.priceRow}>
-                <Text style={styles.currency}>$</Text>
                 <Text style={styles.price}>
-                  {(selectedPrice / 100).toFixed(2)}
+                  {formatCurrency(selectedPrice / 100, language, 'USD', 2)}
                 </Text>
                 <View style={styles.priceMeta}>
                   <Text style={styles.pricePeriod}>
-                    /{interval === 'annual' ? 'year' : 'month'}
+                    {interval === 'annual' ? t('perYear') : t('perMonth')}
                   </Text>
                   {interval === 'annual' ? (
                     <Text style={styles.equivalent}>
-                      ${(annualMonthlyEquivalent / 100).toFixed(2)}/month
+                      {t('monthlyEquivalent', {
+                        amount: formatCurrency(
+                          annualMonthlyEquivalent / 100,
+                          language,
+                          'USD',
+                          2,
+                        ),
+                      })}
                     </Text>
                   ) : null}
                 </View>
@@ -372,12 +384,12 @@ export default function SubscriptionScreen() {
             ) : (
               <View style={styles.activeSummary}>
                 <Text style={styles.activeSummaryTitle}>
-                  All organizer tools unlocked
+                  {t('unlockedTitle')}
                 </Text>
                 <Text style={styles.activeSummaryText}>
                   {entitlements.cancelAtPeriodEnd
-                    ? 'Your plan will not renew automatically.'
-                    : 'Your subscription is active and ready.'}
+                    ? t('willNotRenew')
+                    : t('subscriptionReady')}
                 </Text>
               </View>
             )}
@@ -401,7 +413,9 @@ export default function SubscriptionScreen() {
                       }
                     />
                   </View>
-                  <Text style={styles.featureText}>{feature}</Text>
+                  <Text style={styles.featureText}>
+                    {t(`features.${feature}`, { defaultValue: feature })}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -420,7 +434,7 @@ export default function SubscriptionScreen() {
                     <ActivityIndicator color={colors.onColor} />
                   ) : (
                     <>
-                      <Text style={styles.primaryButtonText}>Manage billing</Text>
+                      <Text style={styles.primaryButtonText}>{t('manageBilling')}</Text>
                       <FontAwesome
                         name="external-link"
                         size={14}
@@ -436,7 +450,7 @@ export default function SubscriptionScreen() {
                     disabled={action !== null}
                   >
                     <Text style={styles.cancelButtonText}>
-                      Cancel renewal
+                      {t('cancelRenewal')}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -455,7 +469,7 @@ export default function SubscriptionScreen() {
                 ) : (
                   <>
                     <Text style={styles.primaryButtonText}>
-                      Start my {premium.trialDays}-day free trial
+                      {t('startTrial', { days: premium.trialDays })}
                     </Text>
                     <FontAwesome
                       name="arrow-right"
@@ -477,19 +491,13 @@ export default function SubscriptionScreen() {
                 <FontAwesome name="heart-o" size={17} color={colors.success} />
               </View>
               <View style={styles.freeText}>
-                <Text style={styles.freeTitle}>Free stays genuinely useful</Text>
-                <Text style={styles.freeCopy}>
-                  Run one complete circle with up to 20 hands. Upgrade only when
-                  your organizing grows.
-                </Text>
+                <Text style={styles.freeTitle}>{t('freeTitle')}</Text>
+                <Text style={styles.freeCopy}>{t('freeCopy')}</Text>
               </View>
             </Animated.View>
           ) : null}
 
-          <Text style={styles.footer}>
-            Secure checkout by Stripe · Cancel anytime · Your circle records
-            remain yours
-          </Text>
+          <Text style={styles.footer}>{t('footer')}</Text>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -570,16 +578,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.75)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(107,70,193,0.10)',
   },
-  iconButtonPlaceholder: { width: 40 },
+  iconButtonPlaceholder: { width: 44 },
   topTitle: { fontSize: 15, fontWeight: '800', color: colors.textStrong },
   hero: {
     backgroundColor: colors.primaryDark,

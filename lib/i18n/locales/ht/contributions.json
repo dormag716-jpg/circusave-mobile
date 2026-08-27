@@ -183,6 +183,7 @@
     "title": "Enstriksyon peman kontribisyon",
     "circleFallback": "Sèk",
     "explainer": "Di manm yo kijan pou yo voye kontribisyon regilye yo andeyò CircuSave. Yo wè sa a lè peman an vin dwe. CircuSave pa voye lajan sa a.",
+    "externalPaymentDisclosure": "CircuSave pa kenbe, deplase, ni transfere peman an. Manm nan rapòte yon peman ekstèn. Konfimasyon òganizatè a obligatwa.",
     "notPayoutPreferences": "Sa a se pa Preferans peman nan Anviwònman. Kòd Cash App, Venmo, ak PayPal sa yo se sèlman pou resevwa fon susu a.",
     "fieldLabel": "Ki jan manm yo dwe peye ou?",
     "placeholder": "Pa egzanp: Zelle: organizer@email.com",

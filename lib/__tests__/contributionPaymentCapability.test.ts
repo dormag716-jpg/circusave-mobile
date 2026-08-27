@@ -45,7 +45,7 @@ describe('contribution payment capability wiring', () => {
       'contributionPaymentsEnabled && isStripeSupported',
     );
     expect(automated).toContain(
-      "t('rails.contributionPaymentsDisabledBody')",
+      "t('contributions:rails.contributionPaymentsDisabledBody')",
     );
   });
 });

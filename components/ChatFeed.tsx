@@ -10,6 +10,8 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
+import { useTranslation } from 'react-i18next';
+
 import type { BackendChatMessage } from '@/lib/api';
 import {
   isPinnedNearBottom,
@@ -46,6 +48,7 @@ export default function ChatFeed({
   onDeleteMessage,
   style,
 }: ChatFeedProps) {
+  const { t } = useTranslation('circleWorkspace');
   const listRef = useRef<FlatList<BackendChatMessage>>(null);
   const pinnedToBottomRef = useRef(true);
   const lastTailIdRef = useRef<string | null>(null);
@@ -157,9 +160,10 @@ export default function ChatFeed({
               delayLongPress={350}
               accessibilityRole={isMe && onDeleteMessage ? 'button' : undefined}
               accessibilityLabel={
-                isMe && onDeleteMessage
-                  ? `Message: ${item.text}. Press and hold to delete.`
-                  : undefined
+                isMe && onDeleteMessage ? t('chat.deleteA11y') : undefined
+              }
+              accessibilityHint={
+                isMe && onDeleteMessage ? t('chat.deleteA11yHint') : undefined
               }
             >
               {!isMe && <Text style={styles.senderName}>{item.senderName}</Text>}

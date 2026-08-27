@@ -26,7 +26,7 @@ export default function TabLayout() {
           width: '100%',
         },
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.subtle,
+        tabBarInactiveTintColor: colors.muted,
         tabBarLabelPosition: 'below-icon',
         tabBarStyle: {
           alignSelf: 'center',

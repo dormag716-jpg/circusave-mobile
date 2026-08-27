@@ -183,6 +183,7 @@
     "title": "Contribution payment instructions",
     "circleFallback": "Circle",
     "explainer": "Tell members how to send their regular contribution outside CircuSave. They see this when a payment is due. CircuSave does not send this money.",
+    "externalPaymentDisclosure": "CircuSave does not hold, move, or transfer the payment. The member reports an external payment. Organizer confirmation is required.",
     "notPayoutPreferences": "This is not Settings → Payment Preferences. Those Cash App, Venmo, and PayPal handles are only for receiving a susu payout.",
     "fieldLabel": "How should members pay you?",
     "placeholder": "For example: Zelle: organizer@email.com",

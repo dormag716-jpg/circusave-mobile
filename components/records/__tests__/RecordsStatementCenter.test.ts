@@ -60,12 +60,25 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
 }));
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { count?: number }) =>
-      options?.count === undefined ? key : `${key}:${options.count}`,
-    i18n: { language: 'en', resolvedLanguage: 'en' },
-  }),
+const asyncStorageValues = new Map<string, string>();
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async (key: string) => asyncStorageValues.get(key) ?? null),
+    setItem: jest.fn(async (key: string, value: string) => {
+      asyncStorageValues.set(key, value);
+    }),
+  },
+}));
+
+jest.mock('expo-localization', () => ({
+  getLocales: () => [{ languageTag: 'en-US' }],
+}));
+
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => null),
+  setItemAsync: jest.fn(async () => undefined),
 }));
 
 jest.mock('@/lib/api', () => ({
@@ -80,6 +93,10 @@ jest.mock('@/lib/api', () => ({
 }));
 
 const TestRenderer: any = require('react-test-renderer');
+const {
+  changeLanguagePreference,
+  initializeI18n,
+}: typeof import('@/lib/i18n') = require('@/lib/i18n');
 const {
   RecordsStatementCenter,
 }: typeof import('../RecordsStatementCenter') = require('../RecordsStatementCenter');
@@ -382,6 +399,16 @@ afterEach(() => {
 });
 
 describe('RecordsStatementCenter professional redesign', () => {
+  beforeAll(async () => {
+    asyncStorageValues.clear();
+    await initializeI18n();
+    await changeLanguagePreference('en');
+  });
+
+  beforeEach(async () => {
+    await changeLanguagePreference('en');
+  });
+
   test('renders statement and activity provenance from additive backend fields', async () => {
     const renderer = await renderCenter({
       ledgerEntries: [
@@ -406,7 +433,7 @@ describe('RecordsStatementCenter professional redesign', () => {
       await flushUpdates();
     });
     let text = visibleText(renderer);
-    expect(text).toContain('ledger:provenance.activityConfirmed');
+    expect(text).toContain('External payment report confirmed by Darius Ward');
 
     const statementRenderer = await renderCenter();
     await TestRenderer.act(async () => {
@@ -418,7 +445,8 @@ describe('RecordsStatementCenter professional redesign', () => {
       await flushUpdates();
     });
     text = visibleText(statementRenderer);
-    expect(text).toContain('ledger:provenance.confirmed');
+    expect(text).toContain('Externally reported by Antony Powell');
+    expect(text).toContain('Confirmed by Darius Ward');
   });
 
   test('shows clean Records hierarchy, circle scope, totals, and humanized hand wording', async () => {
@@ -683,4 +711,54 @@ describe('RecordsStatementCenter professional redesign', () => {
       await flushUpdates();
     });
   });
+});
+
+describe('RecordsStatementCenter locale chrome', () => {
+  beforeAll(async () => {
+    asyncStorageValues.clear();
+    await initializeI18n();
+  });
+
+  test.each([
+    ['en', 'Records', 'Download PDF', 'Member Statements', 'Retry'],
+    ['es', 'Registros', 'Descargar PDF', 'Estados de cuenta', 'Reintentar'],
+    ['ht', 'Rejis', 'Telechaje PDF', 'Deklarasyon manm yo', 'Eseye ankò'],
+  ] as const)(
+    'renders Records chrome in %s',
+    async (language, records, downloadPdf, statements, retry) => {
+      await changeLanguagePreference(language);
+      const renderer = await renderCenter();
+      const text = visibleText(renderer);
+      expect(text).toContain(records);
+      expect(text).toContain(statements);
+      expect(text).toContain('Neighborhood Circle');
+      if (language !== 'en') {
+        expect(text).not.toContain('Statements, activity, and circle documents');
+        expect(text).not.toContain('Download PDF');
+      }
+
+      const openLabel =
+        language === 'en'
+          ? 'Open statement for Antony Powell'
+          : language === 'es'
+            ? 'Abrir estado de cuenta de Antony Powell'
+            : 'Louvri deklarasyon pou Antony Powell';
+      await TestRenderer.act(async () => {
+        renderer.root.findByProps({ accessibilityLabel: openLabel }).props.onPress();
+        await flushUpdates();
+      });
+      expect(
+        renderer.root.findByProps({ accessibilityLabel: downloadPdf }),
+      ).toBeTruthy();
+      expect(visibleText(renderer)).toContain('Antony Powell');
+      expect(visibleText(renderer)).toContain('$2,000');
+
+      api.getMemberStatementsIndex.mockRejectedValueOnce(
+        new Error('Index unavailable'),
+      );
+      const errorRenderer = await renderCenter();
+      expect(visibleText(errorRenderer)).toContain('Index unavailable');
+      expect(pressableWithText(errorRenderer, retry)).toBeTruthy();
+    },
+  );
 });

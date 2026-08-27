@@ -3,5 +3,18 @@
   "save": "Sove",
   "cancel": "Anile",
   "done": "Fini",
-  "loading": "Ap chaje…"
+  "loading": "Ap chaje…",
+  "retry": "Eseye ankò",
+  "goBack": "Tounen",
+  "unknown": "Enkoni",
+  "closeDialog": "Fèmen dyalòg la",
+  "unavailable": "Pa disponib",
+  "avatarA11y": "Avatar {{name}}",
+  "ok": "OK",
+  "error": "Erè",
+  "saved": "Sove",
+  "pleaseTryAgain": "Tanpri eseye ankò.",
+  "notFoundTitle": "Oups!",
+  "notFoundBody": "Ekran sa a pa egziste.",
+  "notFoundHome": "Ale nan ekran dakèy la"
 }

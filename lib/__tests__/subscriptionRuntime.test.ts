@@ -1,5 +1,26 @@
 import React from 'react';
 
+const asyncStorageValues = new Map<string, string>();
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async (key: string) => asyncStorageValues.get(key) ?? null),
+    setItem: jest.fn(async (key: string, value: string) => {
+      asyncStorageValues.set(key, value);
+    }),
+  },
+}));
+
+jest.mock('expo-localization', () => ({
+  getLocales: () => [{ languageTag: 'en-US' }],
+}));
+
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => null),
+  setItemAsync: jest.fn(async () => undefined),
+}));
+
 let mockIsPremium = false;
 let mockEntitlements = {
   subscriptionStatus: 'inactive',
@@ -129,6 +150,9 @@ jest.mock('../api', () => ({
 }));
 
 const TestRenderer: any = require('react-test-renderer');
+const {
+  initializeI18n,
+}: typeof import('../i18n') = require('../i18n');
 const SubscriptionScreen: typeof import('../../app/subscription').default =
   require('../../app/subscription').default;
 
@@ -188,9 +212,11 @@ async function press(label: string): Promise<void> {
   });
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
     true;
+  asyncStorageValues.clear();
+  await initializeI18n();
 });
 
 beforeEach(() => {
@@ -229,14 +255,16 @@ afterEach(() => {
 test('free user sees the authoritative monthly and annual catalog prices and derived savings', async () => {
   await mount();
 
-  expect(visibleText()).toContain('$\n59.99\n/year');
-  expect(visibleText()).toContain('$5.00/month');
+  expect(visibleText()).toContain('$59.99');
+  expect(visibleText()).toContain('/year');
+  expect(visibleText()).toContain('$5.00');
   expect(visibleText()).toContain('SAVE 37%');
 
   await press('Monthly');
 
-  expect(visibleText()).toContain('$\n7.99\n/month');
-  expect(visibleText()).not.toContain('$\n59.99\n/year');
+  expect(visibleText()).toContain('$7.99');
+  expect(visibleText()).toContain('/month');
+  expect(visibleText()).not.toContain('$59.99');
 });
 
 test.each([

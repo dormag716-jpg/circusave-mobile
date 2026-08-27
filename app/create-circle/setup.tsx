@@ -47,12 +47,13 @@ import { Avatar } from '@/components/Avatar';
 import { DecisionSheet } from '@/components/DecisionSheet';
 import { CREATE_CIRCLE_STEPS } from '@/lib/createCircleFlow';
 import { formatCurrency } from '@/lib/i18n/formatters';
+import { normalizeFrequencyKey, type CircleFrequencyKey } from '@/lib/reminderCircleSummary';
 
 /** Initial wizard: organizer-alone setup only. Payout order is finalized later. */
 const steps = CREATE_CIRCLE_STEPS;
 
-const amountPresets = ['$50', '$100', '$200', '$500'] as const;
-const scheduleOptions = ['Weekly', 'Bi-weekly', 'Monthly'] as const;
+const amountPresets = [50, 100, 200, 500] as const;
+const scheduleOptions: CircleFrequencyKey[] = ['weekly', 'biweekly', 'monthly'];
 
 const DRAFT_KEY = 'circle_wizard_draft';
 
@@ -74,7 +75,7 @@ export default function CircleSetupWizardScreen() {
   const [circleName, setCircleName] = useState('');
   const [amount, setAmount] = useState('$100');
   const [customAmount, setCustomAmount] = useState('');
-  const [schedule, setSchedule] = useState('Weekly');
+  const [schedule, setSchedule] = useState<CircleFrequencyKey>('weekly');
   const [members, setMembers] = useState<MemberDraft[]>([]);
   const [organizerParticipates, setOrganizerParticipates] = useState(true);
   const [newMember, setNewMember] = useState<MemberDraft>(emptyNewMember());
@@ -210,7 +211,7 @@ export default function CircleSetupWizardScreen() {
                 setCircleName(restored.circleName);
                 setAmount(restored.amount);
                 setCustomAmount(restored.customAmount);
-                setSchedule(restored.schedule);
+                setSchedule(normalizeFrequencyKey(restored.schedule));
                 setMembers(restored.members);
                 setOrganizerParticipates(restored.organizerParticipates);
                 setDraftLoaded(true);
@@ -233,12 +234,16 @@ export default function CircleSetupWizardScreen() {
         const detail = await getCircleDetail(session.session.token, sourceCircleId);
         setCircleName(detail.name);
 
-        const amtStr = `$${detail.contributionAmount}`;
-        if ((amountPresets as readonly string[]).includes(amtStr)) {
-          setAmount(amtStr);
+        const sourceAmount = Number(detail.contributionAmount);
+        if ((amountPresets as readonly number[]).includes(sourceAmount)) {
+          setAmount(`$${sourceAmount}`);
+          setCustomAmount('');
         } else {
-          setAmount('Custom');
-          setCustomAmount(detail.contributionAmount.toString());
+          setAmount(`$${sourceAmount}`);
+          setCustomAmount(String(sourceAmount));
+        }
+        if (detail.frequency) {
+          setSchedule(normalizeFrequencyKey(String(detail.frequency)));
         }
 
         const sourceMembers = Array.isArray(detail.members) ? detail.members : [];
@@ -714,30 +719,35 @@ export default function CircleSetupWizardScreen() {
                     {t('amount.description')}
                   </Text>
                   <View style={styles.presetRow}>
-                    {amountPresets.map((preset) => (
+                    {amountPresets.map((preset) => {
+                      const selected =
+                        !customAmount && parseAmount(amount) === preset;
+                      return (
                       <Pressable
                         key={preset}
                         style={[
                           styles.preset,
-                          !customAmount && amount === preset && styles.presetActive,
+                          selected && styles.presetActive,
                         ]}
                         onPress={() => {
-                          setAmount(preset);
+                          setAmount(`$${preset}`);
                           setCustomAmount('');
                         }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={formatMoney(preset)}
                       >
                         <Text
                           style={[
                             styles.presetText,
-                            !customAmount &&
-                              amount === preset &&
-                              styles.presetActiveText,
+                            selected && styles.presetActiveText,
                           ]}
                         >
-                          {formatMoney(parseAmount(preset) ?? 0)}
+                          {formatMoney(preset)}
                         </Text>
                       </Pressable>
-                    ))}
+                      );
+                    })}
                   </View>
                   <TextInput
                     style={styles.input}
@@ -1315,16 +1325,12 @@ function requireAmount(value: string) {
   return amount;
 }
 
-function scheduleToFrequency(value: string): 'weekly' | 'biweekly' | 'monthly' {
-  if (value === 'Bi-weekly') return 'biweekly';
-  if (value === 'Monthly') return 'monthly';
-  return 'weekly';
+function scheduleToFrequency(value: string): CircleFrequencyKey {
+  return normalizeFrequencyKey(value);
 }
 
 function scheduleLabel(value: string, t: TFunction<'createCircle'>) {
-  if (value === 'Bi-weekly') return t('schedule.options.biweekly');
-  if (value === 'Monthly') return t('schedule.options.monthly');
-  return t('schedule.options.weekly');
+  return t(`schedule.options.${normalizeFrequencyKey(value)}`);
 }
 
 function todayIsoDate() {

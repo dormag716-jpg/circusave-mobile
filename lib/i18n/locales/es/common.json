@@ -3,5 +3,18 @@
   "save": "Guardar",
   "cancel": "Cancelar",
   "done": "Listo",
-  "loading": "Cargando…"
+  "loading": "Cargando…",
+  "retry": "Reintentar",
+  "goBack": "Volver",
+  "unknown": "Desconocido",
+  "closeDialog": "Cerrar diálogo",
+  "unavailable": "No disponible",
+  "avatarA11y": "Avatar de {{name}}",
+  "ok": "OK",
+  "error": "Error",
+  "saved": "Guardado",
+  "pleaseTryAgain": "Inténtalo de nuevo.",
+  "notFoundTitle": "¡Uy!",
+  "notFoundBody": "Esta pantalla no existe.",
+  "notFoundHome": "Ir a la pantalla de inicio"
 }

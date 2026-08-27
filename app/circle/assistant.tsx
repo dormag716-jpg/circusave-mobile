@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   title: { color: colors.textStrong, fontSize: 15, fontWeight: '900' },
-  subtitle: { color: colors.muted, fontSize: 10, marginTop: 2 },
+  subtitle: { color: colors.muted, fontSize: 12, marginTop: 2 },
   planDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.warning },
   planDotPremium: { backgroundColor: colors.success },
   newChatButton: {
@@ -730,7 +730,7 @@ const styles = StyleSheet.create({
   },
   newChatText: {
     color: colors.primaryDark,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
   },
   messages: { padding: spacing.screenX, paddingBottom: 16 },
@@ -757,8 +757,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   contextIcon: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -834,7 +834,7 @@ const styles = StyleSheet.create({
   },
   navChips: { marginTop: 10, gap: 6 },
   navChip: {
-    minHeight: 34,
+    minHeight: 44,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
@@ -894,8 +894,8 @@ const styles = StyleSheet.create({
   upgradeTitle: { color: colors.onColor, fontWeight: '900', fontSize: 13 },
   upgradeCopy: {
     color: 'rgba(255,255,255,0.68)',
-    fontSize: 10,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     marginTop: 2,
   },
   upgradeButton: {
@@ -904,7 +904,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-  upgradeButtonText: { color: colors.primaryDark, fontWeight: '900', fontSize: 10 },
+  upgradeButtonText: { color: colors.primaryDark, fontWeight: '900', fontSize: 12 },
   composerDock: {
     left: 0,
     position: 'absolute',

@@ -3,10 +3,13 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useTranslation } from 'react-i18next';
+
 import { listLegalDocuments } from '@/lib/legal';
 import { colors, shadows, spacing } from '@/lib/theme';
 
 export default function LegalIndexScreen() {
+  const { t } = useTranslation(['legal', 'common']);
   const documents = listLegalDocuments();
 
   return (
@@ -17,10 +20,10 @@ export default function LegalIndexScreen() {
           onPress={() => router.back()}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('common:goBack')}
         >
           <FontAwesome name="chevron-left" size={18} color={colors.primary} />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{t('common:back')}</Text>
         </Pressable>
       </View>
 
@@ -28,10 +31,8 @@ export default function LegalIndexScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Legal & Policies</Text>
-        <Text style={styles.subtitle}>
-          Review CircuSave product policies, disclosures, and terms of service.
-        </Text>
+        <Text style={styles.title}>{t('title')}</Text>
+        <Text style={styles.subtitle}>{t('subtitle')}</Text>
 
         <View style={styles.menuCard}>
           {documents.map((document, index) => {
@@ -48,14 +49,18 @@ export default function LegalIndexScreen() {
                 ]}
                 onPress={() => router.push(document.href)}
                 accessibilityRole="button"
-                accessibilityLabel={document.title}
+                accessibilityLabel={t(`docs.${document.id}.shortTitle`)}
               >
                 <View style={styles.menuIconContainer}>
                   <FontAwesome name="file-text-o" size={18} color={colors.primary} />
                 </View>
                 <View style={styles.menuText}>
-                  <Text style={styles.menuTitle}>{document.shortTitle}</Text>
-                  <Text style={styles.menuSubtitle}>{document.subtitle}</Text>
+                  <Text style={styles.menuTitle}>
+                    {t(`docs.${document.id}.shortTitle`)}
+                  </Text>
+                  <Text style={styles.menuSubtitle}>
+                    {t(`docs.${document.id}.subtitle`)}
+                  </Text>
                 </View>
                 <FontAwesome name="chevron-right" size={14} color={colors.muted} />
               </Pressable>

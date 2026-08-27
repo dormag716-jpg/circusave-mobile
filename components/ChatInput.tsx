@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTranslation } from 'react-i18next';
+
 import { composerDraftAfterSend } from '@/lib/circleChatState';
 import { colors, shadows } from '@/lib/theme';
 
@@ -36,11 +38,13 @@ type ChatInputProps = {
 export default function ChatInput({
   onSend,
   isLoading,
-  placeholder = 'Send a message...',
+  placeholder,
   applyBottomInset = true,
   floating = false,
   style,
 }: ChatInputProps) {
+  const { t } = useTranslation('circleWorkspace');
+  const resolvedPlaceholder = placeholder ?? t('chat.placeholder');
   const [text, setText] = useState('');
   const inputRef = useRef<TextInput>(null);
   const draftRef = useRef('');
@@ -96,7 +100,7 @@ export default function ChatInput({
         <TextInput
           ref={inputRef}
           style={styles.input}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           placeholderTextColor={colors.muted}
           value={text}
           onChangeText={(next) => {
@@ -134,7 +138,7 @@ export default function ChatInput({
           disabled={!text.trim() || isLoading}
           onPress={handleSendPress}
           accessibilityRole="button"
-          accessibilityLabel="Send message"
+          accessibilityLabel={t('chat.sendA11y')}
         >
           {isLoading ? (
             <ActivityIndicator size="small" color={colors.onColor} />

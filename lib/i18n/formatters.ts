@@ -17,11 +17,13 @@ export function formatCurrency(
   currencyCode = 'USD',
   maximumFractionDigits = 0,
 ): string {
+  const value = Number.isFinite(amount) ? amount : 0;
   return new Intl.NumberFormat(getFormattingLocale(language), {
     style: 'currency',
     currency: currencyCode,
     maximumFractionDigits,
-  }).format(amount);
+    minimumFractionDigits: maximumFractionDigits,
+  }).format(value);
 }
 
 export function formatShortDate(value: string, language: string): string {

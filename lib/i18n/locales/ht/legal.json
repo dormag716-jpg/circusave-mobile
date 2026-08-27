@@ -1,0 +1,23 @@
+{
+  "title": "Legal ak politik yo",
+  "subtitle": "Revize politik pwodui CircuSave, divilgasyon, ak kondisyon sèvis yo.",
+  "version": "Vèsyon dokiman {{version}}",
+  "docs": {
+    "terms": {
+      "shortTitle": "Kondisyon sèvis",
+      "subtitle": "Règ pou itilize CircuSave"
+    },
+    "privacy": {
+      "shortTitle": "Politik vi prive",
+      "subtitle": "Kijan nou trete enfòmasyon pèsonèl"
+    },
+    "fundsDisclosure": {
+      "shortTitle": "Kijan lajan deplase",
+      "subtitle": "Fon, pot, ak wòl platfòm nan"
+    },
+    "electronicConsent": {
+      "shortTitle": "Konsantman elektwonik",
+      "subtitle": "Akò ak avi pa mwayen elektwonik"
+    }
+  }
+}

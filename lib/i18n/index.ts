@@ -15,7 +15,10 @@ import deviceLockEn from './locales/en/deviceLock.json';
 import financialErrorsEn from './locales/en/financialErrors.json';
 import inviteEn from './locales/en/invite.json';
 import joinCircleEn from './locales/en/joinCircle.json';
+import legalEn from './locales/en/legal.json';
 import ledgerEn from './locales/en/ledger.json';
+import securityEn from './locales/en/security.json';
+import subscriptionEn from './locales/en/subscription.json';
 import navigationEn from './locales/en/navigation.json';
 import notificationsEn from './locales/en/notifications.json';
 import payoutOrderEn from './locales/en/payoutOrder.json';
@@ -39,7 +42,10 @@ import deviceLockEs from './locales/es/deviceLock.json';
 import financialErrorsEs from './locales/es/financialErrors.json';
 import inviteEs from './locales/es/invite.json';
 import joinCircleEs from './locales/es/joinCircle.json';
+import legalEs from './locales/es/legal.json';
 import ledgerEs from './locales/es/ledger.json';
+import securityEs from './locales/es/security.json';
+import subscriptionEs from './locales/es/subscription.json';
 import navigationEs from './locales/es/navigation.json';
 import notificationsEs from './locales/es/notifications.json';
 import payoutOrderEs from './locales/es/payoutOrder.json';
@@ -63,7 +69,10 @@ import deviceLockHt from './locales/ht/deviceLock.json';
 import financialErrorsHt from './locales/ht/financialErrors.json';
 import inviteHt from './locales/ht/invite.json';
 import joinCircleHt from './locales/ht/joinCircle.json';
+import legalHt from './locales/ht/legal.json';
 import ledgerHt from './locales/ht/ledger.json';
+import securityHt from './locales/ht/security.json';
+import subscriptionHt from './locales/ht/subscription.json';
 import navigationHt from './locales/ht/navigation.json';
 import notificationsHt from './locales/ht/notifications.json';
 import payoutOrderHt from './locales/ht/payoutOrder.json';
@@ -97,8 +106,11 @@ const resources = {
     financialErrors: financialErrorsEn,
     invite: inviteEn,
     joinCircle: joinCircleEn,
+    legal: legalEn,
     ledger: ledgerEn,
     navigation: navigationEn,
+    security: securityEn,
+    subscription: subscriptionEn,
     notifications: notificationsEn,
     payoutOrder: payoutOrderEn,
     people: peopleEn,
@@ -123,8 +135,11 @@ const resources = {
     financialErrors: financialErrorsEs,
     invite: inviteEs,
     joinCircle: joinCircleEs,
+    legal: legalEs,
     ledger: ledgerEs,
     navigation: navigationEs,
+    security: securityEs,
+    subscription: subscriptionEs,
     notifications: notificationsEs,
     payoutOrder: payoutOrderEs,
     people: peopleEs,
@@ -149,8 +164,11 @@ const resources = {
     financialErrors: financialErrorsHt,
     invite: inviteHt,
     joinCircle: joinCircleHt,
+    legal: legalHt,
     ledger: ledgerHt,
     navigation: navigationHt,
+    security: securityHt,
+    subscription: subscriptionHt,
     notifications: notificationsHt,
     payoutOrder: payoutOrderHt,
     people: peopleHt,
@@ -200,8 +218,11 @@ async function ensureInitialized(language: SupportedLanguage): Promise<void> {
       'financialErrors',
       'invite',
       'joinCircle',
+      'legal',
       'ledger',
       'navigation',
+      'security',
+      'subscription',
       'notifications',
       'payoutOrder',
       'people',

@@ -1,0 +1,23 @@
+{
+  "title": "Legal y políticas",
+  "subtitle": "Consulta las políticas, divulgaciones y términos de CircuSave.",
+  "version": "Versión del documento {{version}}",
+  "docs": {
+    "terms": {
+      "shortTitle": "Términos del servicio",
+      "subtitle": "Reglas para usar CircuSave"
+    },
+    "privacy": {
+      "shortTitle": "Política de privacidad",
+      "subtitle": "Cómo tratamos la información personal"
+    },
+    "fundsDisclosure": {
+      "shortTitle": "Cómo se mueve el dinero",
+      "subtitle": "Fondos, pozos y el rol de la plataforma"
+    },
+    "electronicConsent": {
+      "shortTitle": "Consentimiento electrónico",
+      "subtitle": "Acuerdos y avisos por medios electrónicos"
+    }
+  }
+}

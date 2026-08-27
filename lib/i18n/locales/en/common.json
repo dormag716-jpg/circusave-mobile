@@ -3,5 +3,18 @@
   "save": "Save",
   "cancel": "Cancel",
   "done": "Done",
-  "loading": "Loading…"
+  "loading": "Loading…",
+  "retry": "Retry",
+  "goBack": "Go back",
+  "unknown": "Unknown",
+  "closeDialog": "Close dialog",
+  "unavailable": "Unavailable",
+  "avatarA11y": "{{name}} avatar",
+  "ok": "OK",
+  "error": "Error",
+  "saved": "Saved",
+  "pleaseTryAgain": "Please try again.",
+  "notFoundTitle": "Oops!",
+  "notFoundBody": "This screen doesn't exist.",
+  "notFoundHome": "Go to home screen!"
 }

@@ -65,8 +65,8 @@ export default function SettingsScreen() {
     ? `${session.user.reliabilityScore}%`
     : '--%';
   const subscriptionSubtitle = isPremium
-    ? 'Premium Organizer — Active'
-    : 'Free Plan — Upgrade available';
+    ? t('settings:organizerProActive')
+    : t('settings:freePlanUpgrade');
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -88,7 +88,7 @@ export default function SettingsScreen() {
                 {isPremium ? (
                   <View style={styles.premiumBadge}>
                     <FontAwesome name="star" size={10} color={colors.onColor} style={{ marginRight: 4 }} />
-                    <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+                    <Text style={styles.premiumBadgeText}>{t('settings:organizerProBadge')}</Text>
                   </View>
                 ) : null}
               </View>
@@ -159,7 +159,7 @@ export default function SettingsScreen() {
             icon="star"
             title={t('settings:subscription')}
             subtitle={subscriptionSubtitle}
-            badge={isPremium ? 'PRO' : undefined}
+            badge={isPremium ? t('settings:organizerProBadge') : undefined}
             onPress={() => router.push('/subscription')}
             isLast
           />
@@ -351,7 +351,7 @@ function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
       </View>
       <View style={styles.menuText}>
         <Text style={styles.menuTitle}>{title}</Text>
-        <Text style={styles.menuSubtitle} numberOfLines={1}>{subtitle}</Text>
+        <Text style={styles.menuSubtitle}>{subtitle}</Text>
       </View>
       {badge && (
         <View style={styles.menuBadge}>

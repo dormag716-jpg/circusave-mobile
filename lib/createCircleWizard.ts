@@ -337,7 +337,7 @@ export function applyDraftDefaults(
     circleName: draft.circleName ?? '',
     amount: draft.amount ?? '$100',
     customAmount: draft.customAmount ?? '',
-    schedule: draft.schedule ?? 'Weekly',
+    schedule: draft.schedule ?? 'weekly',
     members,
     organizerParticipates,
   };

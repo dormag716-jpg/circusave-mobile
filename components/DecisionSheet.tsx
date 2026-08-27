@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useTranslation } from 'react-i18next';
+
 import { colors } from '@/lib/theme';
 
 export function DecisionSheet({
@@ -23,7 +25,7 @@ export function DecisionSheet({
   children,
   primaryLabel,
   onPrimary,
-  secondaryLabel = 'Cancel',
+  secondaryLabel,
   onSecondary,
   busy = false,
 }: {
@@ -41,6 +43,9 @@ export function DecisionSheet({
   onSecondary?: () => void;
   busy?: boolean;
 }) {
+  const { t } = useTranslation('common');
+  const resolvedSecondaryLabel =
+    secondaryLabel === undefined ? t('cancel') : secondaryLabel;
   const tone = {
     primary: { background: colors.primarySoft, foreground: colors.primary },
     success: { background: colors.successSoft, foreground: colors.success },
@@ -50,7 +55,12 @@ export function DecisionSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close dialog" />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t('closeDialog')}
+        />
         <SafeAreaView style={styles.sheet} edges={['bottom']}>
           <View style={styles.handle} />
           <View style={[styles.icon, { backgroundColor: tone.background }]}>
@@ -60,9 +70,9 @@ export function DecisionSheet({
           <Text style={styles.body}>{body}</Text>
           {children ? <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>{children}</ScrollView> : null}
           <View style={styles.actions}>
-            {secondaryLabel ? (
+            {resolvedSecondaryLabel ? (
               <Pressable style={({ pressed }) => [styles.secondary, pressed && styles.pressed]} onPress={onSecondary ?? onClose} disabled={busy} accessibilityRole="button">
-                <Text style={styles.secondaryText}>{secondaryLabel}</Text>
+                <Text style={styles.secondaryText}>{resolvedSecondaryLabel}</Text>
               </Pressable>
             ) : null}
             <Pressable style={({ pressed }) => [styles.primary, (pressed || busy) && styles.pressed]} onPress={onPrimary} disabled={busy} accessibilityRole="button" accessibilityState={{ busy, disabled: busy }}>

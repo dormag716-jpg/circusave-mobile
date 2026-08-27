@@ -5643,27 +5643,23 @@ function ledgerIconColor(entry: BackendLedgerEntry) {
   return colors.primary;
 }
 
-function ledgerAmountLabel(entry: BackendLedgerEntry) {
+function ledgerAmountLabel(entry: BackendLedgerEntry, language: string) {
   if (typeof entry.amount !== 'number') return null;
   const type = String(entry.event_type || entry.type || '').toLowerCase();
-  const amountStr = formatMoney(entry.amount);
+  const amountStr = formatWorkspaceMoney(entry.amount, language);
   if (type.includes('payout')) return `+${amountStr}`;
   if (type.includes('contribution')) return `-${amountStr}`;
   return amountStr;
 }
 
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount || 0);
+function formatWorkspaceMoney(amount: number, language: string) {
+  return formatCurrency(amount, language, 'USD', 0);
 }
 
-function formatOptionalMoney(amount?: number) {
+function formatOptionalMoney(amount?: number, language = 'en') {
   return typeof amount === 'number' && Number.isFinite(amount)
-    ? formatMoney(amount)
-    : 'Unavailable';
+    ? formatWorkspaceMoney(amount, language)
+    : '\u2014';
 }
 
 function fromCents(amountCents?: number) {
@@ -5707,41 +5703,21 @@ function formatConfirmedStatusFromCounts(
     : 'Unavailable';
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return 'Unavailable';
-  const time = Date.parse(value);
-  if (!Number.isFinite(time)) return value;
-  return new Date(time).toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-    year: 'numeric',
-  });
+function formatDate(value?: string | null, language = 'en') {
+  if (!value) return '\u2014';
+  return formatLocalizedDate(value, language);
 }
 
-function formatRelativeDays(value?: string | null) {
+function formatRelativeDays(value?: string | null, language = 'en') {
   if (!value) return null;
   const time = Date.parse(value);
   if (!Number.isFinite(time)) return null;
-  
-  const diffTime = time - Date.now();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  if (diffDays > 0) return `(in ${diffDays} day${diffDays === 1 ? '' : 's'})`;
-  if (diffDays === 0) return '(today)';
-  if (diffDays === -1) return '(yesterday)';
-  return `(${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'} ago)`;
+  return `(${formatRelativeDate(value, language)})`;
 }
 
-function formatDateTime(value?: string | null) {
+function formatDateTime(value?: string | null, language = 'en') {
   if (!value) return '-';
-  const time = Date.parse(value);
-  if (!Number.isFinite(time)) return value;
-  return new Date(time).toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatLocalizedDate(value, language);
 }
 
 function formatRoundStatus(value?: string | null) {

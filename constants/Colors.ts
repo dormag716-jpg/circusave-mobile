@@ -4,7 +4,7 @@ export default {
   light: {
     ...themeColors,
     tint: themeColors.primary,
-    tabIconDefault: themeColors.subtle,
+    tabIconDefault: themeColors.muted,
     tabIconSelected: themeColors.primary,
   },
   dark: {

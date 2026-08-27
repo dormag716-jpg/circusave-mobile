@@ -1,3 +1,5 @@
+import { getFormattingLocale } from './i18n/formatters';
+
 /**
  * Presentation-only helpers for Member Circle Statements.
  * Never mutate backend values; never recalculate money totals.
@@ -80,12 +82,16 @@ export function humanizeEventType(value?: string | null): string {
  * Date-only YYYY-MM-DD values are treated as calendar dates (noon local).
  * Does not claim server-local calendar accuracy beyond what the ISO string provides.
  */
-export function formatDisplayDate(value?: string | null): string {
+export function formatDisplayDate(
+  value?: string | null,
+  language?: string,
+): string {
   if (!value) return '\u2014';
+  const locale = language ? getFormattingLocale(language) : undefined;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const local = new Date(`${value}T12:00:00`);
     if (!Number.isNaN(local.getTime())) {
-      return local.toLocaleDateString(undefined, {
+      return local.toLocaleDateString(locale, {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -94,18 +100,22 @@ export function formatDisplayDate(value?: string | null): string {
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   });
 }
 
-export function formatDisplayDateTime(value?: string | null): string {
+export function formatDisplayDateTime(
+  value?: string | null,
+  language?: string,
+): string {
   if (!value) return '\u2014';
+  const locale = language ? getFormattingLocale(language) : undefined;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return formatDisplayDate(value);
-  return date.toLocaleString(undefined, {
+  if (Number.isNaN(date.getTime())) return formatDisplayDate(value, language);
+  return date.toLocaleString(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

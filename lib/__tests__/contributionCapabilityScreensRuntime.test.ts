@@ -227,7 +227,7 @@ test('settings hides contribution Stripe controls but keeps preferences and Prem
   expect(text).not.toContain('settings:automatedPayments');
   expect(text).toContain('settings:paymentPreferences');
   expect(text).toContain('settings:subscription');
-  expect(text).toContain('Premium Organizer — Active');
+  expect(text).toContain('settings:organizerProActive');
   expect(mockGetLinkedAccounts).not.toHaveBeenCalled();
 
   const subscription = renderer.root
@@ -255,8 +255,8 @@ test('disabled contribution capability does not alter mounted Premium subscripti
   const renderer = await render(React.createElement(SubscriptionScreen));
   const text = visibleText(renderer);
 
-  expect(text).toContain('Organizer Pro is active');
-  expect(text).toContain('Manage billing');
-  expect(text).toContain('Cancel renewal');
+  expect(text).toContain('active');
+  expect(text).toContain('manageBilling');
+  expect(text).toContain('cancelRenewal');
   expect(text).not.toContain('rails.contributionPaymentsDisabledBody');
 });

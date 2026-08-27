@@ -183,6 +183,7 @@
     "title": "Instrucciones de pago de la contribución",
     "circleFallback": "Círculo",
     "explainer": "Indica cómo deben enviar los miembros su contribución habitual fuera de CircuSave. La ven cuando el pago vence. CircuSave no envía este dinero.",
+    "externalPaymentDisclosure": "CircuSave no retiene, mueve ni transfiere el pago. El miembro informa un pago externo. Se requiere la confirmación del organizador.",
     "notPayoutPreferences": "Esto no es Preferencias de pago en Ajustes. Esas etiquetas de Cash App, Venmo y PayPal son solo para recibir el fondo del susu.",
     "fieldLabel": "¿Cómo deben pagarte los miembros?",
     "placeholder": "Por ejemplo: Zelle: organizer@email.com",

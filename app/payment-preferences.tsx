@@ -12,7 +12,7 @@ import type { BackendCircleSummary } from '../lib/types';
 
 export default function PaymentPreferencesScreen() {
   const router = useRouter();
-  const { t } = useTranslation('settings');
+  const { t } = useTranslation(['settings', 'common']);
   const { session: authSession, refreshSession } = useAuthSession();
   const user = authSession?.user;
   const session = authSession?.session;
@@ -75,13 +75,13 @@ export default function PaymentPreferencesScreen() {
     // Simple validation (e.g., cashtag starts with $)
     const cleanCashtag = cashtag.trim();
     if (cleanCashtag && !cleanCashtag.startsWith('$')) {
-      Alert.alert('Invalid Cashtag', 'CashApp Cashtags must start with a $ symbol.');
+      Alert.alert(t('invalidCashtagTitle'), t('invalidCashtagBody'));
       return;
     }
 
     const cleanVenmo = venmoHandle.trim();
     if (cleanVenmo && !cleanVenmo.startsWith('@')) {
-      Alert.alert('Invalid Venmo Handle', 'Venmo handles must start with an @ symbol.');
+      Alert.alert(t('invalidVenmoTitle'), t('invalidVenmoBody'));
       return;
     }
     
@@ -93,10 +93,10 @@ export default function PaymentPreferencesScreen() {
         paypalEmail: paypalEmail.trim() || undefined
       });
       await refreshSession();
-      Alert.alert('Saved', 'Your payment preferences have been updated.');
+      Alert.alert(t('common:saved'), t('paymentPrefsSaved'));
       router.back();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to save payment preferences.');
+      Alert.alert(t('common:error'), e.message || t('paymentPrefsSaveError'));
     } finally {
       setLoading(false);
     }
@@ -110,20 +110,21 @@ export default function PaymentPreferencesScreen() {
           onPress={() => router.back()} 
           style={styles.backButton}
           hitSlop={20}
+          accessibilityRole="button"
+          accessibilityLabel={t('common:goBack')}
         >
           <FontAwesome name="angle-left" size={32} color={colors.textStrong} />
         </Pressable>
-        <Text style={styles.headerTitle}>Payment Preferences</Text>
+        <Text style={styles.headerTitle}>{t('paymentPrefsTitle')}</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.description}>
-          Add your payment tags below. Organizers will use these links to send you your payout when it's your turn to receive the pot.
-        </Text>
+        <Text style={styles.description}>{t('paymentPrefsDescription')}</Text>
+        <Text style={styles.disclosure}>{t('externalPaymentDisclosure')}</Text>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>CashApp Cashtag</Text>
+          <Text style={styles.label}>{t('cashtagLabel')}</Text>
           <View style={styles.inputWrapper}>
             <FontAwesome name="dollar" size={16} color={colors.primary} style={styles.inputIcon} />
             <TextInput
@@ -136,11 +137,11 @@ export default function PaymentPreferencesScreen() {
               autoCorrect={false}
             />
           </View>
-          <Text style={styles.helperText}>Used for generating CashApp payout links</Text>
+          <Text style={styles.helperText}>{t('cashtagHelper')}</Text>
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Venmo Handle</Text>
+          <Text style={styles.label}>{t('venmoLabel')}</Text>
           <View style={styles.inputWrapper}>
             <FontAwesome name="vimeo" size={16} color={colors.primary} style={styles.inputIcon} />
             <TextInput
@@ -153,11 +154,11 @@ export default function PaymentPreferencesScreen() {
               autoCorrect={false}
             />
           </View>
-          <Text style={styles.helperText}>Used for generating Venmo payout links</Text>
+          <Text style={styles.helperText}>{t('venmoHelper')}</Text>
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>PayPal Email / Tag</Text>
+          <Text style={styles.label}>{t('paypalLabel')}</Text>
           <View style={styles.inputWrapper}>
             <FontAwesome name="paypal" size={16} color={colors.primary} style={styles.inputIcon} />
             <TextInput
@@ -171,7 +172,7 @@ export default function PaymentPreferencesScreen() {
               keyboardType="email-address"
             />
           </View>
-          <Text style={styles.helperText}>Used for PayPal payouts</Text>
+          <Text style={styles.helperText}>{t('paypalHelper')}</Text>
         </View>
 
         <Pressable 
@@ -182,7 +183,7 @@ export default function PaymentPreferencesScreen() {
           {loading ? (
             <ActivityIndicator color={colors.card} />
           ) : (
-            <Text style={styles.saveButtonText}>Save Preferences</Text>
+            <Text style={styles.saveButtonText}>{t('savePreferences')}</Text>
           )}
         </Pressable>
 
@@ -272,7 +273,10 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.cardBorder,
   },
   backButton: {
-    width: 40,
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
   },
   headerTitle: {
     fontSize: 20,
@@ -289,7 +293,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     lineHeight: 24,
-    marginBottom: 32,
+    marginBottom: 12,
+  },
+  disclosure: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 20,
+    marginBottom: 28,
   },
   inputGroup: {
     marginBottom: 24,

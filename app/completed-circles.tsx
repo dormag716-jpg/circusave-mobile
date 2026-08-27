@@ -1,18 +1,21 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
+import { formatCurrency } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { isOrganizer } from '@/lib/permissions';
 import { colors, radii, spacing } from '@/lib/theme';
 import type { BackendCircleSummary } from '@/lib/types';
 
 export default function CompletedCirclesScreen() {
+  const { t } = useTranslation(['circles', 'common']);
   const { session, status } = useAuthSession();
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -37,11 +40,11 @@ export default function CompletedCirclesScreen() {
         ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load completed circles.');
+      setError(err instanceof Error ? err.message : t('unableToLoadHistory'));
     } finally {
       setLoading(false);
     }
-  }, [status, token]);
+  }, [status, t, token]);
 
   useFocusEffect(
     useCallback(() => {
@@ -56,11 +59,11 @@ export default function CompletedCirclesScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('common:goBack')}
         >
           <FontAwesome name="chevron-left" size={20} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>Completed Circles</Text>
+        <Text style={styles.title}>{t('completedTitle')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -73,15 +76,20 @@ export default function CompletedCirclesScreen() {
           loading ? (
             <View style={styles.centerCard}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={styles.centerText}>Loading history…</Text>
+              <Text style={styles.centerText}>{t('loadingHistory')}</Text>
             </View>
           ) : error ? (
             <View style={styles.centerCard}>
               <FontAwesome name="warning" size={32} color={colors.warning} />
-              <Text style={styles.errorTitle}>Unable to load history</Text>
+              <Text style={styles.errorTitle}>{t('unableToLoadHistory')}</Text>
               <Text style={styles.errorSubtitle}>{error}</Text>
-              <Pressable style={styles.retryButton} onPress={() => void loadCircles()}>
-                <Text style={styles.retryButtonText}>Retry</Text>
+              <Pressable
+                style={styles.retryButton}
+                onPress={() => void loadCircles()}
+                accessibilityRole="button"
+                accessibilityLabel={t('retry')}
+              >
+                <Text style={styles.retryButtonText}>{t('retry')}</Text>
               </Pressable>
             </View>
           ) : (
@@ -89,10 +97,8 @@ export default function CompletedCirclesScreen() {
               <View style={styles.iconContainer}>
                 <FontAwesome name="check-circle-o" size={48} color={colors.success} />
               </View>
-              <Text style={styles.emptyTitle}>No completed circles yet</Text>
-              <Text style={styles.emptyText}>
-                When a circle finishes all of its rounds and all payouts have been distributed, it will appear here in your archive.
-              </Text>
+              <Text style={styles.emptyTitle}>{t('noCompletedYet')}</Text>
+              <Text style={styles.emptyText}>{t('noCompletedBody')}</Text>
             </View>
           )
         }
@@ -106,12 +112,17 @@ export default function CompletedCirclesScreen() {
 }
 
 function CompletedCircleCard({ circle }: { circle: BackendCircleSummary }) {
+  const { t, i18n } = useTranslation('circles');
+  const language = i18n.resolvedLanguage || i18n.language;
   const userIsOrganizer = isOrganizer(circle.userRole);
-  
+  const money = (amount: number) => formatCurrency(amount, language, 'USD', 0);
+
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       onPress={() => router.push(circleWorkspaceHref(circle.id))}
+      accessibilityRole="button"
+      accessibilityLabel={t('openCompletedA11y', { circleName: circle.name })}
     >
       <View style={styles.cardHeader}>
         <View style={styles.circleInfo}>
@@ -119,12 +130,14 @@ function CompletedCircleCard({ circle }: { circle: BackendCircleSummary }) {
             <Text style={styles.circleName}>{circle.name}</Text>
             {userIsOrganizer ? (
               <View style={styles.organizerTag}>
-                <Text style={styles.organizerTagText}>Organizer</Text>
+                <Text style={styles.organizerTagText}>{t('organizer')}</Text>
               </View>
             ) : null}
           </View>
           <Text style={styles.circleMeta}>
-            Finished • {circle.memberCount} members
+            {t('finishedMembers', {
+              members: t('memberCount', { count: circle.memberCount }),
+            })}
           </Text>
         </View>
         <FontAwesome name="check-circle" size={24} color={colors.success} />
@@ -132,15 +145,15 @@ function CompletedCircleCard({ circle }: { circle: BackendCircleSummary }) {
       
       <View style={styles.detailsRow}>
         <View style={styles.detail}>
-          <Text style={styles.detailLabel}>Contribution</Text>
+          <Text style={styles.detailLabel}>{t('contributionLabel')}</Text>
           <Text style={styles.detailValue}>
-            {formatMoney(circle.contributionAmount)}
+            {money(circle.contributionAmount)}
           </Text>
         </View>
         <View style={styles.detail}>
-          <Text style={styles.detailLabel}>Total Pot</Text>
+          <Text style={styles.detailLabel}>{t('totalPot')}</Text>
           <Text style={styles.detailValue}>
-            {formatMoney(circle.contributionAmount * circle.memberCount)}
+            {money(circle.contributionAmount * circle.memberCount)}
           </Text>
         </View>
       </View>
@@ -153,22 +166,16 @@ function CompletedCircleCard({ circle }: { circle: BackendCircleSummary }) {
               e.stopPropagation();
               router.push(`/create-circle/setup?sourceCircleId=${circle.id}`);
             }}
+            accessibilityRole="button"
+            accessibilityLabel={t('restartA11y', { circleName: circle.name })}
           >
             <FontAwesome name="refresh" size={16} color={colors.primary} style={{ marginRight: 8 }} />
-            <Text style={styles.restartButtonText}>Restart Circle with these Members</Text>
+            <Text style={styles.restartButtonText}>{t('restartWithMembers')}</Text>
           </Pressable>
         </View>
       )}
     </Pressable>
   );
-}
-
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 const styles = StyleSheet.create({

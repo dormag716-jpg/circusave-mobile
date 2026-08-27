@@ -64,7 +64,6 @@ import {
   humanizeEventType,
   humanizeStatementLabel,
   humanizeStatus,
-  memberContextLabel as buildMemberContextLabel,
   nextContributionDue,
   nextScheduledPayout,
   shortStatementId,
@@ -91,25 +90,40 @@ type StatementLedgerPreviewEntry = MemberStatementSnapshot['ledger'][number];
 function memberContextLabel(
   row: MemberStatementIndexRow,
   unclaimed: boolean,
+  t: TFunction,
 ): string {
-  return buildMemberContextLabel({
-    handCount: row.handCount,
-    roleSummary: row.roleSummary,
-    membershipStatus: row.membershipStatus,
-    unclaimed,
+  const hands = t('center.handsCount', { count: row.handCount });
+  if (unclaimed) {
+    return t('center.contextUnclaimed', { hands });
+  }
+  const role = String(row.roleSummary || '').toLowerCase();
+  if (role.includes('organizer')) {
+    return t('center.contextOrganizer', { hands });
+  }
+  const status = String(row.membershipStatus || '').toLowerCase();
+  if (status === 'active' || !status) {
+    return t('center.contextActive', { hands });
+  }
+  return t('center.contextStatus', {
+    status: humanizeStatementLabel(row.membershipStatus) || String(row.membershipStatus || ''),
+    hands,
   });
 }
 
-function formatRelativeDays(value?: string | null): string {
+function formatRelativeDays(
+  value: string | null | undefined,
+  language: string,
+  t: TFunction,
+): string {
   if (!value) return '\u2014';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '\u2014';
   const diffMs = Date.now() - date.getTime();
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 30) return `${days}d ago`;
-  return formatDisplayDate(value);
+  if (days <= 0) return t('center.today');
+  if (days === 1) return t('center.yesterday');
+  if (days < 30) return t('center.daysAgo', { count: days });
+  return formatDisplayDate(value, language);
 }
 
 function ledgerIconColor(entry: BackendLedgerEntry): string {
@@ -176,6 +190,7 @@ type ExternalProvenance = {
 function externalContributionProvenanceText(
   item: ExternalProvenance,
   t: TFunction,
+  language?: string,
 ): string | null {
   if (item.paymentOrigin !== 'external') return null;
   const reporter =
@@ -188,21 +203,21 @@ function externalContributionProvenanceText(
   if (item.verificationStatus === 'pending_organizer_confirmation') {
     return t('ledger:provenance.pending', {
       member: reporter,
-      date: formatDisplayDateTime(item.reportedAt),
+      date: formatDisplayDateTime(item.reportedAt, language),
     });
   }
   if (item.verificationStatus === 'organizer_confirmed') {
     return t('ledger:provenance.confirmed', {
       member: reporter,
-      reportedAt: formatDisplayDateTime(item.reportedAt),
+      reportedAt: formatDisplayDateTime(item.reportedAt, language),
       organizer,
-      confirmedAt: formatDisplayDateTime(item.confirmedAt),
+      confirmedAt: formatDisplayDateTime(item.confirmedAt, language),
     });
   }
   if (item.verificationStatus === 'organizer_rejected') {
     return t('ledger:provenance.rejected', {
       organizer,
-      rejectedAt: formatDisplayDateTime(item.rejectedAt),
+      rejectedAt: formatDisplayDateTime(item.rejectedAt, language),
     });
   }
   return null;
@@ -211,6 +226,7 @@ function externalContributionProvenanceText(
 function activityProvenanceText(
   entry: BackendLedgerEntry,
   t: TFunction,
+  language?: string,
 ): string | null {
   if (entry.paymentOrigin !== 'external') return null;
   const actor =
@@ -219,19 +235,19 @@ function activityProvenanceText(
   if (entry.verificationStatus === 'pending_organizer_confirmation') {
     return t('ledger:provenance.pending', {
       member: actor,
-      date: formatDisplayDateTime(at),
+      date: formatDisplayDateTime(at, language),
     });
   }
   if (entry.verificationStatus === 'organizer_confirmed') {
     return t('ledger:provenance.activityConfirmed', {
       organizer: actor,
-      date: formatDisplayDateTime(at),
+      date: formatDisplayDateTime(at, language),
     });
   }
   if (entry.verificationStatus === 'organizer_rejected') {
     return t('ledger:provenance.rejected', {
       organizer: actor,
-      rejectedAt: formatDisplayDateTime(at),
+      rejectedAt: formatDisplayDateTime(at, language),
     });
   }
   return null;
@@ -240,6 +256,7 @@ function activityProvenanceText(
 async function saveAndSharePdf(
   bytes: Uint8Array,
   filename: string,
+  copy: { dialogTitle: string; savedTitle: string; savedBody: string },
 ): Promise<{ uri: string; filename: string }> {
   const file = new File(Paths.cache, filename);
   file.create({ overwrite: true });
@@ -248,22 +265,19 @@ async function saveAndSharePdf(
   if (canShare) {
     await Sharing.shareAsync(file.uri, {
       mimeType: 'application/pdf',
-      dialogTitle: 'Share CircuSave Member Circle Statement',
+      dialogTitle: copy.dialogTitle,
       UTI: 'com.adobe.pdf',
     });
   } else {
-    Alert.alert(
-      'Statement saved',
-      `PDF saved on device as ${filename}. Sharing is not available on this device.`,
-    );
+    Alert.alert(copy.savedTitle, copy.savedBody);
   }
   return { uri: file.uri, filename };
 }
 
-function friendlyError(message: string): string {
+function friendlyError(message: string, fallback: string): string {
   const trimmed = String(message || '').trim();
-  if (!trimmed) return 'Something went wrong. Please try again.';
-  if (trimmed.length > 160) return 'Something went wrong. Please try again.';
+  if (!trimmed) return fallback;
+  if (trimmed.length > 160) return fallback;
   return trimmed;
 }
 
@@ -276,6 +290,8 @@ export function RecordsStatementCenter({
   circleName,
   wallet,
 }: Props) {
+  const { t } = useTranslation('ledger');
+  const genericError = t('center.genericError');
   const [segment, setSegment] = useState<RecordsSegment>('statements');
   const [index, setIndex] = useState<MemberStatementsIndex | null>(null);
   const [indexLoading, setIndexLoading] = useState(false);
@@ -297,7 +313,16 @@ export function RecordsStatementCenter({
   const [sharingDocId, setSharingDocId] = useState<string | null>(null);
 
   const resolvedCircleName =
-    index?.circle.name || circleName || 'this circle';
+    index?.circle.name || circleName || t('center.thisCircle');
+  const displayCircleName =
+    resolvedCircleName === t('center.thisCircle')
+      ? t('center.circleFallback')
+      : resolvedCircleName;
+  const pdfShareCopy = (filename: string) => ({
+    dialogTitle: t('center.shareDialogTitle'),
+    savedTitle: t('center.statementSaved'),
+    savedBody: t('center.statementSavedBody', { filename }),
+  });
 
   const periodInput: StatementPeriodInput = useMemo(() => {
     if (periodMode === 'custom') {
@@ -319,13 +344,13 @@ export function RecordsStatementCenter({
           ? err.message
           : err instanceof Error
             ? err.message
-            : 'Could not load member statements.';
+            : t('center.loadStatementsError');
       setIndexError(message);
       setIndex(null);
     } finally {
       setIndexLoading(false);
     }
-  }, [token, circleId]);
+  }, [token, circleId, t]);
 
   const loadDocuments = useCallback(async () => {
     if (!token || !circleId) return;
@@ -336,13 +361,13 @@ export function RecordsStatementCenter({
       setDocuments(payload.documents || []);
     } catch (err) {
       setDocumentsError(
-        err instanceof Error ? err.message : 'Could not load statement documents.',
+        err instanceof Error ? err.message : t('center.loadDocumentsGeneric'),
       );
       setDocuments([]);
     } finally {
       setDocumentsLoading(false);
     }
-  }, [token, circleId]);
+  }, [token, circleId, t]);
 
   useEffect(() => {
     if (segment === 'statements') {
@@ -355,10 +380,7 @@ export function RecordsStatementCenter({
 
   const openPreview = async (subject: SubjectTarget) => {
     if (periodMode === 'custom' && (!periodFrom.trim() || !periodTo.trim())) {
-      Alert.alert(
-        'Date range required',
-        'Enter both from and to dates (YYYY-MM-DD) for a custom statement period.',
-      );
+      Alert.alert(t('center.dateRangeRequired'), t('center.dateRangeRequiredBody'));
       return;
     }
     setActiveSubject(subject);
@@ -384,7 +406,7 @@ export function RecordsStatementCenter({
       setSnapshot(data);
     } catch (err) {
       setPreviewError(
-        err instanceof Error ? err.message : 'Could not load statement preview.',
+        err instanceof Error ? err.message : t('center.loadPreviewGeneric'),
       );
     } finally {
       setPreviewLoading(false);
@@ -409,12 +431,12 @@ export function RecordsStatementCenter({
               activeSubject.handId,
               periodInput,
             );
-      await saveAndSharePdf(pdf.bytes, pdf.filename);
+      await saveAndSharePdf(pdf.bytes, pdf.filename, pdfShareCopy(pdf.filename));
       void loadDocuments();
     } catch (err) {
       Alert.alert(
-        'PDF unavailable',
-        err instanceof Error ? err.message : 'Could not download the statement PDF.',
+        t('center.pdfUnavailable'),
+        err instanceof Error ? err.message : t('center.downloadPdfGeneric'),
       );
     } finally {
       setPdfLoading(false);
@@ -425,11 +447,11 @@ export function RecordsStatementCenter({
     setSharingDocId(doc.id);
     try {
       const pdf = await downloadStatementDocumentPdf(token, circleId, doc.id);
-      await saveAndSharePdf(pdf.bytes, pdf.filename);
+      await saveAndSharePdf(pdf.bytes, pdf.filename, pdfShareCopy(pdf.filename));
     } catch (err) {
       Alert.alert(
-        'Share failed',
-        err instanceof Error ? err.message : 'Could not download this document.',
+        t('center.shareFailed'),
+        err instanceof Error ? err.message : t('center.downloadDocGeneric'),
       );
     } finally {
       setSharingDocId(null);
@@ -437,25 +459,20 @@ export function RecordsStatementCenter({
   };
 
   const segments = [
-    { id: 'circle' as const, label: 'Circle Overview' },
-    { id: 'statements' as const, label: 'Member Statements' },
-    { id: 'documents' as const, label: 'Documents' },
+    { id: 'circle' as const, label: t('center.segmentCircle') },
+    { id: 'statements' as const, label: t('center.segmentStatements') },
+    { id: 'documents' as const, label: t('center.segmentDocuments') },
   ];
 
   return (
     <View style={styles.root}>
       <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Records</Text>
+        <Text style={styles.pageTitle}>{t('center.title')}</Text>
         <Text style={styles.pageCircleName} numberOfLines={1}>
-          {resolvedCircleName === 'this circle' ? 'Circle' : resolvedCircleName}
+          {displayCircleName}
         </Text>
-        <Text style={styles.pageSubtitle}>
-          Statements, activity, and circle documents
-        </Text>
-        <Text style={styles.pageDisclaimer}>
-          Statements are for CircuSave activity tracking only and are not bank, tax,
-          legal, or income documents.
-        </Text>
+        <Text style={styles.pageSubtitle}>{t('center.subtitle')}</Text>
+        <Text style={styles.pageDisclaimer}>{t('center.disclaimer')}</Text>
       </View>
 
       <View
@@ -495,11 +512,7 @@ export function RecordsStatementCenter({
 
       {segment === 'statements' ? (
         <MemberStatementsPanel
-          circleName={
-            resolvedCircleName === 'this circle'
-              ? 'this circle'
-              : resolvedCircleName
-          }
+          circleName={resolvedCircleName}
           index={index}
           loading={indexLoading}
           error={indexError}
@@ -552,17 +565,17 @@ export function RecordsStatementCenter({
               onPress={() => setPreviewOpen(false)}
               style={styles.modalClose}
               accessibilityRole="button"
-              accessibilityLabel="Close preview"
+              accessibilityLabel={t('center.closePreview')}
             >
               <FontAwesome name="close" size={18} color={colors.textStrong} />
             </Pressable>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.modalKicker}>Member Activity Statement</Text>
+              <Text style={styles.modalKicker}>{t('center.previewKicker')}</Text>
               <Text style={styles.modalTitle} numberOfLines={1}>
-                {activeSubject?.displayName || 'Member'}
+                {activeSubject?.displayName || t('center.memberFallback')}
               </Text>
               <Text style={styles.modalSubtitle} numberOfLines={1}>
-                {resolvedCircleName === 'this circle' ? 'Circle' : resolvedCircleName}
+                {displayCircleName}
               </Text>
             </View>
           </View>
@@ -570,25 +583,25 @@ export function RecordsStatementCenter({
           {previewLoading ? (
             <View style={styles.stateCard}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.stateTitle}>Loading statement</Text>
-              <Text style={styles.stateBody}>
-                Preparing a permission-filtered preview for this circle.
-              </Text>
+              <Text style={styles.stateTitle}>{t('center.loadingStatement')}</Text>
+              <Text style={styles.stateBody}>{t('center.loadingStatementBody')}</Text>
             </View>
           ) : previewError ? (
             <View style={styles.stateCard}>
               <View style={styles.stateIconWrap}>
                 <FontAwesome name="exclamation" size={18} color={colors.warning} />
               </View>
-              <Text style={styles.stateTitle}>Could not load preview</Text>
-              <Text style={styles.stateBody}>{friendlyError(previewError)}</Text>
+              <Text style={styles.stateTitle}>{t('center.previewError')}</Text>
+              <Text style={styles.stateBody}>
+                {friendlyError(previewError, genericError)}
+              </Text>
               <Pressable
                 style={styles.primaryBtn}
                 onPress={() => activeSubject && void openPreview(activeSubject)}
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading statement"
+                accessibilityLabel={t('center.retryStatementA11y')}
               >
-                <Text style={styles.primaryBtnText}>Try again</Text>
+                <Text style={styles.primaryBtnText}>{t('center.tryAgain')}</Text>
               </Pressable>
             </View>
           ) : snapshot ? (
@@ -605,7 +618,7 @@ export function RecordsStatementCenter({
                   onPress={() => void downloadSharePdf()}
                   disabled={pdfLoading}
                   accessibilityRole="button"
-                  accessibilityLabel="Download PDF"
+                  accessibilityLabel={t('center.downloadPdfA11y')}
                   accessibilityState={{ busy: pdfLoading, disabled: pdfLoading }}
                 >
                   {pdfLoading ? (
@@ -613,7 +626,7 @@ export function RecordsStatementCenter({
                   ) : (
                     <>
                       <FontAwesome name="download" size={14} color={colors.onColor} />
-                      <Text style={styles.primaryBtnText}>Download PDF</Text>
+                      <Text style={styles.primaryBtnText}>{t('center.downloadPdf')}</Text>
                     </>
                   )}
                 </Pressable>
@@ -622,15 +635,13 @@ export function RecordsStatementCenter({
                   onPress={() => void downloadSharePdf()}
                   disabled={pdfLoading}
                   accessibilityRole="button"
-                  accessibilityLabel="Share PDF"
+                  accessibilityLabel={t('center.sharePdfA11y')}
                   accessibilityState={{ busy: pdfLoading, disabled: pdfLoading }}
                 >
                   <FontAwesome name="share" size={14} color={colors.primary} />
-                  <Text style={styles.secondaryBtnText}>Share PDF</Text>
+                  <Text style={styles.secondaryBtnText}>{t('center.sharePdf')}</Text>
                 </Pressable>
-                <Text style={styles.footerHint}>
-                  PDF uses the same backend snapshot shown above.
-                </Text>
+                <Text style={styles.footerHint}>{t('center.footerHint')}</Text>
               </View>
             </>
           ) : null}
@@ -664,7 +675,7 @@ function CircleRecordsPanel({
           <FontAwesome name="line-chart" size={16} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.panelTitle}>Circle activity</Text>
+          <Text style={styles.panelTitle}>{t('ledger:activity')}</Text>
           <Text style={styles.panelSub}>
             {t('ledger:eventCount', { count: uniqueEntries.length })}
           </Text>
@@ -677,13 +688,11 @@ function CircleRecordsPanel({
             <FontAwesome name="book" size={22} color={colors.subtle} />
           </View>
           <Text style={styles.emptyTitle}>{t('ledger:empty')}</Text>
-          <Text style={styles.emptyBody}>
-            Contribution and payout activity for this circle will appear here.
-          </Text>
+          <Text style={styles.emptyBody}>{t('ledger:center.activityEmptyBody')}</Text>
         </View>
       ) : (
         visibleEntries.map((entry, index) => {
-          const provenanceText = activityProvenanceText(entry, t);
+          const provenanceText = activityProvenanceText(entry, t, language);
           return (
           <View key={ledgerRenderKey(entry, index)}>
             <View style={styles.ledgerRow}>
@@ -824,6 +833,7 @@ function MemberStatementsPanel({
   onPeriodTo: (value: string) => void;
   onOpenPreview: (row: MemberStatementIndexRow) => void;
 }) {
+  const { t } = useTranslation('ledger');
   const customIncomplete =
     periodMode === 'custom' && (!periodFrom.trim() || !periodTo.trim());
 
@@ -831,29 +841,24 @@ function MemberStatementsPanel({
     <View style={styles.panel}>
       <View style={styles.panelHeader}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.panelTitle}>Member Statements</Text>
+          <Text style={styles.panelTitle}>{t('center.segmentStatements')}</Text>
           <Text style={styles.panelSub}>
-            View contribution and payout activity for members of {circleName}.
-            {'\n'}
-            Each statement is limited to this circle.
+            {t('center.statementsSub', { circle: circleName })}
           </Text>
-          <Text style={styles.panelHint}>
-            One row per connected member. Each hand remains a separate financial
-            position in the statement.
-          </Text>
+          <Text style={styles.panelHint}>{t('center.statementsHint')}</Text>
         </View>
         <Pressable
           onPress={onRetry}
           style={styles.refreshBtn}
           accessibilityRole="button"
-          accessibilityLabel="Refresh member statements"
+          accessibilityLabel={t('center.refreshStatementsA11y')}
         >
           <FontAwesome name="refresh" size={14} color={colors.primary} />
         </Pressable>
       </View>
 
       <View style={styles.periodCard}>
-        <Text style={styles.periodLabel}>Period</Text>
+        <Text style={styles.periodLabel}>{t('center.period')}</Text>
         <View style={styles.periodToggleRow}>
           <Pressable
             style={[
@@ -863,7 +868,7 @@ function MemberStatementsPanel({
             onPress={() => onPeriodMode('full_circle')}
             accessibilityRole="button"
             accessibilityState={{ selected: periodMode === 'full_circle' }}
-            accessibilityLabel="Full circle period"
+            accessibilityLabel={t('center.fullCircleA11y')}
           >
             <Text
               style={[
@@ -871,7 +876,7 @@ function MemberStatementsPanel({
                 periodMode === 'full_circle' && styles.periodToggleTextActive,
               ]}
             >
-              Full circle
+              {t('center.fullCircle')}
             </Text>
           </Pressable>
           <Pressable
@@ -882,7 +887,7 @@ function MemberStatementsPanel({
             onPress={() => onPeriodMode('custom')}
             accessibilityRole="button"
             accessibilityState={{ selected: periodMode === 'custom' }}
-            accessibilityLabel="Custom range period"
+            accessibilityLabel={t('center.customRangeA11y')}
           >
             <Text
               style={[
@@ -890,54 +895,48 @@ function MemberStatementsPanel({
                 periodMode === 'custom' && styles.periodToggleTextActive,
               ]}
             >
-              Custom range
+              {t('center.customRange')}
             </Text>
           </Pressable>
         </View>
         {periodMode === 'full_circle' ? (
-          <Text style={styles.periodHelper}>
-            Includes all available activity in this circle.
-          </Text>
+          <Text style={styles.periodHelper}>{t('center.fullCircleHelper')}</Text>
         ) : (
           <>
             <View style={styles.dateRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.dateLabel}>From</Text>
+                <Text style={styles.dateLabel}>{t('center.dateFrom')}</Text>
                 <TextInput
                   value={periodFrom}
                   onChangeText={onPeriodFrom}
-                  placeholder="YYYY-MM-DD"
+                  placeholder={t('center.datePlaceholder')}
                   placeholderTextColor={colors.subtle}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="numbers-and-punctuation"
                   style={styles.dateInput}
-                  accessibilityLabel="Period from date"
+                  accessibilityLabel={t('center.periodFromA11y')}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.dateLabel}>To</Text>
+                <Text style={styles.dateLabel}>{t('center.dateTo')}</Text>
                 <TextInput
                   value={periodTo}
                   onChangeText={onPeriodTo}
-                  placeholder="YYYY-MM-DD"
+                  placeholder={t('center.datePlaceholder')}
                   placeholderTextColor={colors.subtle}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="numbers-and-punctuation"
                   style={styles.dateInput}
-                  accessibilityLabel="Period to date"
+                  accessibilityLabel={t('center.periodToA11y')}
                 />
               </View>
             </View>
             {customIncomplete ? (
-              <Text style={styles.periodWarning}>
-                Enter both from and to dates to open a statement.
-              </Text>
+              <Text style={styles.periodWarning}>{t('center.customIncomplete')}</Text>
             ) : (
-              <Text style={styles.periodHelper}>
-                Filters activity in this circle to the selected dates.
-              </Text>
+              <Text style={styles.periodHelper}>{t('center.customHelper')}</Text>
             )}
           </>
         )}
@@ -946,8 +945,8 @@ function MemberStatementsPanel({
       {loading ? (
         <View style={styles.stateCardCompact}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.stateTitle}>Loading members</Text>
-          <Text style={styles.stateBody}>Fetching statement subjects for this circle.</Text>
+          <Text style={styles.stateTitle}>{t('center.loadingMembers')}</Text>
+          <Text style={styles.stateBody}>{t('center.loadingMembersBody')}</Text>
           <View style={styles.skeletonList}>
             <View style={styles.skeletonRow} />
             <View style={styles.skeletonRow} />
@@ -959,15 +958,17 @@ function MemberStatementsPanel({
           <View style={styles.stateIconWrap}>
             <FontAwesome name="exclamation" size={16} color={colors.warning} />
           </View>
-          <Text style={styles.stateTitle}>Could not load members</Text>
-          <Text style={styles.stateBody}>{friendlyError(error)}</Text>
+          <Text style={styles.stateTitle}>{t('center.loadMembersError')}</Text>
+          <Text style={styles.stateBody}>
+            {friendlyError(error, t('center.genericError'))}
+          </Text>
           <Pressable
             style={styles.primaryBtn}
             onPress={onRetry}
             accessibilityRole="button"
-            accessibilityLabel="Retry loading members"
+            accessibilityLabel={t('center.retryMembersA11y')}
           >
-            <Text style={styles.primaryBtnText}>Retry</Text>
+            <Text style={styles.primaryBtnText}>{t('center.retry')}</Text>
           </Pressable>
         </View>
       ) : !index || (index.members.length === 0 && index.unclaimedHands.length === 0) ? (
@@ -975,11 +976,8 @@ function MemberStatementsPanel({
           <View style={styles.emptyIcon}>
             <FontAwesome name="users" size={22} color={colors.subtle} />
           </View>
-          <Text style={styles.emptyTitle}>No members to show yet</Text>
-          <Text style={styles.emptyBody}>
-            Connected members of this circle will appear here when memberships are
-            available.
-          </Text>
+          <Text style={styles.emptyTitle}>{t('center.emptyMembersTitle')}</Text>
+          <Text style={styles.emptyBody}>{t('center.emptyMembersBody')}</Text>
         </View>
       ) : (
         <View style={styles.memberList}>
@@ -989,10 +987,8 @@ function MemberStatementsPanel({
 
           {index.unclaimedHands.length > 0 ? (
             <View style={styles.unclaimedSection}>
-              <Text style={styles.unclaimedTitle}>Unclaimed hands</Text>
-              <Text style={styles.unclaimedSub}>
-                Planned hands that have not yet been connected to a member.
-              </Text>
+              <Text style={styles.unclaimedTitle}>{t('center.unclaimedHands')}</Text>
+              <Text style={styles.unclaimedSub}>{t('center.unclaimedSub')}</Text>
               {index.unclaimedHands.map((row) => (
                 <MemberRow
                   key={row.subjectKey}
@@ -1018,16 +1014,17 @@ function MemberRow({
   onPress: () => void;
   unclaimed?: boolean;
 }) {
+  const { t } = useTranslation('ledger');
   const initials = getInitials(row.displayName);
-  const contextLabel = memberContextLabel(row, Boolean(unclaimed));
+  const contextLabel = memberContextLabel(row, Boolean(unclaimed), t);
   return (
     <Pressable
       style={[styles.memberRow, unclaimed && styles.memberRowUnclaimed]}
       onPress={onPress}
       disabled={!row.canRequestStatement}
       accessibilityRole="button"
-      accessibilityLabel={`Open statement for ${row.displayName}`}
-      accessibilityHint="Opens the statement preview"
+      accessibilityLabel={t('center.openStatementA11y', { name: row.displayName })}
+      accessibilityHint={t('center.openStatementHint')}
       accessibilityState={{ disabled: !row.canRequestStatement }}
     >
       <View style={[styles.avatar, unclaimed && styles.avatarUnclaimed]}>
@@ -1047,13 +1044,13 @@ function MemberRow({
         </View>
         <View style={styles.totalsList}>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Contributed</Text>
+            <Text style={styles.totalLabel}>{t('center.contributed')}</Text>
             <Text style={styles.totalValue}>
               {displayMoney(row.totals.contributedDisplay)}
             </Text>
           </View>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Received</Text>
+            <Text style={styles.totalLabel}>{t('center.received')}</Text>
             <Text style={styles.totalValue}>
               {displayMoney(row.totals.receivedDisplay)}
             </Text>
@@ -1081,21 +1078,20 @@ function DocumentsPanel({
   onShare: (doc: StatementDocumentSummary) => void;
   onGoStatements: () => void;
 }) {
+  const { t, i18n } = useTranslation('ledger');
+  const language = i18n.resolvedLanguage || i18n.language;
   return (
     <View style={styles.panel}>
       <View style={styles.panelHeader}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.panelTitle}>Documents</Text>
-          <Text style={styles.panelSub}>
-            Previously generated statements for this circle. Re-download from the
-            frozen snapshot.
-          </Text>
+          <Text style={styles.panelTitle}>{t('center.segmentDocuments')}</Text>
+          <Text style={styles.panelSub}>{t('center.documentsSub')}</Text>
         </View>
         <Pressable
           onPress={onRefresh}
           style={styles.refreshBtn}
           accessibilityRole="button"
-          accessibilityLabel="Refresh documents"
+          accessibilityLabel={t('center.refreshDocumentsA11y')}
         >
           <FontAwesome name="refresh" size={14} color={colors.primary} />
         </Pressable>
@@ -1104,14 +1100,16 @@ function DocumentsPanel({
       {loading ? (
         <View style={styles.stateCardCompact}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.stateTitle}>Loading documents</Text>
+          <Text style={styles.stateTitle}>{t('center.loadingDocuments')}</Text>
         </View>
       ) : error ? (
         <View style={styles.stateCardCompact}>
-          <Text style={styles.stateTitle}>Could not load documents</Text>
-          <Text style={styles.stateBody}>{friendlyError(error)}</Text>
+          <Text style={styles.stateTitle}>{t('center.loadDocumentsError')}</Text>
+          <Text style={styles.stateBody}>
+            {friendlyError(error, t('center.genericError'))}
+          </Text>
           <Pressable style={styles.primaryBtn} onPress={onRefresh}>
-            <Text style={styles.primaryBtnText}>Retry</Text>
+            <Text style={styles.primaryBtnText}>{t('center.retry')}</Text>
           </Pressable>
         </View>
       ) : documents.length === 0 ? (
@@ -1119,13 +1117,10 @@ function DocumentsPanel({
           <View style={styles.emptyIcon}>
             <FontAwesome name="folder-open-o" size={22} color={colors.subtle} />
           </View>
-          <Text style={styles.emptyTitle}>No documents yet</Text>
-          <Text style={styles.emptyBody}>
-            When you download a Member Circle Statement PDF, CircuSave stores a
-            permission-filtered snapshot so you can re-download it later.
-          </Text>
+          <Text style={styles.emptyTitle}>{t('center.emptyDocumentsTitle')}</Text>
+          <Text style={styles.emptyBody}>{t('center.emptyDocumentsBody')}</Text>
           <Pressable style={styles.primaryBtn} onPress={onGoStatements}>
-            <Text style={styles.primaryBtnText}>Open Member Statements</Text>
+            <Text style={styles.primaryBtnText}>{t('center.openStatements')}</Text>
           </Pressable>
         </View>
       ) : (
@@ -1136,12 +1131,12 @@ function DocumentsPanel({
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.memberName} numberOfLines={1}>
-                {doc.memberDisplayName || 'Member'}
+                {doc.memberDisplayName || t('center.memberFallback')}
               </Text>
               <Text style={styles.rowMeta} numberOfLines={2}>
-                {doc.period?.label || 'Unavailable'}
+                {doc.period?.label || '\u2014'}
                 {' \u00B7 '}
-                {formatRelativeDays(doc.generatedAt)}
+                {formatRelativeDays(doc.generatedAt, language, t)}
               </Text>
               <Text style={styles.docReference} numberOfLines={1}>
                 {doc.statementReference}
@@ -1155,7 +1150,9 @@ function DocumentsPanel({
               onPress={() => onShare(doc)}
               disabled={sharingDocId === doc.id}
               accessibilityRole="button"
-              accessibilityLabel={`Share statement for ${doc.memberDisplayName || 'member'}`}
+              accessibilityLabel={t('center.shareStatementA11y', {
+                name: doc.memberDisplayName || t('center.memberFallback'),
+              })}
             >
               {sharingDocId === doc.id ? (
                 <ActivityIndicator color={colors.primary} size="small" />
@@ -1202,15 +1199,16 @@ function ExpandableSection({
 }
 
 function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
-  const { t } = useTranslation(['ledger']);
+  const { t, i18n } = useTranslation(['ledger']);
+  const language = i18n.resolvedLanguage || i18n.language;
   const uniqueLedgerEntries = useMemo(
     () => dedupeById(snapshot.ledger || []),
     [snapshot.ledger],
   );
 
-  const memberName = snapshot.member.displayName || 'Member';
-  const circleLabel = snapshot.circle.name || 'Circle';
-  const periodLabel = snapshot.period.label || 'Unavailable';
+  const memberName = snapshot.member.displayName || t('center.memberFallback');
+  const circleLabel = snapshot.circle.name || t('center.circleFallback');
+  const periodLabel = snapshot.period.label || '\u2014';
   const handCount = snapshot.circleParticipation.memberHandCount;
   const statementId = shortStatementId(snapshot.statementReference);
 
@@ -1229,27 +1227,26 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
     <View style={styles.previewRoot}>
       <View style={styles.previewHero}>
         <Text style={styles.previewBrand}>CircuSave</Text>
-        <Text style={styles.previewTitle}>Member Activity Statement</Text>
+        <Text style={styles.previewTitle}>{t('center.previewTitle')}</Text>
         <Text style={styles.previewMember}>{memberName}</Text>
         <Text style={styles.previewMetaLine}>{circleLabel}</Text>
         <Text style={styles.previewDisclaimer}>
-          {snapshot.verification.disclaimer ||
-            'For CircuSave activity tracking only. Not a bank, tax, legal, or income document.'}
+          {snapshot.verification.disclaimer || t('center.previewDisclaimerFallback')}
         </Text>
       </View>
 
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryCardTitle}>Summary</Text>
+        <Text style={styles.summaryCardTitle}>{t('center.summary')}</Text>
         <View style={styles.summaryMetrics}>
           <View style={styles.summaryMetric}>
-            <Text style={styles.summaryMetricLabel}>Contributed</Text>
+            <Text style={styles.summaryMetricLabel}>{t('center.contributed')}</Text>
             <Text style={styles.summaryMetricValue}>
               {displayMoney(snapshot.memberTotals.totalContributedDisplay)}
             </Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryMetric}>
-            <Text style={styles.summaryMetricLabel}>Received</Text>
+            <Text style={styles.summaryMetricLabel}>{t('center.received')}</Text>
             <Text style={styles.summaryMetricValue}>
               {displayMoney(snapshot.memberTotals.totalReceivedDisplay)}
             </Text>
@@ -1257,7 +1254,7 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
           <View style={styles.summaryDivider} />
           <View style={styles.summaryMetric}>
             {/* Outstanding = remainingObligations* presentation label only */}
-            <Text style={styles.summaryMetricLabel}>Outstanding</Text>
+            <Text style={styles.summaryMetricLabel}>{t('center.outstanding')}</Text>
             <Text style={styles.summaryMetricValue}>
               {displayMoney(snapshot.memberTotals.remainingObligationsDisplay)}
             </Text>
@@ -1266,24 +1263,22 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
       </View>
 
       <View style={styles.metaCard}>
-        <MetaLine label="Circle" value={circleLabel} />
-        <MetaLine label="Member" value={memberName} />
-        <MetaLine label="Statement period" value={periodLabel} />
+        <MetaLine label={t('center.circleFallback')} value={circleLabel} />
+        <MetaLine label={t('center.memberFallback')} value={memberName} />
+        <MetaLine label={t('center.statementPeriod')} value={periodLabel} />
         <MetaLine
-          label="Membership status"
+          label={t('center.membershipStatus')}
           value={humanizeStatus(snapshot.member.membershipStatus)}
         />
         <MetaLine
-          label="Hands"
-          value={`${handCount} hand${handCount === 1 ? '' : 's'}`}
+          label={t('center.hands')}
+          value={t('center.handsCount', { count: handCount })}
           last
         />
       </View>
 
-      <Text style={styles.sectionLabel}>Hands</Text>
-      <Text style={styles.sectionHint}>
-        Each hand is a separate financial position. Positions are never merged.
-      </Text>
+      <Text style={styles.sectionLabel}>{t('center.hands')}</Text>
+      <Text style={styles.sectionHint}>{t('center.handsHint')}</Text>
       {snapshot.hands.map((hand, handIndex) => {
         const nextDue = nextContributionDue(hand.contributions.byRound);
         const nextPayout = nextScheduledPayout(hand.payouts.scheduled);
@@ -1291,14 +1286,16 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
           <View key={hand.handId} style={styles.handCard}>
             <View style={styles.handHeader}>
               <Text style={styles.handTitle} numberOfLines={2}>
-                Hand {hand.handNumber || handIndex + 1}
+                {t('center.handTitle', { number: hand.handNumber || handIndex + 1 })}
               </Text>
               <View style={styles.positionBadge}>
                 <Text style={styles.positionBadgeText}>
-                  Payout position{' '}
-                  {hand.payoutPosition === 'Unavailable'
-                    ? '\u2014'
-                    : String(hand.payoutPosition)}
+                  {t('center.payoutPosition', {
+                    position:
+                      hand.payoutPosition === 'Unavailable'
+                        ? '\u2014'
+                        : String(hand.payoutPosition),
+                  })}
                 </Text>
               </View>
             </View>
@@ -1308,76 +1305,90 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
               </Text>
             ) : null}
             {!hand.isParticipating ? (
-              <Text style={styles.rowMeta}>Not participating</Text>
+              <Text style={styles.rowMeta}>{t('center.notParticipating')}</Text>
             ) : null}
 
             <View style={styles.handMetrics}>
               <Metric
-                label="Confirmed contributions"
+                label={t('center.confirmedContributions')}
                 value={displayMoney(hand.contributions.confirmedDisplay)}
               />
               <Metric
-                label="Pending contributions"
+                label={t('center.pendingContributions')}
                 value={displayMoney(hand.contributions.pendingDisplay)}
               />
-              <Metric label="Missed" value={displayMoney(hand.contributions.missedDisplay)} />
               <Metric
-                label="Rejected"
+                label={t('center.missed')}
+                value={displayMoney(hand.contributions.missedDisplay)}
+              />
+              <Metric
+                label={t('center.rejected')}
                 value={displayMoney(hand.contributions.rejectedDisplay)}
               />
               <Metric
-                label="Payouts received"
+                label={t('center.payoutsReceived')}
                 value={displayMoney(hand.payouts.receivedDisplay)}
               />
               <Metric
-                label="Outstanding"
+                label={t('center.outstanding')}
                 value={displayMoney(hand.remainingObligationsDisplay)}
               />
             </View>
 
             {nextPayout ? (
               <Text style={styles.nextLine}>
-                Next scheduled payout: Round {nextPayout.roundNumber}
+                {t('center.nextPayout', { round: nextPayout.roundNumber })}
                 {' \u00B7 '}
                 {displayMoney(nextPayout.amountDisplay)}
                 {nextPayout.dueDate
-                  ? ` \u00B7 ${formatDisplayDate(nextPayout.dueDate)}`
+                  ? ` \u00B7 ${formatDisplayDate(nextPayout.dueDate, language)}`
                   : ''}
               </Text>
             ) : null}
             {nextDue ? (
               <Text style={styles.nextLine}>
-                Next contribution due: Round {nextDue.roundNumber}
+                {t('center.nextContribution', { round: nextDue.roundNumber })}
                 {' \u00B7 '}
                 {displayMoney(nextDue.expectedDisplay)}
-                {nextDue.dueDate ? ` \u00B7 ${formatDisplayDate(nextDue.dueDate)}` : ''}
+                {nextDue.dueDate
+                  ? ` \u00B7 ${formatDisplayDate(nextDue.dueDate, language)}`
+                  : ''}
               </Text>
             ) : null}
 
             {(hand.contributions.byRound || []).length > 0 ? (
               <>
-                <Text style={styles.miniLabel}>Contribution history</Text>
+                <Text style={styles.miniLabel}>{t('center.contributionHistory')}</Text>
                 {hand.contributions.byRound.map((r) => {
-                  const provenanceText = externalContributionProvenanceText(r, t);
+                  const provenanceText = externalContributionProvenanceText(
+                    r,
+                    t,
+                    language,
+                  );
                   const awaitingConfirmation =
                     r.verificationStatus === 'pending_organizer_confirmation';
                   return (
                   <View key={r.contributionId} style={styles.roundRow}>
-                    <Text style={styles.roundTitle}>Round {r.roundNumber}</Text>
+                    <Text style={styles.roundTitle}>
+                      {t('center.roundTitle', { number: r.roundNumber })}
+                    </Text>
                     <Text style={styles.roundMeta}>
                       {humanizeStatus(r.status)}
                     </Text>
                     <Text style={styles.roundAmount}>
-                      {displayMoney(
-                        awaitingConfirmation ? r.expectedDisplay : r.paidDisplay,
-                      )}
-                      {!awaitingConfirmation && r.status !== 'confirmed'
-                        ? ` of ${displayMoney(r.expectedDisplay)}`
-                        : ''}
+                      {awaitingConfirmation || r.status === 'confirmed'
+                        ? displayMoney(
+                            awaitingConfirmation ? r.expectedDisplay : r.paidDisplay,
+                          )
+                        : t('center.ofAmount', {
+                            paid: displayMoney(r.paidDisplay),
+                            expected: displayMoney(r.expectedDisplay),
+                          })}
                     </Text>
                     <Text style={styles.roundMeta}>
                       {formatDisplayDate(
                         r.confirmedAt || r.submittedAt || r.dueDate,
+                        language,
                       )}
                     </Text>
                     {provenanceText ? (
@@ -1392,21 +1403,19 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
         );
       })}
 
-      <Text style={styles.sectionLabel}>Payout history</Text>
+      <Text style={styles.sectionLabel}>{t('center.payoutHistory')}</Text>
       {allReceivedPayouts.length === 0 ? (
         <View style={styles.emptyInline}>
-          <Text style={styles.emptyTitle}>No payouts received yet</Text>
-          <Text style={styles.emptyBody}>
-            Payouts for this member in this circle will appear here when posted.
-          </Text>
+          <Text style={styles.emptyTitle}>{t('center.noPayoutsTitle')}</Text>
+          <Text style={styles.emptyBody}>{t('center.noPayoutsBody')}</Text>
         </View>
       ) : (
         allReceivedPayouts.map((payout) => (
           <View key={payout.payoutId} style={styles.roundRow}>
             <Text style={styles.roundTitle}>
               {payout.roundNumber != null
-                ? `Round ${payout.roundNumber}`
-                : 'Payout'}
+                ? t('center.roundTitle', { number: payout.roundNumber })
+                : t('center.payout')}
             </Text>
             <Text style={styles.roundMeta}>
               {humanizeStatus(payout.status)}
@@ -1417,20 +1426,22 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
               {displayMoney(payout.amountDisplay)}
             </Text>
             <Text style={styles.roundMeta}>
-              {formatDisplayDate(payout.paidAt)}
+              {formatDisplayDate(payout.paidAt, language)}
             </Text>
           </View>
         ))
       )}
 
-      <ExpandableSection title="Activity details">
+      <ExpandableSection title={t('center.activityDetails')}>
         {uniqueLedgerEntries.length === 0 ? (
-          <Text style={styles.sectionHint}>
-            No related activity for this period.
-          </Text>
+          <Text style={styles.sectionHint}>{t('center.noRelatedActivity')}</Text>
         ) : (
           uniqueLedgerEntries.slice(0, 50).map((entry, index) => {
-            const provenanceText = externalContributionProvenanceText(entry, t);
+            const provenanceText = externalContributionProvenanceText(
+              entry,
+              t,
+              language,
+            );
             return (
             <View
               key={statementLedgerRenderKey(entry, index)}
@@ -1440,8 +1451,10 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
                 {humanizeEventType(entry.eventType)}
               </Text>
               <Text style={styles.rowMeta}>
-                {formatDisplayDateTime(entry.at)}
-                {entry.roundNumber != null ? ` \u00B7 Round ${entry.roundNumber}` : ''}
+                {formatDisplayDateTime(entry.at, language)}
+                {entry.roundNumber != null
+                  ? ` \u00B7 ${t('center.roundTitle', { number: entry.roundNumber })}`
+                  : ''}
                 {' \u00B7 '}
                 {displayMoney(entry.amountDisplay)}
               </Text>
@@ -1454,27 +1467,34 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
         )}
       </ExpandableSection>
 
-      <ExpandableSection title="Statement verification">
+      <ExpandableSection title={t('center.statementVerification')}>
         <Text style={styles.sectionHint}>
-          Statement ID: {statementId}
+          {t('center.statementId', { id: statementId })}
         </Text>
         <Text style={styles.sectionHint}>
-          Generated: {formatDisplayDateTime(snapshot.generatedAt)}
+          {t('center.generated', {
+            date: formatDisplayDateTime(snapshot.generatedAt, language),
+          })}
         </Text>
         <Text style={styles.sectionHint}>
-          Source: {snapshot.verification.dataSource || 'backend_snapshot'}
+          {t('center.source', {
+            source: snapshot.verification.dataSource || 'backend_snapshot',
+          })}
         </Text>
         {snapshot.verification.contentFingerprint ? (
           <Text style={styles.sectionHint}>
-            Fingerprint: {snapshot.verification.contentFingerprint}
+            {t('center.fingerprint', {
+              fingerprint: snapshot.verification.contentFingerprint,
+            })}
           </Text>
         ) : null}
         <Text style={styles.sectionHint}>
-          Full reference: {snapshot.statementReference || 'Unavailable'}
+          {t('center.fullReference', {
+            reference: snapshot.statementReference || '\u2014',
+          })}
         </Text>
         <Text style={styles.sectionHint}>
-          {snapshot.verification.footerText ||
-            'Verified against CircuSave backend records for this circle.'}
+          {snapshot.verification.footerText || t('center.previewDisclaimerFallback')}
         </Text>
       </ExpandableSection>
     </View>

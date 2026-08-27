@@ -4,6 +4,10 @@ import { ScrollViewStyleReset } from 'expo-router/html';
 // web page during static rendering.
 // The contents of this function only run in Node.js environments and
 // do not have access to the DOM or browser APIs.
+//
+// Expo's static HTML shell cannot know the runtime app locale at generate
+// time. Keep lang="en" as the default document language. Do not mutate
+// document.documentElement.lang from the client after hydration.
 export default function Root({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
