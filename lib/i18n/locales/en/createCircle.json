@@ -153,14 +153,14 @@
     "signInTitle": "Sign in required",
     "signInBody": "Your session is missing an access token.",
     "openCircleLimitTitle": "Free plan limit",
-    "openCircleLimitBody": "The free plan allows one open circle at a time. Continue your existing circle or upgrade to Premium.",
+    "openCircleLimitBody": "The free plan allows one open circle at a time. Continue your existing circle or upgrade to Organizer Pro.",
     "createFailedTitle": "Unable to create circle",
     "createFailedBody": "The circle could not be created. Please try again."
   },
   "validation": {
     "minimumHandsParticipating": "Add at least 1 other member so the circle has 2 hands.",
     "minimumHandsOrganizingOnly": "Add at least 2 members (you are organizing only).",
-    "premiumCapacity": "Premium circles support up to {{count}} participating hands.",
-    "freeCapacity": "Free circles support up to {{count}} participating hands. Upgrade to Premium for up to {{premiumCount}}."
+    "premiumCapacity": "Organizer Pro circles support up to {{count}} participating hands.",
+    "freeCapacity": "Free circles support up to {{count}} participating hands. Upgrade to Organizer Pro for up to {{premiumCount}}."
   }
 }

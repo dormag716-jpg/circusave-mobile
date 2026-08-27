@@ -42,6 +42,8 @@ describe('circleCapacity', () => {
     expect(capacity.wouldExceed).toBe(true);
     expect(canAddParticipatingHands(capacity, 1)).toBe(false);
     expect(capacityExceededMessage(capacity)).toMatch(/Free circles are limited to 20/i);
+    expect(capacityExceededMessage(capacity)).toContain('Organizer Pro');
+    expect(capacityExceededMessage(capacity)).not.toMatch(/Upgrade to Premium/i);
   });
 
   test('premium allows up to 50', () => {
@@ -84,6 +86,8 @@ describe('circleCapacity', () => {
     expect(atCap.usedOpenCircles).toBe(1);
     expect(atCap.atCapacity).toBe(true);
     expect(openCircleLimitMessage(atCap)).toMatch(/1 open circle/i);
+    expect(openCircleLimitMessage(atCap)).toContain('Organizer Pro');
+    expect(openCircleLimitMessage(atCap)).not.toMatch(/Upgrade to Premium/i);
 
     const premium = buildOpenCircleCapacity({
       organizerRoleOrTier: 'premium',
@@ -94,5 +98,7 @@ describe('circleCapacity', () => {
     });
     expect(premium.unlimited).toBe(true);
     expect(premium.atCapacity).toBe(false);
+    expect(openCircleLimitMessage(premium)).toContain('Organizer Pro');
+    expect(openCircleLimitMessage(premium)).not.toMatch(/Premium organizers/i);
   });
 });

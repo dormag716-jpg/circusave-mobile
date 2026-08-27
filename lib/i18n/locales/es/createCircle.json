@@ -153,14 +153,14 @@
     "signInTitle": "Debes iniciar sesión",
     "signInBody": "Tu sesión no tiene un token de acceso.",
     "openCircleLimitTitle": "Límite del plan gratis",
-    "openCircleLimitBody": "El plan gratis permite un círculo abierto a la vez. Continúa con tu círculo existente o cambia a Premium.",
+    "openCircleLimitBody": "El plan gratis permite un círculo abierto a la vez. Continúa con tu círculo existente o cambia a Organizer Pro.",
     "createFailedTitle": "No se pudo crear el círculo",
     "createFailedBody": "No se pudo crear el círculo. Inténtalo de nuevo."
   },
   "validation": {
     "minimumHandsParticipating": "Agrega al menos a otro miembro para que el círculo tenga 2 manos.",
     "minimumHandsOrganizingOnly": "Agrega al menos a 2 miembros (tú solo organizas).",
-    "premiumCapacity": "Los círculos Premium admiten hasta {{count}} manos participantes.",
-    "freeCapacity": "Los círculos gratis admiten hasta {{count}} manos participantes. Cambia a Premium para tener hasta {{premiumCount}}."
+    "premiumCapacity": "Los círculos de Organizer Pro admiten hasta {{count}} manos participantes.",
+    "freeCapacity": "Los círculos gratis admiten hasta {{count}} manos participantes. Cambia a Organizer Pro para tener hasta {{premiumCount}}."
   }
 }

@@ -124,13 +124,13 @@ export function buildRosterCapacity(input: {
 export function capacityExceededMessage(capacity: RosterCapacity): string {
   if (capacity.tier === 'premium') {
     return (
-      `This premium circle is limited to ${capacity.maxHands} participating hands ` +
+      `This Organizer Pro circle is limited to ${capacity.maxHands} participating hands ` +
       `(members/slots). Remove a hand or free a slot before adding more.`
     );
   }
   return (
     `Free circles are limited to ${capacity.maxHands} participating hands (members/slots). ` +
-    `Upgrade to Premium for up to ${PREMIUM_MAX_PARTICIPATING_HANDS}, ` +
+    `Upgrade to Organizer Pro for up to ${PREMIUM_MAX_PARTICIPATING_HANDS}, ` +
     `or remove a hand to free a slot.`
   );
 }
@@ -229,11 +229,11 @@ export function buildOpenCircleCapacity(input: {
 
 export function openCircleLimitMessage(capacity: OpenCircleCapacity): string {
   if (capacity.unlimited) {
-    return 'Premium organizers can run multiple open circles.';
+    return 'Organizer Pro accounts can run multiple open circles.';
   }
   return (
     'Free accounts include 1 open circle at a time (in setup or active). ' +
     'Open your existing circle from My Circles to continue, or complete it ' +
-    'before creating a new one. Upgrade to Premium for unlimited circles.'
+    'before creating a new one. Upgrade to Organizer Pro for unlimited circles.'
   );
 }

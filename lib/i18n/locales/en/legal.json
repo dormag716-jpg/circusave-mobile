@@ -2,6 +2,7 @@
   "title": "Legal & Policies",
   "subtitle": "Review CircuSave product policies, disclosures, and terms of service.",
   "version": "Document version {{version}}",
+  "englishNotice": "This legal document is currently provided in English. The English text is the controlling version.",
   "docs": {
     "terms": {
       "shortTitle": "Terms of Service",

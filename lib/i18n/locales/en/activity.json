@@ -25,8 +25,8 @@
   },
   "meta": "{{circle}} · Round {{round}}",
   "unlockTitle": "Unlock full history",
-  "unlockBody": "Upgrade to Premium to view your complete contribution and payout history.",
-  "upgrade": "Upgrade to Premium",
+  "unlockBody": "Upgrade to Organizer Pro to view your complete contribution and payout history.",
+  "upgrade": "Upgrade to Organizer Pro",
   "export": "Export full history",
   "exportUnavailableTitle": "Export not available yet",
   "exportUnavailableBody": "Full history export will be available when the backend export endpoint is connected."

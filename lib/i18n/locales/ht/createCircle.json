@@ -153,14 +153,14 @@
     "signInTitle": "Ou dwe konekte",
     "signInBody": "Sesyon ou pa gen yon jeton aksè.",
     "openCircleLimitTitle": "Limit plan gratis la",
-    "openCircleLimitBody": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Kontinye gwoup ou deja genyen an oswa pase nan Premium.",
+    "openCircleLimitBody": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Kontinye gwoup ou deja genyen an oswa pase nan Organizer Pro.",
     "createFailedTitle": "Nou pa t kapab kreye gwoup la",
     "createFailedBody": "Nou pa t kapab kreye gwoup la. Tanpri eseye ankò."
   },
   "validation": {
     "minimumHandsParticipating": "Ajoute omwen 1 lòt manm pou gwoup la gen 2 men.",
     "minimumHandsOrganizingOnly": "Ajoute omwen 2 manm (ou ap òganize sèlman).",
-    "premiumCapacity": "Gwoup Premium yo kapab gen jiska {{count}} men k ap patisipe.",
-    "freeCapacity": "Gwoup gratis yo kapab gen jiska {{count}} men k ap patisipe. Pase nan Premium pou jwenn jiska {{premiumCount}}."
+    "premiumCapacity": "Gwoup Organizer Pro yo kapab gen jiska {{count}} men k ap patisipe.",
+    "freeCapacity": "Gwoup gratis yo kapab gen jiska {{count}} men k ap patisipe. Pase nan Organizer Pro pou jwenn jiska {{premiumCount}}."
   }
 }

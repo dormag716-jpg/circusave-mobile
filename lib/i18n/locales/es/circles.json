@@ -39,7 +39,7 @@
   "loadError": "No se pudieron cargar tus círculos.",
   "deleteError": "No se pudo eliminar este círculo.",
   "deleteTitle": "¿Eliminar el círculo?",
-  "deleteMessage": "Esto eliminará {{circleName}} permanentemente.",
+  "deleteMessage": "Esto quita “{{circleName}}” de Círculos activos.",
   "deleteDraftMessage": "Esto eliminará el borrador permanentemente.",
   "delete": "Eliminar",
   "cancel": "Cancelar",

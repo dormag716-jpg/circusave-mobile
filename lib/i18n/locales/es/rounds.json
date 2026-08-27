@@ -55,7 +55,7 @@
     "methodBody": "¿Cómo deseas enviar el pago de {{amount}} a {{name}}?",
     "released": "Pago entregado",
     "waitingPermission": "La ronda está confirmada. Esperando el permiso de pago del servidor.",
-    "premium": "Premium: pago con un toque",
+    "premium": "Organizer Pro: pago con un toque",
     "expectedPot": "Fondo esperado",
     "confirmedTotal": "Total confirmado"
   }

@@ -347,6 +347,44 @@ describe('runStripeContributionPayment', () => {
       loadHandStatus: jest.fn(async () => 'due'),
     });
     expect(outcome.kind).toBe('error');
+    if (outcome.kind === 'error') {
+      expect(outcome.message).toBe(
+        'Payment was not started for the selected hand. Please try again.',
+      );
+    }
+  });
+
+  test('falls back to English contribution-payment errors when i18n is uninitialized', async () => {
+    const missingHand = await runStripeContributionPayment(
+      { ...baseInput, handId: '' },
+      {
+        createPaymentIntent: jest.fn(),
+        initPaymentSheet: jest.fn(),
+        presentPaymentSheet: jest.fn(),
+        loadHandStatus: jest.fn(),
+      },
+    );
+    expect(missingHand).toEqual({
+      kind: 'error',
+      message: 'Unable to identify your hand.',
+      handId: '',
+    });
+
+    const missingSecret = await runStripeContributionPayment(baseInput, {
+      createPaymentIntent: async () => ({
+        clientSecret: '   ',
+        paymentIntentId: 'pi_test',
+        handId: 'hand-selected',
+      }),
+      initPaymentSheet: jest.fn(),
+      presentPaymentSheet: jest.fn(),
+      loadHandStatus: jest.fn(),
+    });
+    expect(missingSecret).toEqual({
+      kind: 'error',
+      message: 'Unable to start payment. Please try again.',
+      handId: 'hand-selected',
+    });
   });
 });
 

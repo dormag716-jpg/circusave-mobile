@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import {
   ApiError,
@@ -57,6 +58,7 @@ export function useConversations(
   options?: { focused?: boolean },
 ) {
   const focused = options?.focused !== false;
+  const { t } = useTranslation();
   const appActive = useChatPollAppActive();
   const [conversations, setConversations] = useState<BackendChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
@@ -135,11 +137,17 @@ export function useConversations(
       setError(null);
     } catch (loadError) {
       logClientError('Failed to load conversations', loadError, { circleId });
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load chat.');
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : t('circleWorkspace:chat.loadError', {
+              defaultValue: 'Unable to load chat.',
+            }),
+      );
     } finally {
       setLoading(false);
     }
-  }, [circleId, token]);
+  }, [circleId, t, token]);
 
   const loadMessages = useCallback(
     async (conversationId: string, options?: { quiet?: boolean }) => {
@@ -184,7 +192,13 @@ export function useConversations(
           circleId,
           conversationId,
         });
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load messages.');
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : t('circleWorkspace:chat.loadMessagesError', {
+                defaultValue: 'Unable to load messages.',
+              }),
+        );
       } finally {
         if (
           !options?.quiet &&
@@ -194,7 +208,7 @@ export function useConversations(
         }
       }
     },
-    [circleId, token],
+    [circleId, t, token],
   );
 
   useEffect(() => {
@@ -281,14 +295,16 @@ export function useConversations(
         setError(
           createError instanceof Error
             ? createError.message
-            : 'Unable to create private chat.',
+            : t('circleWorkspace:chat.createError', {
+                defaultValue: 'Unable to start this private chat.',
+              }),
         );
         throw createError;
       } finally {
         setThreadLoading(false);
       }
     },
-    [circleId, loadConversations, token],
+    [circleId, loadConversations, t, token],
   );
 
   const sendMessage = useCallback(
@@ -312,13 +328,19 @@ export function useConversations(
           circleId,
           conversationId: selectedConversationId,
         });
-        setError(sendError instanceof Error ? sendError.message : 'Unable to send message.');
+        setError(
+          sendError instanceof Error
+            ? sendError.message
+            : t('circleWorkspace:chat.sendError', {
+                defaultValue: 'Unable to send message.',
+              }),
+        );
         throw sendError;
       } finally {
         setSending(false);
       }
     },
-    [circleId, loadConversations, selectedConversationId, token],
+    [circleId, loadConversations, selectedConversationId, t, token],
   );
 
   const deleteMessage = useCallback(
@@ -349,7 +371,9 @@ export function useConversations(
         setError(
           deleteError instanceof Error
             ? deleteError.message
-            : 'Unable to delete message.',
+            : t('circleWorkspace:chat.deleteError', {
+                defaultValue: 'Unable to delete message.',
+              }),
         );
         throw deleteError;
       } finally {
@@ -361,6 +385,7 @@ export function useConversations(
       deletingMessageId,
       loadConversations,
       selectedConversationId,
+      t,
       token,
     ],
   );

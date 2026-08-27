@@ -2,6 +2,7 @@
   "title": "Legal y políticas",
   "subtitle": "Consulta las políticas, divulgaciones y términos de CircuSave.",
   "version": "Versión del documento {{version}}",
+  "englishNotice": "Este documento legal se ofrece actualmente en inglés. El texto en inglés es la versión que rige.",
   "docs": {
     "terms": {
       "shortTitle": "Términos del servicio",

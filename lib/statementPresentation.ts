@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 import { getFormattingLocale } from './i18n/formatters';
 
 /**
@@ -66,14 +68,18 @@ const STATUS_LABELS: Record<string, string> = {
   monthly: 'Monthly',
 };
 
-export function humanizeStatus(value?: string | null): string {
+export function humanizeStatus(value?: string | null, t?: TFunction): string {
   const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (!raw) return '\u2014';
+  if (t) {
+    const translated = t(`humanize.${raw}`, { defaultValue: '' });
+    if (translated) return translated;
+  }
   return STATUS_LABELS[raw] || humanizeStatementLabel(raw) || '\u2014';
 }
 
-export function humanizeEventType(value?: string | null): string {
-  return humanizeStatus(value);
+export function humanizeEventType(value?: string | null, t?: TFunction): string {
+  return humanizeStatus(value, t);
 }
 
 /**

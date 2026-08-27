@@ -8,6 +8,7 @@ import {
   ensureMemberDraftId,
   isOrganizerSelf,
   validateMinimumHands,
+  validatePlanCapacity,
   type MemberDraft,
 } from '../createCircleWizard';
 
@@ -183,5 +184,31 @@ describe('createCircleWizard', () => {
     };
     expect(href.params.tab).toBe('people');
     expect(href.pathname).toBe('/circle/workspace');
+  });
+
+  test('plan capacity copy uses Organizer Pro, not Premium', () => {
+    const overflowFree = Array.from({ length: 20 }, (_, index) =>
+      member({
+        draftId: `md_${index}`,
+        firstName: 'Member',
+        lastName: `${index}`,
+        phone: `555-000-${String(index).padStart(4, '0')}`,
+      }),
+    );
+    const freeMessage = validatePlanCapacity(overflowFree, true, 'free');
+    expect(freeMessage).toContain('Organizer Pro');
+    expect(freeMessage).not.toMatch(/Premium/i);
+
+    const overflowPro = Array.from({ length: 50 }, (_, index) =>
+      member({
+        draftId: `md_pro_${index}`,
+        firstName: 'Member',
+        lastName: `${index}`,
+        phone: `555-100-${String(index).padStart(4, '0')}`,
+      }),
+    );
+    const proMessage = validatePlanCapacity(overflowPro, true, 'premium');
+    expect(proMessage).toContain('Organizer Pro circles');
+    expect(proMessage).not.toMatch(/Premium/i);
   });
 });

@@ -50,6 +50,8 @@ export function LegalDocumentScreen({
             <Text style={styles.version}>{t('version', { version })}</Text>
           ) : null}
 
+          <Text style={styles.englishNotice}>{t('englishNotice')}</Text>
+
           {intro ? <Text style={styles.intro}>{intro}</Text> : null}
 
           {sections.map((section) => (
@@ -118,6 +120,13 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     fontWeight: '600',
+    marginBottom: 8,
+  },
+  englishNotice: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 20,
     marginBottom: 16,
   },
   intro: {

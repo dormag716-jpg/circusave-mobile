@@ -39,7 +39,7 @@
   "loadError": "Nou pa t kapab chaje gwoup ou yo.",
   "deleteError": "Nou pa t kapab efase gwoup sa a.",
   "deleteTitle": "Efase gwoup la?",
-  "deleteMessage": "Sa ap efase {{circleName}} nèt.",
+  "deleteMessage": "Sa retire “{{circleName}}” nan Gwoup aktif.",
   "deleteDraftMessage": "Sa ap efase bouyon an nèt.",
   "delete": "Efase",
   "cancel": "Anile",

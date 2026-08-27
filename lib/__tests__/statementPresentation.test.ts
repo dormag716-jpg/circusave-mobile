@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 import {
   displayMoney,
   formatDisplayDateTime,
@@ -25,6 +27,13 @@ describe('statementPresentation', () => {
     expect(humanizeEventType('contribution_late')).toBe(
       'Submitted after due time',
     );
+  });
+
+  test('humanizeStatus uses translator output when provided', () => {
+    const t = ((key: string) =>
+      key === 'humanize.confirmed' ? 'Contribución confirmada' : '') as TFunction;
+    expect(humanizeStatus('confirmed', t)).toBe('Contribución confirmada');
+    expect(humanizeStatus('due', t)).toBe('Payment due');
   });
 
   test('formats timestamps readably and shortens statement ids', () => {

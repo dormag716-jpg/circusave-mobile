@@ -51,6 +51,20 @@ describe('localization accessibility contracts', () => {
     expect(paymentSetup).toContain('paymentSetup.externalPaymentDisclosure');
   });
 
+  test('legal document chrome discloses that English is the controlling text', () => {
+    const chrome = readFileSync(
+      path.join(__dirname, '../../components/LegalDocumentScreen.tsx'),
+      'utf8',
+    );
+    const legalBodies = readFileSync(
+      path.join(__dirname, '../legal.ts'),
+      'utf8',
+    );
+    expect(chrome).toContain("t('englishNotice')");
+    expect(legalBodies).toMatch(/Terms of Service/);
+    expect(legalBodies).not.toContain('englishNotice');
+  });
+
   test('icon-only back buttons on audited screens have accessibility labels', () => {
     const files = [
       '../../app/subscription.tsx',

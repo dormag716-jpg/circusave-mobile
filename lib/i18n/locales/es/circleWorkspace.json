@@ -1,5 +1,9 @@
 {
   "fallbackName": "Círculo",
+  "unknownMember": "Miembro desconocido",
+  "confirmedOfTotal": "{{confirmed}} de {{total}} confirmados",
+  "roundStatusUnavailable": "Estado de la ronda no disponible",
+  "collectingContributions": "Recaudando aportes",
   "headerSummary": "Ronda {{round}} · {{frequency}}",
   "loading": "Cargando...",
   "frequency": {
@@ -48,7 +52,11 @@
     "privateHint": "Conversación privada",
     "noMembersTitle": "No hay miembros disponibles",
     "noMembersBody": "No hay otros miembros confirmados disponibles para un chat privado.",
-    "createError": "No se pudo iniciar este chat privado."
+    "createError": "No se pudo iniciar este chat privado.",
+    "loadError": "No se pudo cargar el chat.",
+    "loadMessagesError": "No se pudieron cargar los mensajes.",
+    "sendError": "No se pudo enviar el mensaje.",
+    "deleteError": "No se pudo eliminar el mensaje."
   },
   "accessibility": {
     "backToCircles": "Volver a Mis círculos",

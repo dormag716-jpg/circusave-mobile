@@ -380,8 +380,8 @@ export function validatePlanCapacity(
   const totalHands = members.length + (organizerParticipates ? 1 : 0);
   if (totalHands > maxHands) {
     return isPremium
-      ? `Premium circles support up to ${maxHands} participating hands.`
-      : `Free circles support up to ${maxHands} participating hands. Upgrade to Premium for up to 50.`;
+      ? `Organizer Pro circles support up to ${maxHands} participating hands.`
+      : `Free circles support up to ${maxHands} participating hands. Upgrade to Organizer Pro for up to 50.`;
   }
   return null;
 }

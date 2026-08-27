@@ -1268,7 +1268,7 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
         <MetaLine label={t('center.statementPeriod')} value={periodLabel} />
         <MetaLine
           label={t('center.membershipStatus')}
-          value={humanizeStatus(snapshot.member.membershipStatus)}
+          value={humanizeStatus(snapshot.member.membershipStatus, t)}
         />
         <MetaLine
           label={t('center.hands')}
@@ -1373,7 +1373,7 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
                       {t('center.roundTitle', { number: r.roundNumber })}
                     </Text>
                     <Text style={styles.roundMeta}>
-                      {humanizeStatus(r.status)}
+                      {humanizeStatus(r.status, t)}
                     </Text>
                     <Text style={styles.roundAmount}>
                       {awaitingConfirmation || r.status === 'confirmed'
@@ -1418,7 +1418,7 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
                 : t('center.payout')}
             </Text>
             <Text style={styles.roundMeta}>
-              {humanizeStatus(payout.status)}
+              {humanizeStatus(payout.status, t)}
               {' \u00B7 '}
               {payout.handLabel}
             </Text>
@@ -1448,7 +1448,7 @@ function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
               style={styles.ledgerPreviewRow}
             >
               <Text style={styles.rowTitle}>
-                {humanizeEventType(entry.eventType)}
+                {humanizeEventType(entry.eventType, t)}
               </Text>
               <Text style={styles.rowMeta}>
                 {formatDisplayDateTime(entry.at, language)}

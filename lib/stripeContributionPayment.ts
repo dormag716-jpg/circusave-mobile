@@ -5,6 +5,21 @@
  * the payment was submitted — not that the contribution is confirmed.
  */
 
+function paymentErrorCopy(key: string, fallback: string): string {
+  try {
+    const { i18n } = require('./i18n') as typeof import('./i18n');
+    if (!i18n.isInitialized) return fallback;
+    const value = i18n.t(`financialErrors:${key}`);
+    return typeof value === 'string' &&
+      value.trim() &&
+      value !== `financialErrors:${key}`
+      ? value
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export type PaymentIntentCreateResult = {
   clientSecret: string;
   paymentIntentId: string;
@@ -204,7 +219,10 @@ export async function runStripeContributionPayment(
   if (!handId) {
     return {
       kind: 'error',
-      message: 'Unable to identify your hand.',
+      message: paymentErrorCopy(
+        'identifyHand',
+        'Unable to identify your hand.',
+      ),
       handId: '',
     };
   }
@@ -221,7 +239,10 @@ export async function runStripeContributionPayment(
     if (!String(intent.clientSecret || '').trim()) {
       return {
         kind: 'error',
-        message: 'Unable to start payment. Please try again.',
+        message: paymentErrorCopy(
+          'startPayment',
+          'Unable to start payment. Please try again.',
+        ),
         handId,
       };
     }
@@ -231,7 +252,10 @@ export async function runStripeContributionPayment(
     if (intentHand && intentHand !== handId) {
       return {
         kind: 'error',
-        message: 'Payment was not started for the selected hand. Please try again.',
+        message: paymentErrorCopy(
+          'handMismatch',
+          'Payment was not started for the selected hand. Please try again.',
+        ),
         handId,
       };
     }
@@ -246,7 +270,10 @@ export async function runStripeContributionPayment(
         kind: 'error',
         message: sanitizePaymentUserMessage(
           initError,
-          'Unable to open payment. Please try again.',
+          paymentErrorCopy(
+            'openPayment',
+            'Unable to open payment. Please try again.',
+          ),
         ),
         handId,
       };
@@ -261,7 +288,10 @@ export async function runStripeContributionPayment(
         kind: 'error',
         message: sanitizePaymentUserMessage(
           presentError,
-          'Unable to complete the payment. Please try again.',
+          paymentErrorCopy(
+            'stripePayment',
+            'Unable to complete the payment. Please try again.',
+          ),
         ),
         handId,
       };
@@ -288,7 +318,10 @@ export async function runStripeContributionPayment(
       kind: 'error',
       message: sanitizePaymentUserMessage(
         error,
-        'Unable to complete the payment. Please try again.',
+        paymentErrorCopy(
+          'stripePayment',
+          'Unable to complete the payment. Please try again.',
+        ),
       ),
       handId,
     };

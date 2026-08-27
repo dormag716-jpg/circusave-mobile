@@ -25,8 +25,8 @@
   },
   "meta": "{{circle}} · Ronda {{round}}",
   "unlockTitle": "Desbloquea el historial completo",
-  "unlockBody": "Mejora a Premium para ver todo tu historial de contribuciones y pagos.",
-  "upgrade": "Mejorar a Premium",
+  "unlockBody": "Mejora a Organizer Pro para ver todo tu historial de contribuciones y pagos.",
+  "upgrade": "Mejorar a Organizer Pro",
   "export": "Exportar historial completo",
   "exportUnavailableTitle": "La exportación aún no está disponible",
   "exportUnavailableBody": "La exportación del historial completo estará disponible cuando se conecte el servicio del servidor."

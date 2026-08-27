@@ -173,6 +173,7 @@ import {
   formatPercentage,
   formatRelativeDate,
 } from '@/lib/i18n/formatters';
+import { i18n } from '@/lib/i18n';
 
 type ActiveTab = 'round' | 'chat' | 'people' | 'records';
 
@@ -5601,8 +5602,25 @@ function hasConfirmedContributionLedgerEntry(
   });
 }
 
+function workspaceCopy(
+  key: string,
+  fallback: string,
+  options?: Record<string, unknown>,
+): string {
+  if (!i18n.isInitialized) return fallback;
+  const value = i18n.t(`circleWorkspace:${key}`, options);
+  return typeof value === 'string' && value !== `circleWorkspace:${key}`
+    ? value
+    : fallback;
+}
+
 function memberName(member: BackendCircleMember | BackendJoinRequest | undefined) {
-  return member?.displayLabel || member?.full_name || member?.name || 'Unknown member';
+  return (
+    member?.displayLabel ||
+    member?.full_name ||
+    member?.name ||
+    workspaceCopy('unknownMember', 'Unknown member')
+  );
 }
 
 function entryMemberName(entry: BackendLedgerEntry, members: BackendCircleMember[]) {
@@ -5699,8 +5717,13 @@ function formatConfirmedStatusFromCounts(
     Number.isFinite(confirmedCount) &&
     Number.isFinite(totalMembers) &&
     totalMembers > 0
-    ? `${confirmedCount} of ${totalMembers} confirmed`
-    : 'Unavailable';
+    ? workspaceCopy('confirmedOfTotal', `${confirmedCount} of ${totalMembers} confirmed`, {
+        confirmed: confirmedCount,
+        total: totalMembers,
+      })
+    : i18n.isInitialized
+      ? i18n.t('common:unavailable')
+      : 'Unavailable';
 }
 
 function formatDate(value?: string | null, language = 'en') {
@@ -5721,15 +5744,19 @@ function formatDateTime(value?: string | null, language = 'en') {
 }
 
 function formatRoundStatus(value?: string | null) {
-  if (!value) return 'Round status unavailable';
+  if (!value) return workspaceCopy('roundStatusUnavailable', 'Round status unavailable');
   const status = String(value).toLowerCase();
-  if (status === 'collecting') return 'Collecting contributions';
+  if (status === 'collecting') {
+    return workspaceCopy('collectingContributions', 'Collecting contributions');
+  }
   return capitalizeFrequency(String(value).replace(/_/g, ' ').trim());
 }
 
 function capitalizeFrequency(value: string) {
   if (!value) return '';
-  if (value === 'biweekly') return 'Bi-weekly';
+  if (value === 'biweekly') {
+    return workspaceCopy('frequency.biweekly', 'Bi-weekly');
+  }
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 

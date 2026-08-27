@@ -55,7 +55,7 @@
     "methodBody": "How would you like to send the {{amount}} payout to {{name}}?",
     "released": "Payout released",
     "waitingPermission": "The round is confirmed. Waiting for backend payout permission.",
-    "premium": "Premium: one-tap payout",
+    "premium": "Organizer Pro: one-tap payout",
     "expectedPot": "Expected pot",
     "confirmedTotal": "Confirmed total"
   }

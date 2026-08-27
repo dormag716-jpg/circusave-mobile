@@ -1,5 +1,9 @@
 {
   "fallbackName": "Circle",
+  "unknownMember": "Unknown member",
+  "confirmedOfTotal": "{{confirmed}} of {{total}} confirmed",
+  "roundStatusUnavailable": "Round status unavailable",
+  "collectingContributions": "Collecting contributions",
   "headerSummary": "Round {{round}} · {{frequency}}",
   "loading": "Loading...",
   "frequency": {
@@ -48,7 +52,11 @@
     "privateHint": "Private conversation",
     "noMembersTitle": "No members available",
     "noMembersBody": "There are no other claimed members available for private chat.",
-    "createError": "Unable to start this private chat."
+    "createError": "Unable to start this private chat.",
+    "loadError": "Unable to load chat.",
+    "loadMessagesError": "Unable to load messages.",
+    "sendError": "Unable to send message.",
+    "deleteError": "Unable to delete message."
   },
   "accessibility": {
     "backToCircles": "Back to My Circles",

@@ -1,5 +1,9 @@
 {
   "fallbackName": "Gwoup",
+  "unknownMember": "Manm enkoni",
+  "confirmedOfTotal": "{{confirmed}} sou {{total}} konfime",
+  "roundStatusUnavailable": "Estati wonn lan pa disponib",
+  "collectingContributions": "N ap kolekte kontribisyon",
   "headerSummary": "Wonn {{round}} · {{frequency}}",
   "loading": "Ap chaje...",
   "frequency": {
@@ -48,7 +52,11 @@
     "privateHint": "Konvèsasyon prive",
     "noMembersTitle": "Pa gen manm disponib",
     "noMembersBody": "Pa gen lòt manm konfime ki disponib pou konvèsasyon prive.",
-    "createError": "Nou pa t ka kòmanse konvèsasyon prive sa a."
+    "createError": "Nou pa t ka kòmanse konvèsasyon prive sa a.",
+    "loadError": "Nou pa t kapab chaje konvèsasyon an.",
+    "loadMessagesError": "Nou pa t kapab chaje mesaj yo.",
+    "sendError": "Nou pa t kapab voye mesaj la.",
+    "deleteError": "Nou pa t kapab efase mesaj la."
   },
   "accessibility": {
     "backToCircles": "Retounen nan Gwoup mwen yo",
