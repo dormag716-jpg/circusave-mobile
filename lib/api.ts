@@ -1297,9 +1297,11 @@ export function updateCircleSettings(
 export function getCircleSchedule(
   token: string,
   circleId: string,
+  options?: ApiGetOptions,
 ): Promise<BackendRoundSnapshot> {
   return requestJson<BackendRoundSnapshot>(`/groups/${circleId}/schedule`, {
     token,
+    revalidate: options?.revalidate,
   });
 }
 
@@ -1960,6 +1962,7 @@ export async function createPaymentIntent(
   handId?: string;
   handNumber?: number;
   amountCents?: number;
+  reused?: boolean;
 }> {
   return requestJson<{
     clientSecret: string;
@@ -1968,6 +1971,7 @@ export async function createPaymentIntent(
     handId?: string;
     handNumber?: number;
     amountCents?: number;
+    reused?: boolean;
   }>('/wallet/stripe/payment-intent', {
     method: 'POST',
     body: JSON.stringify({

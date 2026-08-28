@@ -35,6 +35,10 @@ import {
 } from '@/lib/circleAgreements';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/navigation';
+import {
+  extractAuthoritativeMoneyState,
+  runMoneyMutation,
+} from '@/lib/moneyMutationRecovery';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -133,12 +137,26 @@ export default function AgreementReviewScreen() {
             setBusy(true);
             setError(null);
             try {
-              await startCircle(token, circleId, {
-                confirmPayoutOrder: true,
-                confirmUnclaimedHands: Boolean(readiness?.requiresUnclaimedHandConfirmation),
-                language,
-                snapshotId: readiness?.snapshotId || snapshot?.id,
-                snapshotHash: readiness?.snapshotHash || snapshot?.snapshotHash,
+              await runMoneyMutation({
+                mutate: () =>
+                  startCircle(token, circleId, {
+                    confirmPayoutOrder: true,
+                    confirmUnclaimedHands: Boolean(readiness?.requiresUnclaimedHandConfirmation),
+                    language,
+                    snapshotId: readiness?.snapshotId || snapshot?.id,
+                    snapshotHash: readiness?.snapshotHash || snapshot?.snapshotHash,
+                  }),
+                goal: 'started',
+                loadAuthoritativeState: async () => {
+                  const detail = await getCircleDetail(token, circleId, {
+                    revalidate: true,
+                  });
+                  return extractAuthoritativeMoneyState({
+                    circleStatus: detail.status,
+                    circleStarted: detail.isStarted ?? detail.is_started,
+                    startedAt: detail.startedAt,
+                  });
+                },
               });
               Alert.alert(t('started'), undefined, [
                 {

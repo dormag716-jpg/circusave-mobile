@@ -68,6 +68,10 @@ import {
   contributionTotal,
 } from '@/lib/i18n/financial-presentation';
 import { formatCurrency } from '@/lib/i18n/formatters';
+import {
+  extractAuthoritativeMoneyState,
+  runMoneyMutation,
+} from '@/lib/moneyMutationRecovery';
 
 export default function ContributionPaymentScreen() {
   const { t, i18n } = useTranslation([
@@ -167,7 +171,7 @@ export default function ContributionPaymentScreen() {
         const getOptions = options?.revalidate ? { revalidate: true } : undefined;
         const [circleResponse, scheduleResponse] = await Promise.all([
           getCircleDetail(accessToken, circleId, getOptions),
-          getCircleSchedule(accessToken, circleId),
+          getCircleSchedule(accessToken, circleId, getOptions),
         ]);
         const applied = applyContributionLoadResult({
           streams: requestStreams.current,
@@ -212,7 +216,9 @@ export default function ContributionPaymentScreen() {
     if (!accessToken || !circleId) {
       return 'due';
     }
-    const schedule = await getCircleSchedule(accessToken, circleId);
+    const schedule = await getCircleSchedule(accessToken, circleId, {
+      revalidate: true,
+    });
     const contribution = schedule.contributions?.find(
       (entry) => entry.memberId === handId,
     );
@@ -353,19 +359,35 @@ export default function ContributionPaymentScreen() {
     }
 
     setSubmitting(true);
+    const frozenHandId = activeHand.id;
+    const frozenHandLabel = activeHand.label;
     try {
-      await submitContribution(
-        accessToken,
-        circle.id,
-        activeHand.id,
-        buildManualContributionSubmitPayload(
-          selectedDestination,
-          paymentReferenceDraft,
-        ),
-      );
+      await runMoneyMutation({
+        mutate: () =>
+          submitContribution(
+            accessToken,
+            circle.id,
+            frozenHandId,
+            buildManualContributionSubmitPayload(
+              selectedDestination,
+              paymentReferenceDraft,
+            ),
+          ),
+        goal: 'submitted',
+        loadAuthoritativeState: async () => {
+          const schedule = await getCircleSchedule(accessToken, circle.id, {
+            revalidate: true,
+          });
+          setSnapshot(schedule);
+          return extractAuthoritativeMoneyState({
+            contributions: schedule.contributions,
+            memberId: frozenHandId,
+          });
+        },
+      });
       Alert.alert(
         t('contributions:submittedTitle'),
-        t('contributions:submittedBody', { hand: activeHand.label }),
+        t('contributions:submittedBody', { hand: frozenHandLabel }),
         [
           {
             text: t('contributions:alerts.ok'),

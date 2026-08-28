@@ -116,13 +116,13 @@ describe('workspace UTF-8 source encoding', () => {
   });
 
   test('success refreshes authoritative state and failure does not fake reported', () => {
-    expect(workspaceSource).toContain('await submitContribution(');
+    expect(workspaceSource).toContain('submitContribution(');
     expect(workspaceSource).toContain('target.handId');
     expect(workspaceSource).toContain('buildManualContributionSubmitPayload');
     expect(workspaceSource).toContain(
       'await Promise.all([onReload(), loadBackendSections()])',
     );
-    expect(workspaceSource).toContain('isAlreadyReportedSubmissionError');
+    expect(workspaceSource).toContain('runMoneyMutation');
     expect(workspaceSource).toContain(
       "t('contributions:markAsSent.failedTitle')",
     );

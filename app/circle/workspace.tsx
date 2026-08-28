@@ -153,10 +153,18 @@ import {
 } from '@/lib/memberContributionCard';
 import {
   canStartMarkAsSentSubmit,
-  isAlreadyReportedSubmissionError,
   resolveMarkAsSentContributionHrefHandId,
   resolveMarkAsSentTarget,
 } from '@/lib/markContributionSent';
+import {
+  authoritativeStateMeetsGoal,
+  extractAuthoritativeMoneyState,
+  runMoneyMutation,
+} from '@/lib/moneyMutationRecovery';
+import {
+  executeLockedPayoutRelease,
+  PayoutReleaseLock,
+} from '@/lib/payoutReleaseLock';
 import {
   ORGANIZER_REJECT_REASON_CODES,
   buildOrganizerReviewRowModel,
@@ -547,6 +555,8 @@ function WorkspaceContent({
   const ledgerGeneration = useRef(createRequestGeneration());
   const hasLastKnownSectionsRef = useRef(Boolean(warmSections?.schedule));
   const [actionMemberId, setActionMemberId] = useState<string | null>(null);
+  const payoutReleaseLock = useRef(new PayoutReleaseLock());
+  const [payoutReleasing, setPayoutReleasing] = useState(false);
   const [paymentSheet, setPaymentSheet] = useState<
     | null
     | { kind: 'mark_as_sent'; handId: string }
@@ -1027,18 +1037,38 @@ function WorkspaceContent({
     setPaymentSheet({ kind: 'record_paid', member });
   }
 
+  async function loadMemberMoneyState(
+    memberId: string,
+  ): Promise<ReturnType<typeof extractAuthoritativeMoneyState>> {
+    const schedule = await getCircleSchedule(token, circle.id, {
+      revalidate: true,
+    });
+    setScheduleData(schedule);
+    seedCircleWorkspaceCache({
+      circleId: circle.id,
+      schedule,
+    });
+    return extractAuthoritativeMoneyState({
+      contributions: schedule.contributions,
+      memberId,
+      payoutReleased: schedule.roundWorkspace?.payoutReleased,
+      currentRoundStatus: schedule.roundWorkspace?.currentRoundStatus,
+      circleStatus: circle.status,
+      circleStarted: circle.isStarted ?? circle.is_started,
+      startedAt: circle.startedAt,
+    });
+  }
+
   async function handleConfirmContribution(member: BackendCircleMember) {
     setActionMemberId(member.id);
     try {
-      await approveContribution(token, circle.id, member.id);
+      await runMoneyMutation({
+        mutate: () => approveContribution(token, circle.id, member.id),
+        goal: 'confirmed',
+        loadAuthoritativeState: () => loadMemberMoneyState(member.id),
+      });
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (confirmError) {
-      const message =
-        confirmError instanceof Error ? confirmError.message : '';
-      if (message.includes('already has confirmed pot funding recorded')) {
-        await Promise.all([onReload(), loadBackendSections()]);
-        return;
-      }
       logClientError('Unable to confirm contribution', confirmError, {
         circleId: circle.id,
         memberId: member.id,
@@ -1058,16 +1088,27 @@ function WorkspaceContent({
   async function handleMarkPaid(member: BackendCircleMember) {
     setActionMemberId(member.id);
     try {
-      await submitContribution(token, circle.id, member.id, {
-        note: 'Marked paid by organizer.',
-        paymentMethod: 'cash',
+      await runMoneyMutation({
+        mutate: () =>
+          submitContribution(token, circle.id, member.id, {
+            note: 'Marked paid by organizer.',
+            paymentMethod: 'cash',
+          }),
+        goal: 'submitted',
+        loadAuthoritativeState: () => loadMemberMoneyState(member.id),
       });
       try {
-        await approveContribution(token, circle.id, member.id);
+        await runMoneyMutation({
+          mutate: () => approveContribution(token, circle.id, member.id),
+          goal: 'confirmed',
+          loadAuthoritativeState: () => loadMemberMoneyState(member.id),
+        });
       } catch (approveError) {
-        const message =
-          approveError instanceof Error ? approveError.message : '';
-        if (!message.includes('already has confirmed pot funding recorded')) {
+        const state = await loadMemberMoneyState(member.id).catch(() => ({}));
+        if (
+          authoritativeStateMeetsGoal(state, 'submitted') &&
+          !authoritativeStateMeetsGoal(state, 'confirmed')
+        ) {
           await Promise.all([onReload(), loadBackendSections()]);
           Alert.alert(
             t('contributions:alerts.recordedTitle'),
@@ -1075,6 +1116,7 @@ function WorkspaceContent({
           );
           return;
         }
+        throw approveError;
       }
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (markPaidError) {
@@ -1140,21 +1182,22 @@ function WorkspaceContent({
 
     setActionMemberId(target.handId);
     try {
-      await submitContribution(
-        token,
-        circle.id,
-        target.handId,
-        buildManualContributionSubmitPayload(
-          memberContributionCard.destinations[0] ?? null,
-          paymentReferenceDraft,
-        ),
-      );
+      await runMoneyMutation({
+        mutate: () =>
+          submitContribution(
+            token,
+            circle.id,
+            target.handId,
+            buildManualContributionSubmitPayload(
+              memberContributionCard.destinations[0] ?? null,
+              paymentReferenceDraft,
+            ),
+          ),
+        goal: 'submitted',
+        loadAuthoritativeState: () => loadMemberMoneyState(target.handId),
+      });
       await Promise.all([onReload(), loadBackendSections()]);
     } catch (submitError) {
-      if (isAlreadyReportedSubmissionError(submitError)) {
-        await Promise.all([onReload(), loadBackendSections()]);
-        return;
-      }
       logClientError('Unable to report contribution as sent', submitError, {
         circleId: circle.id,
         memberId: target.handId,
@@ -1171,7 +1214,15 @@ function WorkspaceContent({
     }
   }
 
+  function releasePayoutFlowLock() {
+    payoutReleaseLock.current.release();
+    setPayoutReleasing(false);
+  }
+
   async function handleReleasePayout(isManual = false) {
+    if (payoutReleaseLock.current.isLocked) {
+      return;
+    }
     if (!recipientId || typeof payoutAmount !== 'number') {
       Alert.alert(
         t('rounds:status.unknown'),
@@ -1190,17 +1241,40 @@ function WorkspaceContent({
       return;
     }
 
+    const frozen = payoutReleaseLock.current.tryAcquire({
+      recipientId,
+      amount: payoutAmount,
+      roundNumber: currentRoundNumber,
+    });
+    if (!frozen) {
+      return;
+    }
+    setPayoutReleasing(true);
+
     const executeBackendRelease = async () => {
       try {
-        await releasePayoutFromPot(token, circle.id, {
-          amount: payoutAmount,
-          memberId: recipientId,
+        const outcome = await executeLockedPayoutRelease({
+          lock: payoutReleaseLock.current,
+          mutate: (selection) =>
+            runMoneyMutation({
+              mutate: () =>
+                releasePayoutFromPot(token, circle.id, {
+                  amount: selection.amount,
+                  memberId: selection.recipientId,
+                }),
+              goal: 'paid_out',
+              loadAuthoritativeState: () =>
+                loadMemberMoneyState(selection.recipientId),
+            }),
         });
+        if (outcome === 'skipped') {
+          return;
+        }
         await Promise.all([onReload(), loadBackendSections()]);
       } catch (releaseError) {
         logClientError('Unable to release payout', releaseError, {
           circleId: circle.id,
-          recipientId,
+          recipientId: frozen.recipientId,
         });
         Alert.alert(
           t('financialErrors:releasePayout'),
@@ -1209,6 +1283,10 @@ function WorkspaceContent({
             t('financialErrors:generic'),
           ),
         );
+      } finally {
+        if (!payoutReleaseLock.current.isLocked) {
+          setPayoutReleasing(false);
+        }
       }
     };
 
@@ -1217,10 +1295,16 @@ function WorkspaceContent({
         t('rounds:payout.confirmTitle'),
         t('rounds:payout.confirmBody'),
         [
-          { text: t('contributions:alerts.cancel'), style: 'cancel' },
+          {
+            text: t('contributions:alerts.cancel'),
+            style: 'cancel',
+            onPress: releasePayoutFlowLock,
+          },
           {
             text: t('rounds:payout.markPaid'),
-            onPress: executeBackendRelease,
+            onPress: () => {
+              void executeBackendRelease();
+            },
           },
         ]
       );
@@ -1232,13 +1316,14 @@ function WorkspaceContent({
     }
 
     const buttons: any[] = [];
+    const frozenAmount = frozen.amount;
     
     if (recipient.cashtag) {
       const cleanCashtag = recipient.cashtag.startsWith('$') ? recipient.cashtag : `$${recipient.cashtag}`;
       buttons.push({
         text: `CashApp (${cleanCashtag})`,
         onPress: () => {
-          Linking.openURL(`https://cash.app/${cleanCashtag}/${payoutAmount}`);
+          Linking.openURL(`https://cash.app/${cleanCashtag}/${frozenAmount}`);
           setTimeout(promptConfirmRelease, 1000);
         }
       });
@@ -1249,7 +1334,7 @@ function WorkspaceContent({
       buttons.push({
         text: `Venmo (@${cleanVenmo})`,
         onPress: () => {
-          Linking.openURL(`venmo://paycharge?txn=pay&recipients=${cleanVenmo}&amount=${payoutAmount}&note=CircuSave%20Payout`);
+          Linking.openURL(`venmo://paycharge?txn=pay&recipients=${cleanVenmo}&amount=${frozenAmount}&note=CircuSave%20Payout`);
           setTimeout(promptConfirmRelease, 1000);
         }
       });
@@ -1261,9 +1346,9 @@ function WorkspaceContent({
         text: `PayPal (${paypalEmail})`,
         onPress: () => {
           // If it's a paypal.me link or an email
-          const link = paypalEmail.includes('paypal.me') 
-            ? `https://${paypalEmail}/${payoutAmount}` 
-            : `https://paypal.com/myaccount/transfer/homepage?amount=${payoutAmount}&to=${paypalEmail}`;
+          const link = paypalEmail.includes('paypal.me')
+            ? `https://${paypalEmail}/${frozenAmount}`
+            : `https://paypal.com/myaccount/transfer/homepage?amount=${frozenAmount}&to=${paypalEmail}`;
           Linking.openURL(link);
           setTimeout(promptConfirmRelease, 1000);
         }
@@ -1277,7 +1362,8 @@ function WorkspaceContent({
 
     buttons.push({
       text: t('contributions:alerts.cancel'),
-      style: 'cancel'
+      style: 'cancel',
+      onPress: releasePayoutFlowLock,
     });
 
     const recipientName =
@@ -1286,7 +1372,7 @@ function WorkspaceContent({
     Alert.alert(
       t('rounds:payout.release'),
       t('rounds:payout.methodBody', {
-        amount: formatCurrency(payoutAmount, language),
+        amount: formatCurrency(frozenAmount, language),
         name: recipientName,
       }),
       buttons
@@ -1321,9 +1407,14 @@ function WorkspaceContent({
     setActionMemberId(member.id);
     try {
       if (action === 'reject') {
-        await rejectContribution(token, circle.id, member.id, {
-          reason,
-          reasonCode,
+        await runMoneyMutation({
+          mutate: () =>
+            rejectContribution(token, circle.id, member.id, {
+              reason,
+              reasonCode,
+            }),
+          goal: 'rejected',
+          loadAuthoritativeState: () => loadMemberMoneyState(member.id),
         });
       } else {
         await sendContributionReminder(token, circle.id, member.id);
@@ -1507,6 +1598,7 @@ function WorkspaceContent({
               }
               onRemind={handleRemindPress}
               onReleasePayout={handleReleasePayout}
+              payoutReleasing={payoutReleasing}
               payoutAmount={payoutAmount}
               payoutReleased={payoutReleased}
               recipient={recipient}
@@ -2026,6 +2118,7 @@ function RoundTab({
   onReject,
   onRemind,
   onReleasePayout,
+  payoutReleasing,
   payoutAmount,
   payoutReleased,
   recipient,
@@ -2067,6 +2160,7 @@ function RoundTab({
   ) => void;
   onRemind: (member: BackendCircleMember) => void;
   onReleasePayout: (isManual?: boolean) => void;
+  payoutReleasing?: boolean;
   payoutAmount?: number;
   payoutReleased: boolean;
   recipient?: BackendCircleMember;
@@ -2629,8 +2723,13 @@ function RoundTab({
         <View style={{ width: '100%' }}>
           <Pressable
             style={styles.payoutButton}
-            onPress={() => onReleasePayout(false)}
+            disabled={payoutReleasing === true}
+            onPress={() => {
+              if (payoutReleasing) return;
+              onReleasePayout(false);
+            }}
             accessibilityRole="button"
+            accessibilityState={{ disabled: payoutReleasing === true, busy: payoutReleasing === true }}
             accessibilityLabel={t('rounds:payout.release')}
           >
             <FontAwesome name="money" size={18} color={colors.onColor} />
@@ -2640,8 +2739,13 @@ function RoundTab({
           </Pressable>
           <Pressable
             style={{ marginTop: 16, paddingVertical: 12, alignItems: 'center' }}
-            onPress={() => onReleasePayout(true)}
+            disabled={payoutReleasing === true}
+            onPress={() => {
+              if (payoutReleasing) return;
+              onReleasePayout(true);
+            }}
             accessibilityRole="button"
+            accessibilityState={{ disabled: payoutReleasing === true, busy: payoutReleasing === true }}
             accessibilityLabel={t('rounds:payout.markPaidManually')}
           >
             <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>
@@ -3618,9 +3722,23 @@ function PeopleTab({
 
     setStartingCircle(true);
     try {
-      await startCircle(token, circle.id, {
-        confirmPayoutOrder: true,
-        confirmUnclaimedHands: confirmations.confirmUnclaimedHands,
+      await runMoneyMutation({
+        mutate: () =>
+          startCircle(token, circle.id, {
+            confirmPayoutOrder: true,
+            confirmUnclaimedHands: confirmations.confirmUnclaimedHands,
+          }),
+        goal: 'started',
+        loadAuthoritativeState: async () => {
+          const detail = await getCircleDetail(token, circle.id, {
+            revalidate: true,
+          });
+          return extractAuthoritativeMoneyState({
+            circleStatus: detail.status,
+            circleStarted: detail.isStarted ?? detail.is_started,
+            startedAt: detail.startedAt,
+          });
+        },
       });
       await onRefresh();
       setPendingStartConfirmations(null);

@@ -1,4 +1,11 @@
 import type { MemberContributionCardModel, MemberContributionHandView } from './memberContributionCard';
+import { ApiError } from './networkErrors';
+import {
+  authoritativeStateMeetsGoal,
+  readStableErrorCode,
+  shouldInspectAuthoritativeMoneyState,
+  stableCodeMatchesGoal,
+} from './moneyMutationRecovery';
 
 export type MarkAsSentTarget = {
   handId: string;
@@ -79,12 +86,23 @@ export function canStartMarkAsSentSubmit(input: {
 }
 
 export function isAlreadyReportedSubmissionError(error: unknown): boolean {
-  const message = (
-    error instanceof Error ? error.message : String(error || '')
-  ).toLowerCase();
+  if (!shouldInspectAuthoritativeMoneyState(error)) {
+    return false;
+  }
   return (
-    message.includes('due, missed, or rejected') ||
-    message.includes('already has sufficient recognized funding') ||
-    message.includes('already has confirmed pot funding')
+    stableCodeMatchesGoal(readStableErrorCode(error), 'submitted') ||
+    authoritativeStateMeetsGoal(
+      { contributionStatus: readContributionStatusFromPayload(error) },
+      'submitted',
+    )
   );
+}
+
+function readContributionStatusFromPayload(error: unknown): string | null {
+  if (!(error instanceof ApiError) || !error.payload || typeof error.payload !== 'object') {
+    return null;
+  }
+  const payload = error.payload as Record<string, unknown>;
+  const status = payload.contributionStatus ?? payload.status;
+  return typeof status === 'string' ? status : null;
 }

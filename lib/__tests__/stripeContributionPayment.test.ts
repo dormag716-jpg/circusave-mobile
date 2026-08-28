@@ -1,7 +1,12 @@
+import { readFileSync } from 'fs';
+import path from 'path';
+
+import { ApiError } from '../networkErrors';
 import {
   PaymentSessionLock,
   isContributionConfirmedStatus,
   pollHandUntilConfirmed,
+  recoverStripeCreateConflict,
   runStripeContributionPayment,
   sanitizePaymentUserMessage,
   shouldBlockContributionPayActions,
@@ -421,6 +426,148 @@ describe('pending settlement pay lock', () => {
     expect(shouldClearPendingSettlement('confirmed')).toBe(true);
     expect(shouldClearPendingSettlement('due')).toBe(false);
     expect(shouldClearPendingSettlement('submitted')).toBe(false);
+  });
+});
+
+describe('process-death PaymentIntent reuse and 409 recovery', () => {
+  const baseInput = {
+    token: 'tok',
+    circleId: 'circle-1',
+    roundNumber: 2,
+    handId: 'hand-selected',
+    contributionPaymentsEnabled: true,
+  };
+  const stripeSource = readFileSync(
+    path.join(__dirname, '..', 'stripeContributionPayment.ts'),
+    'utf8',
+  );
+
+  test('does not persist client secrets or Stripe payloads', () => {
+    expect(stripeSource).not.toMatch(/AsyncStorage|SecureStore/);
+    expect(stripeSource).not.toMatch(/setItem|multiSet/);
+    expect(stripeSource).toMatch(/never written to storage/i);
+  });
+
+  test('reopening the same hand reuses the backend PaymentIntent', async () => {
+    let createCalls = 0;
+    const createPaymentIntent = jest.fn(async () => {
+      createCalls += 1;
+      return {
+        clientSecret: 'cs_live_session',
+        paymentIntentId: 'pi_obligation',
+        handId: 'hand-selected',
+        reused: createCalls > 1,
+      };
+    });
+    const initPaymentSheet = jest.fn(async () => ({}));
+    const presentPaymentSheet = jest
+      .fn()
+      .mockResolvedValueOnce({ error: { code: 'Canceled', message: 'Canceled' } })
+      .mockResolvedValueOnce({});
+
+    const first = await runStripeContributionPayment(baseInput, {
+      createPaymentIntent,
+      initPaymentSheet,
+      presentPaymentSheet,
+      loadHandStatus: async () => 'due',
+    });
+    expect(first).toEqual({ kind: 'canceled' });
+
+    const second = await runStripeContributionPayment(baseInput, {
+      createPaymentIntent,
+      initPaymentSheet,
+      presentPaymentSheet,
+      loadHandStatus: async () => 'confirmed',
+      sleep: async () => undefined,
+      pollMaxAttempts: 1,
+    });
+    expect(second).toEqual({ kind: 'confirmed', handId: 'hand-selected' });
+    expect(createPaymentIntent).toHaveBeenCalledTimes(2);
+    expect(createPaymentIntent).toHaveBeenNthCalledWith(
+      1,
+      'tok',
+      'circle-1',
+      2,
+      'hand-selected',
+    );
+    expect(createPaymentIntent).toHaveBeenNthCalledWith(
+      2,
+      'tok',
+      'circle-1',
+      2,
+      'hand-selected',
+    );
+    expect(createCalls).toBe(2);
+    const reusedResult = await createPaymentIntent.mock.results[1]?.value;
+    expect(reusedResult).toEqual(
+      expect.objectContaining({
+        paymentIntentId: 'pi_obligation',
+        reused: true,
+      }),
+    );
+  });
+
+  test('409 with confirmed schedule is confirmed; due is pending, never invented confirmed', async () => {
+    const conflict = new ApiError('This contribution was already paid.', 409, {
+      error: 'This contribution was already paid.',
+    });
+
+    const confirmed = await recoverStripeCreateConflict(conflict, 'hand-1', {
+      loadHandStatus: async () => 'confirmed',
+    });
+    expect(confirmed).toEqual({ kind: 'confirmed', handId: 'hand-1' });
+
+    const due = await recoverStripeCreateConflict(conflict, 'hand-1', {
+      loadHandStatus: async () => 'due',
+    });
+    expect(due).toEqual({ kind: 'pending_settlement', handId: 'hand-1' });
+    expect(due?.kind).not.toBe('confirmed');
+
+    const submitted = await recoverStripeCreateConflict(conflict, 'hand-1', {
+      loadHandStatus: async () => 'submitted',
+    });
+    expect(submitted).toEqual({ kind: 'pending_settlement', handId: 'hand-1' });
+  });
+
+  test('create-intent 409 reloads the same hand and does not confirm from English text', async () => {
+    const loadHandStatus = jest.fn(async () => 'due');
+    const outcome = await runStripeContributionPayment(baseInput, {
+      createPaymentIntent: async () => {
+        throw new ApiError(
+          'This contribution was already paid. If your balance was charged more than once, contact support with your payment reference.',
+          409,
+          {
+            error:
+              'This contribution was already paid. If your balance was charged more than once, contact support with your payment reference.',
+          },
+        );
+      },
+      initPaymentSheet: jest.fn(),
+      presentPaymentSheet: jest.fn(),
+      loadHandStatus,
+    });
+    expect(outcome).toEqual({
+      kind: 'pending_settlement',
+      handId: 'hand-selected',
+    });
+    expect(loadHandStatus).toHaveBeenCalledWith('hand-selected');
+  });
+
+  test('unrelated 422 from create-intent stays an error and is not confirmed', async () => {
+    const outcome = await runStripeContributionPayment(baseInput, {
+      createPaymentIntent: async () => {
+        throw new ApiError('Payment reference is invalid.', 422, {
+          code: 'invalid_reference',
+        });
+      },
+      initPaymentSheet: jest.fn(),
+      presentPaymentSheet: jest.fn(),
+      loadHandStatus: jest.fn(async () => 'confirmed'),
+    });
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind === 'error') {
+      expect(outcome.handId).toBe('hand-selected');
+    }
   });
 });
 

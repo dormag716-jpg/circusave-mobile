@@ -131,6 +131,26 @@ describe('createPaymentIntent (server-authoritative amount)', () => {
     expect(result.amountCents).toBe(7500);
   });
 
+  test('passes through backend reused flag for the same obligation', async () => {
+    mockJsonResponse(200, {
+      clientSecret: 'cs_reused',
+      paymentIntentId: 'pi_same',
+      memberId: 'hand-1',
+      handId: 'hand-1',
+      reused: true,
+    });
+
+    const result = await createPaymentIntent(
+      'tok_abc',
+      'circle-1',
+      2,
+      'hand-1',
+    );
+
+    expect(result.reused).toBe(true);
+    expect(result.paymentIntentId).toBe('pi_same');
+  });
+
   test('when optional hand ID is omitted, memberId and handId are omitted rather than invented', async () => {
     mockJsonResponse(200, {
       clientSecret: 'cs_test',

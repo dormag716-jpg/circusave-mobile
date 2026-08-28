@@ -3,9 +3,20 @@
  *
  * Settlement authority remains the backend webhook. PaymentSheet success means
  * the payment was submitted — not that the contribution is confirmed.
+ *
+ * Process-death recovery (backend contract, no client-secret persistence):
+ * POST /wallet/stripe/payment-intent reuses the open PaymentIntent for the same
+ * obligation_key when Stripe status is still active and returns `{ reused: true,
+ * paymentIntentId, clientSecret, handId }`. Reopening the same hand after
+ * process death calls the same endpoint; the backend returns that PI.
+ * A succeeded or non-reusable obligation returns HTTP 409; the client reloads
+ * hand status and never marks confirmed until the schedule says `confirmed`.
+ * 409 + non-confirmed schedule is pending_settlement, not a false failure.
+ * Client secrets, card data, and Stripe payloads are never written to storage.
  */
 
 import { STRIPE_RETURN_URL } from './config';
+import { ApiError } from './networkErrors';
 
 function paymentErrorCopy(key: string, fallback: string): string {
   try {
@@ -27,6 +38,7 @@ export type PaymentIntentCreateResult = {
   paymentIntentId: string;
   memberId?: string;
   handId?: string;
+  reused?: boolean;
 };
 
 export type PaymentSheetInitResult = { error?: { code?: string; message?: string } | null };
@@ -316,6 +328,10 @@ export async function runStripeContributionPayment(
     if (isContributionPaymentsDisabledError(error)) {
       return { kind: 'disabled' };
     }
+    const recovered = await recoverStripeCreateConflict(error, handId, deps);
+    if (recovered) {
+      return recovered;
+    }
     return {
       kind: 'error',
       message: sanitizePaymentUserMessage(
@@ -328,4 +344,37 @@ export async function runStripeContributionPayment(
       handId,
     };
   }
+}
+
+/**
+ * HTTP 409 from POST /wallet/stripe/payment-intent is the backend contract for:
+ * - local succeeded attempt for this obligation_key
+ * - Stripe PI already succeeded
+ * - a non-reusable in-progress attempt
+ *
+ * Reload the hand from schedule. Confirmed only when status is `confirmed`.
+ * Any other 409 is pending settlement (webhook may still be in flight) — never
+ * a false confirmed, and never matched on English message text.
+ * Unrelated 400/422/403/5xx stay errors.
+ */
+export async function recoverStripeCreateConflict(
+  error: unknown,
+  handId: string,
+  deps: Pick<StripeContributionPaymentDeps, 'loadHandStatus'>,
+): Promise<StripeContributionPaymentOutcome | null> {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return null;
+  }
+  let status = '';
+  try {
+    status = String((await deps.loadHandStatus(handId)) || '')
+      .trim()
+      .toLowerCase();
+  } catch {
+    return null;
+  }
+  if (isContributionConfirmedStatus(status)) {
+    return { kind: 'confirmed', handId };
+  }
+  return { kind: 'pending_settlement', handId };
 }

@@ -108,9 +108,9 @@ describe('Phase 1 financial invariants', () => {
       isAlreadyReportedSubmissionError(
         new Error('Only due, missed, or rejected contributions can be submitted.'),
       ),
-    ).toBe(true);
-    expect(workspaceSource).toContain('isAlreadyReportedSubmissionError');
-    expect(workspaceSource).toContain(
+    ).toBe(false);
+    expect(workspaceSource).toContain('runMoneyMutation');
+    expect(workspaceSource).not.toContain(
       "message.includes('already has confirmed pot funding recorded')",
     );
   });

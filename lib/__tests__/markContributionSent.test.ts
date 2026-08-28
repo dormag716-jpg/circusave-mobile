@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import { buildMemberContributionCardModel } from '../memberContributionCard';
+import { ApiError } from '../networkErrors';
 import {
   canStartMarkAsSentSubmit,
   isAlreadyReportedSubmissionError,
@@ -162,19 +163,35 @@ describe('canStartMarkAsSentSubmit', () => {
 });
 
 describe('isAlreadyReportedSubmissionError', () => {
-  test('recognizes backend already-submitted and already-funded messages', () => {
+  test('recognizes stable already-submitted codes, not English substrings', () => {
+    expect(
+      isAlreadyReportedSubmissionError(
+        new ApiError('Only due, missed, or rejected contributions can be submitted.', 400, {
+          code: 'already_submitted',
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isAlreadyReportedSubmissionError(
+        new ApiError('This contribution already has sufficient recognized funding recorded.', 400, {
+          contributionStatus: 'submitted',
+        }),
+      ),
+    ).toBe(true);
     expect(
       isAlreadyReportedSubmissionError(
         new Error('Only due, missed, or rejected contributions can be submitted.'),
       ),
-    ).toBe(true);
-    expect(
-      isAlreadyReportedSubmissionError(
-        new Error('This contribution already has sufficient recognized funding recorded.'),
-      ),
-    ).toBe(true);
+    ).toBe(false);
     expect(isAlreadyReportedSubmissionError(new Error('network down'))).toBe(
       false,
     );
+    expect(
+      isAlreadyReportedSubmissionError(
+        new ApiError('Circle was modified by another request. Please retry.', 409, {
+          code: 'version_conflict',
+        }),
+      ),
+    ).toBe(false);
   });
 });
