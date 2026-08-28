@@ -4554,11 +4554,9 @@ function PeopleTab({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.peopleCardTitle}>{t('invite.title')}</Text>
-              {!inviteSectionExpanded ? (
-                <Text style={styles.peopleCardSub}>
-                  {t('invite.collapsedHint')}
-                </Text>
-              ) : null}
+              <Text style={styles.peopleCardSub}>
+                {t('invite.collapsedHint')}
+              </Text>
             </View>
             <FontAwesome
               name={inviteSectionExpanded ? 'chevron-up' : 'chevron-down'}

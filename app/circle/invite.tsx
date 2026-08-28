@@ -23,6 +23,7 @@ import {
   type BackendCircleMember,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { copyText } from '@/lib/clipboard';
 import { logClientError } from '@/lib/errorLogging';
 import {
   buildClaimInviteShareMessage,
@@ -31,11 +32,15 @@ import {
 } from '@/lib/claimInvite';
 import { isUnclaimedHand } from '@/lib/circleLifecycleCopy';
 import { circleWorkspaceHref } from '@/lib/navigation';
+import {
+  validatePlannedHandAdd,
+  type PlannedHandAddFieldErrors,
+} from '@/lib/plannedHandAdd';
 import { isCircleSetupState, getCircleLifecyclePhase } from '@/lib/startCircleReadiness';
 import { colors, radii, spacing } from '@/lib/theme';
 
 export default function InviteMemberScreen() {
-  const { t } = useTranslation('invite');
+  const { t } = useTranslation(['invite', 'people']);
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
@@ -48,7 +53,10 @@ export default function InviteMemberScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [fullName, setFullName] = useState('');
-  const [contact, setContact] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<PlannedHandAddFieldErrors>({});
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [sharingClaimId, setSharingClaimId] = useState<string | null>(null);
 
   async function loadInviteData() {
@@ -76,6 +84,21 @@ export default function InviteMemberScreen() {
     void loadInviteData();
   }, [circleId, token]);
 
+  function syncFieldErrors(
+    next: { fullName: string; phone: string; email: string },
+    submitted = attemptedSubmit,
+  ) {
+    const result = validatePlannedHandAdd(next);
+    if (submitted) {
+      setFieldErrors(result.errors);
+      return;
+    }
+    setFieldErrors({
+      phone: next.phone.trim() ? result.errors.phone : undefined,
+      email: next.email.trim() ? result.errors.email : undefined,
+    });
+  }
+
   const unclaimedHands = useMemo(() => {
     const members = circle?.members ?? [];
     const turnOrder = Array.isArray(circle?.turnOrder) ? circle!.turnOrder : [];
@@ -97,24 +120,25 @@ export default function InviteMemberScreen() {
       return;
     }
 
-    const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
-    const firstName = nameParts[0] ?? '';
-    const lastName = nameParts.slice(1).join(' ');
-    const trimmedContact = contact.trim();
-
-    if (!firstName) {
-      Alert.alert(
-        t('organizer.fullNameRequiredTitle'),
-        t('organizer.fullNameRequiredMessage'),
-      );
-      return;
-    }
-
-    if (!trimmedContact) {
-      Alert.alert(
-        t('organizer.contactRequiredTitle'),
-        t('organizer.contactRequiredMessage'),
-      );
+    setAttemptedSubmit(true);
+    const result = validatePlannedHandAdd({ fullName, phone, email });
+    setFieldErrors(result.errors);
+    if (!result.ok) {
+      if (result.errors.fullName) {
+        Alert.alert(
+          t('organizer.fullNameRequiredTitle'),
+          t('organizer.fullNameRequiredMessage'),
+        );
+      } else if (result.errors.phone) {
+        Alert.alert(t('organizer.contactRequiredTitle'), t('organizer.invalidPhone'));
+      } else if (result.errors.email) {
+        Alert.alert(t('organizer.contactRequiredTitle'), t('organizer.invalidEmail'));
+      } else {
+        Alert.alert(
+          t('organizer.contactRequiredTitle'),
+          t('organizer.contactRequiredMessage'),
+        );
+      }
       return;
     }
 
@@ -132,14 +156,17 @@ export default function InviteMemberScreen() {
     setSubmitting(true);
     try {
       await addCircleMember(token, circle.id, {
-        firstName,
-        lastName,
-        email: trimmedContact.includes('@') ? trimmedContact : undefined,
-        phone: trimmedContact.includes('@') ? '' : trimmedContact,
+        firstName: result.payload.firstName,
+        lastName: result.payload.lastName,
+        phone: result.payload.phone,
+        email: result.payload.email || undefined,
       });
       await loadInviteData();
       setFullName('');
-      setContact('');
+      setPhone('');
+      setEmail('');
+      setFieldErrors({});
+      setAttemptedSubmit(false);
       Alert.alert(
         t('organizer.plannedAddedTitle'),
         t('organizer.plannedAddedMessage'),
@@ -152,6 +179,31 @@ export default function InviteMemberScreen() {
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCopyCircleCode() {
+    const shortCode = String(circle?.circleCode || '').trim();
+    if (!shortCode) {
+      Alert.alert(
+        t('people:invite.codeUnavailableTitle'),
+        t('people:invite.codeUnavailable'),
+      );
+      return;
+    }
+    try {
+      const result = await copyText(shortCode);
+      if (result === 'clipboard') {
+        Alert.alert(
+          t('people:invite.codeCopiedTitle'),
+          t('people:invite.codeCopied', { code: shortCode }),
+        );
+      } else if (result !== 'share') {
+        Alert.alert(t('people:invite.codeTitle'), shortCode);
+      }
+    } catch (copyError) {
+      logClientError('Unable to copy circle code', copyError, { circleId });
+      Alert.alert(t('people:invite.copyErrorTitle'), t('genericError'));
     }
   }
 
@@ -306,26 +358,50 @@ export default function InviteMemberScreen() {
           </View>
         </View>
 
-        <Pressable
-          style={styles.shareHeroCard}
-          onPress={() => void handleShareGenericLink()}
-          accessibilityRole="button"
-          accessibilityLabel={t('organizer.shareCircleAccessibility')}
-        >
-          <View style={styles.shareHeroIcon}>
-            <FontAwesome name="share-alt" size={24} color={colors.primary} />
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>{t('organizer.circleInviteTitle')}</Text>
+          <Text style={styles.sectionSubtitle}>
+            {t('organizer.circleInviteSubtitle')}
+          </Text>
+          <View style={styles.codeBlock}>
+            <Text style={styles.codeLabel}>{t('people:invite.circleCode')}</Text>
+            <View style={styles.codeRow}>
+              <Text
+                selectable
+                style={styles.codeValue}
+                accessibilityLabel={t('people:invite.codeA11y', {
+                  code: circle.circleCode || t('people:common.unavailable'),
+                })}
+              >
+                {circle.circleCode || '-'}
+              </Text>
+              <View style={styles.codeActions}>
+                <Pressable
+                  style={styles.iconBtn}
+                  disabled={!circle.circleCode}
+                  onPress={() => void handleCopyCircleCode()}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('people:invite.copy')}
+                >
+                  <FontAwesome name="copy" size={15} color={colors.text} />
+                </Pressable>
+                <Pressable
+                  style={styles.iconBtn}
+                  disabled={!circle.circleCode}
+                  onPress={() => void handleShareGenericLink()}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('people:invite.share')}
+                >
+                  <FontAwesome name="share-alt" size={15} color={colors.primary} />
+                </Pressable>
+              </View>
+            </View>
           </View>
-          <View style={styles.shareHeroContent}>
-            <Text style={styles.shareHeroTitle}>{t('organizer.shareCircle')}</Text>
-            <Text style={styles.shareHeroText}>
-              {t('organizer.shareCircleSubtitle')}
-            </Text>
-          </View>
-        </Pressable>
+        </View>
 
         {unclaimedHands.length > 0 ? (
           <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>{t('organizer.claimTitle')}</Text>
+            <Text style={styles.sectionTitle}>{t('organizer.claimSectionTitle')}</Text>
             <Text style={styles.sectionSubtitle}>
               {t('organizer.claimSubtitle')}
             </Text>
@@ -425,15 +501,55 @@ export default function InviteMemberScreen() {
               <Field
                 label={t('organizer.fullName')}
                 value={fullName}
-                onChangeText={setFullName}
+                onChangeText={(value) => {
+                  setFullName(value);
+                  syncFieldErrors({ fullName: value, phone, email });
+                }}
                 placeholder={t('organizer.fullNamePlaceholder')}
+                autoCapitalize="words"
+                error={
+                  fieldErrors.fullName
+                    ? t('organizer.fullNameRequiredMessage')
+                    : undefined
+                }
               />
               <Field
-                label={t('organizer.contact')}
-                value={contact}
-                onChangeText={setContact}
-                placeholder={t('organizer.contactPlaceholder')}
+                label={t('organizer.phone')}
+                value={phone}
+                onChangeText={(value) => {
+                  setPhone(value);
+                  syncFieldErrors({ fullName, phone: value, email });
+                }}
+                placeholder={t('organizer.phonePlaceholder')}
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+                textContentType="telephoneNumber"
+                error={
+                  fieldErrors.phone
+                    ? t('organizer.invalidPhone')
+                    : attemptedSubmit && fieldErrors.contact && !email.trim()
+                      ? t('organizer.contactRequiredMessage')
+                      : undefined
+                }
+              />
+              <Field
+                label={t('organizer.email')}
+                value={email}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  syncFieldErrors({ fullName, phone, email: value });
+                }}
+                placeholder={t('organizer.emailPlaceholder')}
                 keyboardType="email-address"
+                autoCapitalize="none"
+                textContentType="emailAddress"
+                error={
+                  fieldErrors.email
+                    ? t('organizer.invalidEmail')
+                    : attemptedSubmit && fieldErrors.contact && !phone.trim()
+                      ? t('organizer.contactRequiredMessage')
+                      : undefined
+                }
               />
             </View>
 
@@ -469,13 +585,19 @@ function Field({
   placeholder,
   keyboardType,
   multiline,
+  autoCapitalize,
+  textContentType,
+  error,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
-  keyboardType?: 'default' | 'email-address';
+  keyboardType?: 'default' | 'email-address' | 'phone-pad';
   multiline?: boolean;
+  autoCapitalize?: 'none' | 'words';
+  textContentType?: 'emailAddress' | 'telephoneNumber' | 'name';
+  error?: string;
 }) {
   return (
     <View style={styles.fieldWrap}>
@@ -486,10 +608,19 @@ function Field({
         placeholder={placeholder}
         placeholderTextColor={colors.subtle}
         keyboardType={keyboardType ?? 'default'}
+        autoCapitalize={autoCapitalize ?? 'sentences'}
+        autoCorrect={keyboardType !== 'email-address'}
+        textContentType={textContentType}
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
-        style={[styles.input, multiline && styles.noteInput]}
+        accessibilityLabel={label}
+        style={[
+          styles.input,
+          multiline && styles.noteInput,
+          error ? styles.inputError : null,
+        ]}
       />
+      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
   );
 }
@@ -631,6 +762,53 @@ const styles = StyleSheet.create({
   noteInput: {
     minHeight: 90,
     paddingTop: 12,
+  },
+  inputError: {
+    borderColor: colors.danger,
+  },
+  fieldError: {
+    marginTop: 6,
+    fontSize: 13,
+    color: colors.dangerText,
+    fontWeight: '700',
+  },
+  codeBlock: {
+    marginTop: 16,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+  },
+  codeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  codeValue: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.textStrong,
+    letterSpacing: 1,
+  },
+  codeActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${colors.primary}12`,
   },
   claimList: {
     marginTop: 14,
