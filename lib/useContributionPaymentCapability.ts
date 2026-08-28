@@ -1,6 +1,8 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 
+import { shouldLoadAuthenticatedScreen } from './activityAuthGate';
+import { useAuthSession } from './authContext';
 import { useEntitlements } from './entitlementsContext';
 
 export type ContributionPaymentCapabilityState =
@@ -9,20 +11,34 @@ export type ContributionPaymentCapabilityState =
   | 'disabled';
 
 export function useContributionPaymentCapability() {
+  const { session, status } = useAuthSession();
   const {
     refreshContributionPaymentsCapability,
     revokeContributionPaymentsCapability,
   } = useEntitlements();
   const [state, setState] =
     useState<ContributionPaymentCapabilityState>('pending');
+  const moneyAvailable = shouldLoadAuthenticatedScreen({
+    status,
+    token: session?.session.token,
+  });
 
   const resolveCapability = useCallback(async () => {
+    if (!shouldLoadAuthenticatedScreen({ status, token: session?.session.token })) {
+      revokeContributionPaymentsCapability();
+      return false;
+    }
     try {
       return await refreshContributionPaymentsCapability();
     } catch {
       return false;
     }
-  }, [refreshContributionPaymentsCapability]);
+  }, [
+    refreshContributionPaymentsCapability,
+    revokeContributionPaymentsCapability,
+    session?.session.token,
+    status,
+  ]);
 
   const refresh = useCallback(async () => {
     setState('pending');
@@ -52,8 +68,8 @@ export function useContributionPaymentCapability() {
   }, [revokeContributionPaymentsCapability]);
 
   return {
-    state,
-    enabled: state === 'enabled',
+    state: moneyAvailable ? state : 'disabled',
+    enabled: moneyAvailable && state === 'enabled',
     preflight: refresh,
     revoke,
   };

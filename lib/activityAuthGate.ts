@@ -42,3 +42,11 @@ export function shouldLoadActivity(input: {
 }): boolean {
   return shouldLoadAuthenticatedScreen(input);
 }
+
+/** Pay/confirm/payout CTAs stay off without an authenticated session token. */
+export function areMoneyActionsAvailable(input: {
+  status?: AuthLoadStatus;
+  token?: string | null;
+}): boolean {
+  return shouldLoadAuthenticatedScreen(input);
+}

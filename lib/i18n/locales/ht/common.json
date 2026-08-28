@@ -14,6 +14,17 @@
   "error": "Erè",
   "saved": "Sove",
   "pleaseTryAgain": "Tanpri eseye ankò.",
+  "network": {
+    "offlineTitle": "Ou pa sou entènèt",
+    "offline": "Ou pa sou entènèt. Tcheke koneksyon ou epi eseye ankò.",
+    "timeoutTitle": "Demann nan pran twòp tan",
+    "timeout": "Demann nan pran twòp tan. Tanpri eseye ankò.",
+    "serverTitle": "Gen yon pwoblèm",
+    "server": "Gen yon pwoblèm. Tanpri eseye ankò.",
+    "rateLimitedTitle": "Twòp tantativ",
+    "rateLimited": "Twòp tantativ. Tanpri tann epi eseye ankò.",
+    "rateLimitedWait": "Twòp tantativ. Eseye ankò nan {{count}} segonn."
+  },
   "notFoundTitle": "Oups!",
   "notFoundBody": "Ekran sa a pa egziste.",
   "notFoundHome": "Ale nan ekran dakèy la"

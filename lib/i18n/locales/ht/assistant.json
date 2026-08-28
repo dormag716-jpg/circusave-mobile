@@ -31,7 +31,8 @@
   },
   "errors": {
     "generic": "Mwen pa t kapab reponn kounye a. Eseye ankò.",
-    "historyLoad": "Nou pa t kapab chaje mesaj anvan yo. Ou ka toujou poze yon nouvo kesyon."
+    "historyLoad": "Nou pa t kapab chaje mesaj anvan yo. Ou ka toujou poze yon nouvo kesyon.",
+    "rateLimited": "Twòp kesyon kounye a. Tanpri tann epi eseye ankò."
   },
   "history": {
     "loading": "Chajman konvèsasyon an…",

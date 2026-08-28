@@ -12,6 +12,7 @@
   "notFoundMessage": "Verifye kòd la epi eseye ankò.",
   "joinErrorTitle": "Nou pa t kapab antre",
   "genericError": "Nou pa t kapab fini demann lan. Tanpri eseye ankò.",
+  "rateLimited": "Twòp tantativ. Tanpri tann epi eseye ankò.",
   "organizerBy": "pa {{name}}",
   "organizerFallback": "Òganizatè",
   "contribution": "Kontribisyon",

@@ -14,6 +14,17 @@
   "error": "Error",
   "saved": "Saved",
   "pleaseTryAgain": "Please try again.",
+  "network": {
+    "offlineTitle": "You're offline",
+    "offline": "You're offline. Check your connection and try again.",
+    "timeoutTitle": "Request timed out",
+    "timeout": "The request took too long. Please try again.",
+    "serverTitle": "Something went wrong",
+    "server": "Something went wrong. Please try again.",
+    "rateLimitedTitle": "Too many attempts",
+    "rateLimited": "Too many attempts. Please wait and try again.",
+    "rateLimitedWait": "Too many attempts. Try again in {{count}} seconds."
+  },
   "notFoundTitle": "Oops!",
   "notFoundBody": "This screen doesn't exist.",
   "notFoundHome": "Go to home screen!"

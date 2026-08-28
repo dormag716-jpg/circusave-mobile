@@ -14,7 +14,7 @@ import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
 import { getCircleDetail } from '@/lib/api';
-import { EntitlementsProvider } from '@/lib/entitlementsContext';
+import { EntitlementsProvider, useEntitlements } from '@/lib/entitlementsContext';
 import { initializeI18n } from '@/lib/i18n';
 import { shouldHideLaunchSplash } from '@/lib/launchSplash';
 import { MarketProvider } from '@/lib/market';
@@ -26,6 +26,7 @@ import {
   STRIPE_MERCHANT_IDENTIFIER,
   resolveStripePublishableKey,
 } from '@/lib/config';
+import { registerUnauthorizedSessionHandler } from '@/lib/sessionExpiry';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -116,6 +117,7 @@ function SessionTree() {
         <MarketProvider>
           <DeviceLockProvider>
             <LaunchSplashController />
+            <SessionExpiryController />
             <NotificationNavigationController />
             <AuthenticatedStack />
           </DeviceLockProvider>
@@ -123,6 +125,26 @@ function SessionTree() {
       </EntitlementsProvider>
     </AuthSessionProvider>
   );
+}
+
+function SessionExpiryController() {
+  const { status, signOut } = useAuthSession();
+  const { revokeContributionPaymentsCapability } = useEntitlements();
+  const statusRef = useRef(status);
+  statusRef.current = status;
+
+  useEffect(() => {
+    return registerUnauthorizedSessionHandler(async () => {
+      if (statusRef.current !== 'authenticated') {
+        return;
+      }
+      revokeContributionPaymentsCapability();
+      await signOut();
+      router.replace('/login');
+    });
+  }, [revokeContributionPaymentsCapability, signOut]);
+
+  return null;
 }
 
 function NotificationNavigationController() {

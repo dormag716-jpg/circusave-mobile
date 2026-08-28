@@ -12,6 +12,7 @@
   "notFoundMessage": "Verifica el código e inténtalo de nuevo.",
   "joinErrorTitle": "No fue posible unirse",
   "genericError": "No se pudo completar la solicitud. Inténtalo de nuevo.",
+  "rateLimited": "Demasiados intentos. Espera e inténtalo de nuevo.",
   "organizerBy": "por {{name}}",
   "organizerFallback": "Organizador/a",
   "contribution": "Aporte",

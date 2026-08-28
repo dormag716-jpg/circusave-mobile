@@ -4,6 +4,7 @@
  */
 
 import {
+  areMoneyActionsAvailable,
   shouldLoadActivity,
   shouldLoadAuthenticatedScreen,
 } from '../activityAuthGate';
@@ -116,6 +117,15 @@ describe('shouldLoadAuthenticatedScreen', () => {
         status: 'unauthenticated',
         token: 'stale',
       }),
+    ).toBe(false);
+  });
+
+  test('money actions follow the same authenticated-token gate', () => {
+    expect(
+      areMoneyActionsAvailable({ status: 'authenticated', token: 'tok' }),
+    ).toBe(true);
+    expect(
+      areMoneyActionsAvailable({ status: 'unauthenticated', token: 'tok' }),
     ).toBe(false);
   });
 

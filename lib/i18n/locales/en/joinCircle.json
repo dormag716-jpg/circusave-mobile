@@ -12,6 +12,7 @@
   "notFoundMessage": "Check the code and try again.",
   "joinErrorTitle": "Could not join",
   "genericError": "The request could not be completed. Please try again.",
+  "rateLimited": "Too many attempts. Please wait and try again.",
   "organizerBy": "by {{name}}",
   "organizerFallback": "Organizer",
   "contribution": "Contribution",

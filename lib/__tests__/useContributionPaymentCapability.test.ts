@@ -24,6 +24,13 @@ jest.mock('../entitlementsContext', () => ({
   }),
 }));
 
+jest.mock('../authContext', () => ({
+  useAuthSession: () => ({
+    status: 'authenticated',
+    session: { session: { token: 'token' } },
+  }),
+}));
+
 const TestRenderer: any = require('react-test-renderer');
 const {
   useContributionPaymentCapability,

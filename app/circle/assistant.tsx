@@ -46,6 +46,7 @@ import {
   sendAiAssistantMessage,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { localizedNetworkErrorBody } from '@/lib/networkErrors';
 import {
   FLOATING_COMPOSER_RESTING_HEIGHT,
   floatingComposerBottomOffset,
@@ -471,9 +472,14 @@ export default function CircleAssistantScreen() {
           source: 'live',
           message: requiresUpgrade
             ? t('assistant:upgrade.introUsed')
-            : error instanceof Error
-              ? error.message
-              : t('assistant:errors.generic'),
+            : error instanceof ApiError && error.category === 'http_429'
+              ? localizedNetworkErrorBody(error, t)
+              : error instanceof ApiError &&
+                  (error.category === 'offline' ||
+                    error.category === 'timeout' ||
+                    error.category === 'http_5xx')
+                ? localizedNetworkErrorBody(error, t)
+                : t('assistant:errors.generic'),
         },
       ]);
       if (

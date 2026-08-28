@@ -31,7 +31,8 @@
   },
   "errors": {
     "generic": "I could not answer right now. Please try again.",
-    "historyLoad": "Could not load earlier messages. You can still ask a new question."
+    "historyLoad": "Could not load earlier messages. You can still ask a new question.",
+    "rateLimited": "Too many questions right now. Please wait and try again."
   },
   "history": {
     "loading": "Loading conversation…",

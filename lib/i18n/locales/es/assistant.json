@@ -31,7 +31,8 @@
   },
   "errors": {
     "generic": "No pude responder ahora. Inténtalo de nuevo.",
-    "historyLoad": "No se pudieron cargar mensajes anteriores. Aún puedes hacer una pregunta nueva."
+    "historyLoad": "No se pudieron cargar mensajes anteriores. Aún puedes hacer una pregunta nueva.",
+    "rateLimited": "Demasiadas preguntas ahora. Espera e inténtalo de nuevo."
   },
   "history": {
     "loading": "Cargando conversación…",

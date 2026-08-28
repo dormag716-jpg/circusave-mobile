@@ -9,11 +9,35 @@ import {
   type Entitlements,
 } from './entitlements';
 import {
+  HTTP_JSON_TIMEOUT_MS,
+  HTTP_PDF_TIMEOUT_MS,
+  runWithTimeout,
+} from './httpTimeout';
+import {
   invalidateCachedGets,
   runDedupedGet,
   shouldInvalidateCachedGetsOnMutation,
   shouldUseHttpGetCache,
 } from './httpGetCache';
+import {
+  ApiError,
+  classifyFetchFailure,
+  classifyHttpStatus,
+  fallbackNetworkMessage,
+  parseRetryAfterHeader,
+  readBackendErrorText,
+  sanitizeUserFacingMessage,
+} from './networkErrors';
+import {
+  notifyUnauthorizedSession,
+  shouldHandleUnauthorizedSession,
+} from './sessionExpiry';
+
+export { ApiError, type NetworkErrorCategory } from './networkErrors';
+export {
+  HTTP_JSON_TIMEOUT_MS,
+  HTTP_PDF_TIMEOUT_MS,
+} from './httpTimeout';
 
 export type AuthUser = {
   id: string;
@@ -738,24 +762,15 @@ export type StatementDocumentsPage = {
   documents: StatementDocumentSummary[];
 };
 
-export class ApiError extends Error {
-  status: number;
-  payload: unknown;
-
-  constructor(message: string, status: number, payload?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.payload = payload;
-  }
-}
-
 function getApiBaseUrl() {
   const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, '');
 
   if (!configured) {
-    throw new Error(
-      'Set EXPO_PUBLIC_API_BASE_URL to the Flask server URL. On a phone, use the computer LAN IP instead of localhost.',
+    throw new ApiError(
+      fallbackNetworkMessage('unknown'),
+      0,
+      undefined,
+      { category: 'unknown' },
     );
   }
 
@@ -794,19 +809,36 @@ function readOptionalNullableString(
   return undefined;
 }
 
-function errorMessage(payload: unknown, status: number) {
-  if (typeof payload === 'string' && payload.trim()) {
-    return payload.trim();
+function errorMessage(
+  payload: unknown,
+  status: number,
+  retryAfterSeconds?: number | null,
+) {
+  const category = classifyHttpStatus(status);
+  if (category === 'http_429') {
+    return fallbackNetworkMessage(category, retryAfterSeconds);
   }
+  return sanitizeUserFacingMessage(
+    readBackendErrorText(payload),
+    category,
+    retryAfterSeconds,
+  );
+}
 
-  if (isRecord(payload)) {
-    const message = readString(payload.error ?? payload.message);
-    if (message) {
-      return message;
-    }
+function readRetryAfter(response: Response): number | null {
+  const headers = response.headers;
+  if (!headers || typeof headers.get !== 'function') {
+    return null;
   }
+  return parseRetryAfterHeader(
+    headers.get('Retry-After') ?? headers.get('retry-after'),
+  );
+}
 
-  return `Backend request failed with status ${status}.`;
+function throwIfUnauthorized(path: string, hasToken: boolean, status: number) {
+  if (shouldHandleUnauthorizedSession({ path, hasToken, status })) {
+    void notifyUnauthorizedSession();
+  }
 }
 
 const DEV_API_LOG_REDACTED = '[redacted]';
@@ -873,6 +905,7 @@ export type ApiGetOptions = {
 type JsonRequestOptions = RequestInit & {
   token?: string;
   revalidate?: boolean;
+  timeoutMs?: number;
 };
 
 async function requestJsonUncached<T>(
@@ -883,6 +916,8 @@ async function requestJsonUncached<T>(
     token,
     headers: providedHeaders,
     revalidate: _revalidate,
+    timeoutMs,
+    signal,
     ...requestOptions
   } = options;
   const headers = new Headers(providedHeaders);
@@ -901,14 +936,23 @@ async function requestJsonUncached<T>(
   const url = `${getApiBaseUrl()}${path}`;
   let response: Response;
   try {
-    response = await fetch(url, {
-      ...requestOptions,
-      headers,
-    });
-  } catch {
-    throw new Error(
-      'Could not reach the CircuSave backend. Confirm EXPO_PUBLIC_API_BASE_URL and that Flask is reachable from this device.',
+    response = await runWithTimeout(
+      (timedSignal) =>
+        fetch(url, {
+          ...requestOptions,
+          signal: timedSignal,
+          headers,
+        }),
+      {
+        timeoutMs: timeoutMs ?? HTTP_JSON_TIMEOUT_MS,
+        signal,
+      },
     );
+  } catch (error) {
+    const category = classifyFetchFailure(error);
+    throw new ApiError(fallbackNetworkMessage(category), 0, undefined, {
+      category,
+    });
   }
 
   const text = await response.text();
@@ -922,17 +966,22 @@ async function requestJsonUncached<T>(
   logDevApiResponse(method, url, response.status, payload ?? text);
 
   if (!response.ok) {
+    const retryAfterSeconds = readRetryAfter(response);
+    throwIfUnauthorized(path, Boolean(token), response.status);
     throw new ApiError(
-      errorMessage(payload, response.status),
+      errorMessage(payload, response.status, retryAfterSeconds),
       response.status,
       payload,
+      {
+        retryAfterSeconds,
+      },
     );
   }
 
   return payload as T;
 }
 
-async function requestJson<T>(
+export async function requestJson<T>(
   path: string,
   options: JsonRequestOptions = {},
 ): Promise<T> {
@@ -1321,11 +1370,19 @@ async function requestPdf(
 
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}${path}`, { headers });
-  } catch {
-    throw new Error(
-      'Could not reach the CircuSave backend. Confirm EXPO_PUBLIC_API_BASE_URL and that Flask is reachable from this device.',
+    response = await runWithTimeout(
+      (timedSignal) =>
+        fetch(`${getApiBaseUrl()}${path}`, {
+          headers,
+          signal: timedSignal,
+        }),
+      { timeoutMs: HTTP_PDF_TIMEOUT_MS },
     );
+  } catch (error) {
+    const category = classifyFetchFailure(error);
+    throw new ApiError(fallbackNetworkMessage(category), 0, undefined, {
+      category,
+    });
   }
 
   if (!response.ok) {
@@ -1336,7 +1393,14 @@ async function requestPdf(
     } catch {
       payload = text;
     }
-    throw new ApiError(errorMessage(payload, response.status), response.status);
+    const retryAfterSeconds = readRetryAfter(response);
+    throwIfUnauthorized(path, Boolean(token), response.status);
+    throw new ApiError(
+      errorMessage(payload, response.status, retryAfterSeconds),
+      response.status,
+      payload,
+      { retryAfterSeconds },
+    );
   }
 
   const buffer = await response.arrayBuffer();

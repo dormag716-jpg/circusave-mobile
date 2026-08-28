@@ -25,11 +25,12 @@ import {
   verifyPasswordReset,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import { describeNetworkError } from '@/lib/networkErrors';
 import { postAuthHrefFromUrl } from '@/lib/navigation';
 import { colors, shadows, spacing } from '@/lib/theme';
 
 export default function LoginScreen() {
-  const { t } = useTranslation('auth');
+  const { t } = useTranslation(['auth', 'common']);
   const passwordInputRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -125,11 +126,9 @@ export default function LoginScreen() {
       await resetPassword({ resetToken, newPassword: password });
       setRecovery(false);
       Alert.alert(t('login.passwordResetTitle'), t('login.passwordResetMessage'));
-    } catch {
-      Alert.alert(
-        t('common.genericErrorTitle'),
-        t('common.genericErrorMessage'),
-      );
+    } catch (error) {
+      const copy = describeNetworkError(error);
+      Alert.alert(t(copy.titleKey), t(copy.bodyKey, copy.params));
     } finally {
       setIsSubmitting(false);
     }

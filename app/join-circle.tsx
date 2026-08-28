@@ -23,6 +23,8 @@ import {
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { logClientError } from '@/lib/errorLogging';
+import { ApiError } from '@/lib/api';
+import { describeNetworkError } from '@/lib/networkErrors';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import {
   shouldKeepJoinPreviewDuringLookup,
@@ -36,7 +38,7 @@ import {
 import { colors, spacing } from '@/lib/theme';
 
 export default function JoinCircleScreen() {
-  const { t, i18n } = useTranslation('joinCircle');
+  const { t, i18n } = useTranslation(['joinCircle', 'common', 'auth']);
   const { session, setPostAuthTarget } = useAuthSession();
   const token = session?.session.token;
   const viewerUserId = session?.user?.id;
@@ -70,7 +72,12 @@ export default function JoinCircleScreen() {
       setResolvedId(circleId);
     } catch (error) {
       logClientError('Unable to resolve circle code', error);
-      Alert.alert(t('notFoundTitle'), t('notFoundMessage'));
+      if (error instanceof ApiError && error.category === 'http_4xx') {
+        Alert.alert(t('notFoundTitle'), t('notFoundMessage'));
+      } else {
+        const copy = describeNetworkError(error);
+        Alert.alert(t(copy.titleKey), t(copy.bodyKey, copy.params));
+      }
     } finally {
       setResolving(false);
     }
@@ -92,7 +99,13 @@ export default function JoinCircleScreen() {
       setJoinOutcome(resolveJoinOutcome(result, viewerUserId));
     } catch (error) {
       logClientError('Unable to request circle membership', error);
-      Alert.alert(t('joinErrorTitle'), t('genericError'));
+      const copy = describeNetworkError(error);
+      Alert.alert(
+        error instanceof ApiError && error.category === 'http_429'
+          ? t(copy.titleKey)
+          : t('joinErrorTitle'),
+        t(copy.bodyKey, copy.params),
+      );
     } finally {
       setJoining(false);
     }
