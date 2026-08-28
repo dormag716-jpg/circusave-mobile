@@ -22,6 +22,10 @@ import { circleWorkspaceHref, dashboardHref } from '@/lib/navigation';
 import { authorizeNotificationNavigation } from '@/lib/notificationNavigation';
 import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
 import { logClientError } from '@/lib/errorLogging';
+import {
+  STRIPE_MERCHANT_IDENTIFIER,
+  resolveStripePublishableKey,
+} from '@/lib/config';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -173,13 +177,20 @@ function NotificationNavigationController() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const isStripeSupported = Platform.OS !== 'web' && Constants.executionEnvironment !== 'storeClient';
+  const stripePublishableKey = resolveStripePublishableKey();
+  const isStripeSupported =
+    Platform.OS !== 'web' &&
+    Constants.executionEnvironment !== 'storeClient' &&
+    Boolean(stripePublishableKey);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar style="dark" />
       {isStripeSupported ? (
-        <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''} merchantIdentifier="merchant.com.circusave">
+        <StripeProvider
+          publishableKey={stripePublishableKey}
+          merchantIdentifier={STRIPE_MERCHANT_IDENTIFIER}
+        >
           <SessionTree />
         </StripeProvider>
       ) : (

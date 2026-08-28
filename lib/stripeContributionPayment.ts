@@ -5,6 +5,8 @@
  * the payment was submitted — not that the contribution is confirmed.
  */
 
+import { STRIPE_RETURN_URL } from './config';
+
 function paymentErrorCopy(key: string, fallback: string): string {
   try {
     const { i18n } = require('./i18n') as typeof import('./i18n');
@@ -263,7 +265,7 @@ export async function runStripeContributionPayment(
     const { error: initError } = await deps.initPaymentSheet({
       paymentIntentClientSecret: intent.clientSecret,
       merchantDisplayName: 'CircuSave',
-      returnURL: 'circusave://stripe-redirect',
+      returnURL: STRIPE_RETURN_URL,
     });
     if (initError) {
       return {

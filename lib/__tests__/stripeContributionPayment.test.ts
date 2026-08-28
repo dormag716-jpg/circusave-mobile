@@ -186,13 +186,14 @@ describe('runStripeContributionPayment', () => {
 
   test('PaymentSheet presents once per successful lock acquisition', async () => {
     const presentPaymentSheet = jest.fn(async () => ({}));
+    const initPaymentSheet = jest.fn(async () => ({}));
     const outcome = await runStripeContributionPayment(baseInput, {
       createPaymentIntent: async () => ({
         clientSecret: 'cs_test',
         paymentIntentId: 'pi_test',
         handId: 'hand-selected',
       }),
-      initPaymentSheet: async () => ({}),
+      initPaymentSheet,
       presentPaymentSheet,
       loadHandStatus: async () => 'confirmed',
       sleep: async () => undefined,
@@ -200,6 +201,12 @@ describe('runStripeContributionPayment', () => {
     });
     expect(outcome.kind).toBe('confirmed');
     expect(presentPaymentSheet).toHaveBeenCalledTimes(1);
+    expect(initPaymentSheet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        returnURL: 'circusavemobile://stripe-redirect',
+        merchantDisplayName: 'CircuSave',
+      }),
+    );
   });
 
   test('cancel releases caller lock and does not claim confirmed', async () => {

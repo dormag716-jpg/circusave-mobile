@@ -15,7 +15,6 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-import appConfig from '@/app.json';
 import {
   cancelPremiumSubscription,
   createBillingCheckout,
@@ -23,6 +22,7 @@ import {
   getBillingPlans,
   type BillingPlan,
 } from '@/lib/api';
+import { APP_SCHEME } from '@/lib/config';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import {
@@ -150,7 +150,7 @@ export default function SubscriptionScreen() {
       }
       handledCheckoutReturn.current = null;
       setCheckoutReturnState('idle');
-      const returnUrl = `${appConfig.expo.scheme}://subscription`;
+      const returnUrl = `${APP_SCHEME}://subscription`;
       const browserResult = await WebBrowser.openAuthSessionAsync(
         checkout.checkoutUrl,
         returnUrl,
