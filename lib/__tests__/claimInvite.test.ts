@@ -1,7 +1,11 @@
+import peopleEn from '../i18n/locales/en/people.json';
+import peopleEs from '../i18n/locales/es/people.json';
+import peopleHt from '../i18n/locales/ht/people.json';
 import {
   buildClaimInviteShareMessage,
   buildClaimInviteUrl,
   buildGenericCircleInviteShareMessage,
+  getWebAppBaseUrl,
 } from '../claimInvite';
 
 describe('claimInvite', () => {
@@ -58,5 +62,36 @@ describe('claimInvite', () => {
     expect(claimMessage).toContain('claim-token');
     expect(genericMessage).toContain('CSX-ABC');
     expect(genericMessage).toContain('circle-id');
+  });
+
+  test('people invite share messages use the canonical circusave.com host', () => {
+    const shareMessages = [
+      peopleEn.invite.shareMessage,
+      peopleEs.invite.shareMessage,
+      peopleHt.invite.shareMessage,
+    ];
+    for (const message of shareMessages) {
+      expect(message).toContain('https://circusave.com/invite/{{code}}');
+      expect(message).not.toContain('app.circusave.com');
+    }
+
+    expect(getWebAppBaseUrl()).toBe('https://circusave.com');
+    expect(buildClaimInviteUrl('c1', 'tok')).toBe(
+      'https://circusave.com/invite/c1?claimToken=tok',
+    );
+    const generic = buildGenericCircleInviteShareMessage({
+      circleName: 'Family Susu',
+      circleId: 'c1',
+      circleCode: 'CSX-ABC',
+    });
+    expect(generic).toContain('https://circusave.com/invite/c1');
+    expect(generic).not.toContain('app.circusave.com');
+    const claim = buildClaimInviteShareMessage({
+      circleName: 'Family Susu',
+      handName: 'Amina · Hand 1',
+      claimUrl: buildClaimInviteUrl('c1', 'x'),
+    });
+    expect(claim).toContain('https://circusave.com/invite/c1?claimToken=x');
+    expect(claim).not.toContain('app.circusave.com');
   });
 });

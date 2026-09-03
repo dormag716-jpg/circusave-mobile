@@ -23,7 +23,7 @@
     "codeA11y": "Kòd envitasyon {{code}}",
     "collapse": "Fèmen envite oswa ajoute manm",
     "expand": "Louvri envite oswa ajoute manm",
-    "shareMessage": "Vin nan gwoup ekonomi mwen sou CircuSave!\n\nKòd: {{code}}\n\nOswa sèvi ak lyen sa a: https://app.circusave.com/invite/{{code}}",
+    "shareMessage": "Vin nan gwoup ekonomi mwen sou CircuSave!\n\nKòd: {{code}}\n\nOswa sèvi ak lyen sa a: https://circusave.com/invite/{{code}}",
     "claimShareMessage": "Reklame {{handName}} nan \"{{circleName}}\" sou CircuSave.\n\nLyen sa a se pou pozisyon peman ou ki planifye a:\n{{claimUrl}}",
     "codeUnavailableTitle": "Kòd la pa disponib",
     "codeUnavailable": "Kòd gwoup la pa disponib kounye a.",

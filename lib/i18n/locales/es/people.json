@@ -23,7 +23,7 @@
     "codeA11y": "Código de invitación: {{code}}",
     "collapse": "Contraer Invitar o agregar miembros",
     "expand": "Expandir Invitar o agregar miembros",
-    "shareMessage": "¡Únete a mi círculo de ahorro en CircuSave!\n\nCódigo: {{code}}\n\nO usa este enlace: https://app.circusave.com/invite/{{code}}",
+    "shareMessage": "¡Únete a mi círculo de ahorro en CircuSave!\n\nCódigo: {{code}}\n\nO usa este enlace: https://circusave.com/invite/{{code}}",
     "claimShareMessage": "Reclama {{handName}} en \"{{circleName}}\" en CircuSave.\n\nEste enlace corresponde a tu posición de pago planificada:\n{{claimUrl}}",
     "codeUnavailableTitle": "Código no disponible",
     "codeUnavailable": "El código del círculo no está disponible en este momento.",

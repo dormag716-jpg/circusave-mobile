@@ -23,7 +23,7 @@
     "codeA11y": "Invite code {{code}}",
     "collapse": "Collapse invite or add members",
     "expand": "Expand invite or add members",
-    "shareMessage": "Join my savings circle on CircuSave!\n\nCode: {{code}}\n\nOr use this link: https://app.circusave.com/invite/{{code}}",
+    "shareMessage": "Join my savings circle on CircuSave!\n\nCode: {{code}}\n\nOr use this link: https://circusave.com/invite/{{code}}",
     "claimShareMessage": "Claim {{handName}} in \"{{circleName}}\" on CircuSave.\n\nThis link is for your planned payout position:\n{{claimUrl}}",
     "codeUnavailableTitle": "Code unavailable",
     "codeUnavailable": "The circle code is not available right now.",
