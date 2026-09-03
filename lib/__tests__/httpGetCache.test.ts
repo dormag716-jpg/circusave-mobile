@@ -1,6 +1,7 @@
 import {
   HTTP_GET_CACHE_TTL_MS,
   getHttpGetCachePolicy,
+  httpGetCacheKey,
   invalidateCachedGets,
   isAuthoritativeFinancialGet,
   isCachedGetAuthoritative,
@@ -42,6 +43,13 @@ describe('shared GET cache and in-flight dedupe', () => {
       dedupe: true,
       persist: true,
     });
+    expect(getHttpGetCachePolicy('/activity?limit=50')).toEqual({
+      dedupe: true,
+      persist: true,
+    });
+    expect(httpGetCacheKey('/activity?limit=11', 'tok')).not.toBe(
+      httpGetCacheKey('/activity?limit=50', 'tok'),
+    );
     expect(getHttpGetCachePolicy('/groups/circle-1')).toEqual({
       dedupe: true,
       persist: true,
@@ -189,6 +197,21 @@ describe('shared GET cache and in-flight dedupe', () => {
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(readCachedGet('/groups/c1/schedule', 'tok')).toBeUndefined();
+  });
+
+  it('does not share activity pages that differ only by query string', async () => {
+    const fetcher = jest.fn(async () => ({ items: [] }));
+    await runDedupedGet({
+      path: '/activity?limit=11',
+      token: 'tok',
+      fetcher,
+    });
+    await runDedupedGet({
+      path: '/activity?limit=50',
+      token: 'tok',
+      fetcher,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it('does not share cache across tokens or circle IDs', async () => {

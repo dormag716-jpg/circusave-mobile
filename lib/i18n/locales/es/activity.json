@@ -1,10 +1,22 @@
 {
   "title": "Actividad",
   "subtitle": "Todas las contribuciones y los pagos",
+  "eyebrow": "Historial de Organizer Pro",
   "filters": {
     "all": "Todo",
     "contributions": "Contribuciones",
-    "payouts": "Pagos"
+    "payouts": "Pagos",
+    "reviews": "Revisión",
+    "allCircles": "Todos los círculos"
+  },
+  "summary": {
+    "contributed": "Aportado",
+    "received": "Recibido",
+    "review": "Por revisar"
+  },
+  "groups": {
+    "today": "Hoy",
+    "yesterday": "Ayer"
   },
   "loading": "Cargando actividad verificada…",
   "unavailableTitle": "Actividad no disponible",
@@ -12,22 +24,67 @@
   "retryA11y": "Reintentar la actividad",
   "emptyTitle": "Aún no hay actividad",
   "emptyBody": "Las contribuciones y los pagos confirmados aparecerán aquí.",
+  "emptyFilterTitle": "No hay actividad coincidente",
+  "emptyFilterBody": "Prueba otro filtro o círculo. Los eventos confirmados siguen en Todo.",
   "unknownMember": "Miembro desconocido",
   "unknownEvent": "Se actualizó la actividad del círculo.",
   "events": {
     "contribution_submitted": "{{name}} envió una contribución para la ronda {{round}}.",
-    "contribution_confirmed": "Tu contribución fue confirmada.",
-    "contribution_rejected": "Se rechazó una contribución.",
+    "contribution_confirmed": "Se confirmó la contribución de {{name}} para la ronda {{round}}.",
+    "contribution_rejected": "Se rechazó la contribución de {{name}} para la ronda {{round}}.",
+    "contribution_missed": "{{name}} no envió la contribución de la ronda {{round}}.",
     "payout_released": "{{name}} recibió el pago de la ronda {{round}}.",
-    "payout_completed": "Pago completado.",
+    "payout_completed": "{{name}} recibió el pago de la ronda {{round}}.",
     "round_started": "La ronda {{round}} está activa.",
-    "payment_review_required": "Se requiere revisar un pago."
+    "payment_review_required": "Se requiere revisar un pago de {{name}}."
+  },
+  "provenance": {
+    "pending": "Reportado · en espera de confirmación",
+    "confirmed": "Confirmado por el organizador",
+    "rejected": "Rechazado por el organizador"
   },
   "meta": "{{circle}} · Ronda {{round}}",
+  "rowA11y": "{{event}}, {{amount}}, {{date}}",
+  "openRecordsA11y": "Abrir registros de {{circle}}",
   "unlockTitle": "Desbloquea el historial completo",
-  "unlockBody": "Mejora a Organizer Pro para ver todo tu historial de contribuciones y pagos.",
+  "unlockBody": "Mejora a Organizer Pro para ver todo tu historial de contribuciones y pagos, y exportarlo.",
   "upgrade": "Mejorar a Organizer Pro",
-  "export": "Exportar historial completo",
-  "exportUnavailableTitle": "La exportación aún no está disponible",
-  "exportUnavailableBody": "La exportación del historial completo estará disponible cuando se conecte el servicio del servidor."
+  "loadMore": "Cargar actividad anterior",
+  "loadMoreA11y": "Cargar actividad anterior",
+  "export": "Exportar historial",
+  "exportA11y": "Exportar historial de actividad",
+  "exportPdf": "Exportar informe PDF",
+  "exportPdfA11y": "Exportar informe de actividad en PDF",
+  "exportCsv": "Exportar datos CSV",
+  "exportCsvA11y": "Exportar la actividad como datos CSV",
+  "exporting": "Preparando la exportación…",
+  "exportDialogTitle": "Compartir actividad de CircuSave",
+  "exportPdfDialogTitle": "Compartir informe de actividad de CircuSave",
+  "exportCopiedTitle": "Actividad copiada",
+  "exportCopiedBody": "Compartir no está disponible en este dispositivo, así que se copió el CSV.",
+  "exportPdfUnavailableTitle": "Informe guardado",
+  "exportPdfUnavailableBody": "Compartir no está disponible en este dispositivo. El informe PDF se guardó en el dispositivo.",
+  "exportFailedTitle": "Error al exportar",
+  "exportFailedBody": "No se pudo compartir el archivo de actividad. Inténtalo de nuevo.",
+  "report": {
+    "brand": "CircuSave",
+    "title": "Informe de actividad",
+    "circle": "Círculo",
+    "scope": "Alcance del informe",
+    "generated": "Generado",
+    "informational": "Este es un informe de actividad informativo de CircuSave. No es un estado financiero, fiscal ni bancario oficial.",
+    "recordsNote": "Los estados de cuenta oficiales de los miembros están disponibles en Records.",
+    "footer": "Informe de actividad de CircuSave",
+    "empty": "No hay actividad coincidente en este informe.",
+    "completeScope": "Actividad cargada que coincide con los filtros actuales.",
+    "partialScope": "Actividad cargada que coincide con los filtros actuales. Puede haber actividad anterior."
+  },
+  "csv": {
+    "date": "Fecha",
+    "event": "Evento",
+    "member": "Miembro",
+    "circle": "Círculo",
+    "round": "Ronda",
+    "amount": "Monto"
+  }
 }

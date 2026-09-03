@@ -1244,11 +1244,23 @@ export function getDashboardSummary(
   });
 }
 
+export type ActivityGetOptions = ApiGetOptions & {
+  limit?: number;
+  cursor?: string | null;
+};
+
 export function getActivity(
   token: string,
-  options?: ApiGetOptions,
+  options?: ActivityGetOptions,
 ): Promise<ActivityResponse> {
-  return requestJson<ActivityResponse>('/activity', {
+  const params = new URLSearchParams();
+  if (typeof options?.limit === 'number' && Number.isFinite(options.limit)) {
+    params.set('limit', String(Math.max(1, Math.floor(options.limit))));
+  }
+  const cursor = String(options?.cursor || '').trim();
+  if (cursor) params.set('cursor', cursor);
+  const qs = params.toString();
+  return requestJson<ActivityResponse>(`/activity${qs ? `?${qs}` : ''}`, {
     token,
     revalidate: options?.revalidate,
   });

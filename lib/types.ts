@@ -130,11 +130,17 @@ export type BackendActivity = {
   round: number | null;
   memberId: string | null;
   metadata: Record<string, unknown>;
+  verificationStatus?: string | null;
+  paymentOrigin?: string | null;
 };
 
 export type ActivityResponse = {
   items: BackendActivity[];
   limit: number;
+  hasMore?: boolean;
+  has_more?: boolean;
+  nextCursor?: string | null;
+  next_cursor?: string | null;
 };
 
 export type BackendCircleSummary = {

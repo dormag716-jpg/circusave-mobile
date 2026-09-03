@@ -309,25 +309,27 @@ export function activityEventSentence(
     return t('activity:events.contribution_submitted', { name, round });
   }
   if (type.includes('contribution') && type.includes('confirmed')) {
-    return t('activity:events.contribution_confirmed');
+    return t('activity:events.contribution_confirmed', { name, round });
   }
   if (type.includes('contribution') && type.includes('rejected')) {
-    return t('activity:events.contribution_rejected');
+    return t('activity:events.contribution_rejected', { name, round });
+  }
+  if (type.includes('contribution') && type.includes('missed')) {
+    return t('activity:events.contribution_missed', { name, round });
   }
   if (
     type.includes('payout') &&
-    (type.includes('released') || type.includes('received'))
+    (type.includes('released') ||
+      type.includes('received') ||
+      type.includes('completed'))
   ) {
     return t('activity:events.payout_released', { name, round });
-  }
-  if (type.includes('payout') && type.includes('completed')) {
-    return t('activity:events.payout_completed');
   }
   if (type.includes('round') && type.includes('started')) {
     return t('activity:events.round_started', { round });
   }
   if (type.includes('review') && type.includes('required')) {
-    return t('activity:events.payment_review_required');
+    return t('activity:events.payment_review_required', { name });
   }
   return t('activity:unknownEvent');
 }

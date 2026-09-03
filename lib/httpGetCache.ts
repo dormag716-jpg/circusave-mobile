@@ -23,7 +23,7 @@ export function httpGetCacheKey(
   path: string,
   token: string | undefined,
 ): string {
-  return `GET:${normalizePath(path)}:${String(token || '')}`;
+  return `GET:${String(path || '')}:${String(token || '')}`;
 }
 
 /**

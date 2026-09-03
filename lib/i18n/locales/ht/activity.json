@@ -1,10 +1,22 @@
 {
   "title": "Aktivite",
   "subtitle": "Tout kontribisyon ak peman yo",
+  "eyebrow": "Istorik Organizer Pro",
   "filters": {
     "all": "Tout",
     "contributions": "Kontribisyon",
-    "payouts": "Peman"
+    "payouts": "Peman",
+    "reviews": "Revizyon",
+    "allCircles": "Tout sèk yo"
+  },
+  "summary": {
+    "contributed": "Kontribye",
+    "received": "Resevwa",
+    "review": "Pou revize"
+  },
+  "groups": {
+    "today": "Jodi a",
+    "yesterday": "Yè"
   },
   "loading": "Y ap chaje aktivite verifye yo…",
   "unavailableTitle": "Aktivite yo pa disponib",
@@ -12,22 +24,67 @@
   "retryA11y": "Rechaje aktivite yo",
   "emptyTitle": "Poko gen aktivite",
   "emptyBody": "Kontribisyon ak peman ki konfime yo ap parèt isit la.",
+  "emptyFilterTitle": "Pa gen aktivite ki koresponn",
+  "emptyFilterBody": "Eseye yon lòt filtè oswa yon lòt sèk. Evènman ki konfime yo toujou nan Tout.",
   "unknownMember": "Manm enkoni",
   "unknownEvent": "Aktivite sèk la mete ajou.",
   "events": {
     "contribution_submitted": "{{name}} soumèt yon kontribisyon pou tou {{round}}.",
-    "contribution_confirmed": "Kontribisyon pa ou a konfime.",
-    "contribution_rejected": "Yo rejte yon kontribisyon.",
+    "contribution_confirmed": "Kontribisyon {{name}} pou tou {{round}} konfime.",
+    "contribution_rejected": "Yo rejte kontribisyon {{name}} pou tou {{round}}.",
+    "contribution_missed": "{{name}} manke kontribisyon tou {{round}} la.",
     "payout_released": "{{name}} resevwa peman tou {{round}} la.",
-    "payout_completed": "Peman an fini.",
+    "payout_completed": "{{name}} resevwa peman tou {{round}} la.",
     "round_started": "Tou {{round}} aktif kounye a.",
-    "payment_review_required": "Yon revizyon peman nesesè."
+    "payment_review_required": "Yon revizyon peman nesesè pou {{name}}."
+  },
+  "provenance": {
+    "pending": "Rapòte · ap tann konfimasyon",
+    "confirmed": "Òganizatè a konfime li",
+    "rejected": "Òganizatè a rejte li"
   },
   "meta": "{{circle}} · Tou {{round}}",
+  "rowA11y": "{{event}}, {{amount}}, {{date}}",
+  "openRecordsA11y": "Ouvri dosye pou {{circle}}",
   "unlockTitle": "Debloke tout istorik la",
-  "unlockBody": "Pase nan Organizer Pro pou wè tout istorik kontribisyon ak peman pa ou.",
+  "unlockBody": "Pase nan Organizer Pro pou wè tout istorik kontribisyon ak peman pa ou, epi ekspòte li.",
   "upgrade": "Pase nan Organizer Pro",
-  "export": "Ekspòte tout istorik la",
-  "exportUnavailableTitle": "Ekspòtasyon an poko disponib",
-  "exportUnavailableBody": "Ekspòtasyon tout istorik la ap disponib lè sèvis sèvè a konekte."
+  "loadMore": "Chaje aktivite pi bonè",
+  "loadMoreA11y": "Chaje aktivite pi bonè",
+  "export": "Ekspòte istorik la",
+  "exportA11y": "Ekspòte istorik aktivite a",
+  "exportPdf": "Ekspòte rapò PDF",
+  "exportPdfA11y": "Ekspòte rapò aktivite PDF",
+  "exportCsv": "Ekspòte done CSV",
+  "exportCsvA11y": "Ekspòte aktivite a kòm done CSV",
+  "exporting": "Y ap prepare ekspòtasyon an…",
+  "exportDialogTitle": "Pataje aktivite CircuSave",
+  "exportPdfDialogTitle": "Pataje rapò aktivite CircuSave",
+  "exportCopiedTitle": "Aktivite kopye",
+  "exportCopiedBody": "Pataje pa disponib sou aparèy sa a, kidonk yo kopye CSV a.",
+  "exportPdfUnavailableTitle": "Rapò a sove",
+  "exportPdfUnavailableBody": "Pataje pa disponib sou aparèy sa a. Rapò PDF a sove sou aparèy la.",
+  "exportFailedTitle": "Ekspòtasyon an echwe",
+  "exportFailedBody": "Yo pa t kapab pataje fichye aktivite a. Tanpri eseye ankò.",
+  "report": {
+    "brand": "CircuSave",
+    "title": "Rapò aktivite",
+    "circle": "Sèk",
+    "scope": "Limit rapò a",
+    "generated": "Jenere",
+    "informational": "Sa a se yon rapò aktivite enfòmatif CircuSave. Li pa yon dokiman finansye, taks, oswa bank ofisyèl.",
+    "recordsNote": "Deklarasyon ofisyèl manm yo disponib nan Records.",
+    "footer": "Rapò aktivite CircuSave",
+    "empty": "Pa gen aktivite ki koresponn nan rapò sa a.",
+    "completeScope": "Aktivite ki chaje ki koresponn ak filtè yo.",
+    "partialScope": "Aktivite ki chaje ki koresponn ak filtè yo. Ka gen aktivite pi bonè toujou."
+  },
+  "csv": {
+    "date": "Dat",
+    "event": "Evènman",
+    "circle": "Sèk",
+    "member": "Manm",
+    "round": "Tou",
+    "amount": "Montan"
+  }
 }

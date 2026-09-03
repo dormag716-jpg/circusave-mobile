@@ -151,6 +151,15 @@ describe('Phase 4 financial localization', () => {
     expect(activity.memberId).toBe('membership-1');
     expect(activity.metadata.userId).toBe('user-1');
 
+    const confirmed = activityEventSentence(
+      { ...activity, type: 'contribution_confirmed' },
+      i18n.t,
+      { name: 'Ana' },
+    );
+    expect(confirmed).toContain('Ana');
+    expect(confirmed).toContain('3');
+    expect(confirmed).not.toBe(i18n.t('activity:events.contribution_confirmed'));
+
     expect(
       activityEventSentence({ ...activity, type: 'unknown_event' }, i18n.t),
     ).toBe(i18n.t('activity:unknownEvent'));
