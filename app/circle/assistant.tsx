@@ -412,6 +412,10 @@ export default function CircleAssistantScreen() {
       },
     ]);
 
+    const requestStartedAt = Date.now();
+    console.log('[AssistantTiming] request started', {
+      at: requestStartedAt,
+    });
     try {
       const sendOptions = buildAssistantSendOptions(conversationId);
       const raw = await sendAiAssistantMessage(
@@ -421,6 +425,10 @@ export default function CircleAssistantScreen() {
         apiLocale,
         sendOptions,
       );
+      console.log('[AssistantTiming] request completed', {
+        durationMs: Date.now() - requestStartedAt,
+        at: Date.now(),
+      });
       const reply = normalizeAssistantResponse(raw);
       if (reply.conversationId) {
         setConversationId(reply.conversationId);
@@ -453,6 +461,10 @@ export default function CircleAssistantScreen() {
         await refreshEntitlements();
       }
     } catch (error) {
+      console.log('[AssistantTiming] request failed', {
+        durationMs: Date.now() - requestStartedAt,
+        at: Date.now(),
+      });
       const requiresUpgrade = isAssistantUpgradeEntitlementError({
         status: error instanceof ApiError ? error.status : undefined,
         hasUpgradePayload: Boolean(
@@ -821,6 +833,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryDark,
     borderRadius: 18,
     borderBottomRightRadius: 5,
+    width: '82%',
   },
   messageText: { color: colors.text, fontSize: 14, lineHeight: 21 },
   userMessageText: { color: colors.onColor },

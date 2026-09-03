@@ -200,6 +200,7 @@ const styles = StyleSheet.create({
   },
   messageWrapperMe: {
     alignSelf: 'flex-end',
+    width: '82%',
   },
   avatar: {
     marginRight: 7,
@@ -216,6 +217,7 @@ const styles = StyleSheet.create({
   bubbleMe: {
     backgroundColor: colors.primary,
     borderBottomRightRadius: 5,
+    width: '100%',
   },
   bubbleDeleting: {
     opacity: 0.5,
