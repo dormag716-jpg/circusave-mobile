@@ -27,11 +27,6 @@ import { APP_SCHEME } from '@/lib/config';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import {
-  createGooglePlayBillingMachine,
-  type GooglePlayBillingState,
-  type GooglePlayPlan,
-} from '@/lib/googlePlayBillingMachine';
-import {
   getAndroidApplicationPackage,
   openGooglePlaySubscriptionManagement,
 } from '@/lib/googlePlaySubscriptionManagement';
@@ -74,14 +69,22 @@ type CheckoutReturnState =
   | 'pending'
   | 'canceled';
 
-let googlePlayBillingLifecycle = Promise.resolve();
-
 export default function SubscriptionScreen() {
   const { t, i18n } = useTranslation(['subscription', 'common']);
   const language = i18n.resolvedLanguage || i18n.language;
   const params = useLocalSearchParams<{ checkout?: string | string[] }>();
   const { session, status: authStatus } = useAuthSession();
-  const { entitlements, isPremium, refreshEntitlements } = useEntitlements();
+  const {
+    entitlements,
+    isPremium,
+    refreshEntitlements,
+    googlePlayBillingState: playState,
+    googlePlayPlans: playPlans,
+    initializeGooglePlayBilling,
+    purchaseGooglePlaySubscription: runGooglePlayPurchase,
+    restoreGooglePlayPurchases: runGooglePlayRestore,
+    retryGooglePlayCompletion: runGooglePlayCompletionRetry,
+  } = useEntitlements();
   const token = session?.session.token;
   const isAndroid = Platform.OS === 'android';
   const [premium, setPremium] = useState<BillingPlan>(fallbackPremium);
@@ -93,15 +96,6 @@ export default function SubscriptionScreen() {
   const [checkoutReturnState, setCheckoutReturnState] =
     useState<CheckoutReturnState>('idle');
   const handledCheckoutReturn = useRef<CheckoutReturnStatus | null>(null);
-  const [playState, setPlayState] = useState<GooglePlayBillingState>({
-    status: 'idle',
-  });
-  const [playPlans, setPlayPlans] = useState<
-    Record<BillingInterval, GooglePlayPlan> | null
-  >(null);
-  const playMachine = useRef<
-    ReturnType<typeof createGooglePlayBillingMachine> | null
-  >(null);
   const playOperationLocked = useRef(false);
 
   useEffect(() => {
@@ -134,59 +128,33 @@ export default function SubscriptionScreen() {
       ) {
         return undefined;
       }
-      let active = true;
-      let machine: ReturnType<typeof createGooglePlayBillingMachine> | null =
-        null;
-      let unsubscribe: () => void = () => {};
-      void googlePlayBillingLifecycle.then(() => {
-        if (!active) return;
-        machine = createGooglePlayBillingMachine({
-          authToken: token,
-          api: { refreshEntitlements: () => refreshEntitlements() },
-        });
-        playMachine.current = machine;
-        unsubscribe = machine.subscribe((next) => {
-          if (!active) return;
-          setPlayState(next);
-          if (next.status === 'ready') {
-            setPlayPlans(next.plans);
-          }
-          if (
-            next.status === 'ready' ||
-            next.status === 'disabled' ||
-            next.status === 'unsupported' ||
-            next.status === 'succeeded' ||
-            next.status === 'failed'
-          ) {
-            playOperationLocked.current = false;
-          }
-        });
-        void machine.initialize().catch(() => {
-          logClientWarning(
-            'Google Play billing initialization failed.',
-            new Error('Google Play billing initialization failed.'),
-          );
-        });
+      void initializeGooglePlayBilling().catch(() => {
+        logClientWarning(
+          'Google Play billing initialization failed.',
+          new Error('Google Play billing initialization failed.'),
+        );
       });
-
-      return () => {
-        active = false;
-        unsubscribe();
-        if (playMachine.current === machine) {
-          playMachine.current = null;
-        }
-        playOperationLocked.current = false;
-        if (machine) {
-          googlePlayBillingLifecycle = machine.dispose().catch(() => {
-            logClientWarning(
-              'Google Play billing cleanup failed.',
-              new Error('Google Play billing cleanup failed.'),
-            );
-          });
-        }
-      };
-    }, [authStatus, isAndroid, isPremium, refreshEntitlements, token]),
+      return undefined;
+    }, [
+      authStatus,
+      initializeGooglePlayBilling,
+      isAndroid,
+      isPremium,
+      token,
+    ]),
   );
+
+  useEffect(() => {
+    if (
+      playState.status === 'ready' ||
+      playState.status === 'disabled' ||
+      playState.status === 'unsupported' ||
+      playState.status === 'succeeded' ||
+      playState.status === 'failed'
+    ) {
+      playOperationLocked.current = false;
+    }
+  }, [playState.status]);
 
   const selectedPrice =
     interval === 'annual'
@@ -237,12 +205,12 @@ export default function SubscriptionScreen() {
   }
 
   async function startGooglePlayPurchase() {
-    if (!playCanPurchase || playOperationLocked.current || !playMachine.current) {
+    if (!playCanPurchase || playOperationLocked.current) {
       return;
     }
     playOperationLocked.current = true;
     try {
-      await playMachine.current.purchase(interval);
+      await runGooglePlayPurchase(interval);
     } catch {
       playOperationLocked.current = false;
       Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
@@ -250,12 +218,12 @@ export default function SubscriptionScreen() {
   }
 
   async function restoreGooglePlayPurchases() {
-    if (!playCanRestore || playOperationLocked.current || !playMachine.current) {
+    if (!playCanRestore || playOperationLocked.current) {
       return;
     }
     playOperationLocked.current = true;
     try {
-      await playMachine.current.restore();
+      await runGooglePlayRestore();
     } catch {
       playOperationLocked.current = false;
       Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
@@ -263,12 +231,12 @@ export default function SubscriptionScreen() {
   }
 
   async function retryGooglePlayCompletion() {
-    if (playOperationLocked.current || !playMachine.current) {
+    if (playOperationLocked.current) {
       return;
     }
     playOperationLocked.current = true;
     try {
-      await playMachine.current.retryCompletion();
+      await runGooglePlayCompletionRetry();
     } catch {
       playOperationLocked.current = false;
       Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));

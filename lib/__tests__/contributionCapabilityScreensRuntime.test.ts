@@ -139,6 +139,12 @@ jest.mock('../entitlementsContext', () => ({
       cancelAtPeriodEnd: false,
     },
     refreshEntitlements: jest.fn(),
+    googlePlayBillingState: { status: 'idle' },
+    googlePlayPlans: null,
+    initializeGooglePlayBilling: jest.fn(),
+    purchaseGooglePlaySubscription: jest.fn(),
+    restoreGooglePlayPurchases: jest.fn(),
+    retryGooglePlayCompletion: jest.fn(),
     hasCapability: (capability: string) =>
       capability === 'contributionPaymentsEnabled'
         ? mockContributionPaymentsEnabled

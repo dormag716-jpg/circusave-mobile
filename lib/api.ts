@@ -1173,10 +1173,19 @@ export function getCurrentUser(token: string): Promise<AuthUser> {
  * Prefer this over users.role for plan and feature gates.
  * Fail closed to free on network/API errors (never invent Premium).
  */
+export async function getAuthoritativeEntitlements(
+  token: string,
+): Promise<Entitlements> {
+  const payload = await requestJson<unknown>('/auth/me/entitlements', {
+    token,
+    revalidate: true,
+  });
+  return normalizeEntitlements(payload);
+}
+
 export async function getEntitlements(token: string): Promise<Entitlements> {
   try {
-    const payload = await requestJson<unknown>('/auth/me/entitlements', { token });
-    return normalizeEntitlements(payload);
+    return await getAuthoritativeEntitlements(token);
   } catch {
     return freeEntitlements();
   }

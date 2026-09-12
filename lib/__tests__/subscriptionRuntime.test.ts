@@ -44,6 +44,10 @@ let mockEntitlements = {
 
 const mockRefreshEntitlements = jest.fn();
 const mockRefreshContributionPaymentsCapability = jest.fn();
+const mockInitializeGooglePlayBilling = jest.fn();
+const mockPurchaseGooglePlaySubscription = jest.fn();
+const mockRestoreGooglePlayPurchases = jest.fn();
+const mockRetryGooglePlayCompletion = jest.fn();
 const mockCreateBillingCheckout = jest.fn();
 const mockCreateBillingPortal = jest.fn();
 const mockCancelPremiumSubscription = jest.fn();
@@ -148,6 +152,12 @@ jest.mock('../entitlementsContext', () => ({
     entitlements: mockEntitlements,
     isPremium: mockIsPremium,
     refreshEntitlements: mockRefreshEntitlements,
+    googlePlayBillingState: { status: 'idle' },
+    googlePlayPlans: null,
+    initializeGooglePlayBilling: mockInitializeGooglePlayBilling,
+    purchaseGooglePlaySubscription: mockPurchaseGooglePlaySubscription,
+    restoreGooglePlayPurchases: mockRestoreGooglePlayPurchases,
+    retryGooglePlayCompletion: mockRetryGooglePlayCompletion,
     refreshContributionPaymentsCapability:
       mockRefreshContributionPaymentsCapability,
     hasCapability: (capability: string) =>

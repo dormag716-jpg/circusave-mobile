@@ -18,7 +18,6 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 const mockInitialize = jest.fn();
-const mockDispose = jest.fn();
 const mockPurchase = jest.fn();
 const mockRestore = jest.fn();
 const mockRetryCompletion = jest.fn();
@@ -26,8 +25,8 @@ const mockRefreshEntitlements = jest.fn();
 const mockOpenManagement = jest.fn();
 const mockOpenBrowserAsync = jest.fn();
 const mockCreateBillingPortal = jest.fn();
-let mockSubscriber: ((state: Record<string, unknown>) => void) | null = null;
-let mockInitialState: Record<string, unknown> = { status: 'disabled' };
+let mockPlayState: Record<string, unknown> = { status: 'disabled' };
+let mockPlayPlans: Record<string, unknown> | null = null;
 let mockIsPremium = false;
 let mockEntitlements: Record<string, unknown> = {
   subscriptionStatus: 'inactive',
@@ -182,6 +181,12 @@ jest.mock('../entitlementsContext', () => ({
     entitlements: mockEntitlements,
     isPremium: mockIsPremium,
     refreshEntitlements: mockRefreshEntitlements,
+    googlePlayBillingState: mockPlayState,
+    googlePlayPlans: mockPlayPlans,
+    initializeGooglePlayBilling: mockInitialize,
+    purchaseGooglePlaySubscription: mockPurchase,
+    restoreGooglePlayPurchases: mockRestore,
+    retryGooglePlayCompletion: mockRetryCompletion,
   }),
 }));
 
@@ -190,25 +195,6 @@ jest.mock('../api', () => ({
   createBillingCheckout: jest.fn(),
   createBillingPortal: mockCreateBillingPortal,
   getBillingPlans: jest.fn(),
-}));
-
-jest.mock('../googlePlayBillingMachine', () => ({
-  createGooglePlayBillingMachine: jest.fn((options) => ({
-    initialize: mockInitialize.mockImplementation(async () => {
-      mockSubscriber?.(mockInitialState);
-    }),
-    dispose: mockDispose,
-    purchase: mockPurchase,
-    restore: mockRestore,
-    retryCompletion: mockRetryCompletion,
-    subscribe: (subscriber: (state: Record<string, unknown>) => void) => {
-      mockSubscriber = subscriber;
-      return () => {
-        mockSubscriber = null;
-      };
-    },
-    __options: options,
-  })),
 }));
 
 jest.mock('../googlePlaySubscriptionManagement', () => ({
@@ -224,9 +210,6 @@ const TestRenderer: any = require('react-test-renderer');
 const {
   initializeI18n,
 }: typeof import('../i18n') = require('../i18n');
-const {
-  createGooglePlayBillingMachine,
-}: typeof import('../googlePlayBillingMachine') = require('../googlePlayBillingMachine');
 const SubscriptionScreen: typeof import('../../app/subscription').default =
   require('../../app/subscription').default;
 
@@ -257,10 +240,22 @@ async function renderScreen(): Promise<void> {
 }
 
 async function emit(state: Record<string, unknown>): Promise<void> {
+  mockPlayState = state;
+  if (state.status === 'ready' && state.plans) {
+    mockPlayPlans = state.plans as Record<string, unknown>;
+  }
   await TestRenderer.act(async () => {
-    mockSubscriber?.(state);
+    renderer.update(React.createElement(SubscriptionScreen));
     await Promise.resolve();
   });
+}
+
+function setInitialPlayState(state: Record<string, unknown>): void {
+  mockPlayState = state;
+  mockPlayPlans =
+    state.status === 'ready' && state.plans
+      ? (state.plans as Record<string, unknown>)
+      : null;
 }
 
 beforeAll(async () => {
@@ -271,8 +266,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockSubscriber = null;
-  mockInitialState = { status: 'disabled' };
+  mockPlayState = { status: 'disabled' };
+  mockPlayPlans = null;
   mockIsPremium = false;
   mockEntitlements = {
     subscriptionStatus: 'inactive',
@@ -284,10 +279,7 @@ beforeEach(() => {
       contributionPaymentsEnabled: false,
     },
   };
-  mockInitialize.mockImplementation(async () => {
-    mockSubscriber?.(mockInitialState);
-  });
-  mockDispose.mockResolvedValue(undefined);
+  mockInitialize.mockResolvedValue(undefined);
   mockPurchase.mockResolvedValue(undefined);
   mockRestore.mockResolvedValue(undefined);
   mockRetryCompletion.mockResolvedValue(undefined);
@@ -320,7 +312,7 @@ describe('Android Google Play subscription UI', () => {
   });
 
   test('renders Play-localized products and never displays nominal prices', async () => {
-    mockInitialState = readyState;
+    setInitialPlayState(readyState);
     await renderScreen();
 
     expect(screenText()).toContain('Play Annual');
@@ -339,12 +331,12 @@ describe('Android Google Play subscription UI', () => {
   });
 
   test('failed offer matching keeps purchase unavailable with sanitized copy', async () => {
-    mockInitialState = {
+    setInitialPlayState({
       status: 'failed',
       operation: 'initialize',
       code: 'product_configuration_unavailable',
       retryable: true,
-    };
+    });
     await renderScreen();
 
     expect(screenText()).toContain(
@@ -354,7 +346,7 @@ describe('Android Google Play subscription UI', () => {
   });
 
   test('repeated purchase taps launch one state-machine purchase', async () => {
-    mockInitialState = readyState;
+    setInitialPlayState(readyState);
     mockPurchase.mockReturnValue(new Promise(() => undefined));
     await renderScreen();
 
@@ -389,7 +381,7 @@ describe('Android Google Play subscription UI', () => {
       'Google Play subscriptions are unavailable',
     ],
   ])('renders a sanitized non-entitling operation state', async (state, copy) => {
-    mockInitialState = readyState;
+    setInitialPlayState(readyState);
     await renderScreen();
     await emit(state);
 
@@ -398,24 +390,22 @@ describe('Android Google Play subscription UI', () => {
     expect(screenText()).not.toContain('synthetic-purchase-token');
   });
 
-  test('uses the injected entitlement refresh after authoritative operations', async () => {
-    mockInitialState = readyState;
+  test('renders authoritative success without granting or refreshing locally', async () => {
+    setInitialPlayState(readyState);
     await renderScreen();
 
-    const options = (createGooglePlayBillingMachine as jest.Mock).mock.calls[0][0];
-    await options.api.refreshEntitlements();
     await emit({
       status: 'succeeded',
       operation: 'purchase',
       plan: 'annual',
     });
 
-    expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
+    expect(mockRefreshEntitlements).not.toHaveBeenCalled();
     expect(screenText()).toContain('CircuSave confirmed your Google Play subscription.');
   });
 
   test('handles restore with no purchases and prevents concurrent actions', async () => {
-    mockInitialState = readyState;
+    setInitialPlayState(readyState);
     await renderScreen();
 
     await TestRenderer.act(async () => {
@@ -450,7 +440,6 @@ describe('Android Google Play subscription UI', () => {
       subscriptionStatus: 'active',
       source: 'google_play',
     };
-    mockInitialState = readyState;
     await renderScreen();
 
     await TestRenderer.act(async () => {
@@ -486,45 +475,10 @@ describe('Android Google Play subscription UI', () => {
     expect(mockOpenManagement).not.toHaveBeenCalled();
   });
 
-  test('waits for old native cleanup before creating a refocused machine', async () => {
-    mockInitialState = readyState;
-    let finishDisposal: (() => void) | null = null;
-    mockDispose.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        finishDisposal = resolve;
-      }),
-    );
+  test('requests initialization from the centralized owner on focus', async () => {
+    setInitialPlayState(readyState);
     await renderScreen();
 
-    await TestRenderer.act(async () => {
-      renderer.unmount();
-      await Promise.resolve();
-    });
-    renderer = null;
-    expect(createGooglePlayBillingMachine).toHaveBeenCalledTimes(1);
-
-    await renderScreen();
-    expect(createGooglePlayBillingMachine).toHaveBeenCalledTimes(1);
-
-    await TestRenderer.act(async () => {
-      finishDisposal?.();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(createGooglePlayBillingMachine).toHaveBeenCalledTimes(2);
-  });
-
-  test('disposes listeners and the connection on unmount', async () => {
-    mockInitialState = readyState;
-    await renderScreen();
-
-    await TestRenderer.act(async () => {
-      renderer.unmount();
-      await Promise.resolve();
-    });
-    renderer = null;
-
-    expect(mockDispose).toHaveBeenCalledTimes(1);
-    expect(mockSubscriber).toBeNull();
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
   });
 });

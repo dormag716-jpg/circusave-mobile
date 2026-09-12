@@ -8,6 +8,7 @@ jest.mock('react-native', () => ({
     currentState: 'active',
     addEventListener: jest.fn(() => ({ remove: jest.fn() })),
   },
+  Platform: { OS: 'ios' },
 }));
 
 jest.mock('../authContext', () => ({
@@ -21,7 +22,7 @@ jest.mock('../authContext', () => ({
 }));
 
 jest.mock('../api', () => ({
-  getEntitlements: mockGetEntitlements,
+  getAuthoritativeEntitlements: mockGetEntitlements,
   getFreshContributionPaymentsCapability:
     mockGetFreshContributionPaymentsCapability,
 }));

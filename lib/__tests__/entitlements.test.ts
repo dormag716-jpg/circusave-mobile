@@ -6,6 +6,7 @@ import {
   planTierFromEntitlements,
 } from '../entitlements';
 import {
+  getAuthoritativeEntitlements,
   getEntitlements,
   getFreshContributionPaymentsCapability,
 } from '../api';
@@ -176,6 +177,14 @@ describe('entitlements foundation', () => {
     expect(result.plan).toBe('free');
     expect(result.capabilities.fullActivityHistory).toBe(false);
     expect(result.capabilities.contributionPaymentsEnabled).toBe(false);
+  });
+
+  test('authoritative entitlement fetch surfaces failure to synchronization owners', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
+
+    await expect(
+      getAuthoritativeEntitlements('tok_abc'),
+    ).rejects.toBeDefined();
   });
 
   test.each([
