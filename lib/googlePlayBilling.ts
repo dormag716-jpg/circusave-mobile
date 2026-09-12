@@ -4,6 +4,7 @@ import type {
   ProductOrSubscription,
   ProductSubscription,
   Purchase,
+  PurchaseAndroid,
 } from 'expo-iap';
 
 type ListenerSubscription = {
@@ -14,9 +15,12 @@ type ExpoIapModule = Pick<
   typeof import('expo-iap'),
   | 'endConnection'
   | 'fetchProducts'
+  | 'finishTransaction'
+  | 'getAvailablePurchases'
   | 'initConnection'
   | 'purchaseErrorListener'
   | 'purchaseUpdatedListener'
+  | 'requestPurchase'
 >;
 
 type GooglePlayBillingGatewayOptions = {
@@ -29,8 +33,19 @@ export type GooglePlayBillingAvailability =
   | { available: false; reason: 'non_android' | 'native_module_unavailable' };
 
 export type GooglePlayPurchaseError = {
+  kind: 'canceled' | 'pending' | 'failed';
   message: 'Google Play purchase failed.';
 };
+
+export class GooglePlayPurchaseRequestError extends Error {
+  readonly kind: GooglePlayPurchaseError['kind'];
+
+  constructor(kind: GooglePlayPurchaseError['kind']) {
+    super('Google Play purchase failed.');
+    this.name = 'GooglePlayPurchaseRequestError';
+    this.kind = kind;
+  }
+}
 
 export class GooglePlayNativeBillingUnavailableError extends Error {
   readonly code = 'google_play_native_billing_unavailable';
@@ -58,6 +73,26 @@ function isSubscriptionProduct(
   product: ProductOrSubscription,
 ): product is ProductSubscription {
   return product.type === 'subs' && 'subscriptionOffers' in product;
+}
+
+function classifyPurchaseError(
+  error: unknown,
+): GooglePlayPurchaseError['kind'] {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? error.code
+      : undefined;
+  if (code === 'user-cancelled') {
+    return 'canceled';
+  }
+  if (code === 'pending' || code === 'deferred-payment') {
+    return 'pending';
+  }
+  return 'failed';
+}
+
+function isGooglePurchase(purchase: Purchase): purchase is PurchaseAndroid {
+  return purchase.store === 'google';
 }
 
 export function createGooglePlayBillingGateway(
@@ -211,8 +246,11 @@ export function createGooglePlayBillingGateway(
     const module = await requireNativeModule();
     const subscriptions: ListenerSubscription[] = [
       module.purchaseUpdatedListener(onPurchase),
-      module.purchaseErrorListener((_error: ExpoPurchaseError) => {
-        onError({ message: 'Google Play purchase failed.' });
+      module.purchaseErrorListener((error: ExpoPurchaseError) => {
+        onError({
+          kind: classifyPurchaseError(error),
+          message: 'Google Play purchase failed.',
+        });
       }),
     ];
 
@@ -229,6 +267,57 @@ export function createGooglePlayBillingGateway(
     return cleanup;
   }
 
+  async function requestSubscription(
+    productId: string,
+    offerToken: string,
+    obfuscatedAccountId: string,
+  ): Promise<void> {
+    if (!connected) {
+      throw new GooglePlayBillingNotConnectedError();
+    }
+    const module = await requireNativeModule();
+    try {
+      await module.requestPurchase({
+        request: {
+          google: {
+            skus: [productId],
+            subscriptionOffers: [{ sku: productId, offerToken }],
+            obfuscatedAccountId,
+          },
+        },
+        type: 'subs',
+      });
+    } catch (error) {
+      throw new GooglePlayPurchaseRequestError(
+        classifyPurchaseError(error),
+      );
+    }
+  }
+
+  async function getAvailableSubscriptionPurchases(): Promise<
+    PurchaseAndroid[]
+  > {
+    if (!connected) {
+      throw new GooglePlayBillingNotConnectedError();
+    }
+    const module = await requireNativeModule();
+    const purchases = await module.getAvailablePurchases({
+      includeSuspendedAndroid: false,
+    });
+    return purchases.filter(isGooglePurchase);
+  }
+
+  async function finishSubscription(purchase: PurchaseAndroid): Promise<void> {
+    if (!connected) {
+      throw new GooglePlayBillingNotConnectedError();
+    }
+    const module = await requireNativeModule();
+    await module.finishTransaction({
+      purchase,
+      isConsumable: false,
+    });
+  }
+
   return {
     isAndroid,
     getAvailability,
@@ -236,6 +325,9 @@ export function createGooglePlayBillingGateway(
     disconnect,
     querySubscriptionProducts,
     registerPurchaseListeners,
+    requestSubscription,
+    getAvailableSubscriptionPurchases,
+    finishSubscription,
   };
 }
 

@@ -34,10 +34,16 @@ function createNativeModule() {
   let errorListener: ((error: unknown) => void) | undefined;
   const purchaseRemove = jest.fn();
   const errorRemove = jest.fn();
+  const requestPurchase = jest.fn().mockResolvedValue(null);
+  const getAvailablePurchases = jest.fn().mockResolvedValue([]);
+  const finishTransaction = jest.fn().mockResolvedValue(undefined);
   const module = {
     initConnection: jest.fn().mockResolvedValue(true),
     endConnection: jest.fn().mockResolvedValue(true),
     fetchProducts: jest.fn().mockResolvedValue([]),
+    requestPurchase,
+    getAvailablePurchases,
+    finishTransaction,
     purchaseUpdatedListener: jest.fn((listener) => {
       purchaseListener = listener;
       return { remove: purchaseRemove };
@@ -52,6 +58,9 @@ function createNativeModule() {
     module,
     purchaseRemove,
     errorRemove,
+    requestPurchase,
+    getAvailablePurchases,
+    finishTransaction,
     emitPurchase: (purchase: unknown) => purchaseListener?.(purchase),
     emitError: (error: unknown) => errorListener?.(error),
   };
@@ -149,6 +158,83 @@ describe('Google Play native billing gateway', () => {
     });
   });
 
+  test('uses expo-iap subscription purchase and completion contracts', async () => {
+    const native = createNativeModule();
+    const gateway = createGooglePlayBillingGateway({
+      getPlatform: () => 'android',
+      loadModule: async () => native.module,
+    });
+    const purchase = {
+      id: 'synthetic-purchase',
+      productId: 'organizer-pro',
+      currentPlanId: 'monthly',
+      purchaseState: 'purchased',
+      purchaseToken: 'synthetic-memory-only-token',
+      isAutoRenewing: true,
+      quantity: 1,
+      store: 'google',
+      transactionDate: 1,
+    };
+    native.getAvailablePurchases.mockResolvedValue([purchase]);
+    await gateway.connect();
+
+    await gateway.requestSubscription(
+      'organizer-pro',
+      'synthetic-offer-token',
+      'backend-obfuscated-account-id',
+    );
+    const purchases = await gateway.getAvailableSubscriptionPurchases();
+    await gateway.finishSubscription(purchases[0]);
+
+    expect(native.module.requestPurchase).toHaveBeenCalledWith({
+      request: {
+        google: {
+          skus: ['organizer-pro'],
+          subscriptionOffers: [
+            {
+              sku: 'organizer-pro',
+              offerToken: 'synthetic-offer-token',
+            },
+          ],
+          obfuscatedAccountId: 'backend-obfuscated-account-id',
+        },
+      },
+      type: 'subs',
+    });
+    expect(native.module.getAvailablePurchases).toHaveBeenCalledWith({
+      includeSuspendedAndroid: false,
+    });
+    expect(native.module.finishTransaction).toHaveBeenCalledWith({
+      purchase,
+      isConsumable: false,
+    });
+  });
+
+  test('sanitizes synchronous purchase cancellation errors', async () => {
+    const native = createNativeModule();
+    native.requestPurchase.mockRejectedValue({
+      code: 'user-cancelled',
+      message: 'native diagnostic that must not escape',
+    });
+    const gateway = createGooglePlayBillingGateway({
+      getPlatform: () => 'android',
+      loadModule: async () => native.module,
+    });
+    await gateway.connect();
+
+    await expect(
+      gateway.requestSubscription(
+        'organizer-pro',
+        'synthetic-offer-token',
+        'backend-obfuscated-account-id',
+      ),
+    ).rejects.toMatchObject({
+      name: 'GooglePlayPurchaseRequestError',
+      kind: 'canceled',
+      message: 'Google Play purchase failed.',
+    });
+  });
+
   test('does not log or persist native purchase tokens or error details', async () => {
     const native = createNativeModule();
     const onPurchase = jest.fn();
@@ -171,6 +257,7 @@ describe('Google Play native billing gateway', () => {
       purchaseToken: rawToken,
     });
     expect(onError).toHaveBeenCalledWith({
+      kind: 'failed',
       message: 'Google Play purchase failed.',
     });
     expect(JSON.stringify(onError.mock.calls)).not.toContain(rawToken);
