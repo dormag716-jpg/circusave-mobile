@@ -78,6 +78,29 @@ describe('entitlements foundation', () => {
     expect(planTierFromEntitlements(premium)).toBe('premium');
   });
 
+  test('normalizeEntitlements preserves the google_play provider source', () => {
+    const premium = normalizeEntitlements({
+      plan: 'premium',
+      subscriptionStatus: 'active',
+      source: 'google_play',
+      capabilities: {},
+    });
+
+    expect(premium.source).toBe('google_play');
+  });
+
+  test('normalizeEntitlements preserves the existing Stripe provider source', () => {
+    const premium = normalizeEntitlements({
+      plan: 'premium',
+      subscriptionStatus: 'trialing',
+      source: 'stripe',
+      capabilities: {},
+    });
+
+    expect(premium.source).toBe('stripe');
+    expect(premium.subscriptionStatus).toBe('trialing');
+  });
+
   test('normalizeEntitlements fails closed on garbage', () => {
     expect(normalizeEntitlements(null).plan).toBe('free');
     expect(normalizeEntitlements({ plan: 'premium' }).plan).toBe('premium');

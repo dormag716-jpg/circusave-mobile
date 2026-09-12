@@ -20,6 +20,7 @@ export type EntitlementSource =
   | 'stripe'
   | 'apple'
   | 'google'
+  | 'google_play'
   | 'admin';
 
 export type EntitlementCapabilities = {
@@ -121,6 +122,7 @@ function asSource(value: unknown): EntitlementSource {
     'stripe',
     'apple',
     'google',
+    'google_play',
     'admin',
   ];
   return (allowed.includes(raw as EntitlementSource)
