@@ -4,6 +4,7 @@
  */
 
 import type { BackendActivity } from '@/lib/types';
+import { colors } from '@/lib/theme';
 
 export const FREE_ACTIVITY_VISIBLE_LIMIT = 10;
 export const FREE_ACTIVITY_FETCH_LIMIT = 11;
@@ -567,12 +568,12 @@ export function buildActivityReportHtml(
   @page { margin: 16mm; }
   body {
     font-family: Helvetica, Arial, sans-serif;
-    color: #0F172A;
+    color: ${colors.textStrong};
     margin: 0;
     padding: 0;
   }
   .brand {
-    color: #6B46C1;
+    color: ${colors.primary};
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 1.4px;
@@ -583,37 +584,37 @@ export function buildActivityReportHtml(
     margin: 6px 0 16px;
   }
   .meta, .note, .footer {
-    color: #64748B;
+    color: ${colors.muted};
     font-size: 12px;
   }
   .meta p { margin: 0 0 4px; }
   .chips { margin: 16px 0 20px; }
   .chip {
     display: inline-block;
-    border: 1px solid #E2E8F0;
+    border: 1px solid ${colors.cardBorder};
     border-radius: 10px;
     padding: 8px 12px;
     margin: 0 8px 8px 0;
     min-width: 110px;
   }
-  .chip span { display: block; font-size: 10px; font-weight: 700; color: #64748B; }
+  .chip span { display: block; font-size: 10px; font-weight: 700; color: ${colors.muted}; }
   .chip b { font-size: 15px; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; }
   th {
     text-align: left;
-    background: #F5F3FF;
-    color: #4C1D95;
+    background: ${colors.primarySoft};
+    color: ${colors.primaryDark};
     padding: 8px;
   }
   td {
-    border-bottom: 1px solid #E2E8F0;
+    border-bottom: 1px solid ${colors.cardBorder};
     padding: 8px;
     vertical-align: top;
   }
   .note { margin-top: 18px; }
   .footer {
     margin-top: 24px;
-    border-top: 1px solid #E2E8F0;
+    border-top: 1px solid ${colors.cardBorder};
     padding-top: 8px;
     font-size: 10px;
   }
