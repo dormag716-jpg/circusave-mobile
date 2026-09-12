@@ -42,6 +42,10 @@ export type GooglePlayPlan = {
   displayPrice: string;
   currency: string;
   billingPeriod: string | null;
+  trial: {
+    billingPeriod: string;
+    displayPrice: string;
+  } | null;
   pricingPhases: GooglePlayPricingPhase[];
 };
 
@@ -73,7 +77,11 @@ export type GooglePlayBillingState =
   | { status: 'disabled' }
   | { status: 'connecting' }
   | { status: 'loading_products' }
-  | { status: 'ready'; plans: Record<GooglePlayPlanKey, GooglePlayPlan> }
+  | {
+      status: 'ready';
+      plans: Record<GooglePlayPlanKey, GooglePlayPlan>;
+      outcome?: 'canceled';
+    }
   | { status: 'purchasing'; plan: GooglePlayPlanKey }
   | { status: 'pending'; plan: GooglePlayPlanKey }
   | { status: 'verifying'; plan: GooglePlayPlanKey }
@@ -236,11 +244,19 @@ function matchPlan(
   if (!offerToken) {
     return null;
   }
-  const pricingPhases =
-    offer.pricingPhasesAndroid?.pricingPhaseList.map(copyPricingPhase) ?? [];
+  const rawPricingPhases =
+    offer.pricingPhasesAndroid?.pricingPhaseList ?? [];
+  const pricingPhases = rawPricingPhases.map(copyPricingPhase);
   const recurringPhase =
     pricingPhases.find((phase) => phase.recurrenceMode === 1) ??
     pricingPhases.at(-1);
+  const trialPhase = isFreeTrialOffer(offer)
+    ? rawPricingPhases.find(
+        (phase) =>
+          phase.billingCycleCount > 0 &&
+          Number.parseInt(phase.priceAmountMicros, 10) === 0,
+      )
+    : undefined;
 
   return {
     offerToken,
@@ -255,6 +271,12 @@ function matchPlan(
       currency:
         recurringPhase?.priceCurrencyCode ?? offer.currency ?? product.currency,
       billingPeriod: recurringPhase?.billingPeriod ?? null,
+      trial: trialPhase
+        ? {
+            billingPeriod: trialPhase.billingPeriod,
+            displayPrice: trialPhase.formattedPrice,
+          }
+        : null,
       pricingPhases,
     },
   };
@@ -537,7 +559,11 @@ export function createGooglePlayBillingMachine(
     if (error.kind === 'canceled') {
       activeOperation = null;
       activePlan = null;
-      transition({ status: 'ready', plans: publicPlans() });
+      transition({
+        status: 'ready',
+        plans: publicPlans(),
+        outcome: 'canceled',
+      });
       return;
     }
     activeOperation = null;

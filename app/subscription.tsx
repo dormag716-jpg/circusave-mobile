@@ -1,10 +1,11 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as WebBrowser from 'expo-web-browser';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,6 +26,16 @@ import {
 import { APP_SCHEME } from '@/lib/config';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
+import {
+  createGooglePlayBillingMachine,
+  type GooglePlayBillingState,
+  type GooglePlayPlan,
+} from '@/lib/googlePlayBillingMachine';
+import {
+  getAndroidApplicationPackage,
+  openGooglePlaySubscriptionManagement,
+} from '@/lib/googlePlaySubscriptionManagement';
+import { logClientWarning } from '@/lib/errorLogging';
 import {
   checkoutReturnStatusFromUrl,
   pollForPremiumActivation,
@@ -63,13 +74,16 @@ type CheckoutReturnState =
   | 'pending'
   | 'canceled';
 
+let googlePlayBillingLifecycle = Promise.resolve();
+
 export default function SubscriptionScreen() {
   const { t, i18n } = useTranslation(['subscription', 'common']);
   const language = i18n.resolvedLanguage || i18n.language;
   const params = useLocalSearchParams<{ checkout?: string | string[] }>();
-  const { session } = useAuthSession();
+  const { session, status: authStatus } = useAuthSession();
   const { entitlements, isPremium, refreshEntitlements } = useEntitlements();
   const token = session?.session.token;
+  const isAndroid = Platform.OS === 'android';
   const [premium, setPremium] = useState<BillingPlan>(fallbackPremium);
   const [interval, setInterval] = useState<BillingInterval>('annual');
   const [loading, setLoading] = useState(true);
@@ -79,8 +93,22 @@ export default function SubscriptionScreen() {
   const [checkoutReturnState, setCheckoutReturnState] =
     useState<CheckoutReturnState>('idle');
   const handledCheckoutReturn = useRef<CheckoutReturnStatus | null>(null);
+  const [playState, setPlayState] = useState<GooglePlayBillingState>({
+    status: 'idle',
+  });
+  const [playPlans, setPlayPlans] = useState<
+    Record<BillingInterval, GooglePlayPlan> | null
+  >(null);
+  const playMachine = useRef<
+    ReturnType<typeof createGooglePlayBillingMachine> | null
+  >(null);
+  const playOperationLocked = useRef(false);
 
   useEffect(() => {
+    if (isAndroid) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     void getBillingPlans()
       .then((response) => {
@@ -94,7 +122,71 @@ export default function SubscriptionScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAndroid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (
+        !isAndroid ||
+        isPremium ||
+        authStatus !== 'authenticated' ||
+        !token
+      ) {
+        return undefined;
+      }
+      let active = true;
+      let machine: ReturnType<typeof createGooglePlayBillingMachine> | null =
+        null;
+      let unsubscribe: () => void = () => {};
+      void googlePlayBillingLifecycle.then(() => {
+        if (!active) return;
+        machine = createGooglePlayBillingMachine({
+          authToken: token,
+          api: { refreshEntitlements: () => refreshEntitlements() },
+        });
+        playMachine.current = machine;
+        unsubscribe = machine.subscribe((next) => {
+          if (!active) return;
+          setPlayState(next);
+          if (next.status === 'ready') {
+            setPlayPlans(next.plans);
+          }
+          if (
+            next.status === 'ready' ||
+            next.status === 'disabled' ||
+            next.status === 'unsupported' ||
+            next.status === 'succeeded' ||
+            next.status === 'failed'
+          ) {
+            playOperationLocked.current = false;
+          }
+        });
+        void machine.initialize().catch(() => {
+          logClientWarning(
+            'Google Play billing initialization failed.',
+            new Error('Google Play billing initialization failed.'),
+          );
+        });
+      });
+
+      return () => {
+        active = false;
+        unsubscribe();
+        if (playMachine.current === machine) {
+          playMachine.current = null;
+        }
+        playOperationLocked.current = false;
+        if (machine) {
+          googlePlayBillingLifecycle = machine.dispose().catch(() => {
+            logClientWarning(
+              'Google Play billing cleanup failed.',
+              new Error('Google Play billing cleanup failed.'),
+            );
+          });
+        }
+      };
+    }, [authStatus, isAndroid, isPremium, refreshEntitlements, token]),
+  );
 
   const selectedPrice =
     interval === 'annual'
@@ -108,6 +200,80 @@ export default function SubscriptionScreen() {
       ((fullAnnual - premium.annualPriceCents) / fullAnnual) * 100,
     );
   }, [premium]);
+  const selectedPlayPlan = playPlans?.[interval] ?? null;
+  const playBusy = [
+    'connecting',
+    'loading_products',
+    'purchasing',
+    'pending',
+    'verifying',
+    'restoring',
+  ].includes(playState.status);
+  const playCanPurchase =
+    playState.status === 'ready' && selectedPlayPlan !== null && !isPremium;
+  const playCanRestore =
+    playPlans !== null &&
+    !playBusy &&
+    (playState.status === 'ready' ||
+      playState.status === 'succeeded' ||
+      playState.status === 'failed');
+  const isGooglePlayEntitlement =
+    isAndroid && entitlements.source === 'google_play';
+  const usesStripeManagement =
+    entitlements.source === 'stripe' || !entitlements.source;
+
+  function formatPlayPeriod(period: string | null): string {
+    if (!period) return '';
+    const match = /^P(\d+)([DWMY])$/.exec(period);
+    if (!match) return period;
+    const count = Number(match[1]);
+    const units = {
+      D: count === 1 ? 'periodDay' : 'periodDays',
+      W: count === 1 ? 'periodWeek' : 'periodWeeks',
+      M: count === 1 ? 'periodMonth' : 'periodMonths',
+      Y: count === 1 ? 'periodYear' : 'periodYears',
+    } as const;
+    return t(units[match[2] as keyof typeof units], { count });
+  }
+
+  async function startGooglePlayPurchase() {
+    if (!playCanPurchase || playOperationLocked.current || !playMachine.current) {
+      return;
+    }
+    playOperationLocked.current = true;
+    try {
+      await playMachine.current.purchase(interval);
+    } catch {
+      playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
+
+  async function restoreGooglePlayPurchases() {
+    if (!playCanRestore || playOperationLocked.current || !playMachine.current) {
+      return;
+    }
+    playOperationLocked.current = true;
+    try {
+      await playMachine.current.restore();
+    } catch {
+      playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
+
+  async function retryGooglePlayCompletion() {
+    if (playOperationLocked.current || !playMachine.current) {
+      return;
+    }
+    playOperationLocked.current = true;
+    try {
+      await playMachine.current.retryCompletion();
+    } catch {
+      playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
 
   const handleCheckoutReturn = useCallback(
     async (status: CheckoutReturnStatus) => {
@@ -194,6 +360,22 @@ export default function SubscriptionScreen() {
     }
   }
 
+  async function openGooglePlayManagement() {
+    setAction('portal');
+    try {
+      const packageName = getAndroidApplicationPackage();
+      if (!packageName) {
+        throw new Error('Google Play subscription management is unavailable.');
+      }
+      await openGooglePlaySubscriptionManagement(packageName, undefined);
+      await refreshEntitlements();
+    } catch {
+      Alert.alert(t('billingUnavailable'), t('playManagementUnavailable'));
+    } finally {
+      setAction(null);
+    }
+  }
+
   function confirmCancellation() {
     if (!token) return;
     Alert.alert(
@@ -226,6 +408,101 @@ export default function SubscriptionScreen() {
       ],
     );
   }
+
+  const playStatusMessage = (() => {
+    if (!isAndroid || isPremium) return null;
+    if (playState.status === 'disabled') {
+      return {
+        title: t('playComingSoon'),
+        body: t('playComingSoonBody'),
+        tone: 'neutral' as const,
+      };
+    }
+    if (playState.status === 'unsupported') {
+      return {
+        title: t('playUnavailableTitle'),
+        body: t('playUnavailableBody'),
+        tone: 'error' as const,
+      };
+    }
+    if (
+      playState.status === 'connecting' ||
+      playState.status === 'loading_products'
+    ) {
+      return {
+        title: t('playLoadingTitle'),
+        body: t('playLoadingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'purchasing') {
+      return {
+        title: t('playPurchasingTitle'),
+        body: t('playPurchasingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'pending') {
+      return {
+        title: t('playPendingTitle'),
+        body: t('playPendingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'verifying') {
+      return {
+        title: t('playVerifyingTitle'),
+        body: t('playVerifyingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'restoring') {
+      return {
+        title: t('playRestoringTitle'),
+        body: t('playRestoringBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'succeeded') {
+      const noPurchases =
+        playState.operation === 'restore' &&
+        playState.restore?.eligible === 0;
+      return {
+        title: noPurchases
+          ? t('playRestoreNoneTitle')
+          : playState.operation === 'restore'
+            ? t('playRestoreSucceededTitle')
+            : t('playSucceededTitle'),
+        body: noPurchases
+          ? t('playRestoreNoneBody')
+          : playState.operation === 'restore'
+            ? t('playRestoreSucceededBody')
+            : t('playSucceededBody'),
+        tone: 'success' as const,
+      };
+    }
+    if (playState.status === 'failed') {
+      return {
+        title:
+          playState.code === 'transaction_completion_failed'
+            ? t('playCompletionPendingTitle')
+            : t('playUnavailableTitle'),
+        body:
+          playState.code === 'transaction_completion_failed'
+            ? t('playCompletionPendingBody')
+            : t('playUnavailableBody'),
+        tone: 'error' as const,
+      };
+    }
+    if (playState.status === 'ready' && playState.outcome === 'canceled') {
+      return {
+        title: t('playCanceledTitle'),
+        body: t('playCanceledBody'),
+        tone: 'neutral' as const,
+      };
+    }
+    return null;
+  })();
 
   return (
     <View style={styles.screen}>
@@ -272,13 +549,25 @@ export default function SubscriptionScreen() {
                 </Text>
               </View>
             ) : (
-              <Text style={styles.trialCopy}>
-                {t('trialCopy', { days: premium.trialDays })}
-              </Text>
+              <>
+                {!isAndroid ? (
+                  <Text style={styles.trialCopy}>
+                    {t('trialCopy', { days: premium.trialDays })}
+                  </Text>
+                ) : selectedPlayPlan?.trial ? (
+                  <Text style={styles.trialCopy}>
+                    {t('playTrialCopy', {
+                      period: formatPlayPeriod(
+                        selectedPlayPlan.trial.billingPeriod,
+                      ),
+                    })}
+                  </Text>
+                ) : null}
+              </>
             )}
           </Animated.View>
 
-          {checkoutReturnState !== 'idle' ? (
+          {!isAndroid && checkoutReturnState !== 'idle' ? (
             <View
               style={[
                 styles.checkoutStatus,
@@ -322,6 +611,46 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
+          {playStatusMessage ? (
+            <View
+              style={[
+                styles.checkoutStatus,
+                playStatusMessage.tone === 'pending' &&
+                  styles.checkoutStatusPending,
+                playStatusMessage.tone === 'neutral' &&
+                  styles.checkoutStatusCanceled,
+                playStatusMessage.tone === 'error' && styles.playStatusError,
+              ]}
+              accessibilityLiveRegion="polite"
+            >
+              {playStatusMessage.tone === 'pending' ? (
+                <ActivityIndicator color={colors.primaryDark} />
+              ) : (
+                <FontAwesome
+                  name={
+                    playStatusMessage.tone === 'success'
+                      ? 'check-circle'
+                      : 'info-circle'
+                  }
+                  size={17}
+                  color={
+                    playStatusMessage.tone === 'error'
+                      ? colors.dangerText
+                      : colors.primaryDark
+                  }
+                />
+              )}
+              <View style={styles.checkoutStatusText}>
+                <Text style={styles.checkoutStatusTitle}>
+                  {playStatusMessage.title}
+                </Text>
+                <Text style={styles.checkoutStatusBody}>
+                  {playStatusMessage.body}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           {!isPremium ? (
             <Animated.View
               entering={FadeInDown.delay(100).springify()}
@@ -330,12 +659,18 @@ export default function SubscriptionScreen() {
               <IntervalButton
                 active={interval === 'monthly'}
                 label={t('monthly')}
+                disabled={isAndroid && (!playPlans || playBusy)}
                 onPress={() => setInterval('monthly')}
               />
               <IntervalButton
                 active={interval === 'annual'}
                 label={t('annual')}
-                badge={t('saveBadge', { percent: savingsPercent })}
+                badge={
+                  isAndroid
+                    ? undefined
+                    : t('saveBadge', { percent: savingsPercent })
+                }
+                disabled={isAndroid && (!playPlans || playBusy)}
                 onPress={() => setInterval('annual')}
               />
             </Animated.View>
@@ -347,8 +682,16 @@ export default function SubscriptionScreen() {
           >
             <View style={styles.priceHeader}>
               <View>
-                <Text style={styles.planName}>{t('productName')}</Text>
-                <Text style={styles.planAudience}>{t('audience')}</Text>
+                <Text style={styles.planName}>
+                  {isAndroid && selectedPlayPlan
+                    ? selectedPlayPlan.title
+                    : t('productName')}
+                </Text>
+                <Text style={styles.planAudience}>
+                  {isAndroid && selectedPlayPlan
+                    ? selectedPlayPlan.description
+                    : t('audience')}
+                </Text>
               </View>
               <View style={styles.recommendedBadge}>
                 <FontAwesome name="star" size={10} color={colors.primaryDark} />
@@ -359,28 +702,60 @@ export default function SubscriptionScreen() {
             </View>
 
             {!isPremium ? (
-              <View style={styles.priceRow}>
-                <Text style={styles.price}>
-                  {formatCurrency(selectedPrice / 100, language, 'USD', 2)}
-                </Text>
-                <View style={styles.priceMeta}>
-                  <Text style={styles.pricePeriod}>
-                    {interval === 'annual' ? t('perYear') : t('perMonth')}
-                  </Text>
-                  {interval === 'annual' ? (
-                    <Text style={styles.equivalent}>
-                      {t('monthlyEquivalent', {
-                        amount: formatCurrency(
-                          annualMonthlyEquivalent / 100,
-                          language,
-                          'USD',
-                          2,
-                        ),
-                      })}
+              isAndroid ? (
+                selectedPlayPlan ? (
+                  <View style={styles.priceRow}>
+                    <Text style={styles.playPrice}>
+                      {selectedPlayPlan.displayPrice}
                     </Text>
-                  ) : null}
+                    {selectedPlayPlan.billingPeriod ? (
+                      <View style={styles.priceMeta}>
+                        <Text style={styles.pricePeriod}>
+                          {t('playBillingPeriod', {
+                            period: formatPlayPeriod(
+                              selectedPlayPlan.billingPeriod,
+                            ),
+                          })}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={styles.playPricePlaceholder}>
+                    {playBusy ? (
+                      <ActivityIndicator color={colors.primaryDark} />
+                    ) : null}
+                    <Text style={styles.playPricePlaceholderText}>
+                      {playState.status === 'disabled'
+                        ? t('playComingSoon')
+                        : t('playUnavailableBody')}
+                    </Text>
+                  </View>
+                )
+              ) : (
+                <View style={styles.priceRow}>
+                  <Text style={styles.price}>
+                    {formatCurrency(selectedPrice / 100, language, 'USD', 2)}
+                  </Text>
+                  <View style={styles.priceMeta}>
+                    <Text style={styles.pricePeriod}>
+                      {interval === 'annual' ? t('perYear') : t('perMonth')}
+                    </Text>
+                    {interval === 'annual' ? (
+                      <Text style={styles.equivalent}>
+                        {t('monthlyEquivalent', {
+                          amount: formatCurrency(
+                            annualMonthlyEquivalent / 100,
+                            language,
+                            'USD',
+                            2,
+                          ),
+                        })}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
+              )
             ) : (
               <View style={styles.activeSummary}>
                 <Text style={styles.activeSummaryTitle}>
@@ -422,35 +797,141 @@ export default function SubscriptionScreen() {
 
             {isPremium ? (
               <>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    pressed && styles.buttonPressed,
-                  ]}
-                  onPress={() => void openPortal()}
-                  disabled={action !== null}
-                >
-                  {action === 'portal' ? (
-                    <ActivityIndicator color={colors.onColor} />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryButtonText}>{t('manageBilling')}</Text>
-                      <FontAwesome
-                        name="external-link"
-                        size={14}
-                        color={colors.onColor}
-                      />
-                    </>
-                  )}
-                </Pressable>
-                {!entitlements.cancelAtPeriodEnd ? (
+                {isGooglePlayEntitlement ? (
                   <Pressable
-                    style={styles.cancelButton}
-                    onPress={confirmCancellation}
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      pressed && styles.buttonPressed,
+                    ]}
+                    onPress={() => void openGooglePlayManagement()}
                     disabled={action !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('playManageSubscription')}
+                    accessibilityState={{ disabled: action !== null }}
                   >
-                    <Text style={styles.cancelButtonText}>
-                      {t('cancelRenewal')}
+                    {action === 'portal' ? (
+                      <ActivityIndicator color={colors.onColor} />
+                    ) : (
+                      <>
+                        <Text style={styles.primaryButtonText}>
+                          {t('playManageSubscription')}
+                        </Text>
+                        <FontAwesome
+                          name="external-link"
+                          size={14}
+                          color={colors.onColor}
+                        />
+                      </>
+                    )}
+                  </Pressable>
+                ) : usesStripeManagement ? (
+                  <>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.primaryButton,
+                        pressed && styles.buttonPressed,
+                      ]}
+                      onPress={() => void openPortal()}
+                      disabled={action !== null}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('manageBilling')}
+                      accessibilityState={{ disabled: action !== null }}
+                    >
+                      {action === 'portal' ? (
+                        <ActivityIndicator color={colors.onColor} />
+                      ) : (
+                        <>
+                          <Text style={styles.primaryButtonText}>
+                            {t('manageBilling')}
+                          </Text>
+                          <FontAwesome
+                            name="external-link"
+                            size={14}
+                            color={colors.onColor}
+                          />
+                        </>
+                      )}
+                    </Pressable>
+                    {!entitlements.cancelAtPeriodEnd ? (
+                      <Pressable
+                        style={styles.cancelButton}
+                        onPress={confirmCancellation}
+                        disabled={action !== null}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('cancelRenewal')}
+                        accessibilityState={{ disabled: action !== null }}
+                      >
+                        <Text style={styles.cancelButtonText}>
+                          {t('cancelRenewal')}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.managementUnavailable}>
+                    {t('playManagementUnavailable')}
+                  </Text>
+                )}
+              </>
+            ) : isAndroid ? (
+              <>
+                {playPlans ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      (!playCanPurchase || playBusy) && styles.buttonDisabled,
+                      pressed && playCanPurchase && styles.buttonPressed,
+                    ]}
+                    onPress={() => void startGooglePlayPurchase()}
+                    disabled={!playCanPurchase || playBusy}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      selectedPlayPlan?.trial
+                        ? t('playPurchaseTrial')
+                        : t('playPurchase')
+                    }
+                    accessibilityState={{
+                      disabled: !playCanPurchase || playBusy,
+                    }}
+                  >
+                    {playBusy && playState.status !== 'pending' ? (
+                      <ActivityIndicator color={colors.onColor} />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>
+                        {selectedPlayPlan?.trial
+                          ? t('playPurchaseTrial')
+                          : t('playPurchase')}
+                      </Text>
+                    )}
+                  </Pressable>
+                ) : null}
+                {playPlans ? (
+                  <Pressable
+                    style={[
+                      styles.restoreButton,
+                      !playCanRestore && styles.buttonDisabled,
+                    ]}
+                    onPress={() => void restoreGooglePlayPurchases()}
+                    disabled={!playCanRestore}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('playRestore')}
+                    accessibilityState={{ disabled: !playCanRestore }}
+                  >
+                    <Text style={styles.restoreButtonText}>
+                      {t('playRestore')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {playState.status === 'failed' &&
+                playState.code === 'transaction_completion_failed' ? (
+                  <Pressable
+                    style={styles.restoreButton}
+                    onPress={() => void retryGooglePlayCompletion()}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('playRetryCompletion')}
+                  >
+                    <Text style={styles.restoreButtonText}>
+                      {t('playRetryCompletion')}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -497,7 +978,9 @@ export default function SubscriptionScreen() {
             </Animated.View>
           ) : null}
 
-          <Text style={styles.footer}>{t('footer')}</Text>
+          <Text style={styles.footer}>
+            {isAndroid ? t('playFooter') : t('footer')}
+          </Text>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -508,17 +991,26 @@ function IntervalButton({
   active,
   label,
   badge,
+  disabled = false,
   onPress,
 }: {
   active: boolean;
   label: string;
   badge?: string;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.intervalButton, active && styles.intervalButtonActive]}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active, disabled }}
+      style={[
+        styles.intervalButton,
+        active && styles.intervalButtonActive,
+        disabled && styles.buttonDisabled,
+      ]}
     >
       <Text
         style={[styles.intervalText, active && styles.intervalTextActive]}
@@ -662,6 +1154,10 @@ const styles = StyleSheet.create({
   checkoutStatusCanceled: {
     backgroundColor: colors.card,
   },
+  playStatusError: {
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
+  },
   checkoutStatusText: { flex: 1 },
   checkoutStatusTitle: {
     color: colors.primaryDark,
@@ -755,6 +1251,27 @@ const styles = StyleSheet.create({
     letterSpacing: -2,
     color: colors.textStrong,
   },
+  playPrice: {
+    flexShrink: 1,
+    fontSize: 42,
+    lineHeight: 50,
+    fontWeight: '900',
+    letterSpacing: -1.5,
+    color: colors.textStrong,
+  },
+  playPricePlaceholder: {
+    minHeight: 72,
+    marginTop: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  playPricePlaceholderText: {
+    flex: 1,
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
   priceMeta: { marginLeft: 7, marginTop: 16 },
   pricePeriod: { color: colors.muted, fontWeight: '700', fontSize: 12 },
   equivalent: {
@@ -813,6 +1330,7 @@ const styles = StyleSheet.create({
     gap: 10,
     ...shadows.small,
   },
+  buttonDisabled: { opacity: 0.5 },
   buttonPressed: { opacity: 0.88, transform: [{ scale: 0.99 }] },
   primaryButtonText: {
     color: colors.onColor,
@@ -821,6 +1339,27 @@ const styles = StyleSheet.create({
   },
   cancelButton: { alignItems: 'center', paddingVertical: 14 },
   cancelButtonText: { color: colors.danger, fontWeight: '700', fontSize: 13 },
+  restoreButton: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  restoreButtonText: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  managementUnavailable: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
   freeCard: {
     flexDirection: 'row',
     gap: 13,

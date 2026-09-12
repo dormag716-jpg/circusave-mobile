@@ -16,6 +16,15 @@ jest.mock('expo-localization', () => ({
   getLocales: () => [{ languageTag: 'en-US' }],
 }));
 
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      android: { package: 'com.circusave.mobile' },
+    },
+  },
+}));
+
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(async () => null),
   setItemAsync: jest.fn(async () => undefined),
@@ -24,6 +33,7 @@ jest.mock('expo-secure-store', () => ({
 let mockIsPremium = false;
 let mockEntitlements = {
   subscriptionStatus: 'inactive',
+  source: 'stripe',
   currentPeriodEnd: null as string | null,
   cancelAtPeriodEnd: false,
   capabilities: {
@@ -61,6 +71,11 @@ jest.mock('react-native', () => {
   return {
     ActivityIndicator: host('ActivityIndicator'),
     Alert: { alert: mockAlert },
+    Linking: {
+      canOpenURL: jest.fn(async () => true),
+      openURL: jest.fn(async () => undefined),
+    },
+    Platform: { OS: 'ios' },
     Pressable: host('Pressable'),
     ScrollView: host('ScrollView'),
     StyleSheet: { create: (styles: unknown) => styles },
@@ -111,6 +126,7 @@ jest.mock('react-native-reanimated', () => {
 
 jest.mock('expo-router', () => ({
   router: { back: jest.fn() },
+  useFocusEffect: jest.fn(),
   useLocalSearchParams: () => ({ checkout: mockCheckoutParam }),
 }));
 
@@ -123,6 +139,7 @@ jest.mock('expo-web-browser', () => ({
 jest.mock('../authContext', () => ({
   useAuthSession: () => ({
     session: { session: { token: 'token' } },
+    status: 'authenticated',
   }),
 }));
 
@@ -224,6 +241,7 @@ beforeEach(() => {
   mockIsPremium = false;
   mockEntitlements = {
     subscriptionStatus: 'inactive',
+    source: 'stripe',
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
     capabilities: {
