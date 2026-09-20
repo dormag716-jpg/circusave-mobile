@@ -115,11 +115,12 @@ describe('Phase 1 financial invariants', () => {
     );
   });
 
-  test('Mark as sent and Stripe stay on separate rails', () => {
+  test('Mark as sent remains the only contribution payment rail', () => {
     expect(workspaceSource).not.toMatch(/createPaymentIntent|runStripeContributionPayment/);
-    expect(contributionSource).toContain('runStripeContributionPayment');
-    expect(contributionSource).toContain('createPaymentIntent');
-    expect(stripeSource).toContain('export async function runStripeContributionPayment');
+    expect(contributionSource).not.toContain('runStripeContributionPayment');
+    expect(contributionSource).not.toContain('createPaymentIntent');
+    expect(contributionSource).toContain('buildManualContributionSubmitPayload');
+    expect(stripeSource).not.toContain('export async function runStripeContributionPayment');
     expect(stripeSource).toContain('class PaymentSessionLock');
   });
 

@@ -64,7 +64,6 @@ import {
   type MemberAgreementPrompt,
 } from '@/lib/circleAgreements';
 import { PaymentDestinationList } from '@/components/PaymentDestinationList';
-import { ContributionCapabilityGate } from '@/components/ContributionCapabilityGate';
 import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
@@ -518,9 +517,6 @@ function WorkspaceContent({
 }) {
   const { hasCapability } = useEntitlements();
   const canExportAdvancedReports = hasCapability('advancedReports');
-  const contributionPaymentsEnabled = hasCapability(
-    'contributionPaymentsEnabled',
-  );
   const isOrganizer = circle.userRole === 'organizer';
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
@@ -1590,7 +1586,6 @@ function WorkspaceContent({
               displayRoundStatus={displayRoundStatus}
               dueDate={dueDate}
               memberCanSubmitContribution={memberCanSubmitContribution}
-              contributionPaymentsEnabled={contributionPaymentsEnabled}
               onApprove={promptConfirmReceived}
               onMarkPaid={promptRecordPaid}
               onReject={(member, reason, reasonCode) =>
@@ -1839,9 +1834,7 @@ function MemberContributionCard({
   currentRoundNumber,
   language,
   memberCanSubmitContribution,
-  contributionPaymentsEnabled,
   onMarkAsSent,
-  onPayInApp,
   payoutPosition,
   submittingHandId,
 }: {
@@ -1849,9 +1842,7 @@ function MemberContributionCard({
   currentRoundNumber?: number;
   language: string;
   memberCanSubmitContribution: boolean;
-  contributionPaymentsEnabled: boolean;
   onMarkAsSent: (handId: string) => void;
-  onPayInApp: (handId: string) => void;
   payoutPosition?: number | null;
   submittingHandId: string | null;
 }) {
@@ -1979,34 +1970,6 @@ function MemberContributionCard({
                 </Pressable>
               ) : null}
             </View>
-            <ContributionCapabilityGate
-              enabled={
-                memberCanSubmitContribution &&
-                contributionPaymentsEnabled &&
-                hand.presentation.canReportPayment &&
-                card.reportableHandCount <= 1
-              }
-            >
-              <Pressable
-                style={styles.memberHandTextAction}
-                disabled={submittingHandId != null}
-                onPress={() => onPayInApp(hand.handId)}
-                accessibilityRole="button"
-                accessibilityLabel={contributionCopy(
-                  t,
-                  'workspace.payInCircusaveA11y',
-                  {
-                    hand: contributionCopy(t, 'workspace.handLabel', {
-                      number: hand.handNumber,
-                    }),
-                  },
-                )}
-              >
-                <Text style={styles.memberHandTextActionLabel}>
-                  {contributionCopy(t, 'workspace.payInCircusave')}
-                </Text>
-              </Pressable>
-            </ContributionCapabilityGate>
           </View>
         </View>
       ))}
@@ -2112,7 +2075,6 @@ function RoundTab({
   dueDate,
   processingMemberId,
   memberCanSubmitContribution,
-  contributionPaymentsEnabled,
   onApprove,
   onMarkPaid,
   onReject,
@@ -2150,7 +2112,6 @@ function RoundTab({
   dueDate?: string | null;
   processingMemberId: string | null;
   memberCanSubmitContribution: boolean;
-  contributionPaymentsEnabled: boolean;
   onApprove: (member: BackendCircleMember) => void;
   onMarkPaid: (member: BackendCircleMember) => void;
   onReject: (
@@ -2708,11 +2669,7 @@ function RoundTab({
           currentRoundNumber={currentRoundNumber}
           language={language}
           memberCanSubmitContribution={memberCanSubmitContribution}
-          contributionPaymentsEnabled={contributionPaymentsEnabled}
           onMarkAsSent={onMarkContributionSent}
-          onPayInApp={(handId) =>
-            router.push(contributionHref(circle.id, handId))
-          }
           payoutPosition={viewerPayoutPosition}
           submittingHandId={processingMemberId}
         />

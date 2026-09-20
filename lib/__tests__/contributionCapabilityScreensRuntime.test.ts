@@ -57,12 +57,6 @@ jest.mock('expo-constants', () => ({
   default: { appOwnership: 'standalone' },
 }));
 
-jest.mock('@stripe/stripe-react-native', () => ({
-  useFinancialConnectionsSheet: () => ({
-    collectFinancialConnectionsAccounts: jest.fn(),
-  }),
-}));
-
 jest.mock('expo-web-browser', () => ({
   openBrowserAsync: jest.fn(),
   WebBrowserPresentationStyle: { PAGE_SHEET: 'pageSheet' },
@@ -226,7 +220,7 @@ afterEach(() => {
   renderers = [];
 });
 
-test('settings hides contribution Stripe controls but keeps preferences and Premium navigation', async () => {
+test('settings hides contribution payment controls but keeps preferences and Premium navigation', async () => {
   const renderer = await render(React.createElement(SettingsScreen));
   const text = visibleText(renderer);
 
@@ -262,7 +256,10 @@ test('disabled contribution capability does not alter mounted Premium subscripti
   const text = visibleText(renderer);
 
   expect(text).toContain('active');
-  expect(text).toContain('manageBilling');
-  expect(text).toContain('cancelRenewal');
+  expect(text).toContain('productName');
+  expect(text).toContain('yourPlan');
+  expect(text).toContain('subscriptionReady');
+  expect(text).toContain('iosFooter');
   expect(text).not.toContain('rails.contributionPaymentsDisabledBody');
+  expect(text).not.toContain('Connect with Stripe');
 });

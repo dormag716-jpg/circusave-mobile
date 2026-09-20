@@ -212,7 +212,7 @@ describe('runMoneyMutation inspect-and-reload', () => {
     expect(workspace).toContain('executeLockedPayoutRelease');
     expect(contribution).toContain('runMoneyMutation');
     expect(contribution).toContain("goal: 'submitted'");
-    expect(contribution).toContain('runStripeContributionPayment');
+    expect(contribution).not.toContain('runStripeContributionPayment');
     expect(agreementReview).toContain('runMoneyMutation');
     expect(agreementReview).toContain("goal: 'started'");
     expect(workspace).not.toMatch(/message\.includes\(/);

@@ -1,97 +1,26 @@
 /**
- * Stripe contribution payment orchestration (client presentation only).
- *
- * Settlement authority remains the backend webhook. PaymentSheet success means
- * the payment was submitted — not that the contribution is confirmed.
- *
- * Process-death recovery (backend contract, no client-secret persistence):
- * POST /wallet/stripe/payment-intent reuses the open PaymentIntent for the same
- * obligation_key when Stripe status is still active and returns `{ reused: true,
- * paymentIntentId, clientSecret, handId }`. Reopening the same hand after
- * process death calls the same endpoint; the backend returns that PI.
- * A succeeded or non-reusable obligation returns HTTP 409; the client reloads
- * hand status and never marks confirmed until the schedule says `confirmed`.
- * 409 + non-confirmed schedule is pending_settlement, not a false failure.
- * Client secrets, card data, and Stripe payloads are never written to storage.
+ * Contribution payment session helpers (client presentation only).
+ * Manual mark-as-sent does not confirm a contribution. Settlement authority
+ * remains the backend.
  */
 
-import { STRIPE_RETURN_URL } from './config';
-import { ApiError } from './networkErrors';
-
-function paymentErrorCopy(key: string, fallback: string): string {
-  try {
-    const { i18n } = require('./i18n') as typeof import('./i18n');
-    if (!i18n.isInitialized) return fallback;
-    const value = i18n.t(`financialErrors:${key}`);
-    return typeof value === 'string' &&
-      value.trim() &&
-      value !== `financialErrors:${key}`
-      ? value
-      : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export type PaymentIntentCreateResult = {
-  clientSecret: string;
-  paymentIntentId: string;
-  memberId?: string;
-  handId?: string;
-  reused?: boolean;
-};
-
-export type PaymentSheetInitResult = { error?: { code?: string; message?: string } | null };
-export type PaymentSheetPresentResult = {
-  error?: { code?: string; message?: string } | null;
-};
-
-export type StripeContributionPaymentDeps = {
-  createPaymentIntent: (
-    token: string,
-    circleId: string,
-    roundNumber: number,
-    memberId: string,
-  ) => Promise<PaymentIntentCreateResult>;
-  initPaymentSheet: (params: {
-    paymentIntentClientSecret: string;
-    merchantDisplayName: string;
-    returnURL: string;
-  }) => Promise<PaymentSheetInitResult>;
-  presentPaymentSheet: () => Promise<PaymentSheetPresentResult>;
-  /** Returns normalized lowercase contribution status for the selected hand. */
-  loadHandStatus: (handId: string) => Promise<string>;
-  sleep?: (ms: number) => Promise<void>;
-  pollIntervalMs?: number;
-  pollMaxAttempts?: number;
-};
-
-export type StripeContributionPaymentInput = {
-  token: string;
-  circleId: string;
-  roundNumber: number;
-  /** Membership / hand id frozen at payment start. */
-  handId: string;
-  contributionPaymentsEnabled?: unknown;
-};
-
-export type StripeContributionPaymentOutcome =
-  | { kind: 'disabled' }
-  | { kind: 'canceled' }
-  | { kind: 'confirmed'; handId: string }
-  | { kind: 'pending_settlement'; handId: string }
-  | { kind: 'error'; message: string; handId: string };
+export type ContributionPayLockOutcomeKind =
+  | 'disabled'
+  | 'canceled'
+  | 'confirmed'
+  | 'pending_settlement'
+  | 'error';
 
 export type ContributionSettlementPhase = null | 'confirming' | 'pending';
 
-/** PaymentSheet success that has not webhook-confirmed must keep the pay lock. */
+/** Hold the pay lock only while settlement is still pending. */
 export function shouldHoldPaymentLockAfterOutcome(
-  kind: StripeContributionPaymentOutcome['kind'],
+  kind: ContributionPayLockOutcomeKind,
 ): boolean {
   return kind === 'pending_settlement';
 }
 
-/** Confirming or pending settlement must not start another PI or manual submit. */
+/** Confirming, pending settlement, or an in-flight submit must not start another payment. */
 export function shouldBlockContributionPayActions(input: {
   payingStripe?: boolean;
   submitting?: boolean;
@@ -110,7 +39,7 @@ export function shouldClearPendingSettlement(status: string): boolean {
   return isContributionConfirmedStatus(status);
 }
 
-/** Synchronous mutual-exclusion for PaymentIntent + PaymentSheet (not React state). */
+/** Synchronous mutual-exclusion for contribution payment actions (not React state). */
 export class PaymentSessionLock {
   private locked = false;
 
@@ -198,183 +127,4 @@ export function sanitizePaymentUserMessage(
     return fallback;
   }
   return firstLine;
-}
-
-function isContributionPaymentsDisabledError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
-  const candidate = error as {
-    status?: unknown;
-    payload?: unknown;
-  };
-  if (candidate.status !== 503 || !candidate.payload || typeof candidate.payload !== 'object') {
-    return false;
-  }
-  return (
-    (candidate.payload as Record<string, unknown>).code ===
-    'contribution_payments_disabled'
-  );
-}
-
-/**
- * Full PaymentSheet flow with settlement polling.
- * Caller must hold PaymentSessionLock for the entire duration.
- */
-export async function runStripeContributionPayment(
-  input: StripeContributionPaymentInput,
-  deps: StripeContributionPaymentDeps,
-): Promise<StripeContributionPaymentOutcome> {
-  if (input.contributionPaymentsEnabled !== true) {
-    return { kind: 'disabled' };
-  }
-
-  const handId = String(input.handId || '').trim();
-  if (!handId) {
-    return {
-      kind: 'error',
-      message: paymentErrorCopy(
-        'identifyHand',
-        'Unable to identify your hand.',
-      ),
-      handId: '',
-    };
-  }
-
-  try {
-    const intent = await deps.createPaymentIntent(
-      input.token,
-      input.circleId,
-      input.roundNumber,
-      handId,
-    );
-
-    // Guard: never proceed without a client secret string (do not log it).
-    if (!String(intent.clientSecret || '').trim()) {
-      return {
-        kind: 'error',
-        message: paymentErrorCopy(
-          'startPayment',
-          'Unable to start payment. Please try again.',
-        ),
-        handId,
-      };
-    }
-
-    // Prefer server-echoed hand id when present; never switch to a different hand.
-    const intentHand = String(intent.handId || intent.memberId || '').trim();
-    if (intentHand && intentHand !== handId) {
-      return {
-        kind: 'error',
-        message: paymentErrorCopy(
-          'handMismatch',
-          'Payment was not started for the selected hand. Please try again.',
-        ),
-        handId,
-      };
-    }
-
-    const { error: initError } = await deps.initPaymentSheet({
-      paymentIntentClientSecret: intent.clientSecret,
-      merchantDisplayName: 'CircuSave',
-      returnURL: STRIPE_RETURN_URL,
-    });
-    if (initError) {
-      return {
-        kind: 'error',
-        message: sanitizePaymentUserMessage(
-          initError,
-          paymentErrorCopy(
-            'openPayment',
-            'Unable to open payment. Please try again.',
-          ),
-        ),
-        handId,
-      };
-    }
-
-    const { error: presentError } = await deps.presentPaymentSheet();
-    if (presentError) {
-      if (String(presentError.code || '') === 'Canceled') {
-        return { kind: 'canceled' };
-      }
-      return {
-        kind: 'error',
-        message: sanitizePaymentUserMessage(
-          presentError,
-          paymentErrorCopy(
-            'stripePayment',
-            'Unable to complete the payment. Please try again.',
-          ),
-        ),
-        handId,
-      };
-    }
-
-    // Payment submitted — poll for webhook settlement. Do not create another PI.
-    const pollResult = await pollHandUntilConfirmed({
-      handId,
-      loadHandStatus: deps.loadHandStatus,
-      intervalMs: deps.pollIntervalMs,
-      maxAttempts: deps.pollMaxAttempts,
-      sleep: deps.sleep,
-    });
-
-    if (pollResult === 'confirmed') {
-      return { kind: 'confirmed', handId };
-    }
-    return { kind: 'pending_settlement', handId };
-  } catch (error) {
-    if (isContributionPaymentsDisabledError(error)) {
-      return { kind: 'disabled' };
-    }
-    const recovered = await recoverStripeCreateConflict(error, handId, deps);
-    if (recovered) {
-      return recovered;
-    }
-    return {
-      kind: 'error',
-      message: sanitizePaymentUserMessage(
-        error,
-        paymentErrorCopy(
-          'stripePayment',
-          'Unable to complete the payment. Please try again.',
-        ),
-      ),
-      handId,
-    };
-  }
-}
-
-/**
- * HTTP 409 from POST /wallet/stripe/payment-intent is the backend contract for:
- * - local succeeded attempt for this obligation_key
- * - Stripe PI already succeeded
- * - a non-reusable in-progress attempt
- *
- * Reload the hand from schedule. Confirmed only when status is `confirmed`.
- * Any other 409 is pending settlement (webhook may still be in flight) — never
- * a false confirmed, and never matched on English message text.
- * Unrelated 400/422/403/5xx stay errors.
- */
-export async function recoverStripeCreateConflict(
-  error: unknown,
-  handId: string,
-  deps: Pick<StripeContributionPaymentDeps, 'loadHandStatus'>,
-): Promise<StripeContributionPaymentOutcome | null> {
-  if (!(error instanceof ApiError) || error.status !== 409) {
-    return null;
-  }
-  let status = '';
-  try {
-    status = String((await deps.loadHandStatus(handId)) || '')
-      .trim()
-      .toLowerCase();
-  } catch {
-    return null;
-  }
-  if (isContributionConfirmedStatus(status)) {
-    return { kind: 'confirmed', handId };
-  }
-  return { kind: 'pending_settlement', handId };
 }

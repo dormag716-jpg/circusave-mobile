@@ -6,35 +6,30 @@ function readSource(...segments: string[]) {
 }
 
 describe('contribution payment capability wiring', () => {
-  test('direct contribution navigation cannot bypass the capability guard', () => {
+  test('direct contribution navigation cannot enable in-app contribution payment', () => {
     const source = readSource('app', 'payment', 'contribution.tsx');
-    expect(source).toContain('useContributionPaymentCapability()');
-    expect(source).toContain('if (!contributionPaymentsEnabled)');
-    expect(source).toContain('preflightContributionPayments()');
-    expect(source).toContain('revokeContributionPayments()');
-    expect(source).toContain('rails.showStripeRail');
+    expect(source).toContain('buildContributionPaymentRails');
+    expect(source).toContain('buildManualContributionSubmitPayload');
+    expect(source).not.toContain('createPaymentIntent');
+    expect(source).not.toContain('runStripeContributionPayment');
+    expect(source).not.toContain('handleStripePayment');
+    expect(source).not.toContain('@stripe/stripe-react-native');
+    expect(source).not.toContain("contributionCopy(t, 'rails.payInTitle')");
+    expect(source).toContain("contributionCopy(t, 'rails.payOutsideTitle')");
+    expect(source).toContain("contributionCopy(t, 'workspace.markAsSent')");
   });
 
-  test('workspace hides the Stripe contribution entry action when disabled', () => {
+  test('workspace never shows an in-app contribution payment entry', () => {
     const source = readSource('app', 'circle', 'workspace.tsx');
-    expect(source).toContain(
-      'const contributionPaymentsEnabled = hasCapability(',
-    );
-    expect(source).toContain("'contributionPaymentsEnabled'");
-    const payAction = source.indexOf('onPress={() => onPayInApp(hand.handId)}');
-    const capabilityGuard = source.lastIndexOf(
-      '<ContributionCapabilityGate',
-      payAction,
-    );
-    expect(payAction).toBeGreaterThan(-1);
-    expect(capabilityGuard).toBeGreaterThan(-1);
-    expect(source.slice(capabilityGuard, payAction)).toContain(
-      'contributionPaymentsEnabled',
-    );
     expect(source).toContain('onMarkAsSent={onMarkContributionSent}');
+    expect(source).not.toContain('onPayInApp');
+    expect(source).not.toContain('ContributionCapabilityGate');
+    expect(source).not.toContain("contributionCopy(t, 'workspace.payInCircusave')");
+    expect(source).not.toContain('createPaymentIntent');
+    expect(source).not.toContain('runStripeContributionPayment');
   });
 
-  test('settings and automated-payment screens do not call contribution Stripe APIs when disabled', () => {
+  test('settings and automated-payment screens do not call contribution Stripe APIs', () => {
     const settings = readSource('app', '(tabs)', 'settings.tsx');
     const automated = readSource('app', 'automated-payments.tsx');
     expect(settings).toContain(
@@ -42,10 +37,12 @@ describe('contribution payment capability wiring', () => {
     );
     expect(settings).toContain('{contributionPaymentsEnabled ? (');
     expect(automated).toContain(
-      'contributionPaymentsEnabled && isStripeSupported',
-    );
-    expect(automated).toContain(
       "t('contributions:rails.contributionPaymentsDisabledBody')",
     );
+    expect(automated).toContain("t('common:unsupported')");
+    expect(automated).not.toContain('isStripeSupported');
+    expect(automated).not.toContain('@stripe/stripe-react-native');
+    expect(automated).not.toContain('createFinancialConnectionsSession');
+    expect(automated).not.toContain('getLinkedAccounts');
   });
 });

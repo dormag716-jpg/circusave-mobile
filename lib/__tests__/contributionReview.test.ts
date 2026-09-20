@@ -88,8 +88,8 @@ describe('contribution review accordion', () => {
     expect(source).toMatch(/shouldStartContributionReviewExpanded\(\)/);
     expect(source).toMatch(/nextContributionReviewExpanded/);
     expect(source).toMatch(/accessibilityState=\{\{[\s\S]*expanded: reviewExpanded/);
-    expect(source).toMatch(/contributionCopy\(t, 'rails.payInAction'\)/);
-    expect(source).toMatch(/handleStripePayment\(\)/);
+    expect(source).toMatch(/contributionCopy\(t, 'rails.payOutsideTitle'\)/);
+    expect(source).not.toMatch(/handleStripePayment\(\)/);
 
     const headerStart = source.indexOf('style={styles.reviewHeader}');
     const headerEnd = source.indexOf('</Pressable>', headerStart);

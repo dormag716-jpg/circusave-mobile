@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,16 +13,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
-import { useStripe } from '@stripe/stripe-react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 
-const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
-
 import {
   ApiError,
-  createPaymentIntent,
   getCircleDetail,
   getCircleSchedule,
   submitContribution,
@@ -34,11 +28,9 @@ import {
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { useAuthSession } from '@/lib/authContext';
 import { logClientError } from '@/lib/errorLogging';
-import { useContributionPaymentCapability } from '@/lib/useContributionPaymentCapability';
 import {
   applyContributionLoadResult,
   createContributionRequestStreams,
-  resolveSettlementHandStatus,
 } from '@/lib/contributionRequestStreams';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
@@ -47,12 +39,8 @@ import {
   shouldStartContributionReviewExpanded,
 } from '@/lib/contributionReview';
 import {
-  PaymentSessionLock,
-  runStripeContributionPayment,
   sanitizePaymentUserMessage,
   shouldBlockContributionPayActions,
-  shouldClearPendingSettlement,
-  shouldHoldPaymentLockAfterOutcome,
 } from '@/lib/stripeContributionPayment';
 import { colors, radii, spacing } from '@/lib/theme';
 import { DecisionSheet } from '@/components/DecisionSheet';
@@ -81,11 +69,6 @@ export default function ContributionPaymentScreen() {
     'people',
   ]);
   const { session, status } = useAuthSession();
-  const {
-    enabled: contributionPaymentsEnabled,
-    preflight: preflightContributionPayments,
-    revoke: revokeContributionPayments,
-  } = useContributionPaymentCapability();
   const params = useLocalSearchParams<{
     circleId?: string | string[];
     handId?: string | string[];
@@ -104,11 +87,6 @@ export default function ContributionPaymentScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [payingStripe, setPayingStripe] = useState(false);
-  /** UI phase while waiting for webhook settlement after PaymentSheet success. */
-  const [settlementPhase, setSettlementPhase] = useState<
-    null | 'confirming' | 'pending'
-  >(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedHandId, setSelectedHandId] = useState<string | null>(
     requestedHandId ?? null,
@@ -122,19 +100,14 @@ export default function ContributionPaymentScreen() {
   >(null);
   const [paymentReferenceDraft, setPaymentReferenceDraft] = useState('');
   const [confirmMarkAsSentVisible, setConfirmMarkAsSentVisible] = useState(false);
-  const stripe = useStripe();
-  // Synchronous lock: React state alone can allow a second tap before re-render.
-  const paymentLockRef = useRef(new PaymentSessionLock());
   const requestStreams = useRef(createContributionRequestStreams());
   const hasLastKnownStateRef = useRef(false);
-
-  const pendingHandIdRef = useRef<string | null>(null);
 
   const loadContribution = useCallback(
     async (options?: { silent?: boolean; revalidate?: boolean }) => {
       const loadGeneration = requestStreams.current.contributionLoad.next();
       const accessToken = String(token ?? '').trim();
-      // Logout / unauthenticated: quiet no-op (no payment error, no PI).
+      // Logout / unauthenticated: quiet no-op (no payment error).
       if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
         applyContributionLoadResult({
           streams: requestStreams.current,
@@ -210,42 +183,13 @@ export default function ContributionPaymentScreen() {
     [circleId, status, t, token],
   );
 
-  const loadHandStatus = useCallback(async (handId: string): Promise<string> => {
-    const settlementGeneration = requestStreams.current.settlementStatus.next();
-    const accessToken = String(token ?? '').trim();
-    if (!accessToken || !circleId) {
-      return 'due';
-    }
-    const schedule = await getCircleSchedule(accessToken, circleId, {
-      revalidate: true,
-    });
-    const contribution = schedule.contributions?.find(
-      (entry) => entry.memberId === handId,
-    );
-    const fetchedStatus = String(contribution?.status || 'due').toLowerCase();
-    // Always return this fetch's status to the payment poller. Only the
-    // latest settlement generation may write the on-screen schedule snapshot.
-    return resolveSettlementHandStatus({
-      streams: requestStreams.current,
-      settlementGeneration,
-      fetchedStatus,
-      applySnapshot: () => {
-        setSnapshot(schedule);
-      },
-    });
-  }, [circleId, token]);
-
   useEffect(() => {
     requestStreams.current.contributionLoad.next();
-    requestStreams.current.settlementStatus.next();
     hasLastKnownStateRef.current = false;
-    pendingHandIdRef.current = null;
-    paymentLockRef.current.release();
     setCircle(null);
     setSnapshot(null);
     setError(null);
     setLoading(true);
-    setSettlementPhase(null);
     setSelectedHandId(requestedHandId ?? null);
   }, [circleId, requestedHandId]);
 
@@ -291,16 +235,12 @@ export default function ContributionPaymentScreen() {
   // Pattern: backend true AND local hand-due condition (never reverse).
   const canSubmit = backendCanSubmit && handDue;
   const payActionsBlocked = shouldBlockContributionPayActions({
-    payingStripe,
     submitting,
-    settlementPhase,
   });
   const payDisabled = !canSubmit || payActionsBlocked;
   const rails = buildContributionPaymentRails({
     paymentInstructions: circle?.paymentInstructions,
     paymentDestinations: circle?.paymentDestinations,
-    stripeSupported: isStripeSupported,
-    contributionPaymentsEnabled,
   });
   const selectedDestination =
     rails.destinations.length === 1
@@ -311,9 +251,7 @@ export default function ContributionPaymentScreen() {
 
   function promptMarkContributionSent() {
     if (shouldBlockContributionPayActions({
-      payingStripe,
       submitting,
-      settlementPhase,
     })) {
       return;
     }
@@ -333,9 +271,7 @@ export default function ContributionPaymentScreen() {
 
   async function handleSubmitContribution() {
     if (shouldBlockContributionPayActions({
-      payingStripe,
       submitting,
-      settlementPhase,
     })) {
       return;
     }
@@ -409,150 +345,10 @@ export default function ContributionPaymentScreen() {
     }
   }
 
-  async function handleStripePayment() {
-    if (!contributionPaymentsEnabled) {
-      return;
-    }
-    if (shouldBlockContributionPayActions({
-      payingStripe,
-      submitting,
-      settlementPhase,
-    })) {
-      return;
-    }
-    const accessToken = String(token ?? '').trim();
-    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
-      return;
-    }
-    if (!accessToken || !circle || !activeHand || currentRound == null) return;
-    if (!backendCanSubmit) {
-      Alert.alert(
-        t('contributions:alerts.paymentFailedTitle'),
-        t('financialErrors:stripePayment'),
-      );
-      return;
-    }
-
-    // Freeze hand at tap time so sibling hands cannot be paid by mistake.
-    const frozenHandId = activeHand.id;
-    const frozenHandLabel = activeHand.label;
-    const frozenCircleId = circle.id;
-    const frozenRound = currentRound;
-
-    if (!paymentLockRef.current.tryAcquire()) {
-      return;
-    }
-
-    setPayingStripe(true);
-    setSettlementPhase(null);
-    let holdLock = false;
-    try {
-      const freshCapability = await preflightContributionPayments();
-      if (!freshCapability) {
-        return;
-      }
-
-      const outcome = await runStripeContributionPayment(
-        {
-          token: accessToken,
-          circleId: frozenCircleId,
-          roundNumber: frozenRound,
-          handId: frozenHandId,
-          contributionPaymentsEnabled,
-        },
-        {
-          createPaymentIntent,
-          initPaymentSheet: (params) => stripe.initPaymentSheet(params),
-          presentPaymentSheet: () => stripe.presentPaymentSheet(),
-          loadHandStatus: async (handId) => {
-            setSettlementPhase('confirming');
-            return loadHandStatus(handId);
-          },
-          pollIntervalMs: 1500,
-          pollMaxAttempts: 8,
-        },
-      );
-
-      holdLock = shouldHoldPaymentLockAfterOutcome(outcome.kind);
-
-      if (outcome.kind === 'canceled') {
-        return;
-      }
-
-      if (outcome.kind === 'disabled') {
-        revokeContributionPayments();
-        return;
-      }
-
-      if (outcome.kind === 'error') {
-        Alert.alert(
-          t('contributions:alerts.paymentFailedTitle'),
-          sanitizePaymentUserMessage(
-            { message: outcome.message },
-            t('financialErrors:stripePayment'),
-          ),
-        );
-        return;
-      }
-
-      if (outcome.kind === 'confirmed') {
-        pendingHandIdRef.current = null;
-        setSettlementPhase(null);
-        Alert.alert(
-          t('contributions:paymentConfirmedTitle'),
-          t('contributions:paymentConfirmedBody', { hand: frozenHandLabel }),
-          [
-            {
-              text: t('contributions:alerts.ok'),
-              onPress: () => void loadContribution({ silent: true }),
-            },
-          ],
-        );
-        return;
-      }
-
-      // PaymentSheet succeeded; webhook has not confirmed yet.
-      pendingHandIdRef.current = frozenHandId;
-      setSettlementPhase('pending');
-      Alert.alert(
-        t('contributions:paymentPendingSettlementTitle'),
-        t('contributions:paymentPendingSettlementBody'),
-        [
-          {
-            text: t('contributions:alerts.ok'),
-            onPress: () => void loadContribution({ silent: true }),
-          },
-        ],
-      );
-    } catch (err: unknown) {
-      logClientError('Unable to complete Stripe contribution payment', err);
-      Alert.alert(
-        t('contributions:alerts.paymentFailedTitle'),
-        financialClientErrorMessage(err, t('financialErrors:stripePayment')),
-      );
-    } finally {
-      if (!holdLock) {
-        paymentLockRef.current.release();
-      }
-      setPayingStripe(false);
-    }
-  }
-
   async function onPullRefresh() {
     setRefreshing(true);
     try {
-      const loaded = await loadContribution({ silent: true, revalidate: true });
-      const handId = pendingHandIdRef.current ?? activeHandId;
-      if (loaded && handId) {
-        const contribution = loaded.snapshot.contributions?.find(
-          (entry) => entry.memberId === handId,
-        );
-        if (shouldClearPendingSettlement(String(contribution?.status || ''))) {
-          pendingHandIdRef.current = null;
-          setSettlementPhase(null);
-          paymentLockRef.current.release();
-        }
-      }
+      await loadContribution({ silent: true, revalidate: true });
     } finally {
       setRefreshing(false);
     }
@@ -657,17 +453,6 @@ export default function ContributionPaymentScreen() {
                 {t('contributions:retry')}
               </Text>
             </Pressable>
-          </View>
-        ) : null}
-
-        {settlementPhase === 'confirming' || settlementPhase === 'pending' ? (
-          <View style={styles.settlementBanner} accessibilityLiveRegion="polite">
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.settlementBannerText}>
-              {settlementPhase === 'confirming'
-                ? t('contributions:paymentConfirmingBody')
-                : t('contributions:paymentPendingSettlementBody')}
-            </Text>
           </View>
         ) : null}
 
@@ -823,52 +608,13 @@ export default function ContributionPaymentScreen() {
           </Text>
         ) : null}
 
-        {rails.showStripeRail ? (
-          <View style={styles.railCard}>
-            <Text style={styles.railTitle}>
-              {contributionCopy(t, 'rails.payInTitle')}
-            </Text>
-            <Text style={styles.railBody}>
-              {contributionCopy(t, 'rails.payInBody')}
-            </Text>
-            <Pressable
-              style={[
-                styles.primaryButton,
-                styles.railAction,
-                payDisabled && styles.disabledButton,
-              ]}
-              disabled={payDisabled}
-              onPress={() => void handleStripePayment()}
-              accessibilityRole="button"
-              accessibilityState={{
-                busy: payActionsBlocked,
-                disabled: payDisabled,
-              }}
-              accessibilityLabel={contributionCopy(t, 'rails.payInAction')}
-            >
-              <Text style={styles.primaryButtonText}>
-                {payingStripe || settlementPhase === 'confirming'
-                  ? settlementPhase === 'confirming'
-                    ? t('contributions:confirmingStatus')
-                    : t('contributions:processing')
-                  : contributionCopy(t, 'rails.payInAction')}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
         {rails.showManualRail ? (
           <View style={styles.railCard}>
             <Text style={styles.railTitle}>
               {contributionCopy(t, 'rails.payOutsideTitle')}
             </Text>
             <Text style={styles.railBody}>
-              {contributionCopy(
-                t,
-                contributionPaymentsEnabled
-                  ? 'rails.payOutsideBody'
-                  : 'rails.contributionPaymentsDisabledBody',
-              )}
+              {contributionCopy(t, 'rails.contributionPaymentsDisabledBody')}
             </Text>
             {rails.hasInstructions ? (
               <View style={styles.instructionsBox}>
@@ -959,7 +705,7 @@ export default function ContributionPaymentScreen() {
             ) : null}
             <Pressable
               style={[
-                rails.showStripeRail ? styles.secondaryButton : styles.primaryButton,
+                styles.primaryButton,
                 styles.railAction,
                 payDisabled && styles.disabledButton,
               ]}
@@ -968,13 +714,7 @@ export default function ContributionPaymentScreen() {
               accessibilityRole="button"
               accessibilityLabel={t('contributions:submitA11y')}
             >
-              <Text
-                style={
-                  rails.showStripeRail
-                    ? styles.secondaryButtonText
-                    : styles.primaryButtonText
-                }
-              >
+              <Text style={styles.primaryButtonText}>
                 {submitting
                   ? t('contributions:submitting')
                   : contributionCopy(t, 'workspace.markAsSent')}
@@ -1112,25 +852,6 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  settlementBanner: {
-    alignItems: 'center',
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryBorder,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  settlementBannerText: {
-    color: colors.primaryDark,
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
   inlineErrorBanner: {
     alignItems: 'center',
     backgroundColor: colors.warningSoft,
@@ -1436,22 +1157,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: colors.onColor,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    borderColor: colors.primary,
-    borderRadius: radii.control,
-    borderWidth: 1,
-    height: 56,
-    justifyContent: 'center',
-    marginTop: 16,
-    width: '100%',
-  },
-  secondaryButtonText: {
-    color: colors.primary,
     fontSize: 17,
     fontWeight: '800',
   },

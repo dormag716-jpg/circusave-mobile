@@ -77,13 +77,6 @@
           "faceIDPermission": "Allow CircuSave to use Face ID to securely lock your financial data."
         }
       ],
-      [
-        "@stripe/stripe-react-native",
-        {
-          "merchantIdentifier": "merchant.com.circusave.mobile",
-          "enableGooglePay": true
-        }
-      ],
       "expo-localization",
       "expo-iap"
     ],

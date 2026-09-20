@@ -1,10 +1,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -13,7 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   addCircleMember,
@@ -33,6 +36,12 @@ import {
 import { isUnclaimedHand } from '@/lib/circleLifecycleCopy';
 import { circleWorkspaceHref } from '@/lib/navigation';
 import {
+  inviteFieldScrollOffsetFromWindow,
+  inviteFormKeyboardBehavior,
+  inviteFormKeyboardDismissMode,
+  inviteFormScrollPadding,
+} from '@/lib/inviteFormKeyboard';
+import {
   validatePlannedHandAdd,
   type PlannedHandAddFieldErrors,
 } from '@/lib/plannedHandAdd';
@@ -41,6 +50,10 @@ import { colors, radii, spacing } from '@/lib/theme';
 
 export default function InviteMemberScreen() {
   const { t } = useTranslation(['invite', 'people']);
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const focusedFieldRef = useRef<View | null>(null);
+  const scrollOffsetRef = useRef(0);
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
@@ -83,6 +96,40 @@ export default function InviteMemberScreen() {
   useEffect(() => {
     void loadInviteData();
   }, [circleId, token]);
+
+  function scrollToFocusedField(anchor: View | null = focusedFieldRef.current) {
+    if (anchor) {
+      focusedFieldRef.current = anchor;
+    }
+    const target = focusedFieldRef.current;
+    const scroll = scrollRef.current;
+    if (!target || !scroll) return;
+
+    const nativeScroll = scroll.getNativeScrollRef();
+    if (!nativeScroll) return;
+
+    target.measureInWindow((_x, fieldWindowY) => {
+      nativeScroll.measureInWindow((_scrollX, scrollWindowY) => {
+        scroll.scrollTo({
+          y: inviteFieldScrollOffsetFromWindow({
+            fieldWindowY,
+            scrollWindowY,
+            currentScrollY: scrollOffsetRef.current,
+          }),
+          animated: true,
+        });
+      });
+    });
+  }
+
+  useEffect(() => {
+    const eventName =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(eventName, () => {
+      scrollToFocusedField();
+    });
+    return () => sub.remove();
+  }, []);
 
   function syncFieldErrors(
     next: { fullName: string; phone: string; email: string },
@@ -161,6 +208,7 @@ export default function InviteMemberScreen() {
         phone: result.payload.phone,
         email: result.payload.email || undefined,
       });
+      Keyboard.dismiss();
       await loadInviteData();
       setFullName('');
       setPhone('');
@@ -338,9 +386,25 @@ export default function InviteMemberScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={inviteFormKeyboardBehavior(Platform.OS)}
+        keyboardVerticalOffset={0}
+      >
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: inviteFormScrollPadding(insets.bottom) },
+        ]}
+        keyboardDismissMode={inviteFormKeyboardDismissMode(Platform.OS)}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         keyboardShouldPersistTaps="handled"
+        onScroll={(event) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
@@ -512,6 +576,7 @@ export default function InviteMemberScreen() {
                     ? t('organizer.fullNameRequiredMessage')
                     : undefined
                 }
+                onInputFocus={scrollToFocusedField}
               />
               <Field
                 label={t('organizer.phone')}
@@ -531,6 +596,7 @@ export default function InviteMemberScreen() {
                       ? t('organizer.contactRequiredMessage')
                       : undefined
                 }
+                onInputFocus={scrollToFocusedField}
               />
               <Field
                 label={t('organizer.email')}
@@ -550,6 +616,7 @@ export default function InviteMemberScreen() {
                       ? t('organizer.contactRequiredMessage')
                       : undefined
                 }
+                onInputFocus={scrollToFocusedField}
               />
             </View>
 
@@ -567,6 +634,7 @@ export default function InviteMemberScreen() {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -588,6 +656,7 @@ function Field({
   autoCapitalize,
   textContentType,
   error,
+  onInputFocus,
 }: {
   label: string;
   value: string;
@@ -598,9 +667,11 @@ function Field({
   autoCapitalize?: 'none' | 'words';
   textContentType?: 'emailAddress' | 'telephoneNumber' | 'name';
   error?: string;
+  onInputFocus?: (anchor: View | null) => void;
 }) {
+  const wrapRef = useRef<View>(null);
   return (
-    <View style={styles.fieldWrap}>
+    <View ref={wrapRef} collapsable={false} style={styles.fieldWrap}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         value={value}
@@ -614,6 +685,7 @@ function Field({
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
         accessibilityLabel={label}
+        onFocus={() => onInputFocus?.(wrapRef.current)}
         style={[
           styles.input,
           multiline && styles.noteInput,
@@ -629,6 +701,12 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
   },
   content: {
     flexGrow: 1,

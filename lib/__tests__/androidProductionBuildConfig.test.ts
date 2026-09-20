@@ -1,14 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 
-import {
-  APP_SCHEME,
-  STRIPE_MERCHANT_IDENTIFIER,
-  STRIPE_RETURN_URL,
-  isLiveStripePublishableKey,
-  isTestStripePublishableKey,
-  resolveStripePublishableKey,
-} from '../config';
+import { APP_SCHEME } from '../config';
 import { postAuthHrefFromUrl } from '../navigation';
 
 jest.mock('expo-linking', () => ({
@@ -82,9 +75,8 @@ describe('Android production build configuration', () => {
     expect(easConfig.submit.production.android?.releaseStatus).toBe('draft');
   });
 
-  test('Stripe return URL and merchant id use the app scheme, not a mismatched circusave:// host', () => {
-    expect(STRIPE_RETURN_URL).toBe('circusavemobile://stripe-redirect');
-    expect(STRIPE_MERCHANT_IDENTIFIER).toBe('merchant.com.circusave.mobile');
+  test('Stripe provider, package, and contribution payment config are absent', () => {
+    const configSource = readFileSync(path.join(root, 'lib', 'config.ts'), 'utf8');
     const paymentSource = readFileSync(
       path.join(root, 'lib', 'stripeContributionPayment.ts'),
       'utf8',
@@ -93,22 +85,30 @@ describe('Android production build configuration', () => {
       path.join(root, 'app', '_layout.tsx'),
       'utf8',
     );
-    expect(paymentSource).toContain('STRIPE_RETURN_URL');
-    expect(paymentSource).not.toContain('circusave://stripe-redirect');
-    expect(layoutSource).toContain('STRIPE_MERCHANT_IDENTIFIER');
-    expect(layoutSource).not.toContain('merchant.com.circusave"');
+    const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8');
+    const contributionSource = readFileSync(
+      path.join(root, 'app', 'payment', 'contribution.tsx'),
+      'utf8',
+    );
+    expect(configSource).not.toContain('STRIPE_RETURN_URL');
+    expect(configSource).not.toContain('STRIPE_MERCHANT_IDENTIFIER');
+    expect(configSource).not.toContain('resolveStripePublishableKey');
+    expect(configSource).not.toContain('EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY');
+    expect(paymentSource).not.toContain('STRIPE_RETURN_URL');
+    expect(paymentSource).not.toContain('runStripeContributionPayment');
+    expect(layoutSource).not.toContain('StripeProvider');
+    expect(layoutSource).not.toContain('STRIPE_MERCHANT_IDENTIFIER');
+    expect(layoutSource).not.toContain('@stripe/stripe-react-native');
+    expect(packageSource).not.toContain('@stripe/stripe-react-native');
+    expect(contributionSource).not.toContain('@stripe/stripe-react-native');
+    expect(contributionSource).not.toContain('createPaymentIntent');
   });
 
-  test('production never initializes Stripe with a test publishable key', () => {
-    expect(isTestStripePublishableKey('pk_test_example')).toBe(true);
-    expect(isLiveStripePublishableKey('pk_live_example')).toBe(true);
-    expect(resolveStripePublishableKey('pk_test_example', 'production')).toBe('');
-    expect(resolveStripePublishableKey('pk_live_example', 'production')).toBe(
-      'pk_live_example',
-    );
-    expect(resolveStripePublishableKey('pk_test_example', 'development')).toBe(
-      'pk_test_example',
-    );
+  test('Google Play Organizer Pro billing remains configured', () => {
+    const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8');
+    const appConfigPlugins = JSON.stringify(appConfig.expo.plugins);
+    expect(packageSource).toContain('"expo-iap"');
+    expect(appConfigPlugins).toContain('expo-iap');
   });
 
   test('HTTPS invite App Links are declared for circusave.com', () => {

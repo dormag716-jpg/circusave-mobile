@@ -13,15 +13,23 @@ const contributionSource = readFileSync(
   path.join(__dirname, '..', '..', 'app', 'payment', 'contribution.tsx'),
   'utf8',
 );
+const packageSource = readFileSync(
+  path.join(__dirname, '..', '..', 'package.json'),
+  'utf8',
+);
+const layoutSource = readFileSync(
+  path.join(__dirname, '..', '..', 'app', '_layout.tsx'),
+  'utf8',
+);
 
 describe('buildContributionPaymentRails', () => {
-  test('shows both rails when Stripe is supported and keeps instructions on manual only', () => {
+  test('never shows an in-app contribution payment rail, even when flags are true', () => {
     const rails = buildContributionPaymentRails({
       paymentInstructions: 'Zelle: organizer@email.com',
       stripeSupported: true,
       contributionPaymentsEnabled: true,
     });
-    expect(rails.showStripeRail).toBe(true);
+    expect(rails.showStripeRail).toBe(false);
     expect(rails.showManualRail).toBe(true);
     expect(rails.hasInstructions).toBe(true);
     expect(rails.instructions).toBe('Zelle: organizer@email.com');
@@ -35,6 +43,7 @@ describe('buildContributionPaymentRails', () => {
       stripeSupported: true,
       contributionPaymentsEnabled: true,
     });
+    expect(rails.showStripeRail).toBe(false);
     expect(rails.hasInstructions).toBe(true);
     expect(rails.destinations).toEqual([{ method: 'venmo', destination: '@circle' }]);
     expect(rails.instructions).toBe('Venmo: @circle');
@@ -51,7 +60,7 @@ describe('buildContributionPaymentRails', () => {
     expect(rails.instructions).toBeNull();
   });
 
-  test('missing or false capability hides Stripe and keeps manual recording', () => {
+  test('missing or false capability still keeps only manual recording', () => {
     const missing = buildContributionPaymentRails({
       paymentInstructions: 'Cash to organizer',
       stripeSupported: true,
@@ -67,7 +76,7 @@ describe('buildContributionPaymentRails', () => {
     expect(disabled.showManualRail).toBe(true);
   });
 
-  test('both rails target the same preselected hand', () => {
+  test('selected-hand helper still requires an exact match', () => {
     expect(
       contributionRailsUseSameHand({
         selectedHandId: 'hand-2',
@@ -85,38 +94,34 @@ describe('buildContributionPaymentRails', () => {
   });
 });
 
-describe('contribution.tsx Step 5 screen split', () => {
-  test('splits Pay in CircuSave from Pay outside CircuSave and keeps Stripe orchestration', () => {
-    expect(contributionSource).toContain("contributionCopy(t, 'rails.payInTitle')");
+describe('contribution.tsx external/manual contribution screen', () => {
+  test('keeps manual recording and does not restore in-app contribution payment', () => {
     expect(contributionSource).toContain("contributionCopy(t, 'rails.payOutsideTitle')");
     expect(contributionSource).toContain("contributionCopy(t, 'workspace.markAsSent')");
     expect(contributionSource).toContain('buildContributionPaymentRails');
     expect(contributionSource).toContain('buildManualContributionSubmitPayload');
     expect(contributionSource).toContain('selectedDestinationIndex');
-    expect(contributionSource).toContain('handleStripePayment()');
-    expect(contributionSource).toContain('useContributionPaymentCapability()');
-    expect(contributionSource).toContain('if (!contributionPaymentsEnabled)');
-    expect(contributionSource).toContain('preflightContributionPayments()');
-    expect(contributionSource).toContain('runStripeContributionPayment');
-    expect(contributionSource).toContain('createPaymentIntent');
     expect(contributionSource).toContain('requestedHandId ?? null');
     expect(contributionSource).toContain('setSelectedHandId(requestedHandId ?? null)');
+    expect(contributionSource).not.toContain('handleStripePayment');
+    expect(contributionSource).not.toContain('runStripeContributionPayment');
+    expect(contributionSource).not.toContain('createPaymentIntent');
+    expect(contributionSource).not.toContain('@stripe/stripe-react-native');
+    expect(contributionSource).not.toContain("contributionCopy(t, 'rails.payInTitle')");
+    expect(contributionSource).not.toContain("contributionCopy(t, 'rails.payInAction')");
     expect(contributionSource).not.toContain("t('contributions:confirmManual')");
     expect(contributionSource).not.toContain("t('contributions:payWithStripe')");
+    expect(packageSource).not.toContain('@stripe/stripe-react-native');
+    expect(layoutSource).not.toContain('StripeProvider');
+    expect(layoutSource).not.toContain('@stripe/stripe-react-native');
   });
 
   test('payment instructions render only in the manual rail', () => {
-    const stripeStart = contributionSource.indexOf("contributionCopy(t, 'rails.payInTitle')");
     const manualStart = contributionSource.indexOf(
       "contributionCopy(t, 'rails.payOutsideTitle')",
     );
-    expect(stripeStart).toBeGreaterThan(-1);
-    expect(manualStart).toBeGreaterThan(stripeStart);
-    const stripeBlock = contributionSource.slice(stripeStart, manualStart);
+    expect(manualStart).toBeGreaterThan(-1);
     const manualBlock = contributionSource.slice(manualStart);
-    expect(stripeBlock).not.toContain('rails.hasInstructions');
-    expect(stripeBlock).not.toContain('rails.instructions');
-    expect(stripeBlock).not.toContain('PaymentDestinationList');
     expect(manualBlock).toContain('rails.hasInstructions');
     expect(manualBlock).toContain('rails.instructions');
     expect(manualBlock).toContain('rails.destinations');
@@ -124,6 +129,7 @@ describe('contribution.tsx Step 5 screen split', () => {
     expect(manualBlock).toContain(
       "contributionCopy(t, 'workspace.instructionsMissingTitle')",
     );
+    expect(contributionSource).not.toContain("contributionCopy(t, 'rails.payInTitle')");
   });
 
   test('manual Mark as sent confirms before submit and is not gated on instructions', () => {
@@ -157,20 +163,12 @@ describe('contribution.tsx Step 5 screen split', () => {
     expect(meaningBlock).not.toContain('handleSubmitContribution');
   });
 
-  test('EN / ES / HT distinguish Pay in CircuSave from Pay outside CircuSave', () => {
-    expect(contributionsEn.rails.payInTitle).toBe('Pay in CircuSave');
+  test('EN / ES / HT keep external/manual contribution copy', () => {
     expect(contributionsEn.rails.payOutsideTitle).toBe('Pay outside CircuSave');
-    expect(contributionsEn.rails.payInBody).toContain('payment provider');
     expect(contributionsEn.rails.payOutsideBody).toContain('organizer');
     expect(contributionsEn.workspace.markAsSent).toBe('Mark as sent');
-    expect(contributionsEs.rails.payInTitle.length).toBeGreaterThan(0);
-    expect(contributionsHt.rails.payInTitle.length).toBeGreaterThan(0);
-    expect(contributionsEs.rails.payOutsideTitle).not.toBe(
-      contributionsEs.rails.payInTitle,
-    );
-    expect(contributionsHt.rails.payOutsideTitle).not.toBe(
-      contributionsHt.rails.payInTitle,
-    );
+    expect(contributionsEs.rails.payOutsideTitle.length).toBeGreaterThan(0);
+    expect(contributionsHt.rails.payOutsideTitle.length).toBeGreaterThan(0);
     expect(contributionsEn.rails.contributionPaymentsDisabledBody).toBe(
       'Pay the organizer outside CircuSave, then record your payment for organizer confirmation.',
     );
@@ -182,17 +180,18 @@ describe('contribution.tsx Step 5 screen split', () => {
     ).toBeGreaterThan(0);
   });
 
-  test('Stripe PaymentSheet is not started by Mark as sent', () => {
+  test('Mark as sent does not start an in-app contribution payment', () => {
     const promptStart = contributionSource.indexOf(
       'function promptMarkContributionSent',
     );
     const promptEnd = contributionSource.indexOf(
-      'async function handleStripePayment',
+      'async function handleSubmitContribution',
     );
     const promptBlock = contributionSource.slice(promptStart, promptEnd);
     expect(promptBlock).not.toContain('handleStripePayment');
     expect(promptBlock).not.toContain('createPaymentIntent');
     expect(promptBlock).not.toContain('initPaymentSheet');
-    expect(promptBlock).toContain('handleSubmitContribution');
+    expect(promptBlock).toContain('setConfirmMarkAsSentVisible(true)');
+    expect(contributionSource).toContain('void handleSubmitContribution()');
   });
 });

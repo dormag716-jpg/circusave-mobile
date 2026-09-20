@@ -1,7 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import * as WebBrowser from 'expo-web-browser';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,14 +15,7 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-import {
-  cancelPremiumSubscription,
-  createBillingCheckout,
-  createBillingPortal,
-  getBillingPlans,
-  type BillingPlan,
-} from '@/lib/api';
-import { APP_SCHEME } from '@/lib/config';
+import { type BillingPlan } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import {
@@ -31,12 +23,6 @@ import {
   openGooglePlaySubscriptionManagement,
 } from '@/lib/googlePlaySubscriptionManagement';
 import { logClientWarning } from '@/lib/errorLogging';
-import {
-  checkoutReturnStatusFromUrl,
-  pollForPremiumActivation,
-  type CheckoutReturnStatus,
-} from '@/lib/subscriptionCheckout';
-import { formatCurrency } from '@/lib/i18n/formatters';
 import { colors, radii, shadows, spacing } from '@/lib/theme';
 
 const FALLBACK_FEATURE_KEYS = [
@@ -62,17 +48,9 @@ const fallbackPremium: BillingPlan = {
 };
 
 type BillingInterval = 'monthly' | 'annual';
-type CheckoutReturnState =
-  | 'idle'
-  | 'activating'
-  | 'activated'
-  | 'pending'
-  | 'canceled';
 
 export default function SubscriptionScreen() {
-  const { t, i18n } = useTranslation(['subscription', 'common']);
-  const language = i18n.resolvedLanguage || i18n.language;
-  const params = useLocalSearchParams<{ checkout?: string | string[] }>();
+  const { t } = useTranslation(['subscription', 'common']);
   const { session, status: authStatus } = useAuthSession();
   const {
     entitlements,
@@ -87,36 +65,11 @@ export default function SubscriptionScreen() {
   } = useEntitlements();
   const token = session?.session.token;
   const isAndroid = Platform.OS === 'android';
-  const [premium, setPremium] = useState<BillingPlan>(fallbackPremium);
+  const isIos = Platform.OS === 'ios';
+  const [premium] = useState<BillingPlan>(fallbackPremium);
   const [interval, setInterval] = useState<BillingInterval>('annual');
-  const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState<'checkout' | 'portal' | 'cancel' | null>(
-    null,
-  );
-  const [checkoutReturnState, setCheckoutReturnState] =
-    useState<CheckoutReturnState>('idle');
-  const handledCheckoutReturn = useRef<CheckoutReturnStatus | null>(null);
+  const [action, setAction] = useState<'portal' | null>(null);
   const playOperationLocked = useRef(false);
-
-  useEffect(() => {
-    if (isAndroid) {
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    void getBillingPlans()
-      .then((response) => {
-        const plan = response.plans.find((item) => item.id === 'premium');
-        if (active && plan) setPremium(plan);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [isAndroid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -156,18 +109,6 @@ export default function SubscriptionScreen() {
     }
   }, [playState.status]);
 
-  const selectedPrice =
-    interval === 'annual'
-      ? premium.annualPriceCents
-      : premium.monthlyPriceCents;
-  const annualMonthlyEquivalent = premium.annualPriceCents / 12;
-  const savingsPercent = useMemo(() => {
-    const fullAnnual = premium.monthlyPriceCents * 12;
-    if (!fullAnnual) return 0;
-    return Math.round(
-      ((fullAnnual - premium.annualPriceCents) / fullAnnual) * 100,
-    );
-  }, [premium]);
   const selectedPlayPlan = playPlans?.[interval] ?? null;
   const playBusy = [
     'connecting',
@@ -187,8 +128,6 @@ export default function SubscriptionScreen() {
       playState.status === 'failed');
   const isGooglePlayEntitlement =
     isAndroid && entitlements.source === 'google_play';
-  const usesStripeManagement =
-    entitlements.source === 'stripe' || !entitlements.source;
 
   function formatPlayPeriod(period: string | null): string {
     if (!period) return '';
@@ -243,91 +182,6 @@ export default function SubscriptionScreen() {
     }
   }
 
-  const handleCheckoutReturn = useCallback(
-    async (status: CheckoutReturnStatus) => {
-      if (handledCheckoutReturn.current === status) return;
-      handledCheckoutReturn.current = status;
-
-      if (status === 'canceled') {
-        setCheckoutReturnState('canceled');
-        await refreshEntitlements();
-        return;
-      }
-
-      setCheckoutReturnState('activating');
-      const result = await pollForPremiumActivation(refreshEntitlements);
-      setCheckoutReturnState(result);
-    },
-    [refreshEntitlements],
-  );
-
-  useEffect(() => {
-    const rawCheckout = Array.isArray(params.checkout)
-      ? params.checkout[0]
-      : params.checkout;
-    if (rawCheckout === 'success' || rawCheckout === 'canceled') {
-      void handleCheckoutReturn(rawCheckout);
-    }
-  }, [handleCheckoutReturn, params.checkout]);
-
-  async function openCheckout() {
-    if (!token) return;
-    setAction('checkout');
-    try {
-      const checkout = await createBillingCheckout(
-        token,
-        interval,
-        'subscriptionScreen',
-      );
-      if (!checkout.checkoutUrl) {
-        throw new Error(t('checkoutUrlMissing'));
-      }
-      handledCheckoutReturn.current = null;
-      setCheckoutReturnState('idle');
-      const returnUrl = `${APP_SCHEME}://subscription`;
-      const browserResult = await WebBrowser.openAuthSessionAsync(
-        checkout.checkoutUrl,
-        returnUrl,
-        {
-          presentationStyle:
-            WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-        },
-      );
-      if (browserResult.type === 'success') {
-        const status = checkoutReturnStatusFromUrl(browserResult.url);
-        if (status) {
-          await handleCheckoutReturn(status);
-          return;
-        }
-      }
-      await refreshEntitlements();
-    } catch (error) {
-      Alert.alert(
-        t('checkoutUnavailable'),
-        error instanceof Error ? error.message : t('pleaseTryAgain'),
-      );
-    } finally {
-      setAction(null);
-    }
-  }
-
-  async function openPortal() {
-    if (!token) return;
-    setAction('portal');
-    try {
-      const portal = await createBillingPortal(token);
-      await WebBrowser.openBrowserAsync(portal.portalUrl);
-      await refreshEntitlements();
-    } catch (error) {
-      Alert.alert(
-        t('billingUnavailable'),
-        error instanceof Error ? error.message : t('pleaseTryAgain'),
-      );
-    } finally {
-      setAction(null);
-    }
-  }
-
   async function openGooglePlayManagement() {
     setAction('portal');
     try {
@@ -342,39 +196,6 @@ export default function SubscriptionScreen() {
     } finally {
       setAction(null);
     }
-  }
-
-  function confirmCancellation() {
-    if (!token) return;
-    Alert.alert(
-      t('keepToolsTitle'),
-      t('keepToolsBody'),
-      [
-        { text: t('keepOrganizerPro'), style: 'cancel' },
-        {
-          text: t('cancelRenewal'),
-          style: 'destructive',
-          onPress: async () => {
-            setAction('cancel');
-            try {
-              await cancelPremiumSubscription(token);
-              await refreshEntitlements();
-              Alert.alert(
-                t('renewalCanceled'),
-                t('renewalCanceledBody'),
-              );
-            } catch (error) {
-              Alert.alert(
-                t('unableToCancel'),
-                error instanceof Error ? error.message : t('pleaseTryAgain'),
-              );
-            } finally {
-              setAction(null);
-            }
-          },
-        },
-      ],
-    );
   }
 
   const playStatusMessage = (() => {
@@ -516,64 +337,33 @@ export default function SubscriptionScreen() {
                     : t('active')}
                 </Text>
               </View>
-            ) : (
-              <>
-                {!isAndroid ? (
-                  <Text style={styles.trialCopy}>
-                    {t('trialCopy', { days: premium.trialDays })}
-                  </Text>
-                ) : selectedPlayPlan?.trial ? (
-                  <Text style={styles.trialCopy}>
-                    {t('playTrialCopy', {
-                      period: formatPlayPeriod(
-                        selectedPlayPlan.trial.billingPeriod,
-                      ),
-                    })}
-                  </Text>
-                ) : null}
-              </>
-            )}
+            ) : selectedPlayPlan?.trial ? (
+              <Text style={styles.trialCopy}>
+                {t('playTrialCopy', {
+                  period: formatPlayPeriod(
+                    selectedPlayPlan.trial.billingPeriod,
+                  ),
+                })}
+              </Text>
+            ) : null}
           </Animated.View>
 
-          {!isAndroid && checkoutReturnState !== 'idle' ? (
+          {isIos && !isPremium ? (
             <View
-              style={[
-                styles.checkoutStatus,
-                checkoutReturnState === 'pending' && styles.checkoutStatusPending,
-                checkoutReturnState === 'canceled' && styles.checkoutStatusCanceled,
-              ]}
+              style={[styles.checkoutStatus, styles.checkoutStatusCanceled]}
+              accessibilityLiveRegion="polite"
             >
-              {checkoutReturnState === 'activating' ? (
-                <ActivityIndicator color={colors.primaryDark} />
-              ) : (
-                <FontAwesome
-                  name={
-                    checkoutReturnState === 'activated'
-                      ? 'check-circle'
-                      : 'info-circle'
-                  }
-                  size={17}
-                  color={colors.primaryDark}
-                />
-              )}
+              <FontAwesome
+                name="info-circle"
+                size={17}
+                color={colors.primaryDark}
+              />
               <View style={styles.checkoutStatusText}>
                 <Text style={styles.checkoutStatusTitle}>
-                  {checkoutReturnState === 'activating'
-                    ? t('activatingTitle')
-                    : checkoutReturnState === 'activated'
-                      ? t('activatedTitle')
-                      : checkoutReturnState === 'pending'
-                        ? t('pendingTitle')
-                        : t('canceledTitle')}
+                  {t('iosUnavailableTitle')}
                 </Text>
                 <Text style={styles.checkoutStatusBody}>
-                  {checkoutReturnState === 'activating'
-                    ? t('activatingBody')
-                    : checkoutReturnState === 'activated'
-                      ? t('activatedBody')
-                      : checkoutReturnState === 'pending'
-                        ? t('pendingBody')
-                        : t('canceledBody')}
+                  {t('iosUnavailableBody')}
                 </Text>
               </View>
             </View>
@@ -619,7 +409,7 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          {!isPremium ? (
+          {!isPremium && isAndroid ? (
             <Animated.View
               entering={FadeInDown.delay(100).springify()}
               style={styles.billingToggle}
@@ -627,18 +417,13 @@ export default function SubscriptionScreen() {
               <IntervalButton
                 active={interval === 'monthly'}
                 label={t('monthly')}
-                disabled={isAndroid && (!playPlans || playBusy)}
+                disabled={!playPlans || playBusy}
                 onPress={() => setInterval('monthly')}
               />
               <IntervalButton
                 active={interval === 'annual'}
                 label={t('annual')}
-                badge={
-                  isAndroid
-                    ? undefined
-                    : t('saveBadge', { percent: savingsPercent })
-                }
-                disabled={isAndroid && (!playPlans || playBusy)}
+                disabled={!playPlans || playBusy}
                 onPress={() => setInterval('annual')}
               />
             </Animated.View>
@@ -701,27 +486,10 @@ export default function SubscriptionScreen() {
                   </View>
                 )
               ) : (
-                <View style={styles.priceRow}>
-                  <Text style={styles.price}>
-                    {formatCurrency(selectedPrice / 100, language, 'USD', 2)}
+                <View style={styles.playPricePlaceholder}>
+                  <Text style={styles.playPricePlaceholderText}>
+                    {t('iosUnavailableBody')}
                   </Text>
-                  <View style={styles.priceMeta}>
-                    <Text style={styles.pricePeriod}>
-                      {interval === 'annual' ? t('perYear') : t('perMonth')}
-                    </Text>
-                    {interval === 'annual' ? (
-                      <Text style={styles.equivalent}>
-                        {t('monthlyEquivalent', {
-                          amount: formatCurrency(
-                            annualMonthlyEquivalent / 100,
-                            language,
-                            'USD',
-                            2,
-                          ),
-                        })}
-                      </Text>
-                    ) : null}
-                  </View>
                 </View>
               )
             ) : (
@@ -764,83 +532,34 @@ export default function SubscriptionScreen() {
             </View>
 
             {isPremium ? (
-              <>
-                {isGooglePlayEntitlement ? (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      pressed && styles.buttonPressed,
-                    ]}
-                    onPress={() => void openGooglePlayManagement()}
-                    disabled={action !== null}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('playManageSubscription')}
-                    accessibilityState={{ disabled: action !== null }}
-                  >
-                    {action === 'portal' ? (
-                      <ActivityIndicator color={colors.onColor} />
-                    ) : (
-                      <>
-                        <Text style={styles.primaryButtonText}>
-                          {t('playManageSubscription')}
-                        </Text>
-                        <FontAwesome
-                          name="external-link"
-                          size={14}
-                          color={colors.onColor}
-                        />
-                      </>
-                    )}
-                  </Pressable>
-                ) : usesStripeManagement ? (
-                  <>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.primaryButton,
-                        pressed && styles.buttonPressed,
-                      ]}
-                      onPress={() => void openPortal()}
-                      disabled={action !== null}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('manageBilling')}
-                      accessibilityState={{ disabled: action !== null }}
-                    >
-                      {action === 'portal' ? (
-                        <ActivityIndicator color={colors.onColor} />
-                      ) : (
-                        <>
-                          <Text style={styles.primaryButtonText}>
-                            {t('manageBilling')}
-                          </Text>
-                          <FontAwesome
-                            name="external-link"
-                            size={14}
-                            color={colors.onColor}
-                          />
-                        </>
-                      )}
-                    </Pressable>
-                    {!entitlements.cancelAtPeriodEnd ? (
-                      <Pressable
-                        style={styles.cancelButton}
-                        onPress={confirmCancellation}
-                        disabled={action !== null}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('cancelRenewal')}
-                        accessibilityState={{ disabled: action !== null }}
-                      >
-                        <Text style={styles.cancelButtonText}>
-                          {t('cancelRenewal')}
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </>
-                ) : (
-                  <Text style={styles.managementUnavailable}>
-                    {t('playManagementUnavailable')}
-                  </Text>
-                )}
-              </>
+              isGooglePlayEntitlement ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={() => void openGooglePlayManagement()}
+                  disabled={action !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('playManageSubscription')}
+                  accessibilityState={{ disabled: action !== null }}
+                >
+                  {action === 'portal' ? (
+                    <ActivityIndicator color={colors.onColor} />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryButtonText}>
+                        {t('playManageSubscription')}
+                      </Text>
+                      <FontAwesome
+                        name="external-link"
+                        size={14}
+                        color={colors.onColor}
+                      />
+                    </>
+                  )}
+                </Pressable>
+              ) : null
             ) : isAndroid ? (
               <>
                 {playPlans ? (
@@ -904,31 +623,7 @@ export default function SubscriptionScreen() {
                   </Pressable>
                 ) : null}
               </>
-            ) : (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={() => void openCheckout()}
-                disabled={action !== null || loading}
-              >
-                {action === 'checkout' ? (
-                  <ActivityIndicator color={colors.onColor} />
-                ) : (
-                  <>
-                    <Text style={styles.primaryButtonText}>
-                      {t('startTrial', { days: premium.trialDays })}
-                    </Text>
-                    <FontAwesome
-                      name="arrow-right"
-                      size={14}
-                      color={colors.onColor}
-                    />
-                  </>
-                )}
-              </Pressable>
-            )}
+            ) : null}
           </Animated.View>
 
           {!isPremium ? (
@@ -947,7 +642,7 @@ export default function SubscriptionScreen() {
           ) : null}
 
           <Text style={styles.footer}>
-            {isAndroid ? t('playFooter') : t('footer')}
+            {isAndroid ? t('playFooter') : t('iosFooter')}
           </Text>
         </ScrollView>
       </SafeAreaView>

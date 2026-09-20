@@ -33,7 +33,7 @@ jest.mock('expo-secure-store', () => ({
 let mockIsPremium = false;
 let mockEntitlements = {
   subscriptionStatus: 'inactive',
-  source: 'stripe',
+  source: 'none' as string | null,
   currentPeriodEnd: null as string | null,
   cancelAtPeriodEnd: false,
   capabilities: {
@@ -52,8 +52,6 @@ const mockCreateBillingCheckout = jest.fn();
 const mockCreateBillingPortal = jest.fn();
 const mockCancelPremiumSubscription = jest.fn();
 const mockGetBillingPlans = jest.fn();
-const mockOpenAuthSessionAsync = jest.fn();
-const mockOpenBrowserAsync = jest.fn();
 const mockAlert = jest.fn();
 let mockCheckoutParam: string | undefined;
 
@@ -135,8 +133,8 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('expo-web-browser', () => ({
-  openAuthSessionAsync: mockOpenAuthSessionAsync,
-  openBrowserAsync: mockOpenBrowserAsync,
+  openAuthSessionAsync: jest.fn(),
+  openBrowserAsync: jest.fn(),
   WebBrowserPresentationStyle: { PAGE_SHEET: 'pageSheet' },
 }));
 
@@ -251,7 +249,7 @@ beforeEach(() => {
   mockIsPremium = false;
   mockEntitlements = {
     subscriptionStatus: 'inactive',
-    source: 'stripe',
+    source: 'none',
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
     capabilities: {
@@ -259,18 +257,8 @@ beforeEach(() => {
       contributionPaymentsEnabled: false,
     },
   };
-  mockGetBillingPlans.mockResolvedValue({ plans: [premiumPlan] });
-  mockCreateBillingCheckout.mockResolvedValue({
-    checkoutUrl: 'https://billing.example/checkout',
-  });
-  mockCreateBillingPortal.mockResolvedValue({
-    portalUrl: 'https://billing.example/portal',
-  });
   mockCheckoutParam = undefined;
-  mockOpenAuthSessionAsync.mockResolvedValue({ type: 'dismiss' });
-  mockOpenBrowserAsync.mockResolvedValue({ type: 'dismiss' });
   mockRefreshEntitlements.mockResolvedValue(mockEntitlements);
-  mockCancelPremiumSubscription.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -280,228 +268,80 @@ afterEach(() => {
   }
 });
 
-test('free user sees the authoritative monthly and annual catalog prices and derived savings', async () => {
+test('iOS free user sees StoreKit-unavailable copy and never starts Stripe checkout', async () => {
   await mount();
 
-  expect(visibleText()).toContain('$59.99');
-  expect(visibleText()).toContain('/year');
-  expect(visibleText()).toContain('$5.00');
-  expect(visibleText()).toContain('SAVE 37%');
-
-  await press('Monthly');
-
-  expect(visibleText()).toContain('$7.99');
-  expect(visibleText()).toContain('/month');
-  expect(visibleText()).not.toContain('$59.99');
-});
-
-test.each([
-  ['monthly' as const, 'Monthly'],
-  ['annual' as const, 'Annual'],
-])(
-  '%s selection creates interval-only checkout and opens its URL',
-  async (interval, label) => {
-    await mount();
-    await press(label);
-    await press('Start my 7-day free trial');
-
-    expect(mockCreateBillingCheckout).toHaveBeenCalledWith(
-      'token',
-      interval,
-      'subscriptionScreen',
-    );
-    expect(mockCreateBillingCheckout.mock.calls[0]).toHaveLength(3);
-    expect(mockOpenAuthSessionAsync).toHaveBeenCalledWith(
-      'https://billing.example/checkout',
-      'circusavemobile://subscription',
-      { presentationStyle: 'pageSheet' },
-    );
-  },
-);
-
-test.each(['cancel', 'dismiss'])(
-  'browser %s alone keeps the user free and refreshes only after browser return',
-  async (browserResult) => {
-    let returnFromBrowser!: (value: { type: string }) => void;
-    mockOpenAuthSessionAsync.mockReturnValue(
-      new Promise((resolve) => {
-        returnFromBrowser = resolve;
-      }),
-    );
-    await mount();
-
-    await TestRenderer.act(async () => {
-      pressable('Start my 7-day free trial').props.onPress();
-      await flush();
-    });
-
-    expect(mockRefreshEntitlements).not.toHaveBeenCalled();
-
-    await TestRenderer.act(async () => {
-      returnFromBrowser({ type: browserResult });
-      await flush();
-    });
-
-    expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
-    expect(visibleText()).toContain('Start my 7-day free trial');
-    expect(visibleText()).not.toContain('Organizer Pro is active');
-    expect(visibleText()).not.toContain('All organizer tools unlocked');
-  },
-);
-
-test('Manage billing requests the authenticated portal, opens it, and refreshes on return', async () => {
-  mockIsPremium = true;
-  mockEntitlements.subscriptionStatus = 'active';
-  await mount();
-
-  await press('Manage billing');
-
-  expect(mockCreateBillingPortal).toHaveBeenCalledWith('token');
-  expect(mockOpenBrowserAsync).toHaveBeenCalledWith(
-    'https://billing.example/portal',
-  );
-  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
-});
-
-test('successful return dismisses the auth session and activates only from backend-confirmed state', async () => {
-  mockOpenAuthSessionAsync.mockResolvedValue({
-    type: 'success',
-    url: 'circusavemobile://subscription?checkout=success',
-  });
-  mockRefreshEntitlements.mockResolvedValue({
-    ...mockEntitlements,
-    plan: 'premium',
-    subscriptionStatus: 'trialing',
-  });
-  await mount();
-
-  await press('Start my 7-day free trial');
-
-  expect(mockOpenAuthSessionAsync).toHaveBeenCalledTimes(1);
-  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
-  expect(visibleText()).toContain('Organizer Pro is active');
   expect(visibleText()).toContain(
-    'Your subscription was confirmed by CircuSave.',
+    'Organizer Pro subscriptions are not yet available on iPhone.',
   );
+  expect(visibleText()).not.toContain('$59.99');
+  expect(visibleText()).not.toContain('$7.99');
+  expect(visibleText()).not.toContain('Start my 7-day free trial');
+  expect(visibleText()).not.toContain('Secure checkout by Stripe');
+  expect(visibleText()).not.toContain('Manage billing');
+  expect(mockCreateBillingCheckout).not.toHaveBeenCalled();
+  expect(mockCreateBillingPortal).not.toHaveBeenCalled();
+  expect(mockCancelPremiumSubscription).not.toHaveBeenCalled();
+  expect(mockInitializeGooglePlayBilling).not.toHaveBeenCalled();
+  expect(mockGetBillingPlans).not.toHaveBeenCalled();
 });
 
-test('canceled Checkout return refreshes authority without showing subscription success', async () => {
-  mockOpenAuthSessionAsync.mockResolvedValue({
-    type: 'success',
-    url: 'circusavemobile://subscription?checkout=canceled',
-  });
+test('old Stripe success deep link grants nothing locally', async () => {
+  mockCheckoutParam = 'success';
   await mount();
 
-  await press('Start my 7-day free trial');
-
-  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
-  expect(visibleText()).toContain('Checkout canceled');
-  expect(visibleText()).not.toContain(
-    'Your subscription was confirmed by CircuSave.',
+  expect(mockRefreshEntitlements).not.toHaveBeenCalled();
+  expect(visibleText()).not.toContain('Organizer Pro is active');
+  expect(visibleText()).not.toContain('Activating Organizer Pro');
+  expect(visibleText()).toContain(
+    'Organizer Pro subscriptions are not yet available on iPhone.',
   );
+  expect(mockCreateBillingCheckout).not.toHaveBeenCalled();
 });
 
-test('delayed webhook shows activation progress and resolves after authoritative polling', async () => {
-  jest.useFakeTimers();
-  mockCheckoutParam = 'success';
-  mockRefreshEntitlements
-    .mockResolvedValueOnce(mockEntitlements)
-    .mockResolvedValueOnce(mockEntitlements)
-    .mockResolvedValueOnce({
-      ...mockEntitlements,
-      plan: 'premium',
-      subscriptionStatus: 'active',
-    });
-
-  await TestRenderer.act(async () => {
-    renderer = TestRenderer.create(React.createElement(SubscriptionScreen));
-    await flush();
-  });
-  expect(visibleText()).toContain('Activating Organizer Pro…');
-
-  await TestRenderer.act(async () => {
-    await jest.advanceTimersByTimeAsync(2500);
-    await flush();
-  });
-
-  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(3);
-  expect(visibleText()).toContain('Organizer Pro is active');
-  jest.useRealTimers();
-});
-
-test('forged success deep link cannot unlock Premium and times out safely', async () => {
-  jest.useFakeTimers();
-  mockCheckoutParam = 'success';
-  mockRefreshEntitlements.mockResolvedValue(mockEntitlements);
-
-  await TestRenderer.act(async () => {
-    renderer = TestRenderer.create(React.createElement(SubscriptionScreen));
-    await flush();
-  });
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    await TestRenderer.act(async () => {
-      await jest.advanceTimersByTimeAsync(1250);
-      await flush();
-    });
-  }
-
-  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(6);
-  expect(visibleText()).toContain('Activation is still pending');
-  expect(visibleText()).not.toContain(
-    'Your subscription was confirmed by CircuSave.',
-  );
-  expect(visibleText()).toContain('Start my 7-day free trial');
-  jest.useRealTimers();
-});
-
-test('cancel renewal preserves access wording through the paid period', async () => {
+test('iOS admin entitlement unlocks Premium without Stripe or Play management', async () => {
   mockIsPremium = true;
-  mockEntitlements.subscriptionStatus = 'active';
-  mockEntitlements.currentPeriodEnd = '2026-09-30T00:00:00Z';
+  mockEntitlements = {
+    ...mockEntitlements,
+    source: 'admin',
+    subscriptionStatus: 'active',
+    capabilities: {
+      aiAssistant: true,
+      contributionPaymentsEnabled: false,
+    },
+  };
   await mount();
 
-  await press('Cancel renewal');
-
-  expect(mockAlert).toHaveBeenCalledWith(
-    'Keep your organizer tools?',
-    expect.stringContaining(
-      'Organizer Pro access will continue until the end of the paid period.',
-    ),
-    expect.any(Array),
-  );
-
-  const actions = mockAlert.mock.calls[0][2] as Array<{
-    text: string;
-    onPress?: () => Promise<void>;
-  }>;
-  const cancel = actions.find((action) => action.text === 'Cancel renewal');
-  await TestRenderer.act(async () => {
-    await cancel?.onPress?.();
-    await flush();
-  });
-
-  expect(mockCancelPremiumSubscription).toHaveBeenCalledWith('token');
-  expect(mockRefreshEntitlements).toHaveBeenCalledTimes(1);
-  expect(mockAlert).toHaveBeenLastCalledWith(
-    'Renewal canceled',
-    'Your Organizer Pro access remains active through the current period.',
-  );
+  expect(visibleText()).toContain('Organizer Pro is active');
+  expect(visibleText()).toContain('All organizer tools unlocked');
+  expect(visibleText()).not.toContain('Manage billing');
+  expect(visibleText()).not.toContain('Cancel renewal');
+  expect(visibleText()).not.toContain('Manage Google Play subscription');
+  expect(visibleText()).not.toContain('Secure checkout by Stripe');
+  expect(mockCreateBillingPortal).not.toHaveBeenCalled();
+  expect(mockCancelPremiumSubscription).not.toHaveBeenCalled();
+  expect(mockInitializeGooglePlayBilling).not.toHaveBeenCalled();
 });
 
-test('expired entitlement renders the free offer without active Premium or unlocked-AI assumptions', async () => {
+test('expired entitlement stays free without Stripe trial or prices', async () => {
   mockIsPremium = false;
   mockEntitlements.subscriptionStatus = 'expired';
+  mockEntitlements.source = 'stripe';
   mockEntitlements.capabilities.aiAssistant = false;
   await mount();
 
-  expect(visibleText()).toContain('Start my 7-day free trial');
+  expect(visibleText()).not.toContain('Start my 7-day free trial');
   expect(visibleText()).not.toContain('Organizer Pro is active');
   expect(visibleText()).not.toContain('All organizer tools unlocked');
+  expect(visibleText()).toContain(
+    'Organizer Pro subscriptions are not yet available on iPhone.',
+  );
   expect(mockEntitlements.capabilities.aiAssistant).toBe(false);
 });
 
-test('contribution false leaves Premium UI unchanged and Premium refresh never enables it', async () => {
+test('contribution false leaves Premium UI unchanged and never opens Stripe billing', async () => {
   mockIsPremium = true;
+  mockEntitlements.source = 'admin';
   mockEntitlements.subscriptionStatus = 'active';
   mockEntitlements.capabilities.aiAssistant = true;
   mockEntitlements.capabilities.contributionPaymentsEnabled = false;
@@ -515,12 +355,9 @@ test('contribution false leaves Premium UI unchanged and Premium refresh never e
   await mount();
 
   expect(visibleText()).toContain('Organizer Pro is active');
-  expect(visibleText()).toContain('Manage billing');
-  expect(visibleText()).toContain('Cancel renewal');
-
-  await press('Manage billing');
-
+  expect(visibleText()).not.toContain('Manage billing');
+  expect(visibleText()).not.toContain('Cancel renewal');
   expect(mockRefreshContributionPaymentsCapability).not.toHaveBeenCalled();
+  expect(mockCreateBillingPortal).not.toHaveBeenCalled();
   expect(mockEntitlements.capabilities.contributionPaymentsEnabled).toBe(false);
-  expect(visibleText()).toContain('Organizer Pro is active');
 });

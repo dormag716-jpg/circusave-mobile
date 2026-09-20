@@ -1,126 +1,15 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useFinancialConnectionsSheet } from '@stripe/stripe-react-native';
 import { router } from 'expo-router';
-import { useState, useEffect } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Constants from 'expo-constants';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthSession } from '@/lib/authContext';
-import { useEntitlements } from '@/lib/entitlementsContext';
-import { createFinancialConnectionsSession, getLinkedAccounts, type BackendLinkedAccount, type AuthResponse } from '@/lib/api';
-import { colors, radii, spacing } from '@/lib/theme';
-
-const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
-
-function NativeStripeButton({ session, onSuccess, label }: { session: AuthResponse, onSuccess?: () => void, label?: string }) {
-  const { t } = useTranslation(['settings', 'common']);
-  const [isLinkingBank, setIsLinkingBank] = useState(false);
-  const { collectFinancialConnectionsAccounts } = useFinancialConnectionsSheet();
-
-  const handleConnectBank = async () => {
-    if (!session?.session.token) return;
-    try {
-      setIsLinkingBank(true);
-      const { clientSecret } = await createFinancialConnectionsSession(session.session.token);
-      
-      const { error } = await collectFinancialConnectionsAccounts(clientSecret);
-      
-      if (error) {
-        Alert.alert(t('connectionFailed'), error.message || t('unknownError'));
-      } else {
-        Alert.alert(t('common:saved'), t('bankLinkedSuccess'));
-        onSuccess?.();
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('bankConnectError');
-      Alert.alert(t('common:error'), msg);
-    } finally {
-      setIsLinkingBank(false);
-    }
-  };
-
-  return (
-    <Pressable 
-      style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
-      onPress={handleConnectBank}
-      disabled={isLinkingBank}
-      accessibilityRole="button"
-    >
-      {isLinkingBank ? (
-        <ActivityIndicator size="small" color={colors.onColor} />
-      ) : (
-        <FontAwesome name="lock" size={16} color={colors.onColor} />
-      )}
-      <Text style={styles.connectButtonText}>
-        {isLinkingBank ? t('connecting') : (label || t('connectWithStripe'))}
-      </Text>
-    </Pressable>
-  );
-}
-
-function LinkedAccountsList({ session }: { session: AuthResponse }) {
-  const { t } = useTranslation('settings');
-  const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchAccounts = async () => {
-    if (!session?.session.token) return;
-    try {
-      setIsLoading(true);
-      const linked = await getLinkedAccounts(session.session.token);
-      setAccounts(linked);
-    } catch {
-      // silent — component will show empty state
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAccounts();
-  }, [session?.session.token]);
-
-  if (isLoading) {
-    return <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />;
-  }
-
-  if (accounts.length === 0) {
-    return <NativeStripeButton session={session} onSuccess={fetchAccounts} />;
-  }
-
-  return (
-    <View style={styles.linkedAccountsContainer}>
-      <Text style={styles.linkedAccountsTitle}>{t('linkedBankAccounts')}</Text>
-      {accounts.map(acc => (
-        <View key={acc.id} style={styles.linkedAccountRow}>
-          <View style={styles.linkedAccountIcon}>
-            <FontAwesome name="bank" size={16} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.linkedAccountText}>{acc.bankName} •••• {acc.last4}</Text>
-          </View>
-          <View style={styles.connectedBadge}>
-            <Text style={styles.connectedBadgeText}>{t('connected')}</Text>
-          </View>
-        </View>
-      ))}
-      <Text style={styles.linkedAccountNote}>
-        {t('linkedAccountNote')}
-      </Text>
-      <NativeStripeButton session={session} onSuccess={fetchAccounts} label={t('connectAnotherAccount')} />
-    </View>
-  );
-}
+import { colors, spacing } from '@/lib/theme';
 
 export default function AutomatedPaymentsScreen() {
   const { session } = useAuthSession();
-  const { hasCapability } = useEntitlements();
   const { t } = useTranslation(['settings', 'contributions', 'common']);
-  const contributionPaymentsEnabled = hasCapability(
-    'contributionPaymentsEnabled',
-  );
 
   if (!session) return null;
 
@@ -149,23 +38,11 @@ export default function AutomatedPaymentsScreen() {
             <Text style={styles.bankTitle}>{t('automatedPaymentsTitle')}</Text>
           </View>
           <Text style={styles.bankDescription}>
-            {contributionPaymentsEnabled
-              ? t('automatedPaymentsDescription')
-              : t('contributions:rails.contributionPaymentsDisabledBody')}
+            {t('contributions:rails.contributionPaymentsDisabledBody')}
           </Text>
-          
-          {contributionPaymentsEnabled && isStripeSupported ? (
-            <LinkedAccountsList session={session} />
-          ) : contributionPaymentsEnabled ? (
-            <Pressable 
-              style={({ pressed }) => [styles.connectButton, pressed && styles.connectButtonPressed]}
-              onPress={() => Alert.alert(t('buildRequiredTitle'), t('buildRequiredBody'))}
-              accessibilityRole="button"
-            >
-              <FontAwesome name="lock" size={16} color={colors.onColor} />
-              <Text style={styles.connectButtonText}>{t('connectWithStripe')}</Text>
-            </Pressable>
-          ) : null}
+          <Text style={styles.disabledText}>
+            {t('common:unsupported')}
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -196,11 +73,9 @@ const styles = StyleSheet.create({
     marginLeft: -8,
     width: 44,
   },
-  headerRight: {
-    width: 40,
-  },
-  content: { 
-    paddingBottom: 100, 
+  headerRight: { width: 40 },
+  content: {
+    paddingBottom: 100,
     paddingHorizontal: spacing.screenX,
     paddingTop: 24,
   },
@@ -242,74 +117,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 20,
   },
-  connectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 8,
-  },
-  connectButtonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
-  connectButtonText: {
-    color: colors.onColor,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  linkedAccountsContainer: {
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  linkedAccountsTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textStrong,
-    marginBottom: 12,
-  },
-  linkedAccountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    marginBottom: 12,
-  },
-  linkedAccountIcon: {
-    backgroundColor: colors.primarySoft,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  linkedAccountText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textStrong,
-  },
-  connectedBadge: {
-    backgroundColor: colors.successSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-  },
-  connectedBadgeText: {
-    color: colors.success,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  linkedAccountNote: {
-    fontSize: 13,
+  disabledText: {
+    fontSize: 14,
     color: colors.muted,
-    marginBottom: 16,
-    fontStyle: 'italic',
-  }
+    lineHeight: 20,
+  },
 });

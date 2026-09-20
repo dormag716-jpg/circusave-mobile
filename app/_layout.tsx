@@ -4,7 +4,6 @@ import { useFonts } from 'expo-font';
 import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { StripeProvider } from '@stripe/stripe-react-native';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
@@ -22,10 +21,6 @@ import { circleWorkspaceHref, dashboardHref } from '@/lib/navigation';
 import { authorizeNotificationNavigation } from '@/lib/notificationNavigation';
 import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
 import { logClientError } from '@/lib/errorLogging';
-import {
-  STRIPE_MERCHANT_IDENTIFIER,
-  resolveStripePublishableKey,
-} from '@/lib/config';
 import { registerUnauthorizedSessionHandler } from '@/lib/sessionExpiry';
 
 export {
@@ -199,25 +194,11 @@ function NotificationNavigationController() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const stripePublishableKey = resolveStripePublishableKey();
-  const isStripeSupported =
-    Platform.OS !== 'web' &&
-    Constants.executionEnvironment !== 'storeClient' &&
-    Boolean(stripePublishableKey);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar style="dark" />
-      {isStripeSupported ? (
-        <StripeProvider
-          publishableKey={stripePublishableKey}
-          merchantIdentifier={STRIPE_MERCHANT_IDENTIFIER}
-        >
-          <SessionTree />
-        </StripeProvider>
-      ) : (
-        <SessionTree />
-      )}
+      <SessionTree />
     </ThemeProvider>
   );
 }

@@ -58,13 +58,6 @@ jest.mock('expo-constants', () => ({
   default: { appOwnership: 'standalone' },
 }));
 
-jest.mock('@stripe/stripe-react-native', () => ({
-  useStripe: () => ({
-    initPaymentSheet: jest.fn(),
-    presentPaymentSheet: jest.fn(),
-  }),
-}));
-
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn() },
   useLocalSearchParams: () => ({
@@ -105,7 +98,6 @@ jest.mock('../useContributionPaymentCapability', () => ({
 
 jest.mock('../api', () => ({
   ApiError: class ApiError extends Error {},
-  createPaymentIntent: jest.fn(),
   getCircleDetail: mockGetCircleDetail,
   getCircleSchedule: mockGetCircleSchedule,
   submitContribution: mockSubmitContribution,

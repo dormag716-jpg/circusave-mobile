@@ -1565,16 +1565,6 @@ export type BillingPlansResponse = {
   plans: BillingPlan[];
 };
 
-export type BillingCheckoutResponse = {
-  checkoutSessionId: string;
-  checkoutUrl: string;
-  interval: 'monthly' | 'annual';
-};
-
-export type BillingPortalResponse = {
-  portalUrl: string;
-};
-
 export type GooglePlayPlanConfig = {
   productId: string;
   basePlanId: string;
@@ -1815,34 +1805,6 @@ export async function restoreGooglePlayPurchase(
   } catch (error) {
     return sanitizeGooglePlayFailure(error);
   }
-}
-
-export function createBillingCheckout(
-  token: string,
-  interval: 'monthly' | 'annual',
-  sourceFeature?: string,
-): Promise<BillingCheckoutResponse> {
-  return requestJson<BillingCheckoutResponse>('/billing/checkout', {
-    method: 'POST',
-    token,
-    body: JSON.stringify({ interval, sourceFeature }),
-  });
-}
-
-export function createBillingPortal(
-  token: string,
-): Promise<BillingPortalResponse> {
-  return requestJson<BillingPortalResponse>('/billing/portal', {
-    method: 'POST',
-    token,
-  });
-}
-
-export function cancelPremiumSubscription(token: string): Promise<unknown> {
-  return requestJson<unknown>('/billing/subscription/cancel', {
-    method: 'POST',
-    token,
-  });
 }
 
 export function getPremiumReminderSchedule(

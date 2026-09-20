@@ -32,7 +32,6 @@ import { validatePlanCapacity } from '../createCircleWizard';
 import { changeLanguagePreference, i18n, initializeI18n } from '../i18n';
 import type { SupportedLanguage } from '../i18n/types';
 import { humanizeStatus } from '../statementPresentation';
-import { runStripeContributionPayment } from '../stripeContributionPayment';
 
 const LANGUAGES: SupportedLanguage[] = ['en', 'es', 'ht'];
 
@@ -230,30 +229,17 @@ describe('narrow localization correction', () => {
     const expectedPayment = {
       en: {
         identifyHand: 'Unable to identify your hand.',
-        handMismatch:
-          'Payment was not started for the selected hand. Please try again.',
-        stripePayment: 'Unable to complete the payment. Please try again.',
+        submitContribution: 'The contribution could not be submitted.',
       },
       es: {
         identifyHand: 'No se pudo identificar tu mano.',
-        handMismatch:
-          'El pago no se inició para la mano seleccionada. Inténtalo de nuevo.',
-        stripePayment: 'No se pudo completar el pago con Stripe.',
+        submitContribution: 'No se pudo enviar la contribución.',
       },
       ht: {
         identifyHand: 'Nou pa t kapab idantifye men ou.',
-        handMismatch:
-          'Peman an pa t kòmanse pou men ou chwazi a. Tanpri eseye ankò.',
-        stripePayment: 'Nou pa kapab fini peman Stripe la.',
+        submitContribution: 'Nou pa kapab soumèt kontribisyon an.',
       },
     } as const;
-
-    const deps = {
-      createPaymentIntent: jest.fn(),
-      initPaymentSheet: jest.fn(),
-      presentPaymentSheet: jest.fn(),
-      loadHandStatus: jest.fn(),
-    };
 
     for (const language of LANGUAGES) {
       await changeLanguagePreference(language);
@@ -263,50 +249,11 @@ describe('narrow localization correction', () => {
       expect(i18n.t('circleWorkspace:chat.sendError')).toBe(
         expectedChat[language].sendError,
       );
-
-      const missingHand = await runStripeContributionPayment(
-        {
-          token: 'tok',
-          circleId: 'circle-1',
-          roundNumber: 1,
-          handId: '',
-          contributionPaymentsEnabled: true,
-        },
-        deps,
+      expect(i18n.t('financialErrors:identifyHand')).toBe(
+        expectedPayment[language].identifyHand,
       );
-      expect(missingHand).toEqual({
-        kind: 'error',
-        message: expectedPayment[language].identifyHand,
-        handId: '',
-      });
-
-      const mismatch = await runStripeContributionPayment(
-        {
-          token: 'tok',
-          circleId: 'circle-1',
-          roundNumber: 1,
-          handId: 'hand-selected',
-          contributionPaymentsEnabled: true,
-        },
-        {
-          createPaymentIntent: async () => ({
-            clientSecret: 'cs_test',
-            paymentIntentId: 'pi_test',
-            handId: 'hand-other',
-          }),
-          initPaymentSheet: jest.fn(),
-          presentPaymentSheet: jest.fn(),
-          loadHandStatus: jest.fn(),
-        },
-      );
-      expect(mismatch).toEqual({
-        kind: 'error',
-        message: expectedPayment[language].handMismatch,
-        handId: 'hand-selected',
-      });
-
-      expect(i18n.t('financialErrors:stripePayment')).toBe(
-        expectedPayment[language].stripePayment,
+      expect(i18n.t('financialErrors:submitContribution')).toBe(
+        expectedPayment[language].submitContribution,
       );
     }
   });

@@ -191,7 +191,6 @@ jest.mock('../entitlementsContext', () => ({
 }));
 
 jest.mock('../api', () => ({
-  cancelPremiumSubscription: jest.fn(),
   createBillingCheckout: jest.fn(),
   createBillingPortal: mockCreateBillingPortal,
   getBillingPlans: jest.fn(),
@@ -453,7 +452,7 @@ describe('Android Google Play subscription UI', () => {
     expect(mockCreateBillingPortal).not.toHaveBeenCalled();
   });
 
-  test('Stripe entitlement retains Stripe management on Android', async () => {
+  test('Stripe source never opens Stripe portal or cancellation on Android', async () => {
     mockIsPremium = true;
     mockEntitlements = {
       ...mockEntitlements,
@@ -462,17 +461,41 @@ describe('Android Google Play subscription UI', () => {
     };
     await renderScreen();
 
-    await TestRenderer.act(async () => {
-      await button('Manage billing').props.onPress();
-    });
+    expect(button('Manage billing')).toBeUndefined();
+    expect(button('Cancel renewal')).toBeUndefined();
+    expect(button('Manage Google Play subscription')).toBeUndefined();
+    expect(screenText()).not.toContain('Secure checkout by Stripe');
+    expect(mockCreateBillingPortal).not.toHaveBeenCalled();
+    expect(mockOpenBrowserAsync).not.toHaveBeenCalled();
+  });
 
-    expect(mockCreateBillingPortal).toHaveBeenCalledWith(
-      'authenticated-session',
-    );
-    expect(mockOpenBrowserAsync).toHaveBeenCalledWith(
-      'https://billing.example/portal',
-    );
+  test('admin entitlement shows no provider-management control', async () => {
+    mockIsPremium = true;
+    mockEntitlements = {
+      ...mockEntitlements,
+      subscriptionStatus: 'active',
+      source: 'admin',
+    };
+    await renderScreen();
+
+    expect(screenText()).toContain('Organizer Pro is active');
+    expect(button('Manage billing')).toBeUndefined();
+    expect(button('Cancel renewal')).toBeUndefined();
+    expect(button('Manage Google Play subscription')).toBeUndefined();
+    expect(mockCreateBillingPortal).not.toHaveBeenCalled();
     expect(mockOpenManagement).not.toHaveBeenCalled();
+  });
+
+  test('free Android user never calls Stripe checkout', async () => {
+    await renderScreen();
+
+    expect(screenText()).toContain(
+      'Google Play subscriptions are coming soon.',
+    );
+    expect(screenText()).not.toContain('Start my 7-day free trial');
+    expect(screenText()).not.toContain('Secure checkout by Stripe');
+    const api = require('../api');
+    expect(api.createBillingCheckout).not.toHaveBeenCalled();
   });
 
   test('requests initialization from the centralized owner on focus', async () => {

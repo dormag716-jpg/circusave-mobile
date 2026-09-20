@@ -12,13 +12,13 @@ export type ContributionPaymentRailsModel = {
 };
 
 /**
- * Presentation-only split of contribution.tsx rails.
- * Does not decide submit permission, Stripe lock, or settlement.
+ * Presentation-only contribution rails.
+ * Circle contributions are external/manual only — never an in-app pay rail.
  */
 export function buildContributionPaymentRails(input: {
   paymentInstructions?: string | null;
   paymentDestinations?: unknown;
-  stripeSupported: boolean;
+  stripeSupported?: boolean;
   contributionPaymentsEnabled?: unknown;
 }): ContributionPaymentRailsModel {
   const presented = presentCirclePaymentInstructions({
@@ -26,9 +26,7 @@ export function buildContributionPaymentRails(input: {
     paymentDestinations: input.paymentDestinations,
   });
   return {
-    showStripeRail:
-      input.stripeSupported === true &&
-      input.contributionPaymentsEnabled === true,
+    showStripeRail: false,
     showManualRail: true,
     hasInstructions: presented.hasInstructions,
     instructions: presented.instructions,

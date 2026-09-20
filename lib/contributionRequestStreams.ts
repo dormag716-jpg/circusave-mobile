@@ -1,9 +1,9 @@
 import { createRequestGeneration, type RequestGeneration } from './requestGeneration';
 
 /**
- * Contribution screen loads and Stripe settlement polls are independent
- * request streams. Sharing one generation lets polling invalidate an
- * in-flight screen load (and the reverse).
+ * Contribution screen loads and settlement polls are independent request
+ * streams. Sharing one generation lets polling invalidate an in-flight
+ * screen load (and the reverse).
  */
 export type ContributionRequestStreams = {
   contributionLoad: RequestGeneration;
