@@ -2,7 +2,7 @@
   "title": "Seguridad y privacidad",
   "deviceAccess": "Acceso al dispositivo",
   "appLock": "Bloqueo de la app",
-  "appLockSubtitle": "Requiere Face ID, Touch ID o PIN para abrir la app.",
+  "appLockSubtitle": "CircuSave se bloquea en cuanto sales de la app. Desbloquéala con tu huella, Face ID o tu contraseña de CircuSave. Esto permanece activado.",
   "appLockA11y": "Bloqueo de la app",
   "passwordRecovery": "Contraseña y recuperación",
   "changePassword": "Cambiar contraseña",

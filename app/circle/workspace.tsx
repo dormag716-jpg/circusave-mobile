@@ -1,5 +1,5 @@
 ﻿import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, type Href, useLocalSearchParams } from 'expo-router';
+import { router, type Href, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   useCallback,
   useEffect,
@@ -68,6 +68,7 @@ import { RecordsStatementCenter } from '@/components/records/RecordsStatementCen
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
 import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/workspaceAgreementLoad';
+import { ledgerActionForNavigation, navigationMayMutateMoney } from '@/lib/authBoundary';
 import { useAuthSession } from '@/lib/authContext';
 import {
   evictCircleWorkspaceCache,
@@ -345,6 +346,28 @@ export default function CircleWorkspaceScreen() {
   useEffect(() => {
     void loadWorkspace();
   }, [circleId, token, status]);
+
+  const reloadWorkspaceOnFocusRef = useRef<() => void>(() => {});
+  reloadWorkspaceOnFocusRef.current = () => {
+    void loadWorkspace({ silent: true, revalidate: true });
+    setRefreshNonce((current) => current + 1);
+  };
+  const skipInitialWorkspaceFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (skipInitialWorkspaceFocus.current) {
+        skipInitialWorkspaceFocus.current = false;
+        return;
+      }
+      if (ledgerActionForNavigation('focus') !== 'reload_authoritative') {
+        return;
+      }
+      if (navigationMayMutateMoney('focus') || navigationMayMutateMoney('back')) {
+        return;
+      }
+      reloadWorkspaceOnFocusRef.current();
+    }, []),
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -716,7 +739,7 @@ function WorkspaceContent({
       </View>
     ) : null;
 
-  const loadBackendSections = useCallback(async () => {
+  const loadBackendSections = useCallback(async (options?: { revalidate?: boolean }) => {
     const generation = sectionsGeneration.current.next();
     if (!hasLastKnownSectionsRef.current) {
       setSecondaryLoading(true);
@@ -725,7 +748,11 @@ function WorkspaceContent({
       setSecondaryError(null);
     }
     try {
-      const scheduleResponse = await getCircleSchedule(token, circle.id);
+      const scheduleResponse = await getCircleSchedule(
+        token,
+        circle.id,
+        options?.revalidate ? { revalidate: true } : undefined,
+      );
       if (!sectionsGeneration.current.isCurrent(generation)) {
         return;
       }
@@ -781,7 +808,7 @@ function WorkspaceContent({
   }, [circle.id]);
 
   useEffect(() => {
-    void loadBackendSections();
+    void loadBackendSections({ revalidate: refreshNonce > 0 });
   }, [circle.id, token, refreshNonce, loadBackendSections]);
 
   useEffect(() => {

@@ -2,7 +2,7 @@
   "title": "Sekirite ak vi prive",
   "deviceAccess": "Aksè aparèy",
   "appLock": "Kadna aplikasyon an",
-  "appLockSubtitle": "Mande Face ID, Touch ID, oswa PIN pou ouvri aplikasyon an.",
+  "appLockSubtitle": "CircuSave bloke le w kite aplikasyon an. Debloke ak anprent, Face ID, oswa modpas CircuSave ou. Sa toujou rete aktive.",
   "appLockA11y": "Kadna aplikasyon an",
   "passwordRecovery": "Modpas ak rekiperasyon",
   "changePassword": "Chanje modpas",

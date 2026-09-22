@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
-import { Alert, ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { File, Paths } from 'expo-file-system';
@@ -9,8 +9,8 @@ import * as Sharing from 'expo-sharing';
 
 import { useTranslation } from 'react-i18next';
 
+import { resetNavigationToLogin } from '@/lib/authBoundary';
 import { useAuthSession } from '@/lib/authContext';
-import { useDeviceLock } from '@/components/DeviceLock';
 import { exportUserData, deleteAccount } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
 import { colors, radii, spacing } from '@/lib/theme';
@@ -20,7 +20,6 @@ export default function SecurityScreen() {
   const { t } = useTranslation(['security', 'common']);
   const { session, signOut } = useAuthSession();
   const token = session?.session.token;
-  const { isLockEnabled, setLockEnabled } = useDeviceLock();
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -100,7 +99,7 @@ export default function SecurityScreen() {
                       try {
                         await signOut();
                       } finally {
-                        router.replace('/login');
+                        resetNavigationToLogin(router);
                       }
                     },
                   },
@@ -145,14 +144,6 @@ export default function SecurityScreen() {
               <Text style={styles.cardTitle}>{t('appLock')}</Text>
               <Text style={styles.cardSubtitle}>{t('appLockSubtitle')}</Text>
             </View>
-            <Switch
-              value={isLockEnabled}
-              onValueChange={(val) => void setLockEnabled(val)}
-              trackColor={{ true: colors.primary, false: colors.cardBorder }}
-              accessibilityRole="switch"
-              accessibilityLabel={t('appLockA11y')}
-              accessibilityState={{ checked: isLockEnabled }}
-            />
           </View>
         </View>
 

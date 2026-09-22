@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
 
+import { resetNavigationToLogin } from '@/lib/authBoundary';
 import { useAuthSession } from '@/lib/authContext';
 import { useEntitlements } from '@/lib/entitlementsContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
@@ -239,7 +240,7 @@ export default function SettingsScreen() {
                   try {
                     await signOut();
                   } finally {
-                    router.replace('/login');
+                    resetNavigationToLogin(router);
                   }
                 },
               },

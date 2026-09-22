@@ -1,11 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Linking from 'expo-linking';
-import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { loginHardwareBackAction } from '@/lib/authBoundary';
 import {
   login,
   requestPasswordReset,
@@ -43,6 +45,24 @@ export default function LoginScreen() {
   const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
     useAuthSession();
   const incomingUrl = Linking.useURL();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') {
+        return undefined;
+      }
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (loginHardwareBackAction() !== 'exit_app') {
+          return false;
+        }
+        BackHandler.exitApp();
+        return true;
+      });
+      return () => {
+        subscription.remove();
+      };
+    }, []),
+  );
 
   const normalizedEmail = email.trim().toLowerCase();
 

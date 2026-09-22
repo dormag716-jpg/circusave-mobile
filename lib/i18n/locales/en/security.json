@@ -2,7 +2,7 @@
   "title": "Security & Privacy",
   "deviceAccess": "Device Access",
   "appLock": "App Lock",
-  "appLockSubtitle": "Require Face ID, Touch ID, or PIN to open the app.",
+  "appLockSubtitle": "CircuSave locks as soon as you leave the app. Unlock with fingerprint, Face ID, or your CircuSave password. This stays on.",
   "appLockA11y": "App lock",
   "passwordRecovery": "Password & Recovery",
   "changePassword": "Change Password",

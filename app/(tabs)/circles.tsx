@@ -21,6 +21,7 @@ import {
   type BackendCircleDetail,
 } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
+import { focusReloadOptions } from '@/lib/authBoundary';
 import { useAuthSession } from '@/lib/authContext';
 import { seedCircleWorkspaceCache } from '@/lib/circleWorkspaceCache';
 import {
@@ -268,9 +269,7 @@ export default function CirclesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadCircles({
-        silent: shouldUseSilentCirclesRefresh(hasLastKnownStateRef.current),
-      });
+      void loadCircles(focusReloadOptions(hasLastKnownStateRef.current));
     }, [loadCircles]),
   );
 

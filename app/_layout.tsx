@@ -1,16 +1,21 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { router, Stack } from 'expo-router';
+import { router, Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import 'react-native-reanimated';
 
 import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
 import { useColorScheme } from '@/components/useColorScheme';
+import {
+  resetNavigationToLogin,
+  shouldDeferProtectedNavigation,
+  shouldIssueSignedOutReset,
+} from '@/lib/authBoundary';
 import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
 import { getCircleDetail } from '@/lib/api';
 import { EntitlementsProvider, useEntitlements } from '@/lib/entitlementsContext';
@@ -114,6 +119,7 @@ function SessionTree() {
             <LaunchSplashController />
             <SessionExpiryController />
             <NotificationNavigationController />
+            <UnauthenticatedRouteGuard />
             <AuthenticatedStack />
           </DeviceLockProvider>
         </MarketProvider>
@@ -135,28 +141,50 @@ function SessionExpiryController() {
       }
       revokeContributionPaymentsCapability();
       await signOut();
-      router.replace('/login');
+      resetNavigationToLogin(router);
     });
   }, [revokeContributionPaymentsCapability, signOut]);
 
   return null;
 }
 
+type NotificationTarget = {
+  screen: string;
+  circleId: string;
+  tab?: string;
+  conversationId?: string;
+};
+
 function NotificationNavigationController() {
   const { session, status, setPostAuthTarget } = useAuthSession();
+  const { isInitializing, isLocked } = useDeviceLock();
   const authToken = session?.session.token;
+  const pendingRef = useRef<NotificationTarget | null>(null);
+  const followGeneration = useRef(0);
+  const defer = shouldDeferProtectedNavigation({
+    locked: isLocked,
+    initializing: isInitializing,
+  });
+  const deferRef = useRef(defer);
+  deferRef.current = defer;
 
-  useEffect(() => {
-    let active = true;
-    const subPromise = setupNotificationListener(async (data) => {
+  const openTarget = useCallback(
+    async (data: NotificationTarget, generation: number) => {
       if (data.screen !== 'workspace' || !data.circleId) {
+        return;
+      }
+      if (deferRef.current) {
+        pendingRef.current = data;
         return;
       }
 
       const currentAuthToken = String(authToken || '').trim();
       if (status !== 'authenticated' || !currentAuthToken) {
+        if (followGeneration.current !== generation) {
+          return;
+        }
         setPostAuthTarget(dashboardHref);
-        router.replace('/login');
+        resetNavigationToLogin(router);
         return;
       }
 
@@ -167,7 +195,10 @@ function NotificationNavigationController() {
             revalidate: true,
           }),
       });
-      if (!active) {
+      if (followGeneration.current !== generation || deferRef.current) {
+        if (deferRef.current) {
+          pendingRef.current = data;
+        }
         return;
       }
       if (decision === 'workspace') {
@@ -181,13 +212,56 @@ function NotificationNavigationController() {
       } else {
         router.replace(dashboardHref);
       }
+    },
+    [authToken, setPostAuthTarget, status],
+  );
+
+  useEffect(() => {
+    const generation = ++followGeneration.current;
+    const subPromise = setupNotificationListener(async (data) => {
+      if (followGeneration.current !== generation) {
+        return;
+      }
+      await openTarget(data, generation);
     });
 
     return () => {
-      active = false;
       subPromise.then((sub) => sub?.remove()).catch(() => {});
     };
-  }, [authToken, setPostAuthTarget, status]);
+  }, [openTarget]);
+
+  useEffect(() => {
+    if (defer) {
+      return;
+    }
+    const pending = pendingRef.current;
+    if (!pending) {
+      return;
+    }
+    pendingRef.current = null;
+    void openTarget(pending, followGeneration.current);
+  }, [defer, openTarget]);
+
+  return null;
+}
+
+function UnauthenticatedRouteGuard() {
+  const { status } = useAuthSession();
+  const pathname = usePathname();
+  const lastResetKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    const decision = shouldIssueSignedOutReset({
+      status,
+      pathname,
+      lastResetKey: lastResetKey.current,
+    });
+    lastResetKey.current = decision.nextKey;
+    if (!decision.reset) {
+      return;
+    }
+    resetNavigationToLogin(router);
+  }, [pathname, status]);
 
   return null;
 }
@@ -205,20 +279,30 @@ function RootLayoutNav() {
 
 function AuthenticatedStack() {
   const { postAuthTarget, setPostAuthTarget, status } = useAuthSession();
+  const { isInitializing, isLocked } = useDeviceLock();
   const authenticated = status === 'authenticated';
-  const unauthenticated = status === 'unauthenticated' || status === 'error';
 
   useEffect(() => {
-    if (authenticated && postAuthTarget) {
+    if (
+      authenticated &&
+      postAuthTarget &&
+      !shouldDeferProtectedNavigation({
+        locked: isLocked,
+        initializing: isInitializing,
+      })
+    ) {
       router.replace(postAuthTarget);
       setPostAuthTarget(null);
     }
-  }, [authenticated, postAuthTarget, setPostAuthTarget]);
+  }, [authenticated, isInitializing, isLocked, postAuthTarget, setPostAuthTarget]);
 
   return (
     <Stack>
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="login"
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
       <Stack.Screen name="create-account" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="create-circle/setup" options={{ headerShown: false }} />

@@ -22,6 +22,7 @@ import {
   type BackendRoundSnapshot,
 } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
+import { focusReloadOptions } from '@/lib/authBoundary';
 import { useAuthSession } from '@/lib/authContext';
 import { formatCurrency, formatShortDate } from '@/lib/i18n/formatters';
 import {
@@ -215,7 +216,7 @@ export default function DashboardScreen() {
           ),
           Promise.all(
             toLoad.map((c) =>
-              getCircleSchedule(accessToken, c.id).catch(() => null),
+              getCircleSchedule(accessToken, c.id, getOptions).catch(() => null),
             ),
           ),
         ]);
@@ -270,9 +271,7 @@ export default function DashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadDashboard({
-        silent: shouldUseSilentDashboardRefresh(hasLastKnownStateRef.current),
-      });
+      void loadDashboard(focusReloadOptions(hasLastKnownStateRef.current));
     }, [loadDashboard]),
   );
 

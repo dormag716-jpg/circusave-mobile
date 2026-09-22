@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { getActivity, getCircleDetail } from '@/lib/api';
+import { focusReloadOptions } from '@/lib/authBoundary';
 import { shouldLoadActivity } from '@/lib/activityAuthGate';
 import {
   activityExportEntries,
@@ -232,9 +233,7 @@ export default function ActivityScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadActivity({
-        silent: shouldUseSilentActivityRefresh(hasLastKnownStateRef.current),
-      });
+      void loadActivity(focusReloadOptions(hasLastKnownStateRef.current));
     }, [loadActivity]),
   );
 
