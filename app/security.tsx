@@ -1,7 +1,20 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
-import { Alert, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as LocalAuthentication from 'expo-local-authentication';
+import {
+  Alert,
+  ActivityIndicator,
+  AppState,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { File, Paths } from 'expo-file-system';
@@ -12,6 +25,16 @@ import { useTranslation } from 'react-i18next';
 import { resetNavigationToLogin } from '@/lib/authBoundary';
 import { useAuthSession } from '@/lib/authContext';
 import { exportUserData, deleteAccount } from '@/lib/api';
+import {
+  BIOMETRICS_NOT_CONFIGURED,
+  biometricSetupTranslationKey,
+  biometricStatusTranslationKey,
+  isLatestEnrollmentRead,
+  openDeviceSecuritySettings,
+  readBiometricEnrollment,
+  shouldRefreshBiometricEnrollmentOnAppState,
+  type BiometricEnrollmentView,
+} from '@/lib/biometricEnrollment';
 import { copyText } from '@/lib/clipboard';
 import { colors, radii, spacing } from '@/lib/theme';
 import { logClientError } from '@/lib/errorLogging';
@@ -22,6 +45,74 @@ export default function SecurityScreen() {
   const token = session?.session.token;
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [enrollment, setEnrollment] = useState<BiometricEnrollmentView | null>(null);
+  const [openingSettings, setOpeningSettings] = useState(false);
+  const mountedRef = useRef(true);
+  const openingSettingsRef = useRef(false);
+  const enrollmentReadId = useRef(0);
+
+  const refreshEnrollment = useCallback(() => {
+    const readId = enrollmentReadId.current + 1;
+    enrollmentReadId.current = readId;
+    void readBiometricEnrollment({
+      hasHardwareAsync: LocalAuthentication.hasHardwareAsync,
+      isEnrolledAsync: LocalAuthentication.isEnrolledAsync,
+      supportedAuthenticationTypesAsync: LocalAuthentication.supportedAuthenticationTypesAsync,
+      getEnrolledLevelAsync: LocalAuthentication.getEnrolledLevelAsync,
+    })
+      .then((next) => {
+        if (!mountedRef.current || !isLatestEnrollmentRead(readId, enrollmentReadId.current)) {
+          return;
+        }
+        setEnrollment(next);
+      })
+      .catch(() => {
+        if (!mountedRef.current || !isLatestEnrollmentRead(readId, enrollmentReadId.current)) {
+          return;
+        }
+        setEnrollment(BIOMETRICS_NOT_CONFIGURED);
+      });
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    refreshEnrollment();
+    let previous = AppState.currentState;
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (shouldRefreshBiometricEnrollmentOnAppState(previous, next)) {
+        refreshEnrollment();
+      }
+      previous = next;
+    });
+    return () => {
+      mountedRef.current = false;
+      subscription.remove();
+    };
+  }, [refreshEnrollment]);
+
+  const handleSetupBiometrics = async () => {
+    if (openingSettingsRef.current) {
+      return;
+    }
+    openingSettingsRef.current = true;
+    setOpeningSettings(true);
+    try {
+      const result = await openDeviceSecuritySettings({
+        platform: Platform.OS,
+        startAndroidActivity: (action) => IntentLauncher.startActivityAsync(action),
+        openIosSettings: () => Linking.openSettings(),
+      });
+      if (result !== 'opened' && mountedRef.current) {
+        Alert.alert(t('biometricSettingsErrorTitle'), t('biometricSettingsErrorBody'));
+      }
+    } finally {
+      openingSettingsRef.current = false;
+      if (mountedRef.current) {
+        setOpeningSettings(false);
+      }
+      refreshEnrollment();
+    }
+  };
 
   const handleExportData = async () => {
     if (!token) return;
@@ -145,6 +236,41 @@ export default function SecurityScreen() {
               <Text style={styles.cardSubtitle}>{t('appLockSubtitle')}</Text>
             </View>
           </View>
+          <View style={styles.cardDivider} />
+          {enrollment ? (
+            <Text
+              style={styles.cardTitle}
+              accessibilityLiveRegion="polite"
+              accessibilityRole="text"
+            >
+              {t(biometricStatusTranslationKey(enrollment.status))}
+            </Text>
+          ) : (
+            <View style={styles.statusLoading}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.cardSubtitle}>{t('biometricChecking')}</Text>
+            </View>
+          )}
+          <Text style={styles.cardSubtitle}>{t('biometricAssurance')}</Text>
+          {enrollment?.setup ? (
+            <Pressable
+              style={({ pressed }) => [styles.setupButton, pressed && styles.actionRowPressed]}
+              onPress={() => {
+                void handleSetupBiometrics();
+              }}
+              disabled={openingSettings}
+              accessibilityRole="button"
+              accessibilityLabel={t(biometricSetupTranslationKey(enrollment.setup))}
+            >
+              {openingSettings ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={styles.setupButtonText}>
+                  {t(biometricSetupTranslationKey(enrollment.setup))}
+                </Text>
+              )}
+            </Pressable>
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>{t('passwordRecovery')}</Text>
@@ -262,4 +388,21 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 17, fontWeight: '700', color: colors.textStrong, marginBottom: 4 },
   cardSubtitle: { fontSize: 14, color: colors.muted, lineHeight: 20 },
+  statusLoading: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  setupButton: {
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    marginTop: 12,
+    minHeight: 44,
+  },
+  setupButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });

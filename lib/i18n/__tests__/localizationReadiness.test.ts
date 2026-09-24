@@ -72,6 +72,11 @@ const REQUIRED_KEYS = [
   'settings:externalPaymentDisclosure',
   'settings:organizerProBadge',
   'security:title',
+  'security:fingerprintEnabled',
+  'security:faceIdEnabled',
+  'security:biometricsNotConfigured',
+  'security:setupFingerprint',
+  'security:setupFaceId',
   'legal:title',
   'common:notFoundBody',
 ] as const;
