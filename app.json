@@ -15,7 +15,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.circusave.mobile"
+      "bundleIdentifier": "com.circusave.mobile",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.circusave.mobile",
@@ -78,7 +79,8 @@
         }
       ],
       "expo-localization",
-      "expo-iap"
+      "expo-iap",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true

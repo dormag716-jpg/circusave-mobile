@@ -19,14 +19,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
 import { loginHardwareBackAction } from '@/lib/authBoundary';
 import {
   login,
+  signInWithFederatedProvider,
   requestPasswordReset,
   resetPassword,
   verifyPasswordReset,
+  type AuthResponse,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  clearFederatedCredential,
+  holdFederatedCredential,
+  type FederatedIdentityProof,
+} from '@/lib/federatedSignIn';
 import { describeNetworkError } from '@/lib/networkErrors';
 import { postAuthHrefFromUrl } from '@/lib/navigation';
 import { colors, shadows, spacing } from '@/lib/theme';
@@ -42,6 +50,9 @@ export default function LoginScreen() {
   const [otpRequested, setOtpRequested] = useState(false);
   const [resetVerified, setResetVerified] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [linkChallenge, setLinkChallenge] = useState<
+    (FederatedIdentityProof & { email: string }) | null
+  >(null);
   const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
     useAuthSession();
   const incomingUrl = Linking.useURL();
@@ -73,6 +84,38 @@ export default function LoginScreen() {
     setResetToken('');
     setOtpCode('');
     setPassword('');
+    setLinkChallenge(null);
+  }
+
+  async function finishAuthenticated(result: AuthResponse) {
+    clearFederatedCredential();
+    setLinkChallenge(null);
+    if (!postAuthTarget) {
+      setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+    }
+    await setAuthenticatedSession(result);
+  }
+
+  async function onFederatedIdentity(proof: FederatedIdentityProof) {
+    const result = await signInWithFederatedProvider({
+      proof,
+      name: proof.name,
+    });
+    if (result.status === 'authenticated') {
+      await finishAuthenticated(result.auth);
+      return;
+    }
+    if (result.status === 'link_required') {
+      setLinkChallenge({ ...proof, email: result.email });
+      setPassword('');
+      return;
+    }
+    holdFederatedCredential({
+      ...proof,
+      email: result.email,
+      name: result.name || proof.name || '',
+    });
+    router.push('/create-account');
   }
 
   async function handleSubmit() {
@@ -80,7 +123,7 @@ export default function LoginScreen() {
 
     Keyboard.dismiss();
 
-    if (!normalizedEmail) {
+    if (!linkChallenge && !normalizedEmail) {
       Alert.alert(t('login.missingEmailTitle'), t('login.missingEmailMessage'));
       return;
     }
@@ -103,6 +146,19 @@ export default function LoginScreen() {
     setIsSubmitting(true);
 
     try {
+      if (linkChallenge) {
+        const linked = await signInWithFederatedProvider({
+          proof: linkChallenge,
+          password,
+        });
+        if (linked.status !== 'authenticated') {
+          Alert.alert(t('federated.rejectedTitle'), t('federated.rejectedBody'));
+          return;
+        }
+        await finishAuthenticated(linked.auth);
+        return;
+      }
+
       if (!recoveryMode) {
         const result = await login({ email: normalizedEmail, password });
         // Keep an explicit target (e.g. invite return) over the raw deep link.
@@ -179,27 +235,52 @@ export default function LoginScreen() {
               {recoveryMode ? t('login.recoverAccess') : t('login.welcomeBack')}
             </Text>
             <Text style={styles.subtitle}>
-              {recoveryMode
-                ? t('login.recoverySubtitle')
-                : t('login.signInSubtitle')}
+              {linkChallenge
+                ? t('federated.linkBody')
+                : recoveryMode
+                  ? t('login.recoverySubtitle')
+                  : t('login.signInSubtitle')}
             </Text>
 
-            <Text style={styles.label}>{t('common.email')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('login.emailPlaceholder')}
-              accessibilityLabel={t('common.email')}
-              placeholderTextColor={colors.subtle}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              returnKeyType={recoveryMode ? 'done' : 'next'}
-              onSubmitEditing={() =>
-                recoveryMode ? void handleSubmit() : passwordInputRef.current?.focus()
-              }
-            />
+            {!recoveryMode && !linkChallenge ? (
+              <FederatedAuthButtons
+                disabled={isSubmitting}
+                onIdentity={onFederatedIdentity}
+                onUnavailable={(reason) => {
+                  Alert.alert(
+                    t(reason === 'not_configured'
+                      ? 'federated.notConfiguredTitle'
+                      : 'federated.unavailableTitle'),
+                    t(reason === 'not_configured'
+                      ? 'federated.notConfiguredBody'
+                      : 'federated.unavailableBody'),
+                  );
+                }}
+              />
+            ) : null}
+
+            {linkChallenge ? (
+              <Text style={styles.label}>{linkChallenge.email}</Text>
+            ) : (
+              <>
+                <Text style={styles.label}>{t('common.email')}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('login.emailPlaceholder')}
+                  accessibilityLabel={t('common.email')}
+                  placeholderTextColor={colors.subtle}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  returnKeyType={recoveryMode ? 'done' : 'next'}
+                  onSubmitEditing={() =>
+                    recoveryMode ? void handleSubmit() : passwordInputRef.current?.focus()
+                  }
+                />
+              </>
+            )}
 
             {!recoveryMode && (
               <>
@@ -269,7 +350,9 @@ export default function LoginScreen() {
               accessibilityRole="button"
               accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
               accessibilityLabel={
-                !recoveryMode
+                linkChallenge
+                  ? t('federated.linkAction')
+                  : !recoveryMode
                   ? t('login.signIn')
                   : !otpRequested
                     ? t('login.sendRecoveryCode')
@@ -282,7 +365,9 @@ export default function LoginScreen() {
                 <ActivityIndicator color={colors.onColor} />
               ) : (
                 <Text style={styles.signInText}>
-                  {!recoveryMode
+                  {linkChallenge
+                    ? t('federated.linkAction')
+                    : !recoveryMode
                     ? t('login.signIn')
                     : !otpRequested
                       ? t('login.sendRecoveryCode')

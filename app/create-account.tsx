@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Linking from 'expo-linking';
 import { router, type Href } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -19,9 +19,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
 import { LegalCheckbox } from '@/components/LegalCheckbox';
-import { register } from '@/lib/api';
+import { register, signInWithFederatedProvider, type AuthResponse } from '@/lib/api';
 import { useAuthSession } from '@/lib/authContext';
+import {
+  clearFederatedCredential,
+  holdFederatedCredential,
+  readFederatedCredential,
+  splitDisplayName,
+  type FederatedIdentityProof,
+} from '@/lib/federatedSignIn';
 import { LEGAL_VERSIONS } from '@/lib/legal';
 import { postAuthHrefFromUrl } from '@/lib/navigation';
 import { colors, shadows, spacing } from '@/lib/theme';
@@ -49,12 +57,90 @@ export default function CreateAccountScreen() {
   const [acceptedFundsDisclosure, setAcceptedFundsDisclosure] = useState(false);
   const [acceptedElectronicConsent, setAcceptedElectronicConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [providerEmail, setProviderEmail] = useState('');
+  const [linkChallenge, setLinkChallenge] = useState<
+    (FederatedIdentityProof & { email: string }) | null
+  >(null);
+  const [linkPassword, setLinkPassword] = useState('');
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const stepOpacity = useRef(new Animated.Value(1)).current;
   const stepTranslateX = useRef(new Animated.Value(0)).current;
   const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
     useAuthSession();
   const incomingUrl = Linking.useURL();
+
+  useEffect(() => {
+    const held = readFederatedCredential();
+    if (!held) {
+      return;
+    }
+    const names = splitDisplayName(held.name);
+    if (names.first) {
+      setFirstName(names.first);
+    }
+    if (names.last) {
+      setLastName(names.last);
+    }
+    setEmail(held.email);
+    setProviderEmail(held.email);
+  }, []);
+
+  async function finishAuthenticated(result: AuthResponse) {
+    clearFederatedCredential();
+    setLinkChallenge(null);
+    if (!postAuthTarget) {
+      setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+    }
+    await setAuthenticatedSession(result);
+  }
+
+  async function onFederatedIdentity(proof: FederatedIdentityProof) {
+    const result = await signInWithFederatedProvider({
+      proof,
+      name: proof.name,
+    });
+    if (result.status === 'authenticated') {
+      await finishAuthenticated(result.auth);
+      return;
+    }
+    if (result.status === 'link_required') {
+      setLinkChallenge({ ...proof, email: result.email });
+      setEmail(result.email);
+      setProviderEmail(result.email);
+      return;
+    }
+    const name = result.name || proof.name || '';
+    holdFederatedCredential({ ...proof, email: result.email, name });
+    const names = splitDisplayName(name);
+    setFirstName(names.first);
+    setLastName(names.last);
+    setEmail(result.email);
+    setProviderEmail(result.email);
+  }
+
+  async function linkExistingAccount() {
+    if (!linkChallenge || linkPassword.length < 8 || isSubmitting) {
+      Alert.alert(t('login.missingPasswordTitle'), t('login.missingPasswordMessage'));
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const linked = await signInWithFederatedProvider({
+        proof: linkChallenge,
+        password: linkPassword,
+      });
+      if (linked.status !== 'authenticated') {
+        Alert.alert(t('federated.rejectedTitle'), t('federated.rejectedBody'));
+        return;
+      }
+      await finishAuthenticated(linked.auth);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      Alert.alert(t('federated.rejectedTitle'), message || t('federated.rejectedBody'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   const hasAcceptedRequiredPolicies =
     acceptedTermsAndPrivacy &&
@@ -157,24 +243,37 @@ export default function CreateAccountScreen() {
     setIsSubmitting(true);
 
     try {
+      const legalAcceptance = {
+        acceptedLegal: true as const,
+        termsVersion: LEGAL_VERSIONS.terms,
+        privacyVersion: LEGAL_VERSIONS.privacy,
+        fundsDisclosureVersion: LEGAL_VERSIONS.fundsDisclosure,
+        electronicConsentVersion: LEGAL_VERSIONS.electronicConsent,
+      };
+      const held = readFederatedCredential();
+      if (held) {
+        const created = await signInWithFederatedProvider({
+          proof: held,
+          password,
+          name: `${firstName.trim()} ${lastName.trim()}`,
+          phone: phone.trim(),
+          legalAcceptance,
+        });
+        if (created.status !== 'authenticated') {
+          Alert.alert(t('federated.rejectedTitle'), t('federated.rejectedBody'));
+          return;
+        }
+        await finishAuthenticated(created.auth);
+        return;
+      }
       const result = await register({
         name: `${firstName.trim()} ${lastName.trim()}`,
         email: normalizedEmail,
         phone: phone.trim(),
         password,
-        legalAcceptance: {
-          acceptedLegal: true,
-          termsVersion: LEGAL_VERSIONS.terms,
-          privacyVersion: LEGAL_VERSIONS.privacy,
-          fundsDisclosureVersion: LEGAL_VERSIONS.fundsDisclosure,
-          electronicConsentVersion: LEGAL_VERSIONS.electronicConsent,
-        },
+        legalAcceptance,
       });
-      // Keep an explicit target (e.g. invite return) over the raw deep link.
-      if (!postAuthTarget) {
-        setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
-      }
-      await setAuthenticatedSession(result);
+      await finishAuthenticated(result);
     } catch (err: unknown) {
       const message =
         err instanceof Error && err.message.trim()
@@ -311,6 +410,47 @@ export default function CreateAccountScreen() {
             <Text style={styles.sectionDescription}>
               {t('create.aboutDescription')}
             </Text>
+            <FederatedAuthButtons
+              disabled={isSubmitting}
+              onIdentity={onFederatedIdentity}
+              onUnavailable={(reason) => {
+                Alert.alert(
+                  t(reason === 'not_configured'
+                    ? 'federated.notConfiguredTitle'
+                    : 'federated.unavailableTitle'),
+                  t(reason === 'not_configured'
+                    ? 'federated.notConfiguredBody'
+                    : 'federated.unavailableBody'),
+                );
+              }}
+            />
+            {linkChallenge ? (
+              <>
+                <Text style={styles.sectionDescription}>{t('federated.linkBody')}</Text>
+                <Text style={styles.label}>{linkChallenge.email}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('login.passwordPlaceholder')}
+                  accessibilityLabel={t('federated.linkAction')}
+                  placeholderTextColor={colors.subtle}
+                  value={linkPassword}
+                  onChangeText={setLinkPassword}
+                  secureTextEntry
+                  autoComplete="current-password"
+                />
+                <Pressable
+                  style={styles.primaryButton}
+                  onPress={() => {
+                    void linkExistingAccount();
+                  }}
+                  disabled={isSubmitting}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('federated.linkAction')}
+                >
+                  <Text style={styles.primaryButtonText}>{t('federated.linkAction')}</Text>
+                </Pressable>
+              </>
+            ) : null}
 
             <Text style={styles.label}>{t('create.firstName')}</Text>
             <TextInput
@@ -350,6 +490,7 @@ export default function CreateAccountScreen() {
               placeholderTextColor={colors.subtle}
               value={email}
               onChangeText={setEmail}
+              editable={!providerEmail}
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"

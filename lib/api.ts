@@ -20,6 +20,12 @@ import {
   shouldUseHttpGetCache,
 } from './httpGetCache';
 import {
+  federatedRequestBody,
+  interpretFederatedPayload,
+  type FederatedIdentityProof,
+  type FederatedSignInResult,
+} from './federatedSignIn';
+import {
   ApiError,
   classifyFetchFailure,
   classifyHttpStatus,
@@ -1098,6 +1104,34 @@ export async function register(input: {
     }),
   });
   return normalizeAuthResponse(payload, true);
+}
+
+export async function signInWithFederatedProvider(input: {
+  proof: FederatedIdentityProof;
+  password?: string;
+  name?: string;
+  phone?: string;
+  legalAcceptance?: RegistrationLegalAcceptance;
+}): Promise<FederatedSignInResult> {
+  const path =
+    input.proof.provider === 'apple' ? '/auth/mobile/apple' : '/auth/mobile/google';
+  const payload = await requestJson<unknown>(path, {
+    method: 'POST',
+    body: JSON.stringify(
+      federatedRequestBody({
+        proof: input.proof,
+        password: input.password,
+        name: input.name,
+        phone: input.phone,
+        legalAcceptance: input.legalAcceptance,
+      }),
+    ),
+  });
+  const result = interpretFederatedPayload(payload);
+  if (result.status === 'authenticated') {
+    return { status: 'authenticated', auth: normalizeAuthResponse(payload, true) };
+  }
+  return result;
 }
 
 export function requestPasswordReset(input: {
