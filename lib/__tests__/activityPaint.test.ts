@@ -1,8 +1,8 @@
 import {
   shouldShowActivityListError,
   shouldUseSilentActivityRefresh,
-} from '../activityPaint';
-import { shouldShowBlockingLoadState } from '../requestGeneration';
+} from '../shared/activityPaint';
+import { shouldShowBlockingLoadState } from '../shared/requestGeneration';
 
 describe('activity list paint', () => {
   it('uses a silent refresh once a snapshot is already on screen', () => {

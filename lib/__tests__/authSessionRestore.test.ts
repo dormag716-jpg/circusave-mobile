@@ -7,11 +7,11 @@ import {
   runAuthSessionRestore,
   runLogoutSession,
   shouldOptimisticRestore,
-} from '../authSessionRestore';
+} from '../auth/authSessionRestore';
 import {
   getHttpGetCachePolicy,
   shouldUseHttpGetCache,
-} from '../httpGetCache';
+} from '../platform/httpGetCache';
 
 const NOW = Date.parse('2026-08-13T12:00:00.000Z');
 

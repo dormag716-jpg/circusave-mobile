@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 
-import { ApiError } from '../networkErrors';
+import { ApiError } from '../platform/networkErrors';
 import {
   MONEY_ALREADY_COMPLETED_CODES,
   authoritativeStateMeetsGoal,
@@ -12,7 +12,7 @@ import {
   stableCodeMatchesGoal,
   type MoneyAlreadyCompletedCode,
   type MoneyMutationGoal,
-} from '../moneyMutationRecovery';
+} from '../payments/moneyMutationRecovery';
 
 function apiError(
   status: number,

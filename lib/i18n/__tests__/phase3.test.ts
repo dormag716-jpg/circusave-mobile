@@ -24,11 +24,11 @@ jest.mock('expo-secure-store', () => ({
 
 import { changeLanguagePreference, i18n, initializeI18n } from '../index';
 import { formatCurrency, formatOrdinal } from '../formatters';
-import { resolveJoinOutcome } from '../../joinOutcome';
+import { resolveJoinOutcome } from '../../circles/joinOutcome';
 import {
   groupCurrentApiHandsForDisplay,
   validateCurrentPayoutOrder,
-} from '../../peopleWorkspace';
+} from '../../circles/peopleWorkspace';
 
 describe('Phase 3 circle workspace localization', () => {
   beforeAll(async () => {

@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { getInitials } from '../lib/initials';
-import { colors } from '../lib/theme';
+import { getInitials } from '../lib/shared/initials';
+import { colors } from '../lib/shared/theme';
 
 interface AvatarProps {
   name?: string | null;

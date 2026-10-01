@@ -109,7 +109,7 @@ jest.mock('@/components/Avatar', () => {
   };
 });
 
-jest.mock('../authContext', () => ({
+jest.mock('../auth/authContext', () => ({
   useAuthSession: () => ({
     session: {
       session: { token: 'token' },
@@ -124,7 +124,7 @@ jest.mock('../authContext', () => ({
   }),
 }));
 
-jest.mock('../entitlementsContext', () => ({
+jest.mock('../billing/entitlementsContext', () => ({
   useEntitlements: () => ({
     isPremium: mockIsPremium,
     entitlements: {
@@ -160,11 +160,11 @@ jest.mock('../i18n/language-storage', () => ({
   saveLanguagePreference: jest.fn(),
 }));
 
-jest.mock('../notifications', () => ({
+jest.mock('../platform/notifications', () => ({
   scheduleTestNotification: jest.fn(),
 }));
 
-jest.mock('../market', () => ({
+jest.mock('../circles/market', () => ({
   useMarket: () => ({ market: 'us', setMarket: jest.fn() }),
 }));
 

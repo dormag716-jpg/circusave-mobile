@@ -1,4 +1,4 @@
-import { CREATE_CIRCLE_STEPS, createCircleStepTitles, estimateLabel } from '../createCircleFlow';
+import { CREATE_CIRCLE_STEPS, createCircleStepTitles, estimateLabel } from '../circles/createCircleFlow';
 
 describe('createCircleFlow', () => {
   test('uses six focused steps without duplicate sections', () => {

@@ -4,7 +4,7 @@ import path from 'path';
 import {
   shouldBlockCreateTabLanding,
   shouldShowCreateTabLimitCard,
-} from '../createTabPaint';
+} from '../shared/createTabPaint';
 
 describe('create tab first paint', () => {
   it('never blocks the landing on the circles fetch', () => {

@@ -12,7 +12,7 @@ import {
   shouldDeferProtectedNavigation,
   shouldIssueSignedOutReset,
   shouldResetSignedOutProtectedRoute,
-} from '../authBoundary';
+} from '../auth/authBoundary';
 
 describe('auth boundary', () => {
   it('exits from Login instead of revealing a protected screen', () => {
@@ -253,7 +253,7 @@ describe('auth boundary', () => {
     const security = readFileSync(path.join(__dirname, '..', '..', 'app', 'security.tsx'), 'utf8');
     expect(settings).toContain('resetNavigationToLogin(router)');
     expect(security).toContain('resetNavigationToLogin(router)');
-    expect(security).not.toContain('<Switch');
+    expect(security).toContain('accessibilityRole="switch"');
     expect(security).not.toContain('setLockEnabled');
   });
 });

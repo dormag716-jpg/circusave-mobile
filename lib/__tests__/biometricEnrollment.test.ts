@@ -10,18 +10,15 @@ import {
   BIOMETRIC_TYPE_FACIAL_RECOGNITION,
   BIOMETRIC_TYPE_FINGERPRINT,
   BIOMETRIC_TYPE_IRIS,
-  BIOMETRICS_NOT_CONFIGURED,
-  PUBLISHED_ANDROID_VERSION_CODE_WITHOUT_SECURITY_SETTINGS,
-  androidBuildIncludesSecuritySettingsIntent,
-  biometricSetupTranslationKey,
-  biometricStatusTranslationKey,
-  classifyBiometricEnrollment,
+  biometricEnrollmentTranslationKey,
   isLatestEnrollmentRead,
   openDeviceSecuritySettings,
+  presentBiometricSecurity,
   readBiometricEnrollment,
   shouldRefreshBiometricEnrollmentOnAppState,
+  supportedBiometricTranslationKey,
   type BiometricHardwareReport,
-} from '../biometricEnrollment';
+} from '../platform/biometricEnrollment';
 
 const root = path.join(__dirname, '..', '..');
 
@@ -35,109 +32,106 @@ function report(overrides: Partial<BiometricHardwareReport> = {}): BiometricHard
   };
 }
 
-describe('biometric enrollment status', () => {
-  it('shows fingerprint enabled when a fingerprint is enrolled', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          isEnrolled: true,
-          supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT],
-          enrolledLevel: BIOMETRIC_LEVEL_STRONG,
-        }),
-      ),
-    ).toEqual({ status: 'fingerprint_enabled', setup: null });
-  });
-
-  it('shows Face ID enabled when facial recognition is enrolled', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          isEnrolled: true,
-          supportedTypes: [BIOMETRIC_TYPE_FACIAL_RECOGNITION],
-          enrolledLevel: BIOMETRIC_LEVEL_STRONG,
-        }),
-      ),
-    ).toEqual({ status: 'face_id_enabled', setup: null });
-  });
-
-  it('keeps Face ID enabled when the sensor is locked out', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          isEnrolled: true,
-          supportedTypes: [BIOMETRIC_TYPE_FACIAL_RECOGNITION],
-          enrolledLevel: BIOMETRIC_LEVEL_SECRET,
-        }),
-      ).status,
-    ).toBe('face_id_enabled');
-  });
-
-  it('shows biometrics not configured when nothing is enrolled', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT],
-          enrolledLevel: BIOMETRIC_LEVEL_SECRET,
-        }),
-      ),
-    ).toEqual({ status: 'not_configured', setup: 'fingerprint' });
-    expect(classifyBiometricEnrollment(report({ hasHardware: false }))).toEqual(
-      BIOMETRICS_NOT_CONFIGURED,
+describe('biometric security presentation', () => {
+  it('reports no hardware and hides settings off Android', () => {
+    const presentation = presentBiometricSecurity(
+      report({ hasHardware: false, supportedTypes: [] }),
+      'ios',
+    );
+    expect(presentation).toMatchObject({
+      appLockAlwaysOn: true,
+      hardwareAvailable: false,
+      enrollment: 'none',
+      requiresStrongBiometrics: true,
+      supported: [],
+      showSettings: false,
+    });
+    expect(presentBiometricSecurity(report({ hasHardware: false }), 'android').showSettings).toBe(
+      true,
     );
   });
 
-  it('offers Face ID setup only for a face sensor that is not enrolled', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({ supportedTypes: [BIOMETRIC_TYPE_FACIAL_RECOGNITION] }),
-      ),
-    ).toEqual({ status: 'not_configured', setup: 'face_id' });
+  it('lists Android fingerprint and face recognition without calling either enrolled', () => {
+    const presentation = presentBiometricSecurity(
+      report({
+        supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT, BIOMETRIC_TYPE_FACIAL_RECOGNITION],
+      }),
+      'android',
+    );
+    expect(presentation.enrollment).toBe('none');
+    expect(presentation.supported).toEqual(['fingerprint', 'face_recognition']);
+    expect(presentation.showSettings).toBe(true);
+    expect(supportedBiometricTranslationKey('face_recognition')).toBe('supportedFaceRecognition');
+    expect(supportedBiometricTranslationKey('fingerprint')).toBe('supportedFingerprint');
   });
 
-  it('offers fingerprint setup when both sensors exist and neither is enrolled', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT, BIOMETRIC_TYPE_FACIAL_RECOGNITION],
-        }),
-      ).setup,
-    ).toBe('fingerprint');
+  it('uses Touch ID and Face ID wording on iOS', () => {
+    const presentation = presentBiometricSecurity(
+      report({
+        supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT, BIOMETRIC_TYPE_FACIAL_RECOGNITION],
+      }),
+      'ios',
+    );
+    expect(presentation.supported).toEqual(['touch_id', 'face_id']);
+    expect(supportedBiometricTranslationKey('touch_id')).toBe('supportedTouchId');
+    expect(supportedBiometricTranslationKey('face_id')).toBe('supportedFaceId');
   });
 
-  it('labels weak enrollment on a dual-sensor device as Face ID', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          isEnrolled: true,
-          supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT, BIOMETRIC_TYPE_FACIAL_RECOGNITION],
-          enrolledLevel: BIOMETRIC_LEVEL_WEAK,
-        }),
-      ),
-    ).toEqual({ status: 'face_id_enabled', setup: null });
+  it('says a compatible biometric is enrolled without naming the sensor', () => {
+    const presentation = presentBiometricSecurity(
+      report({
+        isEnrolled: true,
+        enrolledLevel: BIOMETRIC_LEVEL_STRONG,
+        supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT, BIOMETRIC_TYPE_FACIAL_RECOGNITION],
+      }),
+      'android',
+    );
+    expect(presentation.enrollment).toBe('compatible');
+    expect(biometricEnrollmentTranslationKey(presentation.enrollment)).toBe(
+      'compatibleBiometricsEnrolled',
+    );
+    expect(presentation.showSettings).toBe(true);
+    expect(JSON.stringify(presentation)).not.toMatch(/fingerprint_enabled|face_id_enabled/);
   });
 
-  it('labels strong enrollment on a dual-sensor device as fingerprint', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          isEnrolled: true,
-          supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT, BIOMETRIC_TYPE_FACIAL_RECOGNITION],
-          enrolledLevel: BIOMETRIC_LEVEL_STRONG,
-        }),
-      ),
-    ).toEqual({ status: 'fingerprint_enabled', setup: null });
+  it('explains a weak biometric instead of treating it as Face ID or unavailable', () => {
+    const presentation = presentBiometricSecurity(
+      report({
+        isEnrolled: true,
+        enrolledLevel: BIOMETRIC_LEVEL_WEAK,
+        supportedTypes: [BIOMETRIC_TYPE_FACIAL_RECOGNITION],
+      }),
+      'android',
+    );
+    expect(presentation.enrollment).toBe('weak_only');
+    expect(presentation.supported).toEqual(['face_recognition']);
+    expect(biometricEnrollmentTranslationKey('weak_only')).toBe('weakBiometricOnly');
   });
 
-  it('does not call a fingerprint or Face ID enrollment an iris sensor', () => {
-    expect(
-      classifyBiometricEnrollment(
-        report({
-          isEnrolled: true,
-          supportedTypes: [BIOMETRIC_TYPE_IRIS],
-          enrolledLevel: BIOMETRIC_LEVEL_STRONG,
-        }),
-      ),
-    ).toEqual(BIOMETRICS_NOT_CONFIGURED);
+  it('does not claim an iris enrollment is a fingerprint or a face', () => {
+    const presentation = presentBiometricSecurity(
+      report({
+        isEnrolled: true,
+        enrolledLevel: BIOMETRIC_LEVEL_STRONG,
+        supportedTypes: [BIOMETRIC_TYPE_IRIS],
+      }),
+      'android',
+    );
+    expect(presentation.enrollment).toBe('compatible');
+    expect(presentation.supported).toEqual(['iris']);
+  });
+
+  it('keeps an enrolled sensor visible when the level cannot be proven during lockout', () => {
+    const presentation = presentBiometricSecurity(
+      report({
+        isEnrolled: true,
+        enrolledLevel: BIOMETRIC_LEVEL_SECRET,
+        supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT],
+      }),
+      'ios',
+    );
+    expect(presentation.enrollment).toBe('enrolled_unproven');
+    expect(presentation.supported).toEqual(['touch_id']);
   });
 
   it('rechecks enrollment when CircuSave becomes active again', () => {
@@ -179,18 +173,23 @@ describe('biometric enrollment status', () => {
       },
     } as Parameters<typeof readBiometricEnrollment>[0]);
 
-    expect(view).toEqual({ status: 'fingerprint_enabled', setup: null });
+    expect(view).toEqual({
+      hasHardware: true,
+      isEnrolled: true,
+      supportedTypes: [BIOMETRIC_TYPE_FINGERPRINT],
+      enrolledLevel: BIOMETRIC_LEVEL_STRONG,
+    });
     expect(calls).toEqual(['hardware', 'enrolled', 'types', 'level']);
   });
 
-  it('treats a failed hardware report as not configured', async () => {
+  it('does not treat missing hardware as an enrolled biometric', async () => {
     const view = await readBiometricEnrollment({
       hasHardwareAsync: async () => false,
       isEnrolledAsync: async () => true,
       supportedAuthenticationTypesAsync: async () => [BIOMETRIC_TYPE_FINGERPRINT],
       getEnrolledLevelAsync: async () => BIOMETRIC_LEVEL_STRONG,
     });
-    expect(view).toEqual(BIOMETRICS_NOT_CONFIGURED);
+    expect(presentBiometricSecurity(view, 'android').enrollment).toBe('none');
   });
 });
 
@@ -205,7 +204,15 @@ describe('device security settings', () => {
         openIosSettings,
       }),
     ).resolves.toBe('opened');
-    expect(startAndroidActivity).toHaveBeenCalledWith(ANDROID_DEVICE_SECURITY_SETTINGS);
+    expect(startAndroidActivity).toHaveBeenCalledWith(
+      'android.settings.BIOMETRIC_ENROLL',
+      {
+        extra: {
+          'android.provider.extra.BIOMETRIC_AUTHENTICATORS_ALLOWED': 15,
+        },
+      },
+    );
+    expect(startAndroidActivity).not.toHaveBeenCalledWith(ANDROID_DEVICE_SECURITY_SETTINGS);
     expect(ANDROID_DEVICE_SECURITY_SETTINGS).toBe('android.settings.SECURITY_SETTINGS');
     expect(openIosSettings).not.toHaveBeenCalled();
   });
@@ -244,24 +251,26 @@ describe('device security settings', () => {
     expect(openIosSettings).not.toHaveBeenCalled();
   });
 
-  it('requires a new Android build after the published version code 8 bundle', () => {
-    expect(PUBLISHED_ANDROID_VERSION_CODE_WITHOUT_SECURITY_SETTINGS).toBe(8);
-    expect(androidBuildIncludesSecuritySettingsIntent(8)).toBe(false);
-    expect(androidBuildIncludesSecuritySettingsIntent(9)).toBe(true);
-    expect(androidBuildIncludesSecuritySettingsIntent(1.5)).toBe(false);
+  it('falls back to Android security settings when biometric enrollment is rejected', async () => {
+    const startAndroidActivity = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('unavailable'))
+      .mockResolvedValueOnce({ resultCode: -1 });
+    await expect(
+      openDeviceSecuritySettings({
+        platform: 'android',
+        startAndroidActivity,
+        openIosSettings: jest.fn(),
+      }),
+    ).resolves.toBe('opened');
+    expect(startAndroidActivity).toHaveBeenLastCalledWith(ANDROID_DEVICE_SECURITY_SETTINGS);
   });
 });
 
 describe('security screen enrollment wiring', () => {
-  const enrollmentSource = readFileSync(
-    path.join(root, 'lib', 'biometricEnrollment.ts'),
-    'utf8',
-  );
+  const enrollmentSource = readFileSync(path.join(root, 'lib', 'platform', 'biometricEnrollment.ts'), 'utf8');
   const securitySource = readFileSync(path.join(root, 'app', 'security.tsx'), 'utf8');
-  const deviceLockSource = readFileSync(
-    path.join(root, 'components', 'DeviceLock.tsx'),
-    'utf8',
-  );
+  const deviceLockSource = readFileSync(path.join(root, 'components', 'DeviceLock.tsx'), 'utf8');
   const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8');
 
   it('checks enrollment again from the Security screen and opens device settings', () => {
@@ -270,74 +279,71 @@ describe('security screen enrollment wiring', () => {
     expect(securitySource).toContain('AppState.addEventListener');
     expect(securitySource).toContain('IntentLauncher.startActivityAsync');
     expect(securitySource).toContain('Linking.openSettings');
-    expect(securitySource).toContain('biometricAssurance');
-    expect(securitySource).toContain('appLockSubtitle');
-    expect(securitySource).not.toContain('<Switch');
+    expect(securitySource).toContain('appLockSwitchSubtitle');
+    expect(securitySource).toContain('managePhoneBiometrics');
+    expect(securitySource).toContain('accessibilityRole="switch"');
+    expect(securitySource).not.toContain('appLockAlwaysOn');
+    expect(securitySource).not.toContain('strongBiometricsRequired');
     expect(securitySource).not.toContain('authenticateAsync');
     expect(securitySource).not.toContain('SecureStore');
     expect(securitySource).not.toContain('AsyncStorage');
     expect(securitySource).not.toContain('expo-iap');
-    expect(securitySource).not.toContain('GoogleSignin');
+    expect(enrollmentSource).not.toContain('fingerprint_enabled');
     expect(enrollmentSource).not.toContain('authenticateAsync');
-    expect(enrollmentSource).not.toContain('SecureStore');
-    expect(enrollmentSource).not.toContain('AsyncStorage');
-    expect(enrollmentSource).not.toContain('expo-iap');
     expect(packageSource).toContain('"expo-intent-launcher"');
   });
 
-  it('keeps CircuSave password unlock available', () => {
+  it('keeps CircuSave password unlock available and the strong biometric policy', () => {
     expect(deviceLockSource).toContain('verifyAccountPassword');
     expect(deviceLockSource).toContain('show_password_fallback');
     expect(deviceLockSource).toContain('usePassword');
     expect(deviceLockSource).toContain('disableDeviceFallback: true');
-    expect(securitySource).toContain('biometricAssurance');
+    expect(deviceLockSource).toContain("biometricsSecurityLevel: 'strong'");
+    expect(deviceLockSource).not.toContain('console.log');
+    expect(securitySource).toContain('verifyAccountPassword');
   });
 
-  it('uses the English, Spanish, and Haitian Creole enrollment copy', () => {
-    const expected = {
-      en: {
-        fingerprintEnabled: 'Fingerprint enabled',
-        faceIdEnabled: 'Face ID enabled',
-        biometricsNotConfigured: 'Biometrics not configured',
-        setupFingerprint: 'Set up fingerprint',
-        setupFaceId: 'Set up Face ID',
-      },
-      es: {
-        fingerprintEnabled: 'Huella activada',
-        faceIdEnabled: 'Face ID activado',
-        biometricsNotConfigured: 'Datos biométricos no configurados',
-        setupFingerprint: 'Configurar huella',
-        setupFaceId: 'Configurar Face ID',
-      },
-      ht: {
-        fingerprintEnabled: 'Anprent aktive',
-        faceIdEnabled: 'Face ID aktive',
-        biometricsNotConfigured: 'Biometrik pa konfigire',
-        setupFingerprint: 'Konfigire anprent',
-        setupFaceId: 'Konfigire Face ID',
-      },
-    } as const;
-
+  it('uses accurate English, Spanish, and Haitian Creole biometric copy', () => {
+    const keys = [
+      'appLock',
+      'appLockSwitchSubtitle',
+      'biometricUnlock',
+      'managePhoneBiometrics',
+      'availableSensors',
+      'weakBiometricOnly',
+      'supportedFaceId',
+      'supportedFaceRecognition',
+      'supportedTouchId',
+      'strongBiometricsRequired',
+      'appLockSubtitleIos',
+      'appLockSubtitleAndroid',
+    ] as const;
     for (const language of ['en', 'es', 'ht'] as const) {
       const catalog = JSON.parse(
-        readFileSync(
-          path.join(root, 'lib', 'i18n', 'locales', language, 'security.json'),
-          'utf8',
-        ),
+        readFileSync(path.join(root, 'lib', 'i18n', 'locales', language, 'security.json'), 'utf8'),
       ) as Record<string, string>;
-      expect(catalog.fingerprintEnabled).toBe(expected[language].fingerprintEnabled);
-      expect(catalog.faceIdEnabled).toBe(expected[language].faceIdEnabled);
-      expect(catalog.biometricsNotConfigured).toBe(expected[language].biometricsNotConfigured);
-      expect(catalog.setupFingerprint).toBe(expected[language].setupFingerprint);
-      expect(catalog.setupFaceId).toBe(expected[language].setupFaceId);
-      expect(catalog.biometricAssurance.length).toBeGreaterThan(0);
+      for (const key of keys) {
+        expect(catalog[key]?.length).toBeGreaterThan(0);
+      }
       expect(catalog.appLockSubtitle.toLowerCase()).toMatch(/password|contraseña|modpas/);
+      expect(catalog.appLockSubtitleAndroid).not.toMatch(/Face ID/);
+      expect(catalog.appLockSubtitleIos).toMatch(/Face ID/);
     }
-
-    expect(biometricStatusTranslationKey('fingerprint_enabled')).toBe('fingerprintEnabled');
-    expect(biometricStatusTranslationKey('face_id_enabled')).toBe('faceIdEnabled');
-    expect(biometricStatusTranslationKey('not_configured')).toBe('biometricsNotConfigured');
-    expect(biometricSetupTranslationKey('fingerprint')).toBe('setupFingerprint');
-    expect(biometricSetupTranslationKey('face_id')).toBe('setupFaceId');
+    expect(securitySource).toContain('biometricUnlockSubtitleIos');
+    expect(securitySource).not.toContain('>10 seconds<');
+    expect(JSON.parse(readFileSync(path.join(root, 'lib', 'i18n', 'locales', 'en', 'security.json'), 'utf8')).appLock).toBe(
+      'App Lock',
+    );
+    expect(JSON.parse(readFileSync(path.join(root, 'lib', 'i18n', 'locales', 'en', 'security.json'), 'utf8')).managePhoneBiometrics).toBe(
+      'Manage phone biometrics',
+    );
+    expect(
+      JSON.parse(readFileSync(path.join(root, 'lib', 'i18n', 'locales', 'en', 'security.json'), 'utf8'))
+        .supportedFaceRecognition,
+    ).toBe('Face recognition');
+    expect(
+      JSON.parse(readFileSync(path.join(root, 'lib', 'i18n', 'locales', 'en', 'security.json'), 'utf8'))
+        .supportedFaceId,
+    ).toBe('Face ID');
   });
 });

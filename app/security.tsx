@@ -8,11 +8,14 @@ import {
   ActivityIndicator,
   AppState,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,31 +25,58 @@ import * as Sharing from 'expo-sharing';
 
 import { useTranslation } from 'react-i18next';
 
-import { resetNavigationToLogin } from '@/lib/authBoundary';
-import { useAuthSession } from '@/lib/authContext';
-import { exportUserData, deleteAccount } from '@/lib/api';
+import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { exportUserData, deleteAccount, login, logout } from '@/lib/api';
 import {
-  BIOMETRICS_NOT_CONFIGURED,
-  biometricSetupTranslationKey,
-  biometricStatusTranslationKey,
+  authenticateForAppLockChange,
+  confirmAppLockDisable,
+  defaultAppLockPreferences,
+  isCompatibleStrongBiometric,
+  loadAppLockPreferences,
+  saveAppLockPreferences,
+  type AppLockPreferences,
+} from '@/lib/platform/appLockPreferences';
+import {
   isLatestEnrollmentRead,
+  joinSensorNames,
   openDeviceSecuritySettings,
+  presentBiometricSecurity,
   readBiometricEnrollment,
   shouldRefreshBiometricEnrollmentOnAppState,
-  type BiometricEnrollmentView,
-} from '@/lib/biometricEnrollment';
-import { copyText } from '@/lib/clipboard';
-import { colors, radii, spacing } from '@/lib/theme';
-import { logClientError } from '@/lib/errorLogging';
+  supportedBiometricTranslationKey,
+  type BiometricHardwareReport,
+  type BiometricPlatform,
+} from '@/lib/platform/biometricEnrollment';
+import { verifyAccountPassword } from '@/lib/platform/deviceLockPassword';
+import { copyText } from '@/lib/platform/clipboard';
+import { colors, radii, spacing } from '@/lib/shared/theme';
+import { logClientError } from '@/lib/platform/errorLogging';
+
+function devicePlatform(): BiometricPlatform {
+  if (Platform.OS === 'ios') {
+    return 'ios';
+  }
+  if (Platform.OS === 'android') {
+    return 'android';
+  }
+  return 'other';
+}
 
 export default function SecurityScreen() {
   const { t } = useTranslation(['security', 'common']);
-  const { session, signOut } = useAuthSession();
+  const { session, signOut, status } = useAuthSession();
   const token = session?.session.token;
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [enrollment, setEnrollment] = useState<BiometricEnrollmentView | null>(null);
+  const [enrollment, setEnrollment] = useState<BiometricHardwareReport | null>(null);
   const [openingSettings, setOpeningSettings] = useState(false);
+  const [preferences, setPreferences] = useState<AppLockPreferences>(defaultAppLockPreferences(false));
+  const [savingPreference, setSavingPreference] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordDraft, setPasswordDraft] = useState('');
+  const passwordResolver = useRef<((value: string | null) => void) | null>(null);
+  const preferencesLoadedForUser = useRef('');
   const mountedRef = useRef(true);
   const openingSettingsRef = useRef(false);
   const enrollmentReadId = useRef(0);
@@ -70,7 +100,12 @@ export default function SecurityScreen() {
         if (!mountedRef.current || !isLatestEnrollmentRead(readId, enrollmentReadId.current)) {
           return;
         }
-        setEnrollment(BIOMETRICS_NOT_CONFIGURED);
+        setEnrollment({
+          hasHardware: false,
+          isEnrolled: false,
+          supportedTypes: [],
+          enrolledLevel: 0,
+        });
       });
   }, []);
 
@@ -90,6 +125,133 @@ export default function SecurityScreen() {
     };
   }, [refreshEnrollment]);
 
+  const userId = session?.user.id ?? '';
+  const presentation = enrollment ? presentBiometricSecurity(enrollment, devicePlatform()) : null;
+  const compatibleEnrolled = enrollment
+    ? isCompatibleStrongBiometric({
+        hasHardware: enrollment.hasHardware,
+        isEnrolled: enrollment.isEnrolled,
+        enrolledLevel: enrollment.enrolledLevel,
+      })
+    : false;
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !userId || !enrollment) {
+      return undefined;
+    }
+    if (preferencesLoadedForUser.current === userId) {
+      return undefined;
+    }
+    preferencesLoadedForUser.current = userId;
+    let active = true;
+    void loadAppLockPreferences(userId, compatibleEnrolled).then((loaded) => {
+      if (!active || !mountedRef.current) {
+        return;
+      }
+      if (!loaded.ok) {
+        Alert.alert(t('preferenceSaveErrorTitle'), t('preferenceSaveErrorBody'));
+        setPreferences(defaultAppLockPreferences(false));
+        return;
+      }
+      setPreferences(loaded.preferences);
+    });
+    return () => {
+      active = false;
+    };
+  }, [compatibleEnrolled, enrollment, status, t, userId]);
+
+  const promptPassword = useCallback(() => {
+    setPasswordDraft('');
+    setPasswordOpen(true);
+    return new Promise<string | null>((resolve) => {
+      passwordResolver.current = resolve;
+    });
+  }, []);
+
+  const finishPassword = (value: string | null) => {
+    setPasswordOpen(false);
+    setPasswordDraft('');
+    const resolve = passwordResolver.current;
+    passwordResolver.current = null;
+    resolve?.(value);
+  };
+
+  const persistPreferences = async (next: AppLockPreferences) => {
+    if (!userId) {
+      return;
+    }
+    setSavingPreference(true);
+    const saved = await saveAppLockPreferences(userId, next);
+    if (mountedRef.current) {
+      setSavingPreference(false);
+    }
+    if (!saved.ok) {
+      logClientError('App lock preference was not saved', new Error('preference_save_failed'));
+      Alert.alert(t('preferenceSaveErrorTitle'), t('preferenceSaveErrorBody'));
+      return;
+    }
+    setPreferences(saved.preferences);
+  };
+
+  const requireDisableProof = async () => {
+    const proof = await confirmAppLockDisable({
+      biometricUnlockEnabled: preferences.biometricUnlockEnabled && compatibleEnrolled,
+      authenticate: () => authenticateForAppLockChange(t('confirmDisableTitle'), t('common:cancel')),
+      promptPassword,
+      verifyPassword: (password) =>
+        verifyAccountPassword({
+          email: session?.user.email || '',
+          password,
+          expectedUserId: userId,
+          login,
+          revokeVerificationSession: (proofToken) => logout(proofToken),
+        }),
+    });
+    if (proof === 'failed' && mountedRef.current) {
+      Alert.alert(t('confirmDisableTitle'), t('confirmDisableFailed'));
+    }
+    return proof === 'authorized';
+  };
+
+  const changeAppLock = async (enabled: boolean) => {
+    if (savingPreference || enabled === preferences.appLockEnabled) {
+      return;
+    }
+    if (!enabled) {
+      const allowed = await requireDisableProof();
+      if (!allowed) {
+        return;
+      }
+    }
+    await persistPreferences({
+      appLockEnabled: enabled,
+      biometricUnlockEnabled: preferences.biometricUnlockEnabled,
+    });
+  };
+
+  const changeBiometricUnlock = async (enabled: boolean) => {
+    if (savingPreference || !preferences.appLockEnabled || enabled === preferences.biometricUnlockEnabled) {
+      return;
+    }
+    if (enabled && !compatibleEnrolled) {
+      Alert.alert(t('biometricUnavailableTitle'), t('biometricUnavailableBody'), [
+        { text: t('common:cancel'), style: 'cancel' },
+        { text: t('managePhoneBiometrics'), onPress: () => { void handleSetupBiometrics(); } },
+      ]);
+      return;
+    }
+    if (!enabled) {
+      const allowed = await requireDisableProof();
+      if (!allowed) {
+        return;
+      }
+    }
+    await persistPreferences({
+      appLockEnabled: preferences.appLockEnabled,
+      biometricUnlockEnabled: enabled,
+    });
+  };
+
   const handleSetupBiometrics = async () => {
     if (openingSettingsRef.current) {
       return;
@@ -99,7 +261,7 @@ export default function SecurityScreen() {
     try {
       const result = await openDeviceSecuritySettings({
         platform: Platform.OS,
-        startAndroidActivity: (action) => IntentLauncher.startActivityAsync(action),
+        startAndroidActivity: (action, params) => IntentLauncher.startActivityAsync(action, params),
         openIosSettings: () => Linking.openSettings(),
       });
       if (result !== 'opened' && mountedRef.current) {
@@ -233,44 +395,89 @@ export default function SecurityScreen() {
           <View style={styles.cardRow}>
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>{t('appLock')}</Text>
-              <Text style={styles.cardSubtitle}>{t('appLockSubtitle')}</Text>
+              <Text style={styles.cardSubtitle}>{t('appLockSwitchSubtitle')}</Text>
             </View>
+            <Switch
+              value={preferences.appLockEnabled}
+              onValueChange={(enabled) => {
+                void changeAppLock(enabled);
+              }}
+              disabled={savingPreference}
+              trackColor={{ false: colors.cardBorder, true: colors.primaryLight }}
+              thumbColor={preferences.appLockEnabled ? colors.primaryDark : colors.subtle}
+              accessibilityRole="switch"
+              accessibilityLabel={t('appLock')}
+              accessibilityHint={t('appLockSwitchSubtitle')}
+              accessibilityState={{ checked: preferences.appLockEnabled, disabled: savingPreference }}
+            />
           </View>
           <View style={styles.cardDivider} />
-          {enrollment ? (
-            <Text
-              style={styles.cardTitle}
-              accessibilityLiveRegion="polite"
-              accessibilityRole="text"
-            >
-              {t(biometricStatusTranslationKey(enrollment.status))}
-            </Text>
+          <View style={styles.cardRow}>
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>{t('biometricUnlock')}</Text>
+              <Text style={styles.cardSubtitle}>
+                {t(devicePlatform() === 'ios' ? 'biometricUnlockSubtitleIos' : 'biometricUnlockSubtitle')}
+              </Text>
+            </View>
+            <Switch
+              value={preferences.biometricUnlockEnabled}
+              onValueChange={(enabled) => {
+                void changeBiometricUnlock(enabled);
+              }}
+              disabled={savingPreference || !preferences.appLockEnabled}
+              trackColor={{ false: colors.cardBorder, true: colors.primaryLight }}
+              thumbColor={
+                preferences.appLockEnabled && preferences.biometricUnlockEnabled
+                  ? colors.primaryDark
+                  : colors.subtle
+              }
+              accessibilityRole="switch"
+              accessibilityLabel={t('biometricUnlock')}
+              accessibilityHint={t(
+                devicePlatform() === 'ios' ? 'biometricUnlockSubtitleIos' : 'biometricUnlockSubtitle',
+              )}
+              accessibilityState={{
+                checked: preferences.biometricUnlockEnabled,
+                disabled: savingPreference || !preferences.appLockEnabled,
+              }}
+            />
+          </View>
+          <View style={styles.cardDivider} />
+          {presentation ? (
+            <View accessibilityLiveRegion="polite">
+              <Text style={styles.cardSubtitle}>
+                {t('availableSensors', {
+                  sensors: joinSensorNames(
+                    presentation.supported.map((label) => t(supportedBiometricTranslationKey(label))),
+                    t('sensorAnd'),
+                  ) || t('noReportedBiometrics'),
+                })}
+              </Text>
+              {presentation.enrollment === 'weak_only' ? (
+                <Text style={styles.cardSubtitle}>{t('weakBiometricOnly')}</Text>
+              ) : null}
+            </View>
           ) : (
             <View style={styles.statusLoading}>
               <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.cardSubtitle}>{t('biometricChecking')}</Text>
             </View>
           )}
-          <Text style={styles.cardSubtitle}>{t('biometricAssurance')}</Text>
-          {enrollment?.setup ? (
-            <Pressable
-              style={({ pressed }) => [styles.setupButton, pressed && styles.actionRowPressed]}
-              onPress={() => {
-                void handleSetupBiometrics();
-              }}
-              disabled={openingSettings}
-              accessibilityRole="button"
-              accessibilityLabel={t(biometricSetupTranslationKey(enrollment.setup))}
-            >
-              {openingSettings ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={styles.setupButtonText}>
-                  {t(biometricSetupTranslationKey(enrollment.setup))}
-                </Text>
-              )}
-            </Pressable>
-          ) : null}
+          <Pressable
+            style={({ pressed }) => [styles.setupButton, pressed && styles.actionRowPressed]}
+            onPress={() => {
+              void handleSetupBiometrics();
+            }}
+            disabled={openingSettings}
+            accessibilityRole="button"
+            accessibilityLabel={t('managePhoneBiometrics')}
+          >
+            {openingSettings ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={styles.setupButtonText}>{t('managePhoneBiometrics')}</Text>
+            )}
+          </Pressable>
         </View>
 
         <Text style={styles.sectionTitle}>{t('passwordRecovery')}</Text>
@@ -324,6 +531,47 @@ export default function SecurityScreen() {
           </Pressable>
         </View>
       </ScrollView>
+      <Modal
+        visible={passwordOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => finishPassword(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.cardTitle}>{t('confirmDisableTitle')}</Text>
+            <Text style={styles.cardSubtitle}>{t('confirmDisableBody')}</Text>
+            <TextInput
+              value={passwordDraft}
+              onChangeText={setPasswordDraft}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="password"
+              accessibilityLabel={t('confirmDisableBody')}
+              style={styles.passwordInput}
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('common:cancel')}
+                onPress={() => finishPassword(null)}
+                style={styles.modalButton}
+              >
+                <Text style={styles.cardSubtitle}>{t('common:cancel')}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('confirmDisableAction')}
+                onPress={() => finishPassword(passwordDraft)}
+                style={styles.modalButton}
+              >
+                <Text style={styles.setupButtonText}>{t('confirmDisableAction')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -404,5 +652,37 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 16,
     fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    padding: spacing.screenX,
+  },
+  modalCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    padding: spacing.card,
+  },
+  passwordInput: {
+    borderColor: colors.cardBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: colors.textStrong,
+    fontSize: 16,
+    marginTop: 12,
+    minHeight: 48,
+    paddingHorizontal: 12,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+  },
+  modalButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginLeft: 12,
+    paddingHorizontal: 8,
   },
 });

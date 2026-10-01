@@ -24,8 +24,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { getActivity, getCircleDetail } from '@/lib/api';
-import { focusReloadOptions } from '@/lib/authBoundary';
-import { shouldLoadActivity } from '@/lib/activityAuthGate';
+import { focusReloadOptions } from '@/lib/auth/authBoundary';
+import { shouldLoadActivity } from '@/lib/auth/activityAuthGate';
 import {
   activityExportEntries,
   activityExportFilename,
@@ -42,25 +42,25 @@ import {
   presentActivityFeed,
   resolveActivityMemberName,
   type ActivityTypeFilter,
-} from '@/lib/activityFeed';
+} from '@/lib/shared/activityFeed';
 import {
   shouldShowActivityListError,
   shouldUseSilentActivityRefresh,
-} from '@/lib/activityPaint';
-import { useAuthSession } from '@/lib/authContext';
-import { copyText } from '@/lib/clipboard';
-import { logClientError } from '@/lib/errorLogging';
+} from '@/lib/shared/activityPaint';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { copyText } from '@/lib/platform/clipboard';
+import { logClientError } from '@/lib/platform/errorLogging';
 import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
   shouldShowBlockingLoadState,
-} from '@/lib/requestGeneration';
-import { useEntitlements } from '@/lib/entitlementsContext';
+} from '@/lib/shared/requestGeneration';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import { activityEventSentence } from '@/lib/i18n/financial-presentation';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
-import { circleWorkspaceHref } from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
-import type { BackendActivity } from '@/lib/types';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
+import { colors, radii, spacing } from '@/lib/shared/theme';
+import type { BackendActivity } from '@/lib/shared/types';
 
 type IconName = ComponentProps<typeof FontAwesome>['name'];
 

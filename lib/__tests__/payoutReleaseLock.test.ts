@@ -1,12 +1,12 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 
-import { ApiError } from '../networkErrors';
-import { runMoneyMutation } from '../moneyMutationRecovery';
+import { ApiError } from '../platform/networkErrors';
+import { runMoneyMutation } from '../payments/moneyMutationRecovery';
 import {
   PayoutReleaseLock,
   executeLockedPayoutRelease,
-} from '../payoutReleaseLock';
+} from '../payments/payoutReleaseLock';
 
 const selection = { recipientId: 'hand-recipient', amount: 250, roundNumber: 2 };
 

@@ -17,13 +17,13 @@ import type {
 import type {
   GooglePlayBillingGateway,
   GooglePlayPurchaseError,
-} from '../googlePlayBilling';
+} from '../billing/googlePlayBilling';
 import {
   createGooglePlayBillingMachine,
   GooglePlayBillingOperationError,
   type GooglePlayBillingState,
-} from '../googlePlayBillingMachine';
-import { freeEntitlements } from '../entitlements';
+} from '../billing/googlePlayBillingMachine';
+import { freeEntitlements } from '../billing/entitlements';
 
 const MONTHLY_TOKEN = 'synthetic-monthly-offer-token';
 const MONTHLY_BASE_TOKEN = 'synthetic-monthly-base-token';
@@ -1001,7 +1001,7 @@ describe('Google Play billing state machine', () => {
     expect(consoleError).not.toHaveBeenCalled();
 
     const source = fs.readFileSync(
-      path.join(__dirname, '..', 'googlePlayBillingMachine.ts'),
+      path.join(__dirname, '..', 'billing', 'googlePlayBillingMachine.ts'),
       'utf8',
     );
     expect(source).not.toMatch(/AsyncStorage|SecureStore|console\.(?:log|warn|error)/);

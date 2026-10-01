@@ -18,11 +18,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { getCircleDetail, updateCircleSettings } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { logClientError } from '@/lib/errorLogging';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
 import { contributionCopy } from '@/lib/i18n/contributionCopy';
 import { formatDateTime } from '@/lib/i18n/formatters';
-import { circleWorkspaceHref } from '@/lib/navigation';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
 import {
   destinationsForPaymentSetupEditor,
   MAX_PAYMENT_DESTINATION_LENGTH,
@@ -30,9 +30,9 @@ import {
   MAX_PAYMENT_DESTINATIONS,
   PAYMENT_DESTINATION_METHODS,
   type PaymentDestinationMethod,
-} from '@/lib/paymentDestinations';
-import { saveCirclePaymentInstructions } from '@/lib/paymentSetupSave';
-import { colors, radii, spacing } from '@/lib/theme';
+} from '@/lib/payments/paymentDestinations';
+import { saveCirclePaymentInstructions } from '@/lib/payments/paymentSetupSave';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 type DestinationDraft = {
   key: string;

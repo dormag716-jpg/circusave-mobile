@@ -5,7 +5,7 @@ import {
   shouldShowDashboardEmptyCircles,
   shouldShowDashboardSkeleton,
   shouldUseSilentDashboardRefresh,
-} from '../dashboardPaint';
+} from '../shared/dashboardPaint';
 
 describe('dashboard first paint', () => {
   it('treats partial circle details without members as an empty roster', () => {

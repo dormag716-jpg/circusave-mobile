@@ -16,14 +16,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { type BillingPlan } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { useEntitlements } from '@/lib/entitlementsContext';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
   getAndroidApplicationPackage,
   openGooglePlaySubscriptionManagement,
-} from '@/lib/googlePlaySubscriptionManagement';
-import { logClientWarning } from '@/lib/errorLogging';
-import { colors, radii, shadows, spacing } from '@/lib/theme';
+} from '@/lib/billing/googlePlaySubscriptionManagement';
+import { logClientWarning } from '@/lib/platform/errorLogging';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 
 const FALLBACK_FEATURE_KEYS = [
   'unlimitedCircles',

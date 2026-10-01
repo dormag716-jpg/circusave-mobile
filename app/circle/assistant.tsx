@@ -45,20 +45,20 @@ import {
   listAssistantMessages,
   sendAiAssistantMessage,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { localizedNetworkErrorBody } from '@/lib/networkErrors';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { localizedNetworkErrorBody } from '@/lib/platform/networkErrors';
 import {
   FLOATING_COMPOSER_RESTING_HEIGHT,
   floatingComposerBottomOffset,
   floatingComposerDockOffset,
   floatingComposerListPadding,
-} from '@/lib/chatKeyboard';
-import { useEntitlements } from '@/lib/entitlementsContext';
+} from '@/lib/circles/chatKeyboard';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
   shouldApplyKeyboardGeometry,
   workspaceChromeLayoutStyle,
-} from '@/lib/workspaceKeyboardChrome';
-import { colors, radii, shadows, spacing } from '@/lib/theme';
+} from '@/lib/shared/workspaceKeyboardChrome';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 
 type ChatItem = {
   id: string;

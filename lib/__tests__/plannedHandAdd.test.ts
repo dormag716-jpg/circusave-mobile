@@ -4,7 +4,7 @@ import path from 'path';
 import {
   validatePlannedHandAdd,
   type PlannedHandAddPayload,
-} from '../plannedHandAdd';
+} from '../circles/plannedHandAdd';
 
 const root = path.join(__dirname, '..', '..');
 

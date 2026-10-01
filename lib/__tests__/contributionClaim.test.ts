@@ -4,7 +4,7 @@ import {
   ORGANIZER_RECORDED_PAID_NOTE,
   paymentMethodForDestination,
   presentClaimedContributionPayment,
-} from '../contributionClaim';
+} from '../payments/contributionClaim';
 
 describe('paymentMethodForDestination', () => {
   test('maps destination methods onto existing submit paymentMethod values', () => {

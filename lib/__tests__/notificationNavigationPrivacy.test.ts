@@ -1,4 +1,4 @@
-import { authorizeNotificationNavigation } from '../notificationNavigation';
+import { authorizeNotificationNavigation } from '../platform/notificationNavigation';
 
 describe('notification navigation privacy', () => {
   it('requires authentication before following an opaque notification target', async () => {

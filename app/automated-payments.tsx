@@ -4,8 +4,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-import { useAuthSession } from '@/lib/authContext';
-import { colors, spacing } from '@/lib/theme';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { colors, spacing } from '@/lib/shared/theme';
 
 export default function AutomatedPaymentsScreen() {
   const { session } = useAuthSession();

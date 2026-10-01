@@ -6,7 +6,7 @@ import {
   capacityExceededMessage,
   maxParticipatingHandsForRole,
   normalizePlanTier,
-} from '../circleCapacity';
+} from '../circles/circleCapacity';
 
 describe('circleCapacity', () => {
   test('free and premium limits', () => {
@@ -75,7 +75,7 @@ describe('circleCapacity', () => {
   });
 
   test('free open-circle limit is one setup or active', () => {
-    const { buildOpenCircleCapacity, openCircleLimitMessage } = require('../circleCapacity');
+    const { buildOpenCircleCapacity, openCircleLimitMessage } = require('../circles/circleCapacity');
     const atCap = buildOpenCircleCapacity({
       organizerRoleOrTier: 'free',
       circles: [

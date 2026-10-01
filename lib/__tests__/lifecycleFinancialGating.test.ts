@@ -8,7 +8,7 @@ import {
   getCircleLifecyclePhase,
   isBackendPermissionGranted,
   isReadOnlyLifecyclePhase,
-} from '../startCircleReadiness';
+} from '../circles/startCircleReadiness';
 
 type ViewerPermissions = {
   canSubmitOwnContribution?: boolean;

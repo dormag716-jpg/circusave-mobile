@@ -6,7 +6,7 @@ import {
   floatingComposerBottomOffset,
   floatingComposerDockOffset,
   floatingComposerListPadding,
-} from '@/lib/chatKeyboard';
+} from '@/lib/circles/chatKeyboard';
 
 describe('circleChatKeyboard', () => {
   test('uses padding avoidance on iOS only (legacy KAV)', () => {

@@ -8,20 +8,23 @@ import {
   shouldStartBiometricPrompt,
   supportsNativeBiometrics,
   type DeviceLockModel,
-} from '../deviceLockState';
+} from '../platform/deviceLockState';
 
 const SESSION = 'user-1:session-1';
 const OTHER_SESSION = 'user-1:session-2';
 
 function locked(overrides?: Partial<DeviceLockModel>): DeviceLockModel {
-  return {
-    ...reduceDeviceLock(INITIAL_DEVICE_LOCK, {
-      type: 'auth_status',
-      status: 'authenticated',
-      sessionKey: SESSION,
-    }),
-    ...overrides,
-  };
+  const identified = reduceDeviceLock(INITIAL_DEVICE_LOCK, {
+    type: 'auth_status',
+    status: 'authenticated',
+    sessionKey: SESSION,
+  });
+  const ready = reduceDeviceLock(identified, {
+    type: 'preferences',
+    appLockEnabled: true,
+    biometricUnlockEnabled: true,
+  });
+  return { ...ready, ...overrides };
 }
 
 function startBiometric(model: DeviceLockModel, attemptId = 1, sessionKey = SESSION) {
@@ -91,7 +94,18 @@ describe('device lock state', () => {
   });
 
   it('locks a restored authenticated session before the dashboard can show', () => {
-    const restored = locked();
+    const identified = reduceDeviceLock(INITIAL_DEVICE_LOCK, {
+      type: 'auth_status',
+      status: 'authenticated',
+      sessionKey: SESSION,
+    });
+    expect(identified.phase).toBe('initializing');
+    expect(deviceLockCoversProtectedContent(identified)).toBe(true);
+    const restored = reduceDeviceLock(identified, {
+      type: 'preferences',
+      appLockEnabled: true,
+      biometricUnlockEnabled: true,
+    });
     expect(restored.phase).toBe('locked');
     expect(deviceLockCoversProtectedContent(restored)).toBe(true);
   });
@@ -109,7 +123,7 @@ describe('device lock state', () => {
     expect(signedIn.phase).toBe('unlocked');
   });
 
-  it('locks as soon as the authenticated app leaves the active state', () => {
+  it('keeps a fresh sign-in unlocked until a qualifying background interval', () => {
     const open = reduceDeviceLock(
       reduceDeviceLock(INITIAL_DEVICE_LOCK, {
         type: 'auth_status',
@@ -117,14 +131,15 @@ describe('device lock state', () => {
       }),
       { type: 'auth_status', status: 'authenticated', sessionKey: SESSION },
     );
-    expect(open.phase).toBe('unlocked');
-
-    const inactive = reduceDeviceLock(open, { type: 'app_state', next: 'inactive' });
-    expect(inactive.phase).toBe('locked');
-    expect(deviceLockCoversProtectedContent(inactive)).toBe(true);
-
-    const background = reduceDeviceLock(open, { type: 'app_state', next: 'background' });
-    expect(background.phase).toBe('locked');
+    const enabled = reduceDeviceLock(open, {
+      type: 'preferences',
+      appLockEnabled: true,
+      biometricUnlockEnabled: true,
+    });
+    expect(enabled.phase).toBe('unlocked');
+    const away = reduceDeviceLock(enabled, { type: 'app_state', next: 'background', now: 1_000 });
+    expect(away.phase).toBe('unlocked');
+    expect(away.backgroundedAt).toBe(1_000);
   });
 
   it('stays locked when the app becomes active again', () => {
@@ -206,6 +221,7 @@ describe('device lock state', () => {
       authenticating: false,
       passwordSubmitting: false,
       passwordFallback: false,
+      biometricUnlockEnabled: true,
       appState: 'active',
       platform: 'ios',
       promptedGeneration: -1,
@@ -274,25 +290,31 @@ describe('device lock state', () => {
     expect(passwordSuccess(signedOut).phase).toBe('signed_out');
   });
 
-  it('handles a quick background and foreground without unlocking', () => {
+  it('handles a quick background and foreground without locking', () => {
     const open = reduceDeviceLock(
-      reduceDeviceLock(INITIAL_DEVICE_LOCK, {
-        type: 'auth_status',
-        status: 'unauthenticated',
-      }),
-      { type: 'auth_status', status: 'authenticated', sessionKey: SESSION },
+      reduceDeviceLock(
+        reduceDeviceLock(INITIAL_DEVICE_LOCK, {
+          type: 'auth_status',
+          status: 'unauthenticated',
+        }),
+        { type: 'auth_status', status: 'authenticated', sessionKey: SESSION },
+      ),
+      { type: 'preferences', appLockEnabled: true, biometricUnlockEnabled: true },
     );
-    const background = reduceDeviceLock(open, { type: 'app_state', next: 'background' });
+    const background = reduceDeviceLock(open, { type: 'app_state', next: 'background', now: 5_000 });
     const stillBackground = reduceDeviceLock(background, {
       type: 'app_state',
       next: 'inactive',
+      now: 5_100,
     });
     const foreground = reduceDeviceLock(stillBackground, {
       type: 'app_state',
       next: 'active',
+      now: 5_500,
     });
-    expect(foreground.phase).toBe('locked');
-    expect(foreground.promptGeneration).toBe(background.promptGeneration);
+    expect(foreground.phase).toBe('unlocked');
+    expect(foreground.backgroundedAt).toBeNull();
+    expect(foreground.promptGeneration).toBe(0);
   });
 
   it('does not treat a refreshed authenticated status as a new lock or login', () => {
@@ -428,6 +450,7 @@ describe('device lock state', () => {
     expect(source).toContain('attemptId');
     expect(source).toContain('sessionKey');
     expect(source).toContain('AppState.currentState');
+    expect(source).toContain('now: Date.now()');
     expect(source).toContain('<Modal');
     expect(source).not.toContain('circusave_require_local_auth');
     expect(source).not.toContain('SecureStore');
@@ -442,5 +465,129 @@ describe('device lock state', () => {
     expect(source).not.toContain('setIsLocked(false)');
     expect(source).not.toContain('setAuthenticatedSession');
     expect(source).not.toContain('signOut');
+  });
+});
+
+describe('app lock grace period', () => {
+  function openWithLock(appLockEnabled = true, biometricUnlockEnabled = true): DeviceLockModel {
+    return reduceDeviceLock(
+      reduceDeviceLock(
+        reduceDeviceLock(INITIAL_DEVICE_LOCK, {
+          type: 'auth_status',
+          status: 'unauthenticated',
+        }),
+        { type: 'auth_status', status: 'authenticated', sessionKey: SESSION },
+      ),
+      { type: 'preferences', appLockEnabled, biometricUnlockEnabled },
+    );
+  }
+
+  function returnAfter(elapsed: number, appLockEnabled = true): DeviceLockModel {
+    const away = reduceDeviceLock(openWithLock(appLockEnabled), {
+      type: 'app_state',
+      next: 'background',
+      now: 1_000,
+    });
+    return reduceDeviceLock(away, {
+      type: 'app_state',
+      next: 'active',
+      now: 1_000 + elapsed,
+    });
+  }
+
+  it('does not lock before 10 seconds and locks at 10 seconds', () => {
+    expect(returnAfter(0).phase).toBe('unlocked');
+    expect(returnAfter(9_999).phase).toBe('unlocked');
+    expect(returnAfter(10_000).phase).toBe('locked');
+    expect(returnAfter(10_001).phase).toBe('locked');
+    expect(returnAfter(20_000, false).phase).toBe('unlocked');
+  });
+
+  it('locks once for repeated foreground events and starts a new cycle later', () => {
+    const lockedOnce = returnAfter(12_000);
+    expect(lockedOnce.phase).toBe('locked');
+    const again = reduceDeviceLock(lockedOnce, { type: 'app_state', next: 'active', now: 20_000 });
+    expect(again.phase).toBe('locked');
+    expect(again.promptGeneration).toBe(lockedOnce.promptGeneration);
+
+    const opened = passwordSuccess(startPassword(again));
+    const nextCycle = reduceDeviceLock(
+      reduceDeviceLock(opened, { type: 'app_state', next: 'background', now: 30_000 }),
+      { type: 'app_state', next: 'active', now: 40_000 },
+    );
+    expect(nextCycle.phase).toBe('locked');
+    expect(nextCycle.promptGeneration).toBe(1);
+  });
+
+  it('does not prompt for a short system interruption', () => {
+    const open = openWithLock();
+    const picker = reduceDeviceLock(open, { type: 'app_state', next: 'inactive', now: 100 });
+    const returned = reduceDeviceLock(picker, { type: 'app_state', next: 'active', now: 2_000 });
+    expect(returned.phase).toBe('unlocked');
+    expect(returned.promptGeneration).toBe(0);
+  });
+
+  it('locks once after a long return from settings', () => {
+    const open = openWithLock();
+    const settings = reduceDeviceLock(open, { type: 'app_state', next: 'background', now: 0 });
+    const returned = reduceDeviceLock(settings, { type: 'app_state', next: 'active', now: 15_000 });
+    const duplicate = reduceDeviceLock(returned, { type: 'app_state', next: 'active', now: 15_100 });
+    expect(returned.phase).toBe('locked');
+    expect(duplicate.promptGeneration).toBe(returned.promptGeneration);
+    expect(shouldStartBiometricPrompt({
+      phase: duplicate.phase,
+      authenticating: false,
+      passwordSubmitting: false,
+      passwordFallback: duplicate.passwordFallback,
+      biometricUnlockEnabled: duplicate.biometricUnlockEnabled,
+      appState: 'active',
+      platform: 'android',
+      promptedGeneration: -1,
+      promptGeneration: duplicate.promptGeneration,
+    })).toBe(true);
+    expect(shouldStartBiometricPrompt({
+      phase: duplicate.phase,
+      authenticating: false,
+      passwordSubmitting: false,
+      passwordFallback: duplicate.passwordFallback,
+      biometricUnlockEnabled: duplicate.biometricUnlockEnabled,
+      appState: 'active',
+      platform: 'android',
+      promptedGeneration: duplicate.promptGeneration,
+      promptGeneration: duplicate.promptGeneration,
+    })).toBe(false);
+  });
+
+  it('uses the password path when biometric unlock is off and skips prompts when app lock is off', () => {
+    const passwordOnly = returnAfter(10_000);
+    const disabledBiometric = reduceDeviceLock(openWithLock(true, false), {
+      type: 'app_state',
+      next: 'background',
+      now: 0,
+    });
+    const lockedPassword = reduceDeviceLock(disabledBiometric, {
+      type: 'app_state',
+      next: 'active',
+      now: 10_000,
+    });
+    expect(lockedPassword.passwordFallback).toBe(true);
+    expect(lockedPassword.biometricUnlockEnabled).toBe(false);
+    expect(passwordOnly.phase).toBe('locked');
+
+    const signedOut = reduceDeviceLock(lockedPassword, { type: 'sign_out' });
+    expect(signedOut.phase).toBe('signed_out');
+    expect(signedOut.backgroundedAt).toBeNull();
+    expect(signedOut.authenticating).toBe(false);
+    expect(deviceLockCoversProtectedContent(signedOut)).toBe(false);
+  });
+
+  it('does not lock a signed-out session', () => {
+    const signedOut = reduceDeviceLock(INITIAL_DEVICE_LOCK, {
+      type: 'auth_status',
+      status: 'unauthenticated',
+    });
+    const away = reduceDeviceLock(signedOut, { type: 'app_state', next: 'background', now: 0 });
+    const back = reduceDeviceLock(away, { type: 'app_state', next: 'active', now: 30_000 });
+    expect(back.phase).toBe('signed_out');
   });
 });

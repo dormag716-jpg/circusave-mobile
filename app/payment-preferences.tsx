@@ -3,12 +3,12 @@ import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, ActivityIndic
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { useAuthSession } from '../lib/authContext';
+import { useAuthSession } from '../lib/auth/authContext';
 import { getCircles, updateUserProfile } from '../lib/api';
-import { circlePaymentSetupHref } from '../lib/navigation';
-import { isOrganizer } from '../lib/permissions';
-import { colors, shadows } from '../lib/theme';
-import type { BackendCircleSummary } from '../lib/types';
+import { circlePaymentSetupHref } from '../lib/platform/navigation';
+import { isOrganizer } from '../lib/platform/permissions';
+import { colors, shadows } from '../lib/shared/theme';
+import type { BackendCircleSummary } from '../lib/shared/types';
 
 export default function PaymentPreferencesScreen() {
   const router = useRouter();

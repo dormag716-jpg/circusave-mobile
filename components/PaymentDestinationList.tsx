@@ -5,8 +5,8 @@ import { contributionCopy } from '@/lib/i18n/contributionCopy';
 import {
   normalizePaymentDestinations,
   type PaymentDestination,
-} from '@/lib/paymentDestinations';
-import { colors } from '@/lib/theme';
+} from '@/lib/payments/paymentDestinations';
+import { colors } from '@/lib/shared/theme';
 
 export function PaymentDestinationList({
   destinations,

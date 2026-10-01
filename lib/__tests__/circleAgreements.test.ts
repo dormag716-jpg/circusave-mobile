@@ -17,7 +17,7 @@ import {
   shouldRefreshStaleSnapshot,
   shouldShowMemberAgreementBanner,
   snapshotServiceFeeCents,
-} from '../circleAgreements';
+} from '../circles/circleAgreements';
 
 function readinessFixture(
   overrides: Partial<CircleAgreementReadiness> = {},

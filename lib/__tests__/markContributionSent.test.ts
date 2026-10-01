@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 
-import { buildMemberContributionCardModel } from '../memberContributionCard';
-import { ApiError } from '../networkErrors';
+import { buildMemberContributionCardModel } from '../payments/memberContributionCard';
+import { ApiError } from '../platform/networkErrors';
 import {
   canStartMarkAsSentSubmit,
   isAlreadyReportedSubmissionError,
@@ -9,7 +9,7 @@ import {
   resolveMarkAsSentContributionHrefHandId,
   resolveMarkAsSentTarget,
   shouldSubmitMarkAsSentFromWorkspace,
-} from '../markContributionSent';
+} from '../payments/markContributionSent';
 
 const t = ((key: string) => key) as TFunction;
 

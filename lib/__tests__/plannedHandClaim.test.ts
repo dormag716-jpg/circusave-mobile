@@ -9,7 +9,7 @@ import {
   canSubmitPlannedHandClaim,
   PLANNED_HAND_CLAIM_ACK_VERSION,
   PLANNED_HAND_CLAIM_CLIENT_IDENTIFIER,
-} from '../plannedHandClaim';
+} from '../circles/plannedHandClaim';
 import { requestJoin } from '../api';
 
 describe('planned hand claim acknowledgment (CS-006)', () => {

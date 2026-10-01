@@ -27,11 +27,11 @@ import {
   openCircleLimitMessage,
   buildRosterCapacity,
   buildOpenCircleCapacity,
-} from '../circleCapacity';
-import { validatePlanCapacity } from '../createCircleWizard';
+} from '../circles/circleCapacity';
+import { validatePlanCapacity } from '../circles/createCircleWizard';
 import { changeLanguagePreference, i18n, initializeI18n } from '../i18n';
 import type { SupportedLanguage } from '../i18n/types';
-import { humanizeStatus } from '../statementPresentation';
+import { humanizeStatus } from '../shared/statementPresentation';
 
 const LANGUAGES: SupportedLanguage[] = ['en', 'es', 'ht'];
 
@@ -158,9 +158,9 @@ describe('narrow localization correction', () => {
   });
 
   test('remaining paid-product labels use Organizer Pro and keep isPremium identifiers', () => {
-    const capacity = source('../circleCapacity.ts');
-    const wizard = source('../createCircleWizard.ts');
-    const conversations = source('../useConversations.ts');
+    const capacity = source('../circles/circleCapacity.ts');
+    const wizard = source('../circles/createCircleWizard.ts');
+    const conversations = source('../circles/useConversations.ts');
     expect(capacity).toMatch(/isPremiumPlan/);
     expect(wizard).toMatch(/const isPremium =/);
     expect(capacity).not.toMatch(/Upgrade to Premium/);
@@ -204,7 +204,7 @@ describe('narrow localization correction', () => {
   });
 
   test('chat and contribution-payment fallback errors localize in EN/ES/HT', async () => {
-    const conversations = source('../useConversations.ts');
+    const conversations = source('../circles/useConversations.ts');
     expect(conversations).toContain("t('circleWorkspace:chat.loadError'");
     expect(conversations).toContain("t('circleWorkspace:chat.loadMessagesError'");
     expect(conversations).toContain("t('circleWorkspace:chat.createError'");
@@ -260,7 +260,7 @@ describe('narrow localization correction', () => {
 
   test('legal chrome notice is localized while English bodies remain controlling', async () => {
     const chrome = source('../../components/LegalDocumentScreen.tsx');
-    const legal = source('../legal.ts');
+    const legal = source('../shared/legal.ts');
     expect(chrome).toContain("t('englishNotice')");
     expect(legal).not.toContain('englishNotice');
     expect(legal).toMatch(/these Terms of Service/);

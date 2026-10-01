@@ -4,7 +4,7 @@ import path from 'path';
 import {
   shouldFetchWorkspaceAgreementSnapshot,
   workspaceAgreementLoadOwner,
-} from '../workspaceAgreementLoad';
+} from '../circles/workspaceAgreementLoad';
 
 describe('workspace agreement snapshot load', () => {
   it('fetches only for a participating member of a setup circle', () => {

@@ -5,18 +5,65 @@ import {
   clearFederatedCredential,
   createAuthNonce,
   federatedRequestBody,
+  randomHex,
   holdFederatedCredential,
   interpretFederatedPayload,
   readFederatedCredential,
   splitDisplayName,
-} from '../federatedSignIn';
-import { sha256Hex } from '../sha256';
+} from '../auth/federatedSignIn';
+import { sha256Hex } from '../shared/sha256';
 
 const root = path.join(__dirname, '..', '..');
 
 describe('federated sign-in', () => {
   afterEach(() => {
     clearFederatedCredential();
+  });
+
+  it('creates a nonce from expo-crypto when Web Crypto is missing', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
+    try {
+      const nonce = createAuthNonce();
+      expect(nonce.raw).toMatch(/^[0-9a-f]{64}$/);
+      expect(nonce.hash).toBe(sha256Hex(nonce.raw));
+      expect(nonce.hash).not.toBe(nonce.raw);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'crypto', descriptor);
+      }
+    }
+  });
+
+  it('rejects a random provider that does not return the requested bytes', () => {
+    expect(() =>
+      randomHex(32, () => {
+        throw new Error('native crypto missing');
+      }),
+    ).toThrow('Secure random source is unavailable.');
+    expect(() => randomHex(32, () => new Uint8Array(4))).toThrow(
+      'Secure random source is unavailable.',
+    );
+  });
+
+  it('sends the nonce hash to Google and the raw nonce to CircuSave', () => {
+    const nonce = createAuthNonce();
+    const body = federatedRequestBody({
+      proof: {
+        provider: 'google',
+        idToken: 'signed-token',
+        authNonce: nonce.raw,
+      },
+    });
+    expect(body.authNonce).toBe(nonce.raw);
+    expect(body.authNonce).not.toBe(nonce.hash);
+    const googleSource = readFileSync(path.join(root, 'lib', 'auth', 'googleIdentitySignIn.ts'), 'utf8');
+    const federatedSource = readFileSync(path.join(root, 'lib', 'auth', 'federatedSignIn.ts'), 'utf8');
+    expect(googleSource).toContain('nonce: nonce.hash');
+    expect(googleSource).toContain('authNonce: nonce.raw');
+    expect(federatedSource).not.toContain('console.log');
+    expect(googleSource).not.toContain('console.log');
+    expect(federatedSource).not.toContain('Math.random');
   });
 
   it('matches the SHA-256 hex the backend uses for the sign-in nonce', () => {
@@ -104,7 +151,7 @@ describe('federated sign-in', () => {
       'utf8',
     );
     const google = readFileSync(
-      path.join(root, 'lib', 'googleIdentitySignIn.ts'),
+      path.join(root, 'lib', 'auth', 'googleIdentitySignIn.ts'),
       'utf8',
     );
     expect(login).toContain('signInWithFederatedProvider');

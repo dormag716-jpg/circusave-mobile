@@ -22,7 +22,7 @@ import {
   getAndroidApplicationPackage,
   GooglePlaySubscriptionManagementError,
   openGooglePlaySubscriptionManagement,
-} from '../googlePlaySubscriptionManagement';
+} from '../billing/googlePlaySubscriptionManagement';
 
 describe('Google Play subscription management', () => {
   beforeEach(() => {

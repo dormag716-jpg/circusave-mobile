@@ -6,17 +6,17 @@ import {
   getCircleChatSnapshot,
   publishCircleChatSnapshot,
   resetCircleChatStoreForTests,
-} from '../circleChatStore';
+} from '../circles/circleChatStore';
 import {
   bindCircleWorkspaceCacheUser,
   readCircleWorkspacePresentation,
   resetCircleWorkspaceCacheForTests,
   seedCircleWorkspaceCache,
-} from '../circleWorkspaceCache';
+} from '../circles/circleWorkspaceCache';
 import {
   bindUserPresentationCaches,
   clearUserPresentationCaches,
-} from '../userPresentationCaches';
+} from '../shared/userPresentationCaches';
 import type { BackendCircleDetail } from '../api';
 
 function detail(id: string, name: string): BackendCircleDetail {
@@ -85,7 +85,7 @@ describe('user presentation caches', () => {
 
   it('auth session bind/clears presentation caches on restore, login, and logout', () => {
     const source = readFileSync(
-      path.join(__dirname, '..', 'authContext.tsx'),
+      path.join(__dirname, '..', 'auth', 'authContext.tsx'),
       'utf8',
     );
     expect(source).toMatch(/bindUserPresentationCaches\(localSession\.user\.id\)/);

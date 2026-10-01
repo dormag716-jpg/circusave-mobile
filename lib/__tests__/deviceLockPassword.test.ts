@@ -1,4 +1,4 @@
-import { verifyAccountPassword } from '../deviceLockPassword';
+import { verifyAccountPassword } from '../platform/deviceLockPassword';
 
 function proofSession(userId = 'usr_1', token = 'proof-token') {
   return {

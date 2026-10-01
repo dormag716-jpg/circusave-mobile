@@ -3,23 +3,27 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { requestAppleIdentity } from '@/lib/appleIdentitySignIn';
-import type { FederatedIdentityProof } from '@/lib/federatedSignIn';
-import { requestGoogleIdentity } from '@/lib/googleIdentitySignIn';
-import { colors, radii } from '@/lib/theme';
+import { requestAppleIdentity } from '@/lib/auth/appleIdentitySignIn';
+import type { FederatedIdentityProof } from '@/lib/auth/federatedSignIn';
+import { requestGoogleIdentity } from '@/lib/auth/googleIdentitySignIn';
+import {
+  classifyFederatedSubmitError,
+  googleSignInMessageKey,
+  type GoogleSignInStatus,
+} from '@/lib/auth/googleSignInOutcome';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { colors, radii } from '@/lib/shared/theme';
 
 type Props = {
   disabled?: boolean;
   onIdentity: (proof: FederatedIdentityProof) => Promise<void>;
-  onCancelled?: () => void;
-  onUnavailable?: (reason: 'not_configured' | 'unavailable') => void;
+  onGoogleStatus?: (status: GoogleSignInStatus) => void;
 };
 
 export function FederatedAuthButtons({
   disabled = false,
   onIdentity,
-  onCancelled,
-  onUnavailable,
+  onGoogleStatus,
 }: Props) {
   const { t } = useTranslation('auth');
   const [busy, setBusy] = useState(false);
@@ -40,25 +44,55 @@ export function FederatedAuthButtons({
     };
   }, []);
 
-  async function start(
-    request: () => Promise<Awaited<ReturnType<typeof requestGoogleIdentity>>>,
-  ) {
+  function reportGoogle(status: GoogleSignInStatus) {
+    if (googleSignInMessageKey(status)) {
+      onGoogleStatus?.(status);
+    }
+  }
+
+  async function startGoogle() {
     if (disabled || busy) {
       return;
     }
     setBusy(true);
     try {
-      const result = await request();
+      const result = await requestGoogleIdentity();
       if (result.status === 'cancelled') {
-        onCancelled?.();
         return;
       }
-      if (result.status === 'not_configured' || result.status === 'unavailable') {
-        onUnavailable?.(result.status);
+      if (result.status !== 'success') {
+        reportGoogle(result.status);
+        return;
+      }
+      try {
+        await onIdentity({
+          provider: 'google',
+          idToken: result.idToken,
+          authNonce: result.authNonce,
+          ...(result.name ? { name: result.name } : {}),
+        });
+      } catch (error) {
+        const status = classifyFederatedSubmitError(error);
+        logClientError('Google sign-in was not completed', new Error(status), { status });
+        reportGoogle(status);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startApple() {
+    if (disabled || busy) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await requestAppleIdentity();
+      if (result.status !== 'success') {
         return;
       }
       await onIdentity({
-        provider: request === requestGoogleIdentity ? 'google' : 'apple',
+        provider: 'apple',
         idToken: result.idToken,
         authNonce: result.authNonce,
         ...(result.name ? { name: result.name } : {}),
@@ -73,7 +107,7 @@ export function FederatedAuthButtons({
       <Pressable
         style={[styles.googleButton, (disabled || busy) && styles.disabled]}
         onPress={() => {
-          void start(requestGoogleIdentity);
+          void startGoogle();
         }}
         disabled={disabled || busy}
         accessibilityRole="button"
@@ -92,7 +126,7 @@ export function FederatedAuthButtons({
           cornerRadius={radii.pill}
           style={styles.appleButton}
           onPress={() => {
-            void start(requestAppleIdentity);
+            void startApple();
           }}
         />
       ) : null}

@@ -20,7 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
-import { loginHardwareBackAction } from '@/lib/authBoundary';
+import { loginHardwareBackAction } from '@/lib/auth/authBoundary';
 import {
   login,
   signInWithFederatedProvider,
@@ -29,15 +29,16 @@ import {
   verifyPasswordReset,
   type AuthResponse,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
+import { useAuthSession } from '@/lib/auth/authContext';
 import {
   clearFederatedCredential,
   holdFederatedCredential,
   type FederatedIdentityProof,
-} from '@/lib/federatedSignIn';
-import { describeNetworkError } from '@/lib/networkErrors';
-import { postAuthHrefFromUrl } from '@/lib/navigation';
-import { colors, shadows, spacing } from '@/lib/theme';
+} from '@/lib/auth/federatedSignIn';
+import { googleSignInMessageKey } from '@/lib/auth/googleSignInOutcome';
+import { describeNetworkError } from '@/lib/platform/networkErrors';
+import { postAuthHrefFromUrl } from '@/lib/platform/navigation';
+import { colors, shadows, spacing } from '@/lib/shared/theme';
 
 export default function LoginScreen() {
   const { t } = useTranslation(['auth', 'common']);
@@ -246,15 +247,12 @@ export default function LoginScreen() {
               <FederatedAuthButtons
                 disabled={isSubmitting}
                 onIdentity={onFederatedIdentity}
-                onUnavailable={(reason) => {
-                  Alert.alert(
-                    t(reason === 'not_configured'
-                      ? 'federated.notConfiguredTitle'
-                      : 'federated.unavailableTitle'),
-                    t(reason === 'not_configured'
-                      ? 'federated.notConfiguredBody'
-                      : 'federated.unavailableBody'),
-                  );
+                onGoogleStatus={(status) => {
+                  const message = googleSignInMessageKey(status);
+                  if (!message) {
+                    return;
+                  }
+                  Alert.alert(t(message.title), t(message.body));
                 }}
               />
             ) : null}

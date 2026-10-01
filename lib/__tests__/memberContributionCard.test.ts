@@ -4,7 +4,7 @@ import {
   buildMemberContributionCardModel,
   collectViewerParticipatingHands,
   formatContributionReportedAt,
-} from '../memberContributionCard';
+} from '../payments/memberContributionCard';
 import { presentManualContribution } from '../i18n/financial-presentation';
 
 const t = ((key: string) => key) as TFunction;

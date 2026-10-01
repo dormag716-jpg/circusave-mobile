@@ -169,14 +169,14 @@ jest.mock('expo-constants', () => ({
   },
 }));
 
-jest.mock('../authContext', () => ({
+jest.mock('../auth/authContext', () => ({
   useAuthSession: () => ({
     session: { session: { token: 'authenticated-session' } },
     status: 'authenticated',
   }),
 }));
 
-jest.mock('../entitlementsContext', () => ({
+jest.mock('../billing/entitlementsContext', () => ({
   useEntitlements: () => ({
     entitlements: mockEntitlements,
     isPremium: mockIsPremium,
@@ -196,12 +196,12 @@ jest.mock('../api', () => ({
   getBillingPlans: jest.fn(),
 }));
 
-jest.mock('../googlePlaySubscriptionManagement', () => ({
+jest.mock('../billing/googlePlaySubscriptionManagement', () => ({
   getAndroidApplicationPackage: () => 'com.circusave.mobile',
   openGooglePlaySubscriptionManagement: mockOpenManagement,
 }));
 
-jest.mock('../errorLogging', () => ({
+jest.mock('../platform/errorLogging', () => ({
   logClientWarning: jest.fn(),
 }));
 

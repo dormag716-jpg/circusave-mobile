@@ -19,7 +19,7 @@ import {
 } from '@/lib/i18n';
 import { readLanguagePreference } from '@/lib/i18n/language-storage';
 import { LANGUAGE_OPTIONS } from '@/lib/i18n/types';
-import { colors, shadows, spacing } from '@/lib/theme';
+import { colors, shadows, spacing } from '@/lib/shared/theme';
 
 export default function LanguageScreen() {
   const { t } = useTranslation(['common', 'settings']);

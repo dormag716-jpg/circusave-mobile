@@ -29,7 +29,7 @@ jest.mock('../../api', () => ({
   logout: jest.fn(),
 }));
 
-import { clearAuthSession } from '../../auth';
+import { clearAuthSession } from '../../auth/auth';
 import {
   readLanguagePreference,
   writeLanguagePreference,

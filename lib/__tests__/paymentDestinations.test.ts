@@ -7,7 +7,7 @@ import {
   MAX_PAYMENT_DESTINATIONS,
   normalizePaymentDestinations,
   presentCirclePaymentInstructions,
-} from '../paymentDestinations';
+} from '../payments/paymentDestinations';
 
 describe('normalizePaymentDestinations', () => {
   test('keeps method, destination, and optional memo', () => {

@@ -18,7 +18,7 @@ import {
   circlePaymentSetupHref,
   contributionHref,
   createCircleSuccessDestinations,
-} from '../navigation';
+} from '../platform/navigation';
 
 describe('contribution payment-setup navigation', () => {
   test('circlePaymentSetupHref targets /circle/payment-setup with circleId', () => {

@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 
-import { APP_SCHEME } from '../config';
-import { postAuthHrefFromUrl } from '../navigation';
+import { APP_SCHEME } from '../shared/config';
+import { postAuthHrefFromUrl } from '../platform/navigation';
 
 jest.mock('expo-linking', () => ({
   parse: (url: string) => {
@@ -76,9 +76,9 @@ describe('Android production build configuration', () => {
   });
 
   test('Stripe provider, package, and contribution payment config are absent', () => {
-    const configSource = readFileSync(path.join(root, 'lib', 'config.ts'), 'utf8');
+    const configSource = readFileSync(path.join(root, 'lib', 'shared', 'config.ts'), 'utf8');
     const paymentSource = readFileSync(
-      path.join(root, 'lib', 'stripeContributionPayment.ts'),
+      path.join(root, 'lib', 'payments', 'stripeContributionPayment.ts'),
       'utf8',
     );
     const layoutSource = readFileSync(

@@ -5,8 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTranslation } from 'react-i18next';
 
-import type { LegalSection } from '@/lib/legal';
-import { colors, shadows, spacing } from '@/lib/theme';
+import type { LegalSection } from '@/lib/shared/legal';
+import { colors, shadows, spacing } from '@/lib/shared/theme';
 
 type LegalDocumentScreenProps = {
   title: string;

@@ -19,21 +19,21 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import type { TFunction } from 'i18next';
 
-import { contributionHref } from '../navigation';
+import { contributionHref } from '../platform/navigation';
 import {
   canStartMarkAsSentSubmit,
   isAlreadyReportedSubmissionError,
   resolveMarkAsSentContributionHrefHandId,
   resolveMarkAsSentTarget,
-} from '../markContributionSent';
-import { buildMemberContributionCardModel } from '../memberContributionCard';
+} from '../payments/markContributionSent';
+import { buildMemberContributionCardModel } from '../payments/memberContributionCard';
 import { presentManualContribution } from '../i18n/financial-presentation';
 import contributionsEn from '../i18n/locales/en/contributions.json';
 import {
   canShowBackendGatedAction,
   getCircleLifecyclePhase,
   isReadOnlyLifecyclePhase,
-} from '../startCircleReadiness';
+} from '../circles/startCircleReadiness';
 
 const t = ((key: string, options?: { number?: number; amount?: string }) => {
   if (key === 'contributions:workspace.handLabel') {
@@ -59,7 +59,7 @@ const dashboardSource = readFileSync(
   'utf8',
 );
 const stripeSource = readFileSync(
-  path.join(__dirname, '..', 'stripeContributionPayment.ts'),
+  path.join(__dirname, '..', 'payments', 'stripeContributionPayment.ts'),
   'utf8',
 );
 

@@ -19,7 +19,7 @@ jest.mock('expo-secure-store', () => ({
   setItemAsync: jest.fn(async () => undefined),
 }));
 
-import { reminderMemberFrequencySummary } from '../../reminderCircleSummary';
+import { reminderMemberFrequencySummary } from '../../circles/reminderCircleSummary';
 import { formatCurrency, formatDateTime } from '../formatters';
 import { changeLanguagePreference, i18n, initializeI18n } from '../index';
 import type { SupportedLanguage } from '../types';

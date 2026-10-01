@@ -21,7 +21,7 @@ import {
   createGooglePlayBillingGateway,
   GooglePlayBillingNotConnectedError,
   GooglePlayNativeBillingUnavailableError,
-} from '../googlePlayBilling';
+} from '../billing/googlePlayBilling';
 
 type NativeModule = NonNullable<
   NonNullable<Parameters<typeof createGooglePlayBillingGateway>[0]>['loadModule']
@@ -266,7 +266,7 @@ describe('Google Play native billing gateway', () => {
     expect(consoleError).not.toHaveBeenCalled();
 
     const source = fs.readFileSync(
-      path.join(__dirname, '..', 'googlePlayBilling.ts'),
+      path.join(__dirname, '..', 'billing', 'googlePlayBilling.ts'),
       'utf8',
     );
     expect(source).not.toMatch(/AsyncStorage|SecureStore/);

@@ -2,7 +2,7 @@ import {
   joinOutcomeMessage,
   joinOutcomeTitle,
   resolveJoinOutcome,
-} from '../joinOutcome';
+} from '../circles/joinOutcome';
 
 describe('resolveJoinOutcome', () => {
   test('claimed when viewerHands present', () => {

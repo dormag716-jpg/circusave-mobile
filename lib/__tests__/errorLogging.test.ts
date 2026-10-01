@@ -1,5 +1,5 @@
 import { ApiError } from '../api';
-import { logClientError, logClientWarning, sanitizeLogMessage } from '../errorLogging';
+import { logClientError, logClientWarning, sanitizeLogMessage } from '../platform/errorLogging';
 
 describe('production error logging sanitization', () => {
   const originalError = console.error;

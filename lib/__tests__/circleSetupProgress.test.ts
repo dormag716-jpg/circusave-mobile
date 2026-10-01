@@ -7,7 +7,7 @@ import {
   orderedParticipatingHands,
   setupStepStatusLabel,
   splitWaitlistRequests,
-} from '../circleSetupProgress';
+} from '../circles/circleSetupProgress';
 
 /** Organizer membership id differs from organizer user id (proven API shape). */
 const ORG_MEMBERSHIP_ID = 'm_org_hand';

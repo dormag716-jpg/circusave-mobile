@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTranslation } from 'react-i18next';
 
-import { colors } from '@/lib/theme';
+import { colors } from '@/lib/shared/theme';
 
 export function DecisionSheet({
   visible,

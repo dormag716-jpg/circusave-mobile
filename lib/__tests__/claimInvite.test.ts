@@ -6,7 +6,7 @@ import {
   buildClaimInviteUrl,
   buildGenericCircleInviteShareMessage,
   getWebAppBaseUrl,
-} from '../claimInvite';
+} from '../circles/claimInvite';
 
 describe('claimInvite', () => {
   test('builds claim URL with encoded token', () => {

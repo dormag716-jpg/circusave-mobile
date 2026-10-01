@@ -9,12 +9,12 @@ jest.mock('../api', () => ({
   registerPushToken: jest.fn(),
   unregisterPushToken: jest.fn(),
 }));
-jest.mock('../notifications', () => ({
+jest.mock('../platform/notifications', () => ({
   getExistingPushToken: jest.fn(),
   registerForPushNotifications: jest.fn(),
 }));
 
-import { createPushTokenLifecycle } from '../pushTokenLifecycle';
+import { createPushTokenLifecycle } from '../platform/pushTokenLifecycle';
 
 type Pending = { authToken: string; pushToken: string };
 

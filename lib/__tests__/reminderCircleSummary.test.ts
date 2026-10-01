@@ -22,7 +22,7 @@ jest.mock('expo-secure-store', () => ({
 import {
   normalizeFrequencyKey,
   reminderMemberFrequencySummary,
-} from '../reminderCircleSummary';
+} from '../circles/reminderCircleSummary';
 import { changeLanguagePreference, i18n, initializeI18n } from '../i18n';
 
 describe('reminderCircleSummary', () => {

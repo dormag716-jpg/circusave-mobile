@@ -12,7 +12,7 @@ import {
   runDedupedGet,
   shouldInvalidateCachedGetsOnMutation,
   shouldUseHttpGetCache,
-} from '../httpGetCache';
+} from '../platform/httpGetCache';
 import {
   getCircleDetail,
   getCircleSchedule,

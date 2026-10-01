@@ -46,7 +46,7 @@ import {
   type StatementDocumentSummary,
   type StatementPeriodInput,
 } from '@/lib/api';
-import { getInitials } from '@/lib/initials';
+import { getInitials } from '@/lib/shared/initials';
 import {
   ledgerEventLabel,
   walletStatusLabel,
@@ -56,7 +56,7 @@ import {
   formatCurrency,
   formatRelativeDate,
 } from '@/lib/i18n/formatters';
-import { colors, radii, spacing } from '@/lib/theme';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 import {
   displayMoney,
   formatDisplayDate,
@@ -67,7 +67,7 @@ import {
   nextContributionDue,
   nextScheduledPayout,
   shortStatementId,
-} from '@/lib/statementPresentation';
+} from '@/lib/shared/statementPresentation';
 
 type RecordsSegment = 'circle' | 'statements' | 'documents';
 

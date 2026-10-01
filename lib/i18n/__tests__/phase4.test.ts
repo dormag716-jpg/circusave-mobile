@@ -20,7 +20,7 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 import type { BackendLedgerEntry, BackendWalletTransaction } from '../../api';
-import type { BackendActivity } from '../../types';
+import type { BackendActivity } from '../../shared/types';
 import {
   activityEventSentence,
   contributionTotal,

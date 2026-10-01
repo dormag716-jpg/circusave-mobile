@@ -10,7 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { colors } from '@/lib/theme';
+import { colors } from '@/lib/shared/theme';
 
 export type LegalCheckboxSegment =
   | { type: 'text'; text: string }

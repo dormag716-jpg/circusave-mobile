@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import type { BackendLedgerEntry, BackendWalletTransaction } from '@/lib/api';
-import type { BackendActivity } from '@/lib/types';
+import type { BackendActivity } from '@/lib/shared/types';
 
 export type NotificationType =
   | 'contribution_due'

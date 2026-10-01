@@ -7,14 +7,14 @@ import {
   floatingComposerDockOffset,
   FLOATING_COMPOSER_RESTING_HEIGHT,
   floatingComposerListPadding,
-} from '../chatKeyboard';
+} from '../circles/chatKeyboard';
 import {
   isSoftwareKeyboardVisible,
   isWorkspaceChromeCollapsed,
   shouldApplyKeyboardGeometry,
   shouldMountWorkspaceChrome,
   workspaceChromeLayoutStyle,
-} from '../workspaceKeyboardChrome';
+} from '../shared/workspaceKeyboardChrome';
 
 describe('workspace keyboard chrome ownership', () => {
   it('keeps header/tab visibility on one keyboard-visible flag', () => {

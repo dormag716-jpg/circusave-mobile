@@ -57,7 +57,7 @@ describe('localization accessibility contracts', () => {
       'utf8',
     );
     const legalBodies = readFileSync(
-      path.join(__dirname, '../legal.ts'),
+      path.join(__dirname, '../shared/legal.ts'),
       'utf8',
     );
     expect(chrome).toContain("t('englishNotice')");

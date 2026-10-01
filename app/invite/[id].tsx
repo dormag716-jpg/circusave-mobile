@@ -17,24 +17,24 @@ import {
   requestJoin,
   type BackendInvitePreview,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { logClientError } from '@/lib/errorLogging';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import {
   shouldShowInvitePreviewSkeleton,
   shouldShowInviteUnavailable,
-} from '@/lib/invitePaint';
-import { resolveJoinOutcome } from '@/lib/joinOutcome';
-import { circleWorkspaceHref, inviteJoinHref } from '@/lib/navigation';
+} from '@/lib/shared/invitePaint';
+import { resolveJoinOutcome } from '@/lib/circles/joinOutcome';
+import { circleWorkspaceHref, inviteJoinHref } from '@/lib/platform/navigation';
 import {
   buildPlannedHandClaimAcknowledgment,
   canSubmitPlannedHandClaim,
-} from '@/lib/plannedHandClaim';
+} from '@/lib/circles/plannedHandClaim';
 import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
-} from '@/lib/requestGeneration';
-import { colors, radii, spacing } from '@/lib/theme';
+} from '@/lib/shared/requestGeneration';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 export default function JoinInviteScreen() {
   const { t, i18n } = useTranslation(['invite', 'joinCircle']);

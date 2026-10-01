@@ -25,21 +25,21 @@ import {
   type CircleAgreementReadiness,
   type CircleAgreementSnapshot,
 } from '@/lib/api';
-import { loadAgreementReviewCircleDetail } from '@/lib/agreementReviewLoad';
-import { useAuthSession } from '@/lib/authContext';
+import { loadAgreementReviewCircleDetail } from '@/lib/circles/agreementReviewLoad';
+import { useAuthSession } from '@/lib/auth/authContext';
 import {
   canEnableOrganizerStart,
   normalizeAgreementLanguage,
   orderedSnapshotHands,
   snapshotServiceFeeCents,
-} from '@/lib/circleAgreements';
+} from '@/lib/circles/circleAgreements';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
-import { circleWorkspaceHref } from '@/lib/navigation';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
 import {
   extractAuthoritativeMoneyState,
   runMoneyMutation,
-} from '@/lib/moneyMutationRecovery';
-import { colors, radii, shadows, spacing } from '@/lib/theme';
+} from '@/lib/payments/moneyMutationRecovery';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (

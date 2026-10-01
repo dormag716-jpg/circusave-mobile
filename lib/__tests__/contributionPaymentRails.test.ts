@@ -7,7 +7,7 @@ import contributionsHt from '../i18n/locales/ht/contributions.json';
 import {
   buildContributionPaymentRails,
   contributionRailsUseSameHand,
-} from '../contributionPaymentRails';
+} from '../payments/contributionPaymentRails';
 
 const contributionSource = readFileSync(
   path.join(__dirname, '..', '..', 'app', 'payment', 'contribution.tsx'),

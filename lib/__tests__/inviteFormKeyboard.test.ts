@@ -10,7 +10,7 @@ import {
   inviteFormUsableHeight,
   INVITE_FORM_BUTTON_RESERVE,
   INVITE_FORM_KEYBOARD_RESERVE,
-} from '../inviteFormKeyboard';
+} from '../circles/inviteFormKeyboard';
 
 const root = path.join(__dirname, '..', '..');
 

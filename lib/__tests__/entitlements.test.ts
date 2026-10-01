@@ -4,7 +4,7 @@ import {
   isPremiumPlan,
   normalizeEntitlements,
   planTierFromEntitlements,
-} from '../entitlements';
+} from '../billing/entitlements';
 import {
   getAuthoritativeEntitlements,
   getEntitlements,

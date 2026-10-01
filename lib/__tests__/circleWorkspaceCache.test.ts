@@ -1,4 +1,4 @@
-import { canShowBackendGatedAction } from '../startCircleReadiness';
+import { canShowBackendGatedAction } from '../circles/startCircleReadiness';
 import type { BackendCircleDetail, BackendRoundSnapshot } from '../api';
 import {
   CIRCLE_WORKSPACE_CACHE_TTL_MS,
@@ -14,7 +14,7 @@ import {
   seedCircleWorkspaceCache,
   shouldRevalidateWorkspaceFromBackend,
   stripCachedFinancialGrants,
-} from '../circleWorkspaceCache';
+} from '../circles/circleWorkspaceCache';
 
 function detail(id: string, name: string): BackendCircleDetail {
   return {

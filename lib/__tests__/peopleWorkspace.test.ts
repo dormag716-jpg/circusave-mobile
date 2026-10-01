@@ -2,7 +2,7 @@ import {
   groupCurrentApiHandsForDisplay,
   initialsForDisplay,
   validateCurrentPayoutOrder,
-} from '../peopleWorkspace';
+} from '../circles/peopleWorkspace';
 
 describe('peopleWorkspace compatibility selectors', () => {
   test('groups multiple connected hands without duplicating the displayed member', () => {

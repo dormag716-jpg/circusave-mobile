@@ -22,13 +22,13 @@ import {
   floatingComposerBottomOffset,
   floatingComposerDockOffset,
   floatingComposerListPadding,
-} from '@/lib/chatKeyboard';
+} from '@/lib/circles/chatKeyboard';
 import {
   shouldApplyKeyboardGeometry,
   workspaceChromeLayoutStyle,
-} from '@/lib/workspaceKeyboardChrome';
-import { colors, radii } from '@/lib/theme';
-import { useConversations } from '@/lib/useConversations';
+} from '@/lib/shared/workspaceKeyboardChrome';
+import { colors, radii } from '@/lib/shared/theme';
+import { useConversations } from '@/lib/circles/useConversations';
 
 import { Avatar } from './Avatar';
 import ChatFeed from './ChatFeed';

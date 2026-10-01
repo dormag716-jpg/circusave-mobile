@@ -4,8 +4,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
+import { circleWorkspaceHref, myCirclesHref } from '@/lib/platform/navigation';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 /**
  * Legacy route: circle history now lives in the Records statement center.

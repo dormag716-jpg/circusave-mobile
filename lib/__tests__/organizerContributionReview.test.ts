@@ -7,7 +7,7 @@ import {
   organizerRejectReasonPayload,
   organizerReviewMemberLabel,
   shouldShowOrganizerHandLabel,
-} from '../organizerContributionReview';
+} from '../payments/organizerContributionReview';
 
 const t = ((key: string, options?: { number?: number }) => {
   if (key === 'contributions:workspace.handLabel') {

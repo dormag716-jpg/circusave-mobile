@@ -5,7 +5,7 @@ import {
   shouldBlockInviteLanding,
   shouldShowInvitePreviewSkeleton,
   shouldShowInviteUnavailable,
-} from '../invitePaint';
+} from '../shared/invitePaint';
 
 describe('invite screen first paint', () => {
   it('never blocks the invite chrome on the preview fetch', () => {

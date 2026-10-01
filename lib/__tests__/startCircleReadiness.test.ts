@@ -11,7 +11,7 @@ import {
   isCircleSetupState,
   isReadOnlyLifecyclePhase,
   requiresUnclaimedStartConfirmation,
-} from '../startCircleReadiness';
+} from '../circles/startCircleReadiness';
 
 const members = [
   { id: 'm1', isParticipating: true, userId: 'u1', name: 'Organizer' },

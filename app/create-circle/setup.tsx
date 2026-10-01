@@ -20,10 +20,10 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 
 import { createCircle, getCircleDetail, getCircles } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { logClientError } from '@/lib/errorLogging';
-import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
-import { useEntitlements } from '@/lib/entitlementsContext';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { buildOpenCircleCapacity } from '@/lib/circles/circleCapacity';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
   applyDraftDefaults,
   buildCreateCirclePayload,
@@ -36,18 +36,18 @@ import {
   validateMinimumHands,
   validatePlanCapacity,
   type MemberDraft,
-} from '@/lib/createCircleWizard';
+} from '@/lib/circles/createCircleWizard';
 import {
   circleWorkspaceHref,
   createCircleHref,
   createCircleSuccessDestinations,
-} from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
+} from '@/lib/platform/navigation';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 import { Avatar } from '@/components/Avatar';
 import { DecisionSheet } from '@/components/DecisionSheet';
-import { CREATE_CIRCLE_STEPS } from '@/lib/createCircleFlow';
+import { CREATE_CIRCLE_STEPS } from '@/lib/circles/createCircleFlow';
 import { formatCurrency } from '@/lib/i18n/formatters';
-import { normalizeFrequencyKey, type CircleFrequencyKey } from '@/lib/reminderCircleSummary';
+import { normalizeFrequencyKey, type CircleFrequencyKey } from '@/lib/circles/reminderCircleSummary';
 
 /** Initial wizard: organizer-alone setup only. Payout order is finalized later. */
 const steps = CREATE_CIRCLE_STEPS;

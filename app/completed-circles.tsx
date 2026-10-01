@@ -6,13 +6,13 @@ import { ActivityIndicator, Pressable, FlatList, StyleSheet, Text, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
-import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
-import { useAuthSession } from '@/lib/authContext';
+import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { useAuthSession } from '@/lib/auth/authContext';
 import { formatCurrency } from '@/lib/i18n/formatters';
-import { circleWorkspaceHref } from '@/lib/navigation';
-import { isOrganizer } from '@/lib/permissions';
-import { colors, radii, spacing } from '@/lib/theme';
-import type { BackendCircleSummary } from '@/lib/types';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
+import { isOrganizer } from '@/lib/platform/permissions';
+import { colors, radii, spacing } from '@/lib/shared/theme';
+import type { BackendCircleSummary } from '@/lib/shared/types';
 
 export default function CompletedCirclesScreen() {
   const { t } = useTranslation(['circles', 'common']);

@@ -25,31 +25,31 @@ import {
   type BackendCircleMember,
   type BackendRoundSnapshot,
 } from '@/lib/api';
-import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
-import { useAuthSession } from '@/lib/authContext';
-import { logClientError } from '@/lib/errorLogging';
+import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
 import {
   applyContributionLoadResult,
   createContributionRequestStreams,
-} from '@/lib/contributionRequestStreams';
-import { circleWorkspaceHref } from '@/lib/navigation';
-import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
+} from '@/lib/payments/contributionRequestStreams';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
+import { canShowBackendGatedAction } from '@/lib/circles/startCircleReadiness';
 import {
   nextContributionReviewExpanded,
   shouldStartContributionReviewExpanded,
-} from '@/lib/contributionReview';
+} from '@/lib/payments/contributionReview';
 import {
   sanitizePaymentUserMessage,
   shouldBlockContributionPayActions,
-} from '@/lib/stripeContributionPayment';
-import { colors, radii, spacing } from '@/lib/theme';
+} from '@/lib/payments/stripeContributionPayment';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 import { DecisionSheet } from '@/components/DecisionSheet';
 import { PaymentDestinationList } from '@/components/PaymentDestinationList';
 import {
   buildManualContributionSubmitPayload,
   MAX_PAYMENT_REFERENCE_LENGTH,
-} from '@/lib/contributionClaim';
-import { buildContributionPaymentRails } from '@/lib/contributionPaymentRails';
+} from '@/lib/payments/contributionClaim';
+import { buildContributionPaymentRails } from '@/lib/payments/contributionPaymentRails';
 import { contributionCopy } from '@/lib/i18n/contributionCopy';
 import {
   contributionStatusLabel,
@@ -59,7 +59,7 @@ import { formatCurrency } from '@/lib/i18n/formatters';
 import {
   extractAuthoritativeMoneyState,
   runMoneyMutation,
-} from '@/lib/moneyMutationRecovery';
+} from '@/lib/payments/moneyMutationRecovery';
 
 export default function ContributionPaymentScreen() {
   const { t, i18n } = useTranslation([

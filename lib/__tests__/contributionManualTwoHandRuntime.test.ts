@@ -77,7 +77,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-jest.mock('../authContext', () => ({
+jest.mock('../auth/authContext', () => ({
   useAuthSession: () => ({
     status: 'authenticated',
     session: {
@@ -87,7 +87,7 @@ jest.mock('../authContext', () => ({
   }),
 }));
 
-jest.mock('../useContributionPaymentCapability', () => ({
+jest.mock('../payments/useContributionPaymentCapability', () => ({
   useContributionPaymentCapability: () => ({
     enabled: false,
     pending: false,
@@ -103,11 +103,11 @@ jest.mock('../api', () => ({
   submitContribution: mockSubmitContribution,
 }));
 
-jest.mock('../errorLogging', () => ({
+jest.mock('../platform/errorLogging', () => ({
   logClientError: jest.fn(),
 }));
 
-jest.mock('../navigation', () => ({
+jest.mock('../platform/navigation', () => ({
   circleWorkspaceHref: (circleId: string) => `/circle/${circleId}`,
 }));
 

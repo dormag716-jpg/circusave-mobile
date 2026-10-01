@@ -7,19 +7,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
 
-import { resetNavigationToLogin } from '@/lib/authBoundary';
-import { useAuthSession } from '@/lib/authContext';
-import { useEntitlements } from '@/lib/entitlementsContext';
+import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
-import { logClientError } from '@/lib/errorLogging';
+import { logClientError } from '@/lib/platform/errorLogging';
 import { readLanguagePreference } from '@/lib/i18n/language-storage';
 import {
   LANGUAGE_OPTIONS,
   type LanguagePreference,
 } from '@/lib/i18n/types';
-import { scheduleTestNotification } from '@/lib/notifications';
-import { useMarket, type MarketType } from '@/lib/market';
-import { colors, radii, spacing } from '@/lib/theme';
+import { scheduleTestNotification } from '@/lib/platform/notifications';
+import { useMarket, type MarketType } from '@/lib/circles/market';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 export default function SettingsScreen() {
   const { i18n, t } = useTranslation(['settings', 'navigation']);

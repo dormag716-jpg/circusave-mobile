@@ -21,21 +21,21 @@ import {
   requestJoin,
   type BackendInvitePreview,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { logClientError } from '@/lib/errorLogging';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
 import { ApiError } from '@/lib/api';
-import { describeNetworkError } from '@/lib/networkErrors';
+import { describeNetworkError } from '@/lib/platform/networkErrors';
 import { formatCurrency } from '@/lib/i18n/formatters';
 import {
   shouldKeepJoinPreviewDuringLookup,
-} from '@/lib/joinCirclePaint';
-import { resolveJoinOutcome, type JoinOutcome } from '@/lib/joinOutcome';
-import { dashboardHref } from '@/lib/navigation';
+} from '@/lib/shared/joinCirclePaint';
+import { resolveJoinOutcome, type JoinOutcome } from '@/lib/circles/joinOutcome';
+import { dashboardHref } from '@/lib/platform/navigation';
 import {
   buildPlannedHandClaimAcknowledgment,
   canSubmitPlannedHandClaim,
-} from '@/lib/plannedHandClaim';
-import { colors, spacing } from '@/lib/theme';
+} from '@/lib/circles/plannedHandClaim';
+import { colors, spacing } from '@/lib/shared/theme';
 
 export default function JoinCircleScreen() {
   const { t, i18n } = useTranslation(['joinCircle', 'common', 'auth']);

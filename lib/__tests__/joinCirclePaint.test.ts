@@ -4,7 +4,7 @@ import path from 'path';
 import {
   shouldClearJoinPreviewDuringLookup,
   shouldKeepJoinPreviewDuringLookup,
-} from '../joinCirclePaint';
+} from '../shared/joinCirclePaint';
 
 describe('join-by-code preview paint', () => {
   it('does not clear a loaded preview while lookup is in flight', () => {

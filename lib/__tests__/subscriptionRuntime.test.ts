@@ -138,14 +138,14 @@ jest.mock('expo-web-browser', () => ({
   WebBrowserPresentationStyle: { PAGE_SHEET: 'pageSheet' },
 }));
 
-jest.mock('../authContext', () => ({
+jest.mock('../auth/authContext', () => ({
   useAuthSession: () => ({
     session: { session: { token: 'token' } },
     status: 'authenticated',
   }),
 }));
 
-jest.mock('../entitlementsContext', () => ({
+jest.mock('../billing/entitlementsContext', () => ({
   useEntitlements: () => ({
     entitlements: mockEntitlements,
     isPremium: mockIsPremium,

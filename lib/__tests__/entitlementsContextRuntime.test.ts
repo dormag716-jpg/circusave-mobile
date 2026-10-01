@@ -11,7 +11,7 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
 
-jest.mock('../authContext', () => ({
+jest.mock('../auth/authContext', () => ({
   useAuthSession: () => ({
     status: 'authenticated',
     session: {
@@ -31,7 +31,7 @@ const TestRenderer: any = require('react-test-renderer');
 const {
   EntitlementsProvider,
   useEntitlements,
-}: typeof import('../entitlementsContext') = require('../entitlementsContext');
+}: typeof import('../billing/entitlementsContext') = require('../billing/entitlementsContext');
 
 let latest: ReturnType<typeof useEntitlements> | undefined;
 let renderer: any;

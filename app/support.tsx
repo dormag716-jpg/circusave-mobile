@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radii, spacing } from '@/lib/theme';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 const SUPPORT_SECTIONS = [
   { id: 'gettingStarted', icon: 'rocket' },

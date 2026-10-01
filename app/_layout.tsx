@@ -15,18 +15,18 @@ import {
   resetNavigationToLogin,
   shouldDeferProtectedNavigation,
   shouldIssueSignedOutReset,
-} from '@/lib/authBoundary';
-import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
+} from '@/lib/auth/authBoundary';
+import { AuthSessionProvider, useAuthSession } from '@/lib/auth/authContext';
 import { getCircleDetail } from '@/lib/api';
-import { EntitlementsProvider, useEntitlements } from '@/lib/entitlementsContext';
+import { EntitlementsProvider, useEntitlements } from '@/lib/billing/entitlementsContext';
 import { initializeI18n } from '@/lib/i18n';
-import { shouldHideLaunchSplash } from '@/lib/launchSplash';
-import { MarketProvider } from '@/lib/market';
-import { circleWorkspaceHref, dashboardHref } from '@/lib/navigation';
-import { authorizeNotificationNavigation } from '@/lib/notificationNavigation';
-import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
-import { logClientError } from '@/lib/errorLogging';
-import { registerUnauthorizedSessionHandler } from '@/lib/sessionExpiry';
+import { shouldHideLaunchSplash } from '@/lib/platform/launchSplash';
+import { MarketProvider } from '@/lib/circles/market';
+import { circleWorkspaceHref, dashboardHref } from '@/lib/platform/navigation';
+import { authorizeNotificationNavigation } from '@/lib/platform/notificationNavigation';
+import { initializeNotifications, setupNotificationListener } from '@/lib/platform/notifications';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { registerUnauthorizedSessionHandler } from '@/lib/auth/sessionExpiry';
 
 export {
   // Catch any errors thrown by the Layout component.

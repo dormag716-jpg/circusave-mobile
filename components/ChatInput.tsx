@@ -14,8 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTranslation } from 'react-i18next';
 
-import { composerDraftAfterSend } from '@/lib/circleChatState';
-import { colors, shadows } from '@/lib/theme';
+import { composerDraftAfterSend } from '@/lib/circles/circleChatState';
+import { colors, shadows } from '@/lib/shared/theme';
 
 type ChatInputProps = {
   onSend: (text: string) => void | Promise<void>;

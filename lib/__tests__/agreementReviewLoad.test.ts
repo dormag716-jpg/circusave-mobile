@@ -2,8 +2,8 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import { getCircleDetail } from '../api';
-import { loadAgreementReviewCircleDetail } from '../agreementReviewLoad';
-import { resetHttpGetCacheForTests } from '../httpGetCache';
+import { loadAgreementReviewCircleDetail } from '../circles/agreementReviewLoad';
+import { resetHttpGetCacheForTests } from '../platform/httpGetCache';
 
 describe('agreement-review getCircleDetail contract', () => {
   const originalFetch = global.fetch;

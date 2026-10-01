@@ -10,12 +10,12 @@ import {
   requestAdditionalHand,
   type AdditionalHandPreview,
 } from '@/lib/api';
-import { normalizeAgreementLanguage, shouldRefreshStaleSnapshot } from '@/lib/circleAgreements';
-import { useAuthSession } from '@/lib/authContext';
-import { logClientError } from '@/lib/errorLogging';
+import { normalizeAgreementLanguage, shouldRefreshStaleSnapshot } from '@/lib/circles/circleAgreements';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
 import { formatCurrency } from '@/lib/i18n/formatters';
-import { circleWorkspaceHref } from '@/lib/navigation';
-import { colors, radii, shadows, spacing } from '@/lib/theme';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 
 export default function AdditionalHandConsentScreen() {
   const { t, i18n } = useTranslation('agreements');

@@ -1,24 +1,24 @@
 import { ApiError, HTTP_JSON_TIMEOUT_MS, HTTP_PDF_TIMEOUT_MS, getCircles, requestJson } from '../api';
-import { resetHttpGetCacheForTests } from '../httpGetCache';
-import { areMoneyActionsAvailable } from '../activityAuthGate';
+import { resetHttpGetCacheForTests } from '../platform/httpGetCache';
+import { areMoneyActionsAvailable } from '../auth/activityAuthGate';
 import {
   HTTP_RETRY_AFTER_MAX_SECONDS,
   classifyFetchFailure,
   fallbackNetworkMessage,
   parseRetryAfterHeader,
   sanitizeUserFacingMessage,
-} from '../networkErrors';
+} from '../platform/networkErrors';
 import {
   TimedRequestAbortError,
   runWithTimeout,
-} from '../httpTimeout';
+} from '../platform/httpTimeout';
 import {
   isSessionExpiryExemptPath,
   notifyUnauthorizedSession,
   registerUnauthorizedSessionHandler,
   resetUnauthorizedSessionHandlerForTests,
   shouldHandleUnauthorizedSession,
-} from '../sessionExpiry';
+} from '../auth/sessionExpiry';
 
 describe('runWithTimeout', () => {
   afterEach(() => {

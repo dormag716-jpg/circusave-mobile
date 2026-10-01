@@ -20,32 +20,32 @@ import {
   getCircleDetail,
   type BackendCircleDetail,
 } from '@/lib/api';
-import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
-import { focusReloadOptions } from '@/lib/authBoundary';
-import { useAuthSession } from '@/lib/authContext';
-import { seedCircleWorkspaceCache } from '@/lib/circleWorkspaceCache';
+import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { focusReloadOptions } from '@/lib/auth/authBoundary';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { seedCircleWorkspaceCache } from '@/lib/circles/circleWorkspaceCache';
 import {
   mergeRetainedCircleDetails,
   selectCircleDetailTargets,
   shouldUseSilentCirclesRefresh,
-} from '@/lib/circlesListPaint';
+} from '@/lib/shared/circlesListPaint';
 import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
   shouldShowBlockingLoadState,
-} from '@/lib/requestGeneration';
+} from '@/lib/shared/requestGeneration';
 import { formatCurrency } from '@/lib/i18n/formatters';
-import { buildOpenCircleCapacity } from '@/lib/circleCapacity';
-import { useEntitlements } from '@/lib/entitlementsContext';
-import { formatHandsPeopleMetrics } from '@/lib/circleLifecycleCopy';
+import { buildOpenCircleCapacity } from '@/lib/circles/circleCapacity';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
+import { formatHandsPeopleMetrics } from '@/lib/circles/circleLifecycleCopy';
 import {
   circleWorkspaceHref,
   completedCirclesHref,
   createCircleHref,
-} from '@/lib/navigation';
-import { isOrganizer } from '@/lib/permissions';
-import { colors, spacing } from '@/lib/theme';
-import type { BackendCircleSummary } from '@/lib/types';
+} from '@/lib/platform/navigation';
+import { isOrganizer } from '@/lib/platform/permissions';
+import { colors, spacing } from '@/lib/shared/theme';
+import type { BackendCircleSummary } from '@/lib/shared/types';
 import {
   circleLifecycleBadgeLabel,
   getCircleListLifecycle,
@@ -54,7 +54,7 @@ import {
   isClosedCircleStatus,
   isPausedCircleStatus,
   isSetupCircleStatus,
-} from '@/lib/circleSummary';
+} from '@/lib/circles/circleSummary';
 
 type ListItem =
   | { type: 'header'; id: string; title: string; count: number }

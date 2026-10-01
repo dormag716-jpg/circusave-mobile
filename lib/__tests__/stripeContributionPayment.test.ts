@@ -9,7 +9,7 @@ import {
   shouldBlockContributionPayActions,
   shouldClearPendingSettlement,
   shouldHoldPaymentLockAfterOutcome,
-} from '../stripeContributionPayment';
+} from '../payments/stripeContributionPayment';
 
 describe('PaymentSessionLock', () => {
   test('tryAcquire blocks concurrent sessions and release frees the lock', () => {
@@ -100,7 +100,7 @@ describe('pending settlement pay lock', () => {
 
 describe('in-app contribution payment is removed', () => {
   const stripeSource = readFileSync(
-    path.join(__dirname, '..', 'stripeContributionPayment.ts'),
+    path.join(__dirname, '..', 'payments', 'stripeContributionPayment.ts'),
     'utf8',
   );
   const contributionSource = readFileSync(

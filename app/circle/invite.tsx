@@ -25,28 +25,28 @@ import {
   type BackendCircleDetail,
   type BackendCircleMember,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { copyText } from '@/lib/clipboard';
-import { logClientError } from '@/lib/errorLogging';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { copyText } from '@/lib/platform/clipboard';
+import { logClientError } from '@/lib/platform/errorLogging';
 import {
   buildClaimInviteShareMessage,
   buildClaimInviteUrl,
   buildGenericCircleInviteShareMessage,
-} from '@/lib/claimInvite';
-import { isUnclaimedHand } from '@/lib/circleLifecycleCopy';
-import { circleWorkspaceHref } from '@/lib/navigation';
+} from '@/lib/circles/claimInvite';
+import { isUnclaimedHand } from '@/lib/circles/circleLifecycleCopy';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
 import {
   inviteFieldScrollOffsetFromWindow,
   inviteFormKeyboardBehavior,
   inviteFormKeyboardDismissMode,
   inviteFormScrollPadding,
-} from '@/lib/inviteFormKeyboard';
+} from '@/lib/circles/inviteFormKeyboard';
 import {
   validatePlannedHandAdd,
   type PlannedHandAddFieldErrors,
-} from '@/lib/plannedHandAdd';
-import { isCircleSetupState, getCircleLifecyclePhase } from '@/lib/startCircleReadiness';
-import { colors, radii, spacing } from '@/lib/theme';
+} from '@/lib/circles/plannedHandAdd';
+import { isCircleSetupState, getCircleLifecyclePhase } from '@/lib/circles/startCircleReadiness';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 export default function InviteMemberScreen() {
   const { t } = useTranslation(['invite', 'people']);

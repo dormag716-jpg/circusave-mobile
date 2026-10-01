@@ -7,7 +7,7 @@
  * payment details, emails, phone numbers, or session data.
  *
  * All app/lib source must route error/warning logging through the sanctioned
- * `logClientError` / `logClientWarning` helpers in `lib/errorLogging.ts`.
+ * `logClientError` / `logClientWarning` helpers in `lib/platform/errorLogging.ts`.
  *
  * This test statically scans `app/` and `lib/` for console.log/error/warn
  * usage, including reference, alias, destructuring, bracket, and optional-
@@ -22,7 +22,7 @@ const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx']);
 
 const ALLOWLISTED_FILES = new Set([
   path.join(ROOT, 'lib', 'api.ts'),
-  path.join(ROOT, 'lib', 'errorLogging.ts'),
+  path.join(ROOT, 'lib', 'platform', 'errorLogging.ts'),
 ]);
 
 const CONSOLE_METHODS = 'log|error|warn';
@@ -175,7 +175,7 @@ describe('console logging guardrail', () => {
     if (offenders.length > 0) {
       throw new Error(
         'Found console.log/error/warn usage outside the sanctioned logging ' +
-          "helper. Use logClientError()/logClientWarning() from 'lib/errorLogging.ts' " +
+          "helper. Use logClientError()/logClientWarning() from 'lib/platform/errorLogging.ts' " +
           'instead so error objects (which may carry raw backend payloads) are never ' +
           `logged directly.\n\n${offenders.join('\n')}`,
       );

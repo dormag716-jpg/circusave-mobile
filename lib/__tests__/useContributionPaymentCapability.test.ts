@@ -12,7 +12,7 @@ jest.mock('expo-router', () => {
   };
 });
 
-jest.mock('../entitlementsContext', () => ({
+jest.mock('../billing/entitlementsContext', () => ({
   useEntitlements: () => ({
     refreshContributionPaymentsCapability:
       mockRefreshContributionPaymentsCapability,
@@ -21,7 +21,7 @@ jest.mock('../entitlementsContext', () => ({
   }),
 }));
 
-jest.mock('../authContext', () => ({
+jest.mock('../auth/authContext', () => ({
   useAuthSession: () => ({
     status: 'authenticated',
     session: { session: { token: 'token' } },
@@ -31,7 +31,7 @@ jest.mock('../authContext', () => ({
 const TestRenderer: any = require('react-test-renderer');
 const {
   useContributionPaymentCapability,
-}: typeof import('../useContributionPaymentCapability') = require('../useContributionPaymentCapability');
+}: typeof import('../payments/useContributionPaymentCapability') = require('../payments/useContributionPaymentCapability');
 
 let latest:
   | ReturnType<typeof useContributionPaymentCapability>

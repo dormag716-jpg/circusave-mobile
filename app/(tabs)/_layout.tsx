@@ -4,7 +4,7 @@ import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { colors } from '@/lib/theme';
+import { colors } from '@/lib/shared/theme';
 
 // You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
 function TabBarIcon(props: {

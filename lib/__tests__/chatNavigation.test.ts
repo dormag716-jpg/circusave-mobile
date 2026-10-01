@@ -15,8 +15,8 @@ jest.mock('../i18n', () => ({
   i18n: { t: (key: string) => key },
 }));
 
-import { circleWorkspaceHref } from '../navigation';
-import { conversationIdFromNotificationLink } from '../notifications';
+import { circleWorkspaceHref } from '../platform/navigation';
+import { conversationIdFromNotificationLink } from '../platform/notifications';
 
 describe('chat navigation', () => {
   test('targets a private conversation from the workspace route', () => {

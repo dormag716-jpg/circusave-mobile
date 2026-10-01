@@ -1,5 +1,5 @@
-import { publicAuthStatusFromRestorePhase } from '../authSessionRestore';
-import { shouldHideLaunchSplash } from '../launchSplash';
+import { publicAuthStatusFromRestorePhase } from '../auth/authSessionRestore';
+import { shouldHideLaunchSplash } from '../platform/launchSplash';
 
 describe('shouldHideLaunchSplash', () => {
   it('keeps the splash while DeviceLock is still reading storage', () => {

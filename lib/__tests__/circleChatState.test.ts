@@ -15,7 +15,7 @@ import {
   shouldClearMessagesOnConversationSwitch,
   storeConversationMessages,
   shouldRunUnreadConversationPoll,
-} from '../circleChatState';
+} from '../circles/circleChatState';
 import {
   bindCircleChatStoreUser,
   claimCircleChatClient,
@@ -24,7 +24,7 @@ import {
   publishCircleChatSnapshot,
   releaseCircleChatClient,
   resetCircleChatStoreForTests,
-} from '../circleChatStore';
+} from '../circles/circleChatStore';
 
 function message(
   id: string,
@@ -191,7 +191,7 @@ describe('circle chat message state', () => {
 
   it('does not clear the selected thread before the next conversation loads', () => {
     const source = readFileSync(
-      path.join(__dirname, '..', 'useConversations.ts'),
+      path.join(__dirname, '..', 'circles', 'useConversations.ts'),
       'utf8',
     );
     expect(source).toMatch(/messagesForSelectedConversation/);

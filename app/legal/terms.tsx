@@ -1,5 +1,5 @@
 import { LegalDocumentScreen } from '@/components/LegalDocumentScreen';
-import { getLegalDocument } from '@/lib/legal';
+import { getLegalDocument } from '@/lib/shared/legal';
 
 export default function TermsOfServiceScreen() {
   const document = getLegalDocument('terms');

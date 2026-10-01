@@ -2,7 +2,7 @@ import {
   applyContributionLoadResult,
   createContributionRequestStreams,
   resolveSettlementHandStatus,
-} from '../contributionRequestStreams';
+} from '../payments/contributionRequestStreams';
 
 describe('contribution request streams', () => {
   it('keeps an in-flight screen load current when settlement polls increment', () => {

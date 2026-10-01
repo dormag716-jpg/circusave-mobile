@@ -13,11 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { isOrganizer } from '@/lib/permissions';
-import { reminderMemberFrequencySummary } from '@/lib/reminderCircleSummary';
-import { colors, radii, shadows, spacing } from '@/lib/theme';
-import type { BackendCircleSummary } from '@/lib/types';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { isOrganizer } from '@/lib/platform/permissions';
+import { reminderMemberFrequencySummary } from '@/lib/circles/reminderCircleSummary';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
+import type { BackendCircleSummary } from '@/lib/shared/types';
 
 export default function SmartRemindersScreen() {
   const { t } = useTranslation(['settings', 'circles', 'common']);

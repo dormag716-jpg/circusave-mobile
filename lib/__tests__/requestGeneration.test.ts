@@ -3,7 +3,7 @@ import {
   shouldApplyRequestGeneration,
   shouldReplaceFinancialStateOnError,
   shouldShowBlockingLoadState,
-} from '../requestGeneration';
+} from '../shared/requestGeneration';
 
 describe('request generation', () => {
   it('starts at generation 0 and increments on each load', () => {

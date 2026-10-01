@@ -22,17 +22,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
 import { LegalCheckbox } from '@/components/LegalCheckbox';
 import { register, signInWithFederatedProvider, type AuthResponse } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
+import { useAuthSession } from '@/lib/auth/authContext';
 import {
   clearFederatedCredential,
   holdFederatedCredential,
   readFederatedCredential,
   splitDisplayName,
   type FederatedIdentityProof,
-} from '@/lib/federatedSignIn';
-import { LEGAL_VERSIONS } from '@/lib/legal';
-import { postAuthHrefFromUrl } from '@/lib/navigation';
-import { colors, shadows, spacing } from '@/lib/theme';
+} from '@/lib/auth/federatedSignIn';
+import { googleSignInMessageKey } from '@/lib/auth/googleSignInOutcome';
+import { LEGAL_VERSIONS } from '@/lib/shared/legal';
+import { postAuthHrefFromUrl } from '@/lib/platform/navigation';
+import { colors, shadows, spacing } from '@/lib/shared/theme';
 
 const LEGAL_TERMS_HREF = '/legal/terms' as Href;
 const LEGAL_PRIVACY_HREF = '/legal/privacy' as Href;
@@ -413,15 +414,12 @@ export default function CreateAccountScreen() {
             <FederatedAuthButtons
               disabled={isSubmitting}
               onIdentity={onFederatedIdentity}
-              onUnavailable={(reason) => {
-                Alert.alert(
-                  t(reason === 'not_configured'
-                    ? 'federated.notConfiguredTitle'
-                    : 'federated.unavailableTitle'),
-                  t(reason === 'not_configured'
-                    ? 'federated.notConfiguredBody'
-                    : 'federated.unavailableBody'),
-                );
+              onGoogleStatus={(status) => {
+                const message = googleSignInMessageKey(status);
+                if (!message) {
+                  return;
+                }
+                Alert.alert(t(message.title), t(message.body));
               }}
             />
             {linkChallenge ? (

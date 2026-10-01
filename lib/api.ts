@@ -2,29 +2,29 @@ import type {
   ActivityResponse,
   BackendCircleSummary,
   DashboardSummary,
-} from './types';
+} from './shared/types';
 import {
   freeEntitlements,
   normalizeEntitlements,
   type Entitlements,
-} from './entitlements';
+} from './billing/entitlements';
 import {
   HTTP_JSON_TIMEOUT_MS,
   HTTP_PDF_TIMEOUT_MS,
   runWithTimeout,
-} from './httpTimeout';
+} from './platform/httpTimeout';
 import {
   invalidateCachedGets,
   runDedupedGet,
   shouldInvalidateCachedGetsOnMutation,
   shouldUseHttpGetCache,
-} from './httpGetCache';
+} from './platform/httpGetCache';
 import {
   federatedRequestBody,
   interpretFederatedPayload,
   type FederatedIdentityProof,
   type FederatedSignInResult,
-} from './federatedSignIn';
+} from './auth/federatedSignIn';
 import {
   ApiError,
   classifyFetchFailure,
@@ -33,17 +33,17 @@ import {
   parseRetryAfterHeader,
   readBackendErrorText,
   sanitizeUserFacingMessage,
-} from './networkErrors';
+} from './platform/networkErrors';
 import {
   notifyUnauthorizedSession,
   shouldHandleUnauthorizedSession,
-} from './sessionExpiry';
+} from './auth/sessionExpiry';
 
-export { ApiError, type NetworkErrorCategory } from './networkErrors';
+export { ApiError, type NetworkErrorCategory } from './platform/networkErrors';
 export {
   HTTP_JSON_TIMEOUT_MS,
   HTTP_PDF_TIMEOUT_MS,
-} from './httpTimeout';
+} from './platform/httpTimeout';
 
 export type AuthUser = {
   id: string;
@@ -848,7 +848,7 @@ function throwIfUnauthorized(path: string, hasToken: boolean, status: number) {
 }
 
 const DEV_API_LOG_REDACTED = '[redacted]';
-// Shared with lib/errorLogging.ts so any place that logs API-shaped data
+// Shared with lib/platform/errorLogging.ts so any place that logs API-shaped data
 // redacts the same set of PII / financial / auth-ish key names.
 export const SENSITIVE_LOG_KEY_PATTERN =
   /token|auth|session|password|secret|email|phone|name|user|member|recipient|payment|contribution|wallet|stripe|bank|card|account|circle/i;

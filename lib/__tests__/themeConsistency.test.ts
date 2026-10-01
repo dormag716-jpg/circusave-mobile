@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 
-import { colors } from '../theme';
+import { colors } from '../shared/theme';
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -44,7 +44,7 @@ describe('light-theme color consistency', () => {
     ];
     const exceptions = new Set([
       resolve(__dirname, '../../app/+html.tsx'),
-      resolve(__dirname, '../theme.ts'),
+      resolve(__dirname, '../shared/theme.ts'),
     ]);
     const violations = roots
       .flatMap(sourceFiles)

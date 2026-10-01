@@ -25,10 +25,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { resetNavigationToLogin, shouldCoverSignedOutRoute } from '@/lib/authBoundary';
+import { resetNavigationToLogin, shouldCoverSignedOutRoute } from '@/lib/auth/authBoundary';
 import { login, logout } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { verifyAccountPassword } from '@/lib/deviceLockPassword';
+import { useAuthSession } from '@/lib/auth/authContext';
+import {
+  isCompatibleStrongBiometric,
+  loadAppLockPreferences,
+  subscribeAppLockPreferences,
+} from '@/lib/platform/appLockPreferences';
+import { verifyAccountPassword } from '@/lib/platform/deviceLockPassword';
 import {
   INITIAL_DEVICE_LOCK,
   deviceLockCoversProtectedContent,
@@ -37,8 +42,8 @@ import {
   supportsNativeBiometrics,
   type BiometricPromptResult,
   type DeviceLockEvent,
-} from '@/lib/deviceLockState';
-import { colors, radii, spacing } from '@/lib/theme';
+} from '@/lib/platform/deviceLockState';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 type DeviceLockContextType = {
   isLocked: boolean;
@@ -104,7 +109,56 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   }, [sessionKey, status]);
 
   useEffect(() => {
-    dispatch({ type: 'app_state', next: AppState.currentState });
+    const userId = session?.user.id ?? '';
+    if (status !== 'authenticated' || !userId) {
+      return undefined;
+    }
+    let active = true;
+    const publish = (preferences: {
+      appLockEnabled: boolean;
+      biometricUnlockEnabled: boolean;
+    }) => {
+      dispatch({ type: 'preferences', ...preferences });
+    };
+    void (async () => {
+      let compatible = false;
+      try {
+        const [hasHardware, isEnrolled, enrolledLevel] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+          LocalAuthentication.getEnrolledLevelAsync(),
+        ]);
+        compatible = isCompatibleStrongBiometric({
+          hasHardware: hasHardware === true,
+          isEnrolled: isEnrolled === true,
+          enrolledLevel: typeof enrolledLevel === 'number' ? enrolledLevel : 0,
+        });
+      } catch {
+        compatible = false;
+      }
+      const loaded = await loadAppLockPreferences(userId, compatible);
+      if (!active) {
+        return;
+      }
+      publish(
+        loaded.ok
+          ? loaded.preferences
+          : { appLockEnabled: true, biometricUnlockEnabled: false },
+      );
+    })();
+    const unsubscribe = subscribeAppLockPreferences((changedUserId, preferences) => {
+      if (changedUserId === userId) {
+        publish(preferences);
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [session?.user.id, status]);
+
+  useEffect(() => {
+    dispatch({ type: 'app_state', next: AppState.currentState, now: Date.now() });
     const subscription = AppState.addEventListener('change', (next) => {
       if (
         next === 'background' &&
@@ -115,7 +169,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
         void LocalAuthentication.cancelAuthenticate().catch(() => undefined);
       }
       setAppState(next);
-      dispatch({ type: 'app_state', next });
+      dispatch({ type: 'app_state', next, now: Date.now() });
     });
     return () => {
       subscription.remove();
@@ -162,6 +216,9 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
       if (!hasHardware || !isEnrolled) {
         outcome = 'unavailable';
       } else {
+        // Class 3 only. The device passcode stays off here because the
+        // CircuSave password fallback is the recovery path. A weaker face
+        // unlock is not accepted for this financial lock.
         const result = await LocalAuthentication.authenticateAsync({
           promptMessage: t('unlockPrompt'),
           cancelLabel: t('cancel'),
@@ -212,6 +269,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
         authenticating: model.authenticating,
         passwordSubmitting: model.passwordSubmitting,
         passwordFallback: model.passwordFallback,
+        biometricUnlockEnabled: model.biometricUnlockEnabled,
         appState,
         platform: Platform.OS,
         promptedGeneration: promptedGeneration.current,
@@ -244,6 +302,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   }, [
     appState,
     model.authenticating,
+    model.biometricUnlockEnabled,
     model.passwordFallback,
     model.passwordSubmitting,
     model.phase,

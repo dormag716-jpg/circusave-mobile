@@ -10,7 +10,7 @@ import {
   nextScheduledPayout,
   shortStatementId,
   OUTSTANDING_FIELD_NOTE,
-} from '@/lib/statementPresentation';
+} from '@/lib/shared/statementPresentation';
 import ledgerEn from '@/lib/i18n/locales/en/ledger.json';
 import ledgerEs from '@/lib/i18n/locales/es/ledger.json';
 import ledgerHt from '@/lib/i18n/locales/ht/ledger.json';

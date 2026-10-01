@@ -7,7 +7,7 @@ import {
   areMoneyActionsAvailable,
   shouldLoadActivity,
   shouldLoadAuthenticatedScreen,
-} from '../activityAuthGate';
+} from '../auth/activityAuthGate';
 
 type LoadFlags = {
   apiCalls: number;

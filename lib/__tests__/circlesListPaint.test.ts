@@ -3,7 +3,7 @@ import {
   mergeRetainedCircleDetails,
   selectCircleDetailTargets,
   shouldUseSilentCirclesRefresh,
-} from '../circlesListPaint';
+} from '../shared/circlesListPaint';
 
 describe('circles list paint', () => {
   it('uses a silent refresh once a snapshot is already on screen', () => {

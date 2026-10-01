@@ -16,8 +16,8 @@ import type { BackendChatMessage } from '@/lib/api';
 import {
   isPinnedNearBottom,
   shouldAutoScrollChat,
-} from '@/lib/circleChatState';
-import { colors } from '@/lib/theme';
+} from '@/lib/circles/circleChatState';
+import { colors } from '@/lib/shared/theme';
 
 import { Avatar } from './Avatar';
 

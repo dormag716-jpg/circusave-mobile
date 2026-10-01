@@ -7,7 +7,7 @@ import {
   isCompletedCircleStatus,
   isPausedCircleStatus,
   isSetupCircleStatus,
-} from '../circleSummary';
+} from '../circles/circleSummary';
 
 describe('circle summary lifecycle', () => {
   test.each(['draft', 'setup', 'forming', ' DRAFT '])(

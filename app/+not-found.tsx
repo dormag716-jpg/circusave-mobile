@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { Text, View } from '@/components/Themed';
-import { colors } from '@/lib/theme';
+import { colors } from '@/lib/shared/theme';
 
 export default function NotFoundScreen() {
   const { t } = useTranslation('common');

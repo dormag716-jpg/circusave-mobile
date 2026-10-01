@@ -5,8 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTranslation } from 'react-i18next';
 
-import { listLegalDocuments } from '@/lib/legal';
-import { colors, shadows, spacing } from '@/lib/theme';
+import { listLegalDocuments } from '@/lib/shared/legal';
+import { colors, shadows, spacing } from '@/lib/shared/theme';
 
 export default function LegalIndexScreen() {
   const { t } = useTranslation(['legal', 'common']);

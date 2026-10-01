@@ -6,21 +6,21 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
-import type { BackendCircleSummary } from '@/lib/types';
-import { useAuthSession } from '@/lib/authContext';
+import type { BackendCircleSummary } from '@/lib/shared/types';
+import { useAuthSession } from '@/lib/auth/authContext';
 import {
   buildOpenCircleCapacity,
-} from '@/lib/circleCapacity';
+} from '@/lib/circles/circleCapacity';
 import {
   shouldShowCreateTabLimitCard,
-} from '@/lib/createTabPaint';
-import { useEntitlements } from '@/lib/entitlementsContext';
-import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
+} from '@/lib/shared/createTabPaint';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
+import { circleWorkspaceHref, myCirclesHref } from '@/lib/platform/navigation';
 import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
-} from '@/lib/requestGeneration';
-import { colors, radii, spacing } from '@/lib/theme';
+} from '@/lib/shared/requestGeneration';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
 

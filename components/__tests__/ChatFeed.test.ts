@@ -8,7 +8,7 @@ import path from 'path';
 import {
   COMPOSER_VISUAL_CLEARANCE,
   floatingComposerListPadding,
-} from '@/lib/chatKeyboard';
+} from '@/lib/circles/chatKeyboard';
 
 describe('ChatFeed keyboard contract', () => {
   test('defaults match the flex chat surface requirements', () => {

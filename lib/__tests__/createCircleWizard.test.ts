@@ -10,7 +10,7 @@ import {
   validateMinimumHands,
   validatePlanCapacity,
   type MemberDraft,
-} from '../createCircleWizard';
+} from '../circles/createCircleWizard';
 
 function member(
   partial: Partial<MemberDraft> & Pick<MemberDraft, 'firstName' | 'lastName' | 'phone'>,

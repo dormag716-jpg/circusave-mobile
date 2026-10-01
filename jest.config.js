@@ -5,6 +5,8 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    '^expo-crypto$': '<rootDir>/lib/testing/expoCryptoMock.js',
+    '^react-native-nitro-google-signin$': '<rootDir>/lib/testing/nitroGoogleSignInStatus.js',
   },
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }],

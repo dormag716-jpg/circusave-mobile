@@ -5,11 +5,11 @@ import {
   contributionReviewAccessibilityState,
   nextContributionReviewExpanded,
   shouldStartContributionReviewExpanded,
-} from '../contributionReview';
+} from '../payments/contributionReview';
 import {
   PaymentSessionLock,
   shouldBlockContributionPayActions,
-} from '../stripeContributionPayment';
+} from '../payments/stripeContributionPayment';
 
 describe('contribution review accordion', () => {
   it('starts collapsed on first render', () => {

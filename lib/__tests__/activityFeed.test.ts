@@ -1,4 +1,4 @@
-import type { BackendActivity } from '../types';
+import type { BackendActivity } from '../shared/types';
 import {
   FREE_ACTIVITY_FETCH_LIMIT,
   FREE_ACTIVITY_VISIBLE_LIMIT,
@@ -25,7 +25,7 @@ import {
   shouldShowActivityLoadMore,
   shouldShowActivityUpgrade,
   summarizeActivity,
-} from '../activityFeed';
+} from '../shared/activityFeed';
 
 function activity(
   overrides: Partial<BackendActivity> & Pick<BackendActivity, 'id' | 'type'>,

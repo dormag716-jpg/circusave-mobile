@@ -48,7 +48,7 @@ jest.mock('react-native', () => ({
   },
 }));
 
-jest.mock('../authContext', () => ({
+jest.mock('../auth/authContext', () => ({
   useAuthSession: () => mockAuth,
 }));
 
@@ -58,11 +58,11 @@ jest.mock('../api', () => ({
     mockGetFreshContributionPaymentsCapability,
 }));
 
-jest.mock('../errorLogging', () => ({
+jest.mock('../platform/errorLogging', () => ({
   logClientWarning: jest.fn(),
 }));
 
-jest.mock('../googlePlayBillingMachine', () => ({
+jest.mock('../billing/googlePlayBillingMachine', () => ({
   createGooglePlayBillingMachine: mockCreateMachine,
 }));
 
@@ -71,7 +71,7 @@ const {
   EntitlementsProvider,
   GOOGLE_PLAY_RECONCILIATION_COOLDOWN_MS,
   useEntitlements,
-}: typeof import('../entitlementsContext') = require('../entitlementsContext');
+}: typeof import('../billing/entitlementsContext') = require('../billing/entitlementsContext');
 
 let latest: ReturnType<typeof useEntitlements> | undefined;
 let renderer: any;

@@ -46,7 +46,7 @@ jest.mock('expo-linking', () => ({
   createURL: jest.fn(() => 'circusave://'),
 }));
 
-jest.mock('@/lib/navigation', () => ({
+jest.mock('@/lib/platform/navigation', () => ({
   circleWorkspaceHref: (circleId: string, tab?: string) =>
     tab
       ? `/circle/workspace?circleId=${circleId}&tab=${tab}`

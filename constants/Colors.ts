@@ -1,4 +1,4 @@
-import { colors as themeColors } from '@/lib/theme';
+import { colors as themeColors } from '@/lib/shared/theme';
 
 export default {
   light: {

@@ -56,32 +56,32 @@ import {
   startCircle,
   type CircleAgreementSnapshot,
 } from '@/lib/api';
-import { logClientError } from '@/lib/errorLogging';
+import { logClientError } from '@/lib/platform/errorLogging';
 import {
   getMemberAgreementPrompt,
   memberCanOpenAgreementReview,
   shouldShowMemberAgreementBanner,
   type MemberAgreementPrompt,
-} from '@/lib/circleAgreements';
+} from '@/lib/circles/circleAgreements';
 import { PaymentDestinationList } from '@/components/PaymentDestinationList';
 import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
 
-import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
-import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/workspaceAgreementLoad';
-import { ledgerActionForNavigation, navigationMayMutateMoney } from '@/lib/authBoundary';
-import { useAuthSession } from '@/lib/authContext';
+import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/circles/workspaceAgreementLoad';
+import { ledgerActionForNavigation, navigationMayMutateMoney } from '@/lib/auth/authBoundary';
+import { useAuthSession } from '@/lib/auth/authContext';
 import {
   evictCircleWorkspaceCache,
   readCircleWorkspacePresentation,
   seedCircleWorkspaceCache,
-} from '@/lib/circleWorkspaceCache';
-import { invalidateCachedGets } from '@/lib/httpGetCache';
-import { createRequestGeneration } from '@/lib/requestGeneration';
+} from '@/lib/circles/circleWorkspaceCache';
+import { invalidateCachedGets } from '@/lib/platform/httpGetCache';
+import { createRequestGeneration } from '@/lib/shared/requestGeneration';
 import {
   isWorkspaceChromeCollapsed,
   workspaceChromeLayoutStyle,
-} from '@/lib/workspaceKeyboardChrome';
-import { useEntitlements } from '@/lib/entitlementsContext';
+} from '@/lib/shared/workspaceKeyboardChrome';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
   additionalHandConsentHref,
   circleAgreementReviewHref,
@@ -89,12 +89,12 @@ import {
   circlePaymentSetupHref,
   contributionHref,
   myCirclesHref,
-} from '@/lib/navigation';
+} from '@/lib/platform/navigation';
 import {
   buildClaimInviteShareMessage,
   buildClaimInviteUrl,
-} from '@/lib/claimInvite';
-import { copyText } from '@/lib/clipboard';
+} from '@/lib/circles/claimInvite';
+import { copyText } from '@/lib/platform/clipboard';
 import {
   isCircleNotStarted,
   isUnclaimedHand,
@@ -102,14 +102,14 @@ import {
   roundClosedTitle,
   roundPausedSubtitle,
   roundPausedTitle,
-} from '@/lib/circleLifecycleCopy';
+} from '@/lib/circles/circleLifecycleCopy';
 import {
   buildCircleSetupProgress,
   hasContributionPaymentInstructions,
   orderedParticipatingHands,
   splitWaitlistRequests,
   type SetupStepStatus,
-} from '@/lib/circleSetupProgress';
+} from '@/lib/circles/circleSetupProgress';
 import {
   buildPayoutOrderReviewLines,
   buildStartCircleConfirmations,
@@ -123,8 +123,8 @@ import {
   isCircleStarted,
   requiresUnclaimedStartConfirmation,
   type StartCircleConfirmations,
-} from '@/lib/startCircleReadiness';
-import { colors, radii, shadows, spacing } from '@/lib/theme';
+} from '@/lib/circles/startCircleReadiness';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 import ConversationChat from '@/components/ConversationChat';
 import { Avatar } from '@/components/Avatar';
 import { DecisionSheet } from '@/components/DecisionSheet';
@@ -132,14 +132,14 @@ import {
   groupCurrentApiHandsForDisplay,
   initialsForDisplay,
   validateCurrentPayoutOrder,
-} from '@/lib/peopleWorkspace';
-import { useConversationUnreadCount } from '@/lib/useConversations';
+} from '@/lib/circles/peopleWorkspace';
+import { useConversationUnreadCount } from '@/lib/circles/useConversations';
 import { contributionCopy } from '@/lib/i18n/contributionCopy';
 import {
   buildManualContributionSubmitPayload,
   claimedPaymentMethodLabelKey,
   MAX_PAYMENT_REFERENCE_LENGTH,
-} from '@/lib/contributionClaim';
+} from '@/lib/payments/contributionClaim';
 import {
   contributionStatusLabel,
   presentManualContribution,
@@ -150,21 +150,21 @@ import {
   collectViewerParticipatingHands,
   formatContributionReportedAt,
   type MemberContributionCardModel,
-} from '@/lib/memberContributionCard';
+} from '@/lib/payments/memberContributionCard';
 import {
   canStartMarkAsSentSubmit,
   resolveMarkAsSentContributionHrefHandId,
   resolveMarkAsSentTarget,
-} from '@/lib/markContributionSent';
+} from '@/lib/payments/markContributionSent';
 import {
   authoritativeStateMeetsGoal,
   extractAuthoritativeMoneyState,
   runMoneyMutation,
-} from '@/lib/moneyMutationRecovery';
+} from '@/lib/payments/moneyMutationRecovery';
 import {
   executeLockedPayoutRelease,
   PayoutReleaseLock,
-} from '@/lib/payoutReleaseLock';
+} from '@/lib/payments/payoutReleaseLock';
 import {
   ORGANIZER_REJECT_REASON_CODES,
   buildOrganizerReviewRowModel,
@@ -173,7 +173,7 @@ import {
   presentRejectReasonForMember,
   shouldShowOrganizerHandLabel,
   type OrganizerRejectReasonCode,
-} from '@/lib/organizerContributionReview';
+} from '@/lib/payments/organizerContributionReview';
 import {
   formatCurrency,
   formatDateTime as formatLocalizedDate,

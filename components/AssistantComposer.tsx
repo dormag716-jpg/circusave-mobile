@@ -8,8 +8,8 @@ import {
   View,
 } from 'react-native';
 
-import { composerDraftAfterSend } from '@/lib/circleChatState';
-import { colors, shadows } from '@/lib/theme';
+import { composerDraftAfterSend } from '@/lib/circles/circleChatState';
+import { colors, shadows } from '@/lib/shared/theme';
 
 type AssistantComposerProps = {
   onSend: (text: string) => void | Promise<void>;

@@ -11,14 +11,14 @@ import {
   roundPausedTitle,
   roundUnstartedSubtitle,
   roundUnstartedTitle,
-} from '../circleLifecycleCopy';
+} from '../circles/circleLifecycleCopy';
 import {
   canShowStartCircleAction,
   getCircleLifecyclePhase,
   isCircleCompleted,
   isCircleSetupState,
   isCircleStarted,
-} from '../startCircleReadiness';
+} from '../circles/startCircleReadiness';
 
 describe('authoritative lifecycle phase', () => {
   test('draft without startedAt is setup / not started', () => {

@@ -1,4 +1,4 @@
-import { formatHandsPeopleMetrics } from '../circleLifecycleCopy';
+import { formatHandsPeopleMetrics } from '../circles/circleLifecycleCopy';
 
 describe('people versus hands display', () => {
   test('3 users one hand each → 3 people, 3 hands', () => {

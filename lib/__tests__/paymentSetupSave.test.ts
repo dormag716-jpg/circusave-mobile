@@ -1,4 +1,4 @@
-import { saveCirclePaymentInstructions } from '../paymentSetupSave';
+import { saveCirclePaymentInstructions } from '../payments/paymentSetupSave';
 
 describe('saveCirclePaymentInstructions (payment-setup save flow)', () => {
   const circleId = 'circle-1';

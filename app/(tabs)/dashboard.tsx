@@ -21,43 +21,43 @@ import {
   type BackendCircleDetail,
   type BackendRoundSnapshot,
 } from '@/lib/api';
-import { shouldLoadAuthenticatedScreen } from '@/lib/activityAuthGate';
-import { focusReloadOptions } from '@/lib/authBoundary';
-import { useAuthSession } from '@/lib/authContext';
+import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { focusReloadOptions } from '@/lib/auth/authBoundary';
+import { useAuthSession } from '@/lib/auth/authContext';
 import { formatCurrency, formatShortDate } from '@/lib/i18n/formatters';
 import {
   formatPayoutDateWithRelative,
   presentDashboardClockPayout,
   resolveCircleRoundPayoutDate,
   resolveDashboardClockPayout,
-} from '@/lib/dashboardPayoutDates';
+} from '@/lib/payments/dashboardPayoutDates';
 import {
   circleWorkspaceHref,
   contributionHref,
   createCircleHref,
   joinCircleHref,
   myCirclesHref,
-} from '@/lib/navigation';
-import { isOrganizer } from '@/lib/permissions';
-import { colors, radii, shadows, spacing } from '@/lib/theme';
-import type { BackendCircleSummary, DashboardSummary } from '@/lib/types';
+} from '@/lib/platform/navigation';
+import { isOrganizer } from '@/lib/platform/permissions';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
+import type { BackendCircleSummary, DashboardSummary } from '@/lib/shared/types';
 import {
   isActiveCircleStatus,
   isSetupCircleStatus,
-} from '@/lib/circleSummary';
-import { seedCircleWorkspaceCache } from '@/lib/circleWorkspaceCache';
+} from '@/lib/circles/circleSummary';
+import { seedCircleWorkspaceCache } from '@/lib/circles/circleWorkspaceCache';
 import {
   dashboardCircleMembers,
   shouldReserveDashboardActionSlot,
   shouldShowDashboardEmptyCircles,
   shouldShowDashboardSkeleton,
   shouldUseSilentDashboardRefresh,
-} from '@/lib/dashboardPaint';
+} from '@/lib/shared/dashboardPaint';
 import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
-} from '@/lib/requestGeneration';
-import { canShowBackendGatedAction } from '@/lib/startCircleReadiness';
+} from '@/lib/shared/requestGeneration';
+import { canShowBackendGatedAction } from '@/lib/circles/startCircleReadiness';
 
 type IconName = ComponentProps<typeof FontAwesome>['name'];
 
