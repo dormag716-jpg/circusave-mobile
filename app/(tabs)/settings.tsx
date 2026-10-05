@@ -1,11 +1,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, type Href, useFocusEffect } from 'expo-router';
 import { useCallback, useState, useEffect } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
+import { useOpenAssistant } from '@/components/useOpenAssistant';
+import { resetAssistantFabPlacement } from '@/lib/assistant/assistantFabStore';
 
 import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
@@ -29,6 +31,8 @@ export default function SettingsScreen() {
     'contributionPaymentsEnabled',
   );
   const { market, setMarket } = useMarket();
+  const { open: openAssistant } = useOpenAssistant();
+  const [assistantResetDone, setAssistantResetDone] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
   const [languagePreference, setLanguagePreference] =
@@ -142,6 +146,35 @@ export default function SettingsScreen() {
             subtitle={t('settings:smartRemindersSubtitle')}
             onPress={() => router.push('/smart-reminders' as Href)}
             isFirst
+            isLast
+          />
+        </View>
+
+        {/* Section: Assistant */}
+        <Text style={styles.sectionTitle}>{t('settings:assistantSection')}</Text>
+        <View style={styles.sectionContainer}>
+          <MenuItem
+            icon="magic"
+            title={t('settings:assistantOpen')}
+            subtitle={t('settings:assistantOpenSubtitle')}
+            hint={t('settings:assistantOpenHint')}
+            onPress={() => void openAssistant()}
+            isFirst
+          />
+          <MenuItem
+            icon="undo"
+            title={t('settings:assistantResetPosition')}
+            subtitle={
+              assistantResetDone
+                ? t('settings:assistantResetDone')
+                : t('settings:assistantResetSubtitle')
+            }
+            hint={t('settings:assistantResetHint')}
+            onPress={() => {
+              void resetAssistantFabPlacement();
+              setAssistantResetDone(true);
+              AccessibilityInfo.announceForAccessibility(t('settings:assistantResetDone'));
+            }}
             isLast
           />
         </View>
@@ -326,10 +359,11 @@ function getLanguagePreferenceLabel(
   );
 }
 
-function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
+function MenuItem({ icon, title, subtitle, hint, badge, onPress, isFirst, isLast }: {
   icon: React.ComponentProps<typeof FontAwesome>['name'];
   title: string;
   subtitle: string;
+  hint?: string;
   badge?: string;
   onPress: () => void;
   isFirst?: boolean;
@@ -346,6 +380,7 @@ function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${subtitle}`}
+      accessibilityHint={hint}
     >
       <View style={styles.menuIconContainer}>
         <FontAwesome name={icon} size={20} color={colors.primary} />

@@ -127,5 +127,13 @@
   "remindersScheduledTitle": "Rapèl entelijan pwograme",
   "remindersScheduledBody": "CircuSave ap raple manm ki poko peye wonn sa a.",
   "schedulePausedTitle": "Orè a an poz",
-  "schedulePausedBody": "Pa gen rapèl otomatik ki pral voye."
+  "schedulePausedBody": "Pa gen rapèl otomatik ki pral voye.",
+  "assistantSection": "Asistan",
+  "assistantOpen": "Louvri asistan an",
+  "assistantOpenSubtitle": "Mande sou yon sèk. Asistan an pa ka deplase lajan.",
+  "assistantOpenHint": "Louvri asistan an nan yon fèy sou ekran sa a.",
+  "assistantResetPosition": "Reyajiste pozisyon asistan an",
+  "assistantResetSubtitle": "Retounen bouton k ap flote a kote li te ye pa default la.",
+  "assistantResetHint": "Mete bouton asistan k ap flote a anba adwat ankò.",
+  "assistantResetDone": "Bouton asistan an retounen kote li te ye pa default la."
 }

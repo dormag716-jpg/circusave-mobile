@@ -127,5 +127,13 @@
   "remindersScheduledTitle": "Recordatorios inteligentes programados",
   "remindersScheduledBody": "CircuSave recordará a quienes aún deben esta ronda.",
   "schedulePausedTitle": "Calendario en pausa",
-  "schedulePausedBody": "No se enviarán recordatorios automáticos."
+  "schedulePausedBody": "No se enviarán recordatorios automáticos.",
+  "assistantSection": "Asistente",
+  "assistantOpen": "Abrir el asistente",
+  "assistantOpenSubtitle": "Pregunta sobre un círculo. El asistente no puede mover dinero.",
+  "assistantOpenHint": "Abre el asistente en una hoja sobre esta pantalla.",
+  "assistantResetPosition": "Restablecer la posición del asistente",
+  "assistantResetSubtitle": "Devuelve el botón flotante a su lugar predeterminado.",
+  "assistantResetHint": "Coloca de nuevo el botón flotante del asistente abajo a la derecha.",
+  "assistantResetDone": "El botón del asistente volvió a su lugar predeterminado."
 }

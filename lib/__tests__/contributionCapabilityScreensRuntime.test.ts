@@ -101,6 +101,16 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+// Settings now offers the assistant. The sheet it opens depends on native gesture
+// code that Node cannot load, so the hook and the reset store are stubbed here.
+jest.mock('@/components/useOpenAssistant', () => ({
+  useOpenAssistant: () => ({ open: jest.fn(), opening: false }),
+}));
+
+jest.mock('@/lib/assistant/assistantFabStore', () => ({
+  resetAssistantFabPlacement: jest.fn(),
+}));
+
 jest.mock('@/components/Avatar', () => {
   const ReactModule = require('react');
   return {
@@ -226,6 +236,8 @@ test('settings hides contribution payment controls but keeps preferences and Pre
 
   expect(text).not.toContain('settings:automatedPayments');
   expect(text).toContain('settings:paymentPreferences');
+  expect(text).toContain('settings:assistantOpen');
+  expect(text).toContain('settings:assistantResetPosition');
   expect(text).toContain('settings:subscription');
   expect(text).toContain('settings:organizerProActive');
   expect(mockGetLinkedAccounts).not.toHaveBeenCalled();

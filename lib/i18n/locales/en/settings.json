@@ -127,5 +127,13 @@
   "remindersScheduledTitle": "Smart reminders scheduled",
   "remindersScheduledBody": "CircuSave will remind members who still owe this round.",
   "schedulePausedTitle": "Schedule paused",
-  "schedulePausedBody": "No automatic reminders will be sent."
+  "schedulePausedBody": "No automatic reminders will be sent.",
+  "assistantSection": "Assistant",
+  "assistantOpen": "Open the assistant",
+  "assistantOpenSubtitle": "Ask about a circle. The assistant cannot move money.",
+  "assistantOpenHint": "Opens the assistant in a sheet over this screen.",
+  "assistantResetPosition": "Reset assistant position",
+  "assistantResetSubtitle": "Move the floating button back to its default place.",
+  "assistantResetHint": "Puts the floating assistant button back at the bottom right.",
+  "assistantResetDone": "The assistant button is back in its default place."
 }
