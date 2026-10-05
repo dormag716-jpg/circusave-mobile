@@ -12,7 +12,7 @@ import 'react-native-reanimated';
 
 import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
 import { AssistantSheetProvider } from '@/components/AssistantSheetContext';
-import { ProAssistantGreeting } from '@/components/ProAssistantGreeting';
+import { AssistantFabLayer } from '@/components/AssistantFabLayer';
 import { useColorScheme } from '@/components/useColorScheme';
 import {
   resetNavigationToLogin,
@@ -125,10 +125,9 @@ function SessionTree() {
             <UnauthenticatedRouteGuard />
             <GestureHandlerRootView style={{ flex: 1 }}>
               <AssistantSheetProvider>
-                <View style={{ flex: 1 }}>
-                  <ProAssistantGreeting />
+                <AssistantFabLayer>
                   <AuthenticatedStack />
-                </View>
+                </AssistantFabLayer>
               </AssistantSheetProvider>
             </GestureHandlerRootView>
           </DeviceLockProvider>

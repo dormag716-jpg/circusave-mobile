@@ -30,13 +30,6 @@
     "introUsed": "Apèsi sa a fini. Ou ka kontinye mande nan limit ou. Organizer Pro ogmante limit la epi li ajoute lòt zouti òganizatè yo.",
     "proRequired": "Demann sa a bezwen Organizer Pro. Ou ka toujou mande sou sèk sa a nan limit ou, epi asistan an pa ka deplase lajan."
   },
-  "greeting": {
-    "title": "Asistan CircuSave",
-    "body": "Mande sou yon sèk. Repons yo sèvi ak dosye aktyèl yo; asistan an pa ka deplase lajan.",
-    "open": "Louvri asistan",
-    "openA11y": "Louvri asistan CircuSave",
-    "dismissA11y": "Fèmen salitasyon asistan an"
-  },
   "memory": {
     "within": "Sove nan chat sa a: {{saved}}. Asistan an resevwa {{sent}} ki pi resan yo. Yon kesyon long ka kite plis mesaj deyò. Mesaj ki sove yo pa montan, estati, ni lòd peman aktyèl.",
     "beyond": "Sove nan chat sa a: {{saved}}. Asistan an resevwa {{sent}} ki pi resan yo. {{omitted}} ansyen mesaj rete sove epi yo pa voye. Dosye sèk la rete enfòmasyon aktyèl yo."
@@ -71,5 +64,21 @@
     "view_payout_order": "Lòd peman",
     "view_activity": "Aktivite",
     "upgrade_to_premium": "Gade plan an"
+  },
+  "fab": {
+    "open": "Louvri asistan CircuSave la",
+    "hint": "Trennen bouton sa a pou deplase l sou ekran an.",
+    "resetAction": "Reyajiste pozisyon",
+    "resetDone": "Bouton asistan an retounen kote li te ye pa default la."
+  },
+  "picker": {
+    "title": "Sou ki gwoup ou vle poze kesyon?",
+    "note": "Prive epi li sèlman. Repons yo itilize dosye aktyèl yo, epi asistan an pa ka deplase lajan.",
+    "loading": "Ap chaje gwoup ou yo…",
+    "error": "Pa t ka chaje gwoup ou yo.",
+    "retry": "Eseye ankò",
+    "empty": "Kreye oswa antre nan yon gwoup pou poze kesyon sou li.",
+    "close": "Fèmen asistan an",
+    "pickA11y": "Poze kesyon sou {{name}}"
   }
 }

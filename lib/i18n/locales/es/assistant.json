@@ -30,13 +30,6 @@
     "introUsed": "Esa vista general terminó. Puedes seguir preguntando dentro de tu asignación. Organizer Pro aumenta la asignación y añade las demás herramientas del organizador.",
     "proRequired": "Esta solicitud necesita Organizer Pro. Aún puedes preguntar sobre este círculo dentro de tu asignación, y el asistente no puede mover dinero."
   },
-  "greeting": {
-    "title": "Asistente CircuSave",
-    "body": "Pregunta sobre un círculo. Las respuestas usan los registros actuales; el asistente no puede mover dinero.",
-    "open": "Abrir asistente",
-    "openA11y": "Abrir el asistente de CircuSave",
-    "dismissA11y": "Cerrar el saludo del asistente"
-  },
   "memory": {
     "within": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. Una pregunta larga puede dejar fuera más mensajes. Los mensajes guardados no son montos, estados ni orden de pago actuales.",
     "beyond": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. {{omitted}} mensajes más antiguos siguen guardados y no se envían. Los registros del círculo siguen siendo los datos actuales."
@@ -71,5 +64,21 @@
     "view_payout_order": "Orden de pago",
     "view_activity": "Actividad",
     "upgrade_to_premium": "Ver plan"
+  },
+  "fab": {
+    "open": "Abrir el asistente de CircuSave",
+    "hint": "Arrastra para mover este botón a otro lugar de la pantalla.",
+    "resetAction": "Restablecer posición",
+    "resetDone": "El botón del asistente volvió a su lugar predeterminado."
+  },
+  "picker": {
+    "title": "¿Sobre qué círculo quieres preguntar?",
+    "note": "Privado y de solo lectura. Las respuestas usan los registros actuales y el asistente no puede mover dinero.",
+    "loading": "Cargando tus círculos…",
+    "error": "No se pudieron cargar tus círculos.",
+    "retry": "Intentar de nuevo",
+    "empty": "Crea o únete a un círculo para preguntar sobre él.",
+    "close": "Cerrar el asistente",
+    "pickA11y": "Preguntar sobre {{name}}"
   }
 }

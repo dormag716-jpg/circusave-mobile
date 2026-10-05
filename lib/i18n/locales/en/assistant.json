@@ -30,13 +30,6 @@
     "introUsed": "That overview is finished. You can keep asking within your allowance. Organizer Pro raises the allowance and adds the other organizer tools.",
     "proRequired": "This request needs Organizer Pro. You can still ask about this circle within your allowance, and the assistant cannot move money."
   },
-  "greeting": {
-    "title": "CircuSave Assistant",
-    "body": "Ask about a circle. Answers use current records; the assistant cannot move money.",
-    "open": "Open assistant",
-    "openA11y": "Open the CircuSave assistant",
-    "dismissA11y": "Dismiss assistant greeting"
-  },
   "memory": {
     "within": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. A long question can leave more out. Saved messages are not current amounts, statuses, or payout order.",
     "beyond": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. {{omitted}} older messages stay saved and are not sent. Circle records remain the current facts."
@@ -71,5 +64,21 @@
     "view_payout_order": "Payout order",
     "view_activity": "Activity",
     "upgrade_to_premium": "View plan"
+  },
+  "fab": {
+    "open": "Open the CircuSave assistant",
+    "hint": "Drag to move this button out of the way.",
+    "resetAction": "Reset position",
+    "resetDone": "The assistant button is back in its default place."
+  },
+  "picker": {
+    "title": "Ask about which circle?",
+    "note": "Private and read-only. Answers use current records, and the assistant cannot move money.",
+    "loading": "Loading your circles…",
+    "error": "Could not load your circles.",
+    "retry": "Try again",
+    "empty": "Create or join a circle to ask about it.",
+    "close": "Close the assistant",
+    "pickA11y": "Ask about {{name}}"
   }
 }

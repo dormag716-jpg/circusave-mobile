@@ -10,10 +10,12 @@ import React, {
 import { AssistantSheet } from '@/components/AssistantSheet';
 import { useDeviceLock } from '@/components/DeviceLock';
 import { useAuthSession } from '@/lib/auth/authContext';
+import { AssistantCirclePicker } from '@/components/AssistantCirclePicker';
 import { CircleAssistantPanel } from '@/components/CircleAssistantPanel';
 
 type AssistantSheetApi = {
-  openAssistant: (circleId: string) => void;
+  /** With no circle id the sheet opens on a circle picker. */
+  openAssistant: (circleId?: string | null) => void;
   closeAssistant: () => void;
   isOpen: boolean;
   circleId: string | null;
@@ -44,10 +46,10 @@ export function AssistantSheetProvider({
   }, [mustBeClosed]);
 
   const openAssistant = useCallback(
-    (nextCircleId: string) => {
+    (nextCircleId?: string | null) => {
+      if (mustBeClosed) return;
       const id = String(nextCircleId || '').trim();
-      if (!id || mustBeClosed) return;
-      setCircleId(id);
+      setCircleId(id || null);
       setVisible(true);
     },
     [mustBeClosed],
@@ -83,7 +85,9 @@ export function AssistantSheetProvider({
               presentation="sheet"
               onClose={requestClose}
             />
-          ) : null
+          ) : (
+            <AssistantCirclePicker onPick={setCircleId} onClose={requestClose} />
+          )
         }
       </AssistantSheet>
     </AssistantSheetContext.Provider>
