@@ -1,6 +1,11 @@
 /**
  * Auth-boundary navigation. Logout must land on Login with no protected
  * screen underneath, and leaving a money screen must only re-read the ledger.
+ *
+ * Sign-out resets the stack that owns Login. Popping to the first screen is
+ * unhandled when that stack is already at index 0, which is the Expo Router
+ * root slot during a normal sign-out. The reset is stored as-is, so it
+ * includes preloadedRoutes. Native stack reduces that list on the next render.
  */
 
 export type LoginBackAction = 'exit_app';
@@ -9,17 +14,97 @@ export function loginHardwareBackAction(): LoginBackAction {
   return 'exit_app';
 }
 
-export type LoginResetRouter = {
-  canDismiss: () => boolean;
-  dismissAll: () => void;
-  replace: (href: '/login') => void;
+export type LoginResetAction = {
+  type: 'RESET';
+  target?: string;
+  payload: {
+    stale?: false;
+    type?: 'stack';
+    key?: string;
+    index: 0;
+    routeNames?: string[];
+    preloadedRoutes?: [];
+    routes: [{ name: 'login' }];
+  };
 };
 
-export function resetNavigationToLogin(router: LoginResetRouter): void {
-  if (router.canDismiss()) {
-    router.dismissAll();
+export function loginResetAction(): LoginResetAction {
+  return {
+    type: 'RESET',
+    payload: {
+      index: 0,
+      routes: [{ name: 'login' }],
+    },
+  };
+}
+
+type LoginStackState = {
+  key?: string;
+  type?: string;
+  index?: number;
+  routeNames?: string[];
+  routes?: { name: string; state?: LoginStackState }[];
+};
+
+function findLoginStack(state: LoginStackState | undefined): LoginStackState | null {
+  if (!state?.routes) {
+    return null;
   }
-  router.replace('/login');
+  if (state.type === 'stack' && state.key && state.routeNames?.includes('login')) {
+    return state;
+  }
+  for (const route of state.routes) {
+    const found = findLoginStack(route.state);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+export function loginStackResetAction(state: LoginStackState | undefined): LoginResetAction {
+  const stack = findLoginStack(state);
+  if (!stack?.key || !stack.routeNames) {
+    return loginResetAction();
+  }
+  return {
+    type: 'RESET',
+    target: stack.key,
+    payload: {
+      stale: false,
+      type: 'stack',
+      key: stack.key,
+      index: 0,
+      routeNames: [...stack.routeNames],
+      preloadedRoutes: [],
+      routes: [{ name: 'login' }],
+    },
+  };
+}
+
+export type LoginResetHandle = {
+  isReady: () => boolean;
+  getRootState: () => LoginStackState;
+  dispatch: (action: LoginResetAction) => void;
+};
+
+function liveLoginResetHandle(): LoginResetHandle | null {
+  const expoRouter = require('expo-router') as {
+    useNavigationContainerRef?: () => { current: LoginResetHandle | null };
+  };
+  const readRef = expoRouter.useNavigationContainerRef;
+  if (typeof readRef !== 'function') {
+    return null;
+  }
+  return readRef().current;
+}
+
+export function resetNavigationToLogin(navigation?: LoginResetHandle | null): void {
+  const target = navigation === undefined ? liveLoginResetHandle() : navigation;
+  if (!target?.isReady()) {
+    return;
+  }
+  target.dispatch(loginStackResetAction(target.getRootState()));
 }
 
 export function shouldDeferProtectedNavigation(input: {

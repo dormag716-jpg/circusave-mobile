@@ -230,3 +230,25 @@ export function localizedNetworkErrorBody(
   const copy = describeNetworkError(error);
   return t(copy.bodyKey, copy.params);
 }
+
+/**
+ * Auth screens: a 4xx/401 from the auth endpoints carries a precise, safe
+ * backend message ("Email or password is incorrect.") that the generic copy
+ * would hide. Returns that message only when the backend supplied one that
+ * survived sanitizing; otherwise null so callers use describeNetworkError.
+ */
+export function backendAuthMessage(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  if (error.category !== 'http_4xx' && error.category !== 'http_401') {
+    return null;
+  }
+  const message = error.message.trim();
+  if (!message) return null;
+  if (
+    message === FALLBACK_MESSAGES.http_4xx ||
+    message === FALLBACK_MESSAGES.http_401
+  ) {
+    return null;
+  }
+  return message;
+}

@@ -17,10 +17,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
 import { loginHardwareBackAction } from '@/lib/auth/authBoundary';
+import {
+  acknowledgePasswordResetCodeEntry,
+  openExistingRecoveryCode,
+  passwordResetPhase,
+  passwordResetRequestsReplacementCode,
+  readFreshPasswordResetCodeEntry,
+} from '@/lib/auth/passwordResetEntry';
 import {
   login,
   signInWithFederatedProvider,
@@ -36,13 +43,17 @@ import {
   type FederatedIdentityProof,
 } from '@/lib/auth/federatedSignIn';
 import { googleSignInMessageKey } from '@/lib/auth/googleSignInOutcome';
-import { describeNetworkError } from '@/lib/platform/networkErrors';
+import { backendAuthMessage, describeNetworkError } from '@/lib/platform/networkErrors';
 import { postAuthHrefFromUrl } from '@/lib/platform/navigation';
 import { colors, shadows, spacing } from '@/lib/shared/theme';
+import { useKeyboardReveal } from '@/lib/shared/useKeyboardReveal';
 
 export default function LoginScreen() {
   const { t } = useTranslation(['auth', 'common']);
   const passwordInputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
+  const { scrollRef, viewportRef, onScroll, keyboardInset, onFieldFocus } =
+    useKeyboardReveal(insets.top);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -86,6 +97,34 @@ export default function LoginScreen() {
     setOtpCode('');
     setPassword('');
     setLinkChallenge(null);
+  }
+
+  useFocusEffect(
+    useCallback(() => {
+      const staged = readFreshPasswordResetCodeEntry();
+      if (!staged) {
+        return undefined;
+      }
+      setEmail(staged.email);
+      setRecoveryMode(true);
+      setOtpRequested(true);
+      setResetVerified(false);
+      setResetToken('');
+      setOtpCode('');
+      setPassword('');
+      setLinkChallenge(null);
+      const timer = setTimeout(() => acknowledgePasswordResetCodeEntry(), 0);
+      return () => clearTimeout(timer);
+    }, []),
+  );
+
+  function openExistingCode() {
+    const existing = openExistingRecoveryCode({ email: normalizedEmail });
+    if ('error' in existing) {
+      Alert.alert(t('login.missingEmailTitle'), t('login.missingEmailMessage'));
+      return;
+    }
+    setOtpRequested(true);
   }
 
   async function finishAuthenticated(result: AuthResponse) {
@@ -170,7 +209,12 @@ export default function LoginScreen() {
         return;
       }
 
-      if (!otpRequested) {
+      const phase = passwordResetPhase({
+        codeEntryReady: otpRequested,
+        codeVerified: resetVerified,
+      });
+
+      if (passwordResetRequestsReplacementCode(phase)) {
         const result = await requestPasswordReset({ email: normalizedEmail });
         if (!result.accepted) {
           throw new Error('Unable to initialize password recovery.');
@@ -184,7 +228,7 @@ export default function LoginScreen() {
         return;
       }
 
-      if (!resetVerified) {
+      if (phase === 'code') {
         const result = await verifyPasswordReset({
           email: normalizedEmail,
           code: otpCode,
@@ -205,7 +249,10 @@ export default function LoginScreen() {
       Alert.alert(t('login.passwordResetTitle'), t('login.passwordResetMessage'));
     } catch (error) {
       const copy = describeNetworkError(error);
-      Alert.alert(t(copy.titleKey), t(copy.bodyKey, copy.params));
+      Alert.alert(
+        t(copy.titleKey),
+        backendAuthMessage(error) ?? t(copy.bodyKey, copy.params),
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -213,13 +260,30 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      {/*
+        Android resizes the window for the keyboard (softwareKeyboardLayoutMode
+        "resize"), so a second 'height' avoidance here double-shrank the view and
+        left the focused field flush against the keyboard. iOS still needs
+        'padding'. Scrolling the focused field into view is handled by
+        useKeyboardReveal on both.
+      */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
+        <View ref={viewportRef} collapsable={false} style={styles.keyboardView}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          ref={scrollRef}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={[
+            styles.scrollContent,
+            // Only while the keyboard covers the form; zero otherwise.
+            keyboardInset > 0 && { paddingBottom: 48 + keyboardInset },
+          ]}
+          // Android 'on-drag' closed the keyboard on any scroll, so the form
+          // could not be scrolled to Sign In while typing.
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -263,6 +327,7 @@ export default function LoginScreen() {
               <>
                 <Text style={styles.label}>{t('common.email')}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   style={styles.input}
                   placeholder={t('login.emailPlaceholder')}
                   accessibilityLabel={t('common.email')}
@@ -284,6 +349,7 @@ export default function LoginScreen() {
               <>
                 <Text style={styles.label}>{t('common.password')}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   ref={passwordInputRef}
                   style={styles.input}
                   placeholder={t('login.passwordPlaceholder')}
@@ -303,6 +369,7 @@ export default function LoginScreen() {
               <>
                 <Text style={styles.label}>{t('login.recoveryCode')}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   style={styles.input}
                   placeholder={t('login.recoveryCodePlaceholder')}
                   accessibilityLabel={t('login.recoveryCode')}
@@ -320,6 +387,7 @@ export default function LoginScreen() {
               <>
                 <Text style={styles.label}>{t('login.newPassword')}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   ref={passwordInputRef}
                   style={styles.input}
                   placeholder={t('login.newPasswordPlaceholder')}
@@ -376,6 +444,17 @@ export default function LoginScreen() {
               )}
             </Pressable>
 
+            {recoveryMode && !otpRequested && !linkChallenge ? (
+              <Pressable
+                onPress={openExistingCode}
+                style={styles.existingCode}
+                accessibilityRole="button"
+                accessibilityLabel={t('login.enterExistingCode')}
+              >
+                <Text style={styles.forgotText}>{t('login.enterExistingCode')}</Text>
+              </Pressable>
+            ) : null}
+
             {!recoveryMode && (
               <Pressable
                 onPress={() => router.push('/create-account')}
@@ -394,6 +473,7 @@ export default function LoginScreen() {
             <TrustBadge icon="users" label={t('login.inviteOnly')} />
           </View>
         </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -468,6 +548,7 @@ const styles = StyleSheet.create({
   },
   forgotPassword: { alignSelf: 'flex-end', marginVertical: 16 },
   forgotText: { color: colors.primary, fontWeight: '700' },
+  existingCode: { alignItems: 'center', marginTop: 16, minHeight: 44, justifyContent: 'center' },
   signInButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,

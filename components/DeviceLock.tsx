@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import React, {
   createContext,
   useContext,
@@ -390,7 +390,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
         presentationStyle="fullScreen"
         onRequestClose={() => {
           if (modelRef.current.phase === 'signed_out') {
-            resetNavigationToLogin(router);
+            resetNavigationToLogin();
           }
         }}
       >

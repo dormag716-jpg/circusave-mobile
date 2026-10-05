@@ -27,7 +27,8 @@ import { useTranslation } from 'react-i18next';
 
 import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
-import { exportUserData, deleteAccount, login, logout } from '@/lib/api';
+import { stagePasswordResetCodeEntry } from '@/lib/auth/passwordResetEntry';
+import { ApiError, exportUserData, deleteAccount, login, logout, requestPasswordReset } from '@/lib/api';
 import {
   authenticateForAppLockChange,
   confirmAppLockDisable,
@@ -63,12 +64,16 @@ function devicePlatform(): BiometricPlatform {
   return 'other';
 }
 
+const CHANGE_PASSWORD_COOLDOWN_MS = 60_000;
+
 export default function SecurityScreen() {
   const { t } = useTranslation(['security', 'common']);
   const { session, signOut, status } = useAuthSession();
   const token = session?.session.token;
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [enrollment, setEnrollment] = useState<BiometricHardwareReport | null>(null);
   const [openingSettings, setOpeningSettings] = useState(false);
   const [preferences, setPreferences] = useState<AppLockPreferences>(defaultAppLockPreferences(false));
@@ -159,6 +164,19 @@ export default function SecurityScreen() {
       active = false;
     };
   }, [compatibleEnrolled, enrollment, status, t, userId]);
+
+  const isOnCooldown = cooldownUntil !== null;
+
+  useEffect(() => {
+    if (!cooldownUntil) return undefined;
+    const remaining = cooldownUntil - Date.now();
+    if (remaining <= 0) {
+      setCooldownUntil(null);
+      return undefined;
+    }
+    const timer = setTimeout(() => setCooldownUntil(null), remaining);
+    return () => clearTimeout(timer);
+  }, [cooldownUntil]);
 
   const promptPassword = useCallback(() => {
     setPasswordDraft('');
@@ -276,6 +294,43 @@ export default function SecurityScreen() {
     }
   };
 
+  const handleChangePassword = async () => {
+    const email = session?.user.email;
+    if (!email || changingPassword || isOnCooldown) return;
+    setChangingPassword(true);
+    try {
+      const result = await requestPasswordReset({ email });
+      if (!result.accepted) {
+        throw new Error('Unable to initialize password recovery.');
+      }
+      stagePasswordResetCodeEntry(email);
+      setCooldownUntil(Date.now() + CHANGE_PASSWORD_COOLDOWN_MS);
+      Alert.alert(t('changePasswordSentTitle'), t('changePasswordSentBody', { email }), [
+        {
+          text: t('changePasswordContinue'),
+          onPress: () => {
+            void signOut();
+          },
+        },
+      ]);
+    } catch (err) {
+      logClientError('Password reset request failed', err);
+      if (err instanceof ApiError && err.category === 'http_429') {
+        setCooldownUntil(Date.now() + CHANGE_PASSWORD_COOLDOWN_MS);
+        Alert.alert(t('changePasswordErrorTitle'), t('changePasswordRateLimitBody'));
+      } else if (
+        err instanceof ApiError &&
+        (err.category === 'offline' || err.category === 'timeout' || err.category === 'cancelled')
+      ) {
+        Alert.alert(t('changePasswordErrorTitle'), t('changePasswordNetworkBody'));
+      } else {
+        Alert.alert(t('changePasswordErrorTitle'), t('changePasswordErrorBody'));
+      }
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const handleExportData = async () => {
     if (!token) return;
     setExporting(true);
@@ -352,7 +407,7 @@ export default function SecurityScreen() {
                       try {
                         await signOut();
                       } finally {
-                        resetNavigationToLogin(router);
+                        resetNavigationToLogin();
                       }
                     },
                   },
@@ -482,12 +537,26 @@ export default function SecurityScreen() {
 
         <Text style={styles.sectionTitle}>{t('passwordRecovery')}</Text>
         <View style={styles.card}>
-          <View style={styles.cardRow}>
-            <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>{t('changePassword')}</Text>
-              <Text style={styles.cardSubtitle}>{t('changePasswordBody')}</Text>
-            </View>
-          </View>
+          <Text style={styles.cardTitle}>{t('changePassword')}</Text>
+          <Text style={styles.cardSubtitle}>{t('changePasswordBody')}</Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.changePasswordButton,
+              (changingPassword || isOnCooldown) && styles.changePasswordButtonDisabled,
+              pressed && !(changingPassword || isOnCooldown) && styles.actionRowPressed,
+            ]}
+            onPress={() => { void handleChangePassword(); }}
+            disabled={changingPassword || isOnCooldown}
+            accessibilityRole="button"
+            accessibilityLabel={t('changePasswordAction')}
+            accessibilityState={{ disabled: changingPassword || isOnCooldown }}
+          >
+            {changingPassword ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={styles.changePasswordButtonText}>{t('changePasswordAction')}</Text>
+            )}
+          </Pressable>
         </View>
 
         <Text style={styles.sectionTitle}>{t('dataRights')}</Text>
@@ -684,5 +753,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 12,
     paddingHorizontal: 8,
+  },
+  changePasswordButton: {
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    marginTop: 4,
+    minHeight: 44,
+  },
+  changePasswordButtonDisabled: {
+    opacity: 0.4,
+  },
+  changePasswordButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

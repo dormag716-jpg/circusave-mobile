@@ -6,6 +6,8 @@ import {
   isPublicUnauthenticatedRoute,
   ledgerActionForNavigation,
   loginHardwareBackAction,
+  loginResetAction,
+  loginStackResetAction,
   navigationMayMutateMoney,
   resetNavigationToLogin,
   shouldCoverSignedOutRoute,
@@ -25,29 +27,71 @@ describe('auth boundary', () => {
   });
 
   it('resets protected history to Login on logout', () => {
-    const calls: string[] = [];
+    const root = {
+      type: 'stack',
+      key: 'slot',
+      index: 0,
+      routeNames: ['__root'],
+      routes: [
+        {
+          name: '__root',
+          state: {
+            type: 'stack',
+            key: 'app-stack',
+            index: 1,
+            routeNames: ['index', 'login', '(tabs)', 'security'],
+            routes: [{ name: '(tabs)' }, { name: 'security' }],
+          },
+        },
+      ],
+    };
+    const actions: unknown[] = [];
     resetNavigationToLogin({
-      canDismiss: () => true,
-      dismissAll: () => {
-        calls.push('dismissAll');
-      },
-      replace: (href) => {
-        calls.push(href);
+      isReady: () => true,
+      getRootState: () => root,
+      dispatch: (action) => {
+        actions.push(action);
       },
     });
-    expect(calls).toEqual(['dismissAll', '/login']);
+    expect(actions).toEqual([loginStackResetAction(root)]);
+    expect(actions[0]).toEqual({
+      type: 'RESET',
+      target: 'app-stack',
+      payload: {
+        stale: false,
+        type: 'stack',
+        key: 'app-stack',
+        index: 0,
+        routeNames: ['index', 'login', '(tabs)', 'security'],
+        preloadedRoutes: [],
+        routes: [{ name: 'login' }],
+      },
+    });
 
-    const onlyReplace: string[] = [];
+    const fallback: unknown[] = [];
     resetNavigationToLogin({
-      canDismiss: () => false,
-      dismissAll: () => {
-        onlyReplace.push('dismissAll');
-      },
-      replace: (href) => {
-        onlyReplace.push(href);
+      isReady: () => true,
+      getRootState: () => ({ routes: [] }),
+      dispatch: (action) => {
+        fallback.push(action);
       },
     });
-    expect(onlyReplace).toEqual(['/login']);
+    expect(fallback).toEqual([loginResetAction()]);
+
+    const skipped: unknown[] = [];
+    resetNavigationToLogin({
+      isReady: () => false,
+      getRootState: () => root,
+      dispatch: (action) => {
+        skipped.push(action);
+      },
+    });
+    resetNavigationToLogin(null);
+    expect(skipped).toEqual([]);
+
+    const boundary = readFileSync(path.join(__dirname, '..', 'auth', 'authBoundary.ts'), 'utf8');
+    expect(boundary).not.toContain('dismissAll');
+    expect(boundary).not.toContain('POP_TO_TOP');
   });
 
   it('keeps a signed-out protected route covered until Login is showing', () => {
@@ -159,19 +203,17 @@ describe('auth boundary', () => {
       reset: true,
       nextKey: 'unauthenticated:/circle/workspace',
     });
-    const calls: string[] = [];
+    const actions: unknown[] = [];
     if (first.reset) {
       resetNavigationToLogin({
-        canDismiss: () => true,
-        dismissAll: () => {
-          calls.push('dismissAll');
-        },
-        replace: (href) => {
-          calls.push(href);
+        isReady: () => true,
+        getRootState: () => ({ routes: [] }),
+        dispatch: (action) => {
+          actions.push(action);
         },
       });
     }
-    expect(calls).toEqual(['dismissAll', '/login']);
+    expect(actions).toEqual([loginResetAction()]);
 
     expect(
       shouldIssueSignedOutReset({
@@ -216,17 +258,15 @@ describe('auth boundary', () => {
       lastResetKey: null,
     });
     expect(logout.reset).toBe(true);
-    const calls: string[] = [];
+    const actions: unknown[] = [];
     resetNavigationToLogin({
-      canDismiss: () => true,
-      dismissAll: () => {
-        calls.push('dismissAll');
-      },
-      replace: (href) => {
-        calls.push(href);
+      isReady: () => true,
+      getRootState: () => ({ routes: [] }),
+      dispatch: (action) => {
+        actions.push(action);
       },
     });
-    expect(calls).toEqual(['dismissAll', '/login']);
+    expect(actions).toEqual([loginResetAction()]);
 
     expect(loginHardwareBackAction()).toBe('exit_app');
     expect(
@@ -251,8 +291,18 @@ describe('auth boundary', () => {
       'utf8',
     );
     const security = readFileSync(path.join(__dirname, '..', '..', 'app', 'security.tsx'), 'utf8');
-    expect(settings).toContain('resetNavigationToLogin(router)');
-    expect(security).toContain('resetNavigationToLogin(router)');
+    expect(settings).toContain('resetNavigationToLogin()');
+    expect(security).toContain('resetNavigationToLogin()');
+    const layout = readFileSync(path.join(__dirname, '..', '..', 'app', '_layout.tsx'), 'utf8');
+    const deviceLock = readFileSync(
+      path.join(__dirname, '..', '..', 'components', 'DeviceLock.tsx'),
+      'utf8',
+    );
+    expect(layout).toContain('resetNavigationToLogin()');
+    expect(deviceLock).toContain('resetNavigationToLogin()');
+    expect(layout).not.toContain('dismissAll');
+    expect(settings).not.toContain('dismissAll');
+    expect(security).not.toContain("dismissAll");
     expect(security).toContain('accessibilityRole="switch"');
     expect(security).not.toContain('setLockEnabled');
   });

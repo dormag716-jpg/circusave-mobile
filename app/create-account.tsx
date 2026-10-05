@@ -17,7 +17,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
 import { LegalCheckbox } from '@/components/LegalCheckbox';
@@ -34,6 +34,7 @@ import { googleSignInMessageKey } from '@/lib/auth/googleSignInOutcome';
 import { LEGAL_VERSIONS } from '@/lib/shared/legal';
 import { postAuthHrefFromUrl } from '@/lib/platform/navigation';
 import { colors, shadows, spacing } from '@/lib/shared/theme';
+import { useKeyboardReveal } from '@/lib/shared/useKeyboardReveal';
 
 const LEGAL_TERMS_HREF = '/legal/terms' as Href;
 const LEGAL_PRIVACY_HREF = '/legal/privacy' as Href;
@@ -42,7 +43,9 @@ const LEGAL_ECONSENT_HREF = '/legal/electronic-consent' as Href;
 
 export default function CreateAccountScreen() {
   const { t } = useTranslation('auth');
-  const scrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
+  const { scrollRef, viewportRef, onScroll, keyboardInset, onFieldFocus } =
+    useKeyboardReveal(insets.top);
   const lastNameInputRef = useRef<TextInput>(null);
   const emailInputRef = useRef<TextInput>(null);
   const phoneInputRef = useRef<TextInput>(null);
@@ -289,13 +292,19 @@ export default function CreateAccountScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
+        <View ref={viewportRef} collapsable={false} style={styles.keyboardView}>
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={styles.scrollContent}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardInset > 0 && { paddingBottom: 48 + keyboardInset },
+          ]}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -427,6 +436,7 @@ export default function CreateAccountScreen() {
                 <Text style={styles.sectionDescription}>{t('federated.linkBody')}</Text>
                 <Text style={styles.label}>{linkChallenge.email}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   style={styles.input}
                   placeholder={t('login.passwordPlaceholder')}
                   accessibilityLabel={t('federated.linkAction')}
@@ -452,6 +462,7 @@ export default function CreateAccountScreen() {
 
             <Text style={styles.label}>{t('create.firstName')}</Text>
             <TextInput
+              onFocus={onFieldFocus}
               style={styles.input}
               placeholder={t('create.firstNamePlaceholder')}
               accessibilityLabel={t('create.firstName')}
@@ -466,6 +477,7 @@ export default function CreateAccountScreen() {
 
             <Text style={styles.label}>{t('create.lastName')}</Text>
             <TextInput
+              onFocus={onFieldFocus}
               ref={lastNameInputRef}
               style={styles.input}
               placeholder={t('create.lastNamePlaceholder')}
@@ -481,6 +493,7 @@ export default function CreateAccountScreen() {
 
             <Text style={styles.label}>{t('common.email')}</Text>
             <TextInput
+              onFocus={onFieldFocus}
               ref={emailInputRef}
               style={styles.input}
               placeholder={t('login.emailPlaceholder')}
@@ -501,6 +514,7 @@ export default function CreateAccountScreen() {
               <Text style={styles.optionalLabel}>{t('common.optional')}</Text>
             </Text>
             <TextInput
+              onFocus={onFieldFocus}
               ref={phoneInputRef}
               style={styles.input}
               placeholder={t('create.phonePlaceholder')}
@@ -542,6 +556,7 @@ export default function CreateAccountScreen() {
 
             <Text style={styles.label}>{t('common.password')}</Text>
             <TextInput
+              onFocus={onFieldFocus}
               ref={passwordInputRef}
               style={styles.input}
               placeholder={t('create.passwordPlaceholder')}
@@ -557,6 +572,7 @@ export default function CreateAccountScreen() {
 
             <Text style={styles.label}>{t('create.confirmPassword')}</Text>
             <TextInput
+              onFocus={onFieldFocus}
               ref={confirmPasswordInputRef}
               style={styles.input}
               placeholder={t('create.confirmPasswordPlaceholder')}
@@ -702,6 +718,7 @@ export default function CreateAccountScreen() {
           ) : null}
           </Animated.View>
         </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
