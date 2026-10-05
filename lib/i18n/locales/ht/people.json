@@ -43,6 +43,8 @@
     "waitingGrant_one": "{{count}} ap tann · apwouve pou bay yon men",
     "waitingGrant_other": "{{count}} ap tann · apwouve pou bay yon men",
     "structureLocked": "Estrikti a bloke — pa ka apwouve apre kòmansman",
+    "claimsHand": "Li vle reklame: {{name}}",
+    "claimsAfterStart": "Ou ka toujou apwouve demann pou reklame yon men planifye ki deja egziste apre kòmansman. Lòt demann yo bloke.",
     "approveA11y": "Apwouve {{name}}",
     "declineA11y": "Refize {{name}}",
     "approveExtraA11y": "Apwouve men anplis pou {{name}}",

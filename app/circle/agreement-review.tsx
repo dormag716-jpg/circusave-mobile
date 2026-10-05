@@ -1,13 +1,19 @@
 /**
- * Informational final circle review + Start Circle (no agreement acceptances).
+ * Final circle review + Start Circle.
+ *
+ * The organizer reviews the exact structure that will start (who holds each
+ * payout position, amounts, dates) and checks each confirmation themselves.
+ * Start sends the hash of what was reviewed; if the circle changed since, the
+ * backend refuses and the review starts over.
  */
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   ApiError,
+  finalizeCircleAgreementSnapshot,
   getCircleDetail,
   getCircleAgreementReadiness,
   getCircleAgreementSnapshot,
@@ -28,11 +35,17 @@ import {
 import { loadAgreementReviewCircleDetail } from '@/lib/circles/agreementReviewLoad';
 import { useAuthSession } from '@/lib/auth/authContext';
 import {
-  canEnableOrganizerStart,
+  canStartFromReview,
   normalizeAgreementLanguage,
-  orderedSnapshotHands,
+  reviewHandRows,
+  snapshotExpectedPotCents,
   snapshotServiceFeeCents,
+  startConfirmationFlags,
+  startReviewErrorCode,
+  structuralBlockerCopyKey,
+  type ReviewMember,
 } from '@/lib/circles/circleAgreements';
+import { getCircleLifecyclePhase } from '@/lib/circles/startCircleReadiness';
 import { formatCurrency, formatDateTime } from '@/lib/i18n/formatters';
 import { circleWorkspaceHref } from '@/lib/platform/navigation';
 import {
@@ -50,6 +63,36 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CheckRow({
+  checked,
+  label,
+  onPress,
+  disabled,
+}: {
+  checked: boolean;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      style={styles.checkRow}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked, disabled: Boolean(disabled) }}
+      accessibilityLabel={label}
+    >
+      <FontAwesome
+        name={checked ? 'check-square' : 'square-o'}
+        size={22}
+        color={checked ? colors.primary : colors.muted}
+      />
+      <Text style={styles.checkLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export default function AgreementReviewScreen() {
   const { t, i18n } = useTranslation('agreements');
   const language = normalizeAgreementLanguage(i18n.resolvedLanguage || i18n.language || 'en');
@@ -62,15 +105,30 @@ export default function AgreementReviewScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<CircleAgreementSnapshot | null>(null);
   const [readiness, setReadiness] = useState<CircleAgreementReadiness | null>(null);
+  const [members, setMembers] = useState<ReviewMember[]>([]);
   const [isOrganizer, setIsOrganizer] = useState(false);
   const [circleName, setCircleName] = useState('');
+  const [blockerMessage, setBlockerMessage] = useState<string | null>(null);
+  // Nothing is pre-checked, and a tick only counts for the snapshot it was made on.
+  const [payoutChecked, setPayoutChecked] = useState(false);
+  const [unclaimedChecked, setUnclaimedChecked] = useState(false);
+  const [reviewedHash, setReviewedHash] = useState<string | null>(null);
+  const reviewedHashRef = useRef<string | null>(null);
 
   const money = useCallback(
     (cents: number) => formatCurrency((cents || 0) / 100, language),
     [language],
   );
+
+  const resetReview = useCallback(() => {
+    reviewedHashRef.current = null;
+    setReviewedHash(null);
+    setPayoutChecked(false);
+    setUnclaimedChecked(false);
+  }, []);
 
   const load = useCallback(async () => {
     if (!token || !circleId) return;
@@ -82,16 +140,45 @@ export default function AgreementReviewScreen() {
         token,
         circleId,
       );
-      setIsOrganizer(String(circle.userRole || '').toLowerCase() === 'organizer');
+      const organizer = String(circle.userRole || '').toLowerCase() === 'organizer';
+      const setupPhase = getCircleLifecyclePhase(circle) === 'setup';
+      setIsOrganizer(organizer);
       setCircleName(String(circle.name || ''));
+      setMembers((circle.members ?? []) as ReviewMember[]);
+
+      // Create (or reuse) the snapshot being reviewed. It is idempotent when
+      // nothing changed; if the structure is not complete it fails and the
+      // blockers below explain why.
+      let finalizeMessage: string | null = null;
+      if (organizer && setupPhase) {
+        try {
+          await finalizeCircleAgreementSnapshot(token, circleId);
+        } catch (err) {
+          if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+            finalizeMessage = err.message;
+          } else {
+            throw err;
+          }
+        }
+      }
 
       let snap: CircleAgreementSnapshot | null = null;
-      try {
-        snap = await getCircleAgreementSnapshot(token, circleId);
-      } catch (err) {
-        if (!(err instanceof ApiError && err.status === 404)) throw err;
+      if (!finalizeMessage) {
+        try {
+          snap = await getCircleAgreementSnapshot(token, circleId);
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 404)) throw err;
+        }
       }
       setSnapshot(snap);
+      setBlockerMessage(finalizeMessage);
+
+      // A different snapshot than the one that was reviewed: start the review over.
+      const nextHash = snap?.snapshotHash ?? null;
+      if (reviewedHashRef.current !== null && reviewedHashRef.current !== nextHash) {
+        resetReview();
+        setNotice(t('reviewChanged'));
+      }
 
       try {
         setReadiness(await getCircleAgreementReadiness(token, circleId));
@@ -103,30 +190,59 @@ export default function AgreementReviewScreen() {
     } finally {
       setLoading(false);
     }
-  }, [circleId, t, token]);
+  }, [circleId, resetReview, t, token]);
 
+  // Reload whenever the screen is shown again and when the app returns to the
+  // foreground, so a claim approved elsewhere cannot go unnoticed.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
   useEffect(() => {
-    void load();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load();
+    });
+    return () => subscription.remove();
   }, [load]);
 
-  const payoutOrderHands = useMemo(
-    () => (snapshot ? orderedSnapshotHands(snapshot) : []),
-    [snapshot],
+  const rows = useMemo(
+    () => (snapshot ? reviewHandRows(snapshot, members) : []),
+    [snapshot, members],
   );
+  const unclaimedRows = useMemo(() => rows.filter((row) => !row.claimed), [rows]);
+  const needsUnclaimedConfirmation =
+    unclaimedRows.length > 0 || Boolean(readiness?.requiresUnclaimedHandConfirmation);
 
-  const canStart = canEnableOrganizerStart({
+  const canStart = canStartFromReview({
     readiness,
-    startPayoutChecked: true,
-    startUnclaimedChecked: true,
+    snapshot,
+    reviewedHash,
+    payoutChecked,
+    unclaimedChecked,
+    needsUnclaimedConfirmation,
     busy,
   });
+
+  const toggleCheck = (which: 'payout' | 'unclaimed') => {
+    if (!snapshot) return;
+    reviewedHashRef.current = snapshot.snapshotHash;
+    setReviewedHash(snapshot.snapshotHash);
+    if (which === 'payout') setPayoutChecked((value) => !value);
+    else setUnclaimedChecked((value) => !value);
+  };
 
   const goBack = () => {
     router.replace(circleWorkspaceHref(circleId, 'people'));
   };
 
   const confirmStart = () => {
-    if (!token || !circleId || !canStart) return;
+    if (!token || !circleId || !snapshot || !canStart) return;
+    const flags = startConfirmationFlags({
+      payoutChecked,
+      unclaimedChecked,
+      needsUnclaimedConfirmation,
+    });
     Alert.alert(t('startConfirmTitle'), t('startConfirmBody'), [
       { text: t('startConfirmCancel'), style: 'cancel' },
       {
@@ -140,11 +256,10 @@ export default function AgreementReviewScreen() {
               await runMoneyMutation({
                 mutate: () =>
                   startCircle(token, circleId, {
-                    confirmPayoutOrder: true,
-                    confirmUnclaimedHands: Boolean(readiness?.requiresUnclaimedHandConfirmation),
+                    ...flags,
                     language,
-                    snapshotId: readiness?.snapshotId || snapshot?.id,
-                    snapshotHash: readiness?.snapshotHash || snapshot?.snapshotHash,
+                    snapshotId: snapshot.id,
+                    snapshotHash: snapshot.snapshotHash,
                   }),
                 goal: 'started',
                 loadAuthoritativeState: async () => {
@@ -165,7 +280,19 @@ export default function AgreementReviewScreen() {
                 },
               ]);
             } catch (err) {
-              setError(err instanceof Error ? err.message : t('genericError'));
+              const reviewCode = startReviewErrorCode(err);
+              if (reviewCode) {
+                // What was reviewed is no longer what would start.
+                resetReview();
+                setNotice(
+                  reviewCode === 'start_review_stale'
+                    ? t('reviewChanged')
+                    : t('reviewRequired'),
+                );
+                void load();
+              } else {
+                setError(err instanceof Error ? err.message : t('genericError'));
+              }
             } finally {
               setBusy(false);
             }
@@ -174,6 +301,10 @@ export default function AgreementReviewScreen() {
       },
     ]);
   };
+
+  const structuralBlockers = (readiness?.structuralBlockers ?? [])
+    .map((code) => structuralBlockerCopyKey(code))
+    .filter((key): key is string => Boolean(key));
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -190,6 +321,12 @@ export default function AgreementReviewScreen() {
           <View style={styles.card}>
             <ActivityIndicator color={colors.primary} />
             <Text style={styles.body}>{t('loading')}</Text>
+          </View>
+        ) : null}
+
+        {notice ? (
+          <View style={styles.card} accessibilityRole="alert">
+            <Text style={styles.blocker}>{notice}</Text>
           </View>
         ) : null}
 
@@ -220,6 +357,10 @@ export default function AgreementReviewScreen() {
               <Metric label={t('frequency')} value={snapshot.frequency} />
               <Metric label={t('totalRounds')} value={String(snapshot.totalRounds)} />
               <Metric
+                label={t('expectedPotPerRound')}
+                value={money(snapshotExpectedPotCents(snapshot))}
+              />
+              <Metric
                 label={t('serviceFee')}
                 value={money(snapshotServiceFeeCents(snapshot))}
               />
@@ -231,31 +372,87 @@ export default function AgreementReviewScreen() {
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{t('finalOrderTitle')}</Text>
-              {payoutOrderHands.map((hand) => (
-                <Text style={styles.body} key={hand.handId}>
-                  {t('finalOrderRow', {
-                    position: hand.payoutPosition,
-                    number: hand.handNumber,
-                    suffix: hand.userId === userId ? t('finalOrderYours') : '',
-                  })}
-                  {hand.expectedPayoutDate
-                    ? ` · ${formatDateTime(hand.expectedPayoutDate, language)}`
-                    : ''}
-                </Text>
-              ))}
+              {rows.map((row) => {
+                const suffix = row.userId && row.userId === userId ? t('finalOrderYours') : '';
+                const label = row.name
+                  ? t('finalOrderRowNamed', {
+                      position: row.position,
+                      name: row.name,
+                      number: row.handNumber,
+                      suffix,
+                    })
+                  : t('finalOrderRow', {
+                      position: row.position,
+                      number: row.handNumber,
+                      suffix,
+                    });
+                return (
+                  <View key={row.handId} style={styles.orderRow}>
+                    <Text style={[styles.body, styles.orderLabel]}>
+                      {label}
+                      {row.expectedPayoutDate
+                        ? ` · ${formatDateTime(row.expectedPayoutDate, language)}`
+                        : ''}
+                    </Text>
+                    <Text
+                      style={row.claimed ? styles.claimedTag : styles.unclaimedTag}
+                    >
+                      {row.claimed ? t('handConnected') : t('handUnclaimed')}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
+
+            {unclaimedRows.length > 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>{t('unclaimedNoticeTitle')}</Text>
+                <Text style={styles.body}>
+                  {t('unclaimedNoticeBody', {
+                    names: unclaimedRows
+                      .map((row) => row.name || `#${row.position}`)
+                      .join(', '),
+                  })}
+                </Text>
+              </View>
+            ) : null}
 
             {isOrganizer ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>{t('startTitle')}</Text>
                 <Text style={styles.body}>{t('startBodyInformational')}</Text>
-                {!canStart ? (
-                  <Text style={styles.blocker}>{t('startBlockedStructural')}</Text>
+                <CheckRow
+                  checked={payoutChecked}
+                  label={t('startPayoutCheck')}
+                  onPress={() => toggleCheck('payout')}
+                  disabled={busy}
+                />
+                {needsUnclaimedConfirmation ? (
+                  <CheckRow
+                    checked={unclaimedChecked}
+                    label={t('startUnclaimedCheck')}
+                    onPress={() => toggleCheck('unclaimed')}
+                    disabled={busy}
+                  />
+                ) : null}
+                {!canStart && !busy ? (
+                  <Text style={styles.body}>
+                    {readiness &&
+                    !(
+                      readiness.canStartCircle === true ||
+                      readiness.canOpenStartFlow === true ||
+                      readiness.structureComplete === true
+                    )
+                      ? t('startBlockedStructural')
+                      : t('checkToStart')}
+                  </Text>
                 ) : null}
                 <Pressable
-                  style={[styles.primaryBtn, (!canStart || busy) && styles.primaryBtnDisabled]}
-                  disabled={!canStart || busy}
+                  style={[styles.primaryBtn, !canStart && styles.primaryBtnDisabled]}
+                  disabled={!canStart}
                   onPress={confirmStart}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !canStart }}
                 >
                   {busy ? (
                     <ActivityIndicator color={colors.onColor} />
@@ -274,19 +471,29 @@ export default function AgreementReviewScreen() {
 
         {!loading && !snapshot && !error ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t('missingTitle')}</Text>
-            <Text style={styles.body}>
-              {isOrganizer ? t('missingBodyStructural') : t('missingBodyMember')}
+            <Text style={styles.cardTitle}>
+              {isOrganizer ? t('blockersTitle') : t('missingTitle')}
             </Text>
             {isOrganizer ? (
-              <Pressable
-                style={[styles.primaryBtn, busy && styles.primaryBtnDisabled]}
-                disabled={busy}
-                onPress={confirmStart}
-              >
-                <Text style={styles.primaryBtnText}>{t('start')}</Text>
-              </Pressable>
-            ) : null}
+              <>
+                {structuralBlockers.map((key) => (
+                  <Text key={key} style={styles.body}>
+                    {t(key)}
+                  </Text>
+                ))}
+                {structuralBlockers.length === 0 && blockerMessage ? (
+                  <Text style={styles.body}>{blockerMessage}</Text>
+                ) : null}
+                {structuralBlockers.length === 0 && !blockerMessage ? (
+                  <Text style={styles.body}>{t('missingBodyStructural')}</Text>
+                ) : null}
+                <Pressable style={styles.secondaryBtn} onPress={goBack}>
+                  <Text style={styles.secondaryBtnText}>{t('back')}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Text style={styles.body}>{t('missingBodyMember')}</Text>
+            )}
           </View>
         ) : null}
       </ScrollView>
@@ -334,6 +541,23 @@ const styles = StyleSheet.create({
   },
   metricLabel: { color: colors.muted, flex: 1 },
   metricValue: { color: colors.textStrong, fontWeight: '700' },
+  orderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  orderLabel: { flex: 1, flexShrink: 1 },
+  claimedTag: { color: colors.successText, fontWeight: '700', fontSize: 12 },
+  unclaimedTag: { color: colors.warningText, fontWeight: '700', fontSize: 12 },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 6,
+    minHeight: 44,
+  },
+  checkLabel: { flex: 1, color: colors.textStrong, fontSize: 14, lineHeight: 20 },
   blocker: { color: colors.danger, fontWeight: '700', lineHeight: 20 },
   primaryBtn: {
     backgroundColor: colors.primary,

@@ -28,9 +28,13 @@ import {
 } from '@/lib/assistant/history';
 import { hrefForAssistantAction } from '@/lib/assistant/navigation';
 import {
+  assistantConversationMemory,
+  assistantTranscriptFailureKeepsConversation,
   buildAssistantSendOptions,
   didConsumeAssistantIntro,
   isAssistantUpgradeEntitlementError,
+  readAssistantConversationMemory,
+  type AssistantConversationMemory,
   shouldAnimateAssistantMessage,
   shouldRefreshAssistantEntitlements,
   type AssistantMessageSource,
@@ -39,6 +43,15 @@ import {
   normalizeAssistantResponse,
   type NormalizedAssistantReply,
 } from '@/lib/assistant/response';
+import {
+  assistantSendFailureKey,
+  classifyAssistantSendFailure,
+  createSendGuard,
+  newPendingSend,
+  pickRecoveredConversation,
+  sendAssistantMessageWithWait,
+  type PendingAssistantSend,
+} from '@/lib/assistant/sendLifecycle';
 import {
   ApiError,
   listAssistantConversations,
@@ -70,6 +83,12 @@ type ChatItem = {
   navigationSuggestions?: NormalizedAssistantReply['navigationSuggestions'];
   isError?: boolean;
   source?: AssistantMessageSource;
+  /** User messages: waiting on the server, or failed and eligible for retry. */
+  sendStatus?: 'sending' | 'failed';
+  failureMessage?: string;
+  failureRetryable?: boolean;
+  /** Stable idempotency key and conversation for retrying this message. */
+  pending?: PendingAssistantSend;
 };
 
 const PROMPT_KEYS = ['attention', 'ready', 'explainRound'] as const;
@@ -83,10 +102,12 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   item,
   circleId,
   onOpenSuggestion,
+  onRetry,
 }: {
   item: ChatItem;
   circleId?: string;
   onOpenSuggestion: (actionId: string) => void;
+  onRetry: (localId: string) => void;
 }) {
   const { t } = useTranslation(['assistant', 'common']);
   const animate = shouldAnimateAssistantMessage({
@@ -131,6 +152,29 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         >
           {item.message}
         </Text>
+        {item.sendStatus === 'sending' ? (
+          <Text style={styles.sendingLabel}>{t('assistant:send.sending')}</Text>
+        ) : null}
+        {item.sendStatus === 'failed' ? (
+          <View style={styles.sendFailure}>
+            <Text style={styles.sendFailureText}>
+              {item.failureMessage || t('assistant:send.notSent')}
+            </Text>
+            {item.failureRetryable ? (
+              <Pressable
+                style={styles.retryButton}
+                onPress={() => onRetry(item.id)}
+                accessibilityRole="button"
+                accessibilityLabel={t('assistant:send.retryA11y')}
+              >
+                <FontAwesome name="refresh" size={11} color={colors.primaryDark} />
+                <Text style={styles.retryButtonText}>
+                  {t('assistant:send.retry')}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         {item.isRefusal ? (
           <Text style={styles.refusalLabel}>{t('assistant:refusalBadge')}</Text>
         ) : null}
@@ -195,6 +239,10 @@ export default function CircleAssistantScreen() {
   const rootRef = useRef<View>(null);
   const listRef = useRef<FlatList<ChatItem>>(null);
   const historyRequestId = useRef(0);
+  const sendGuard = useRef(createSendGuard()).current;
+  const conversationIdRef = useRef<string | null>(null);
+  const requestBudgetRef = useRef<number | null>(null);
+  const itemsRef = useRef<ChatItem[]>([]);
   /** Last keyboard metrics. Used to re-measure after chrome collapses. */
   const keyboardMetricsRef = useRef<{ topY: number; height: number } | null>(null);
 
@@ -202,6 +250,8 @@ export default function CircleAssistantScreen() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
+  const [conversationMemory, setConversationMemory] =
+    useState<AssistantConversationMemory | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [composerLift, setComposerLift] = useState(0);
@@ -212,6 +262,9 @@ export default function CircleAssistantScreen() {
     welcomeItem(''),
   ]);
 
+  conversationIdRef.current = conversationId;
+  itemsRef.current = items;
+
   const composerBottomPad =
     composerLift === 0
       ? Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0)
@@ -220,9 +273,7 @@ export default function CircleAssistantScreen() {
   const apiLocale = assistantApiLocale(
     i18n.resolvedLanguage || i18n.language || 'en',
   );
-  const welcomeMessage = entitlements.capabilities.aiAssistant
-    ? t('assistant:welcome.premium')
-    : t('assistant:welcome.intro');
+  const welcomeMessage = t('assistant:welcome.premium');
   const welcomeMessageRef = useRef(welcomeMessage);
   welcomeMessageRef.current = welcomeMessage;
 
@@ -341,6 +392,10 @@ export default function CircleAssistantScreen() {
     try {
       const listed = await listAssistantConversations(token, circleId);
       if (requestId !== historyRequestId.current) return;
+      requestBudgetRef.current =
+        typeof listed.requestBudgetSeconds === 'number'
+          ? listed.requestBudgetSeconds
+          : null;
 
       const resume = pickResumeConversation(
         listed.conversations || [],
@@ -348,15 +403,38 @@ export default function CircleAssistantScreen() {
       );
       if (!resume) {
         setConversationId(null);
+        setConversationMemory(null);
         setItems([welcomeItem(welcomeMessageRef.current)]);
         return;
       }
 
-      const thread = await listAssistantMessages(token, circleId, resume.id);
+      setConversationId(resume.id);
+      let thread: Awaited<ReturnType<typeof listAssistantMessages>>;
+      try {
+        thread = await listAssistantMessages(token, circleId, resume.id);
+      } catch {
+        if (requestId !== historyRequestId.current) return;
+        if (assistantTranscriptFailureKeepsConversation(resume.id)) {
+          setHistoryError(t('assistant:errors.historyLoadContinue'));
+          return;
+        }
+        setConversationId(null);
+        setConversationMemory(null);
+        setHistoryError(t('assistant:errors.historyLoad'));
+        setItems([welcomeItem(welcomeMessageRef.current)]);
+        return;
+      }
       if (requestId !== historyRequestId.current) return;
 
       const mapped = mapStoredMessagesToChatItems(thread.messages || []).map(
         (item) => ({ ...item, source: 'history' as const }),
+      );
+      const serverMemory = readAssistantConversationMemory(
+        thread.conversationMemory,
+      );
+      setConversationMemory(
+        serverMemory ??
+          (mapped.length > 0 ? assistantConversationMemory(mapped.length) : null),
       );
       setConversationId(resume.id);
       if (mapped.length === 0) {
@@ -367,6 +445,7 @@ export default function CircleAssistantScreen() {
     } catch {
       if (requestId !== historyRequestId.current) return;
       setConversationId(null);
+      setConversationMemory(null);
       setHistoryError(t('assistant:errors.historyLoad'));
       setItems([welcomeItem(welcomeMessageRef.current)]);
     } finally {
@@ -383,6 +462,7 @@ export default function CircleAssistantScreen() {
   function startNewChat() {
     historyRequestId.current += 1;
     setConversationId(null);
+    setConversationMemory(null);
     setHistoryError(null);
     setUpgradeRequired(false);
     setItems([welcomeItem(welcomeMessage)]);
@@ -395,36 +475,101 @@ export default function CircleAssistantScreen() {
     router.push(target.href);
   }
 
-  async function send(message: string) {
-    const trimmed = message.trim();
-    if (!trimmed || !token || !circleId || sending || historyLoading) return;
+  async function recoverConversation(
+    pending: PendingAssistantSend,
+  ): Promise<string | null> {
+    if (!token || !circleId) return null;
+    try {
+      const listed = await listAssistantConversations(token, circleId);
+      return pickRecoveredConversation(
+        listed.conversations || [],
+        apiLocale,
+        pending.startedAtMs,
+      );
+    } catch {
+      return null;
+    }
+  }
 
+  async function submit(
+    initial: PendingAssistantSend,
+    mode: 'new' | 'retry',
+  ) {
+    if (!token || !circleId) return;
+    // Synchronous: a second tap in the same frame never reaches the network.
+    if (!sendGuard.tryAcquire()) return;
     setSending(true);
     setUpgradeRequired(false);
     setHistoryError(null);
-    setItems((current) => [
-      ...current,
-      {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        message: trimmed,
-        source: 'live',
-      },
-    ]);
-
+    let pending = initial;
     try {
-      const sendOptions = buildAssistantSendOptions(conversationId);
-      const raw = await sendAiAssistantMessage(
-        token,
-        circleId,
-        trimmed,
-        apiLocale,
-        sendOptions,
+      if (mode === 'new' && !pending.conversationId) {
+        // An earlier first message may have lost its response. Rejoin the
+        // conversation the server created instead of forking a new thread.
+        const unresolved = itemsRef.current.find(
+          (item) =>
+            item.sendStatus === 'failed' &&
+            item.pending &&
+            !item.pending.conversationId,
+        )?.pending;
+        if (unresolved) {
+          const recovered = await recoverConversation(unresolved);
+          if (recovered) {
+            conversationIdRef.current = recovered;
+            setConversationId(recovered);
+            pending = { ...pending, conversationId: recovered };
+          }
+        }
+      }
+      const working = pending;
+      setItems((current) =>
+        mode === 'new'
+          ? [
+              ...current,
+              {
+                id: working.localId,
+                role: 'user',
+                message: working.text,
+                source: 'live',
+                sendStatus: 'sending',
+                pending: working,
+              },
+            ]
+          : current.map((item) =>
+              item.id === working.localId
+                ? { ...item, sendStatus: 'sending', failureMessage: undefined }
+                : item,
+            ),
+      );
+
+      const raw = await sendAssistantMessageWithWait(
+        {
+          send: (request) =>
+            sendAiAssistantMessage(
+              token,
+              circleId,
+              request.message,
+              apiLocale,
+              {
+                conversationId: request.conversationId,
+                idempotencyKey: request.idempotencyKey,
+                timeoutMs: request.timeoutMs,
+              },
+            ),
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          now: () => Date.now(),
+        },
+        working,
+        requestBudgetRef.current,
       );
       const reply = normalizeAssistantResponse(raw);
       if (reply.conversationId) {
+        conversationIdRef.current = reply.conversationId;
         setConversationId(reply.conversationId);
       }
+      setConversationMemory((current) =>
+        assistantConversationMemory((current?.savedMessageCount ?? 0) + 2),
+      );
 
       const usedIntro = didConsumeAssistantIntro({
         hasAiAssistant: entitlements.capabilities.aiAssistant,
@@ -432,7 +577,11 @@ export default function CircleAssistantScreen() {
       });
 
       setItems((current) => [
-        ...current,
+        ...current.map((item) =>
+          item.id === working.localId
+            ? { ...item, sendStatus: undefined, pending: undefined }
+            : item,
+        ),
         {
           id: reply.messageId || `assistant-${Date.now()}`,
           role: 'assistant',
@@ -453,6 +602,7 @@ export default function CircleAssistantScreen() {
         await refreshEntitlements();
       }
     } catch (error) {
+      const failure = classifyAssistantSendFailure(error);
       const requiresUpgrade = isAssistantUpgradeEntitlementError({
         status: error instanceof ApiError ? error.status : undefined,
         hasUpgradePayload: Boolean(
@@ -463,25 +613,40 @@ export default function CircleAssistantScreen() {
         ),
       });
       setUpgradeRequired(requiresUpgrade);
-      setItems((current) => [
-        ...current,
-        {
-          id: `assistant-error-${Date.now()}`,
-          role: 'assistant',
-          isError: true,
-          source: 'live',
-          message: requiresUpgrade
-            ? t('assistant:upgrade.introUsed')
-            : error instanceof ApiError && error.category === 'http_429'
-              ? localizedNetworkErrorBody(error, t)
-              : error instanceof ApiError &&
-                  (error.category === 'offline' ||
-                    error.category === 'timeout' ||
-                    error.category === 'http_5xx')
-                ? localizedNetworkErrorBody(error, t)
-                : t('assistant:errors.generic'),
-        },
-      ]);
+      // A first message may have been created and answered by the server even
+      // though the response never arrived. Find that conversation so the next
+      // question continues it and Retry replays the stored answer.
+      let knownConversationId = pending.conversationId;
+      if (!knownConversationId && !conversationIdRef.current) {
+        knownConversationId = await recoverConversation(pending);
+        if (knownConversationId) {
+          conversationIdRef.current = knownConversationId;
+          setConversationId(knownConversationId);
+        }
+      }
+      const failureKey = assistantSendFailureKey(failure);
+      const failureMessage = requiresUpgrade
+        ? t('assistant:upgrade.proRequired')
+        : failureKey
+          ? t(failureKey)
+          : localizedNetworkErrorBody(error, t);
+      const failedPending = {
+        ...pending,
+        conversationId: knownConversationId,
+      };
+      setItems((current) =>
+        current.map((item) =>
+          item.id === pending.localId
+            ? {
+                ...item,
+                sendStatus: 'failed',
+                failureMessage,
+                failureRetryable: failure.retryable && !requiresUpgrade,
+                pending: failedPending,
+              }
+            : item,
+        ),
+      );
       if (
         shouldRefreshAssistantEntitlements({
           usedIntro: false,
@@ -491,9 +656,27 @@ export default function CircleAssistantScreen() {
         await refreshEntitlements();
       }
     } finally {
+      sendGuard.release();
       setSending(false);
     }
   }
+
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
+  async function send(message: string) {
+    const trimmed = message.trim();
+    if (!trimmed || !token || !circleId || historyLoading) return;
+    if (sendGuard.isHeld()) return;
+    await submit(newPendingSend(trimmed, conversationIdRef.current), 'new');
+  }
+
+  // Stable identity: rows are memoized and must not capture stale closures.
+  const retrySend = useCallback((localId: string) => {
+    const item = itemsRef.current.find((entry) => entry.id === localId);
+    if (!item?.pending || item.sendStatus !== 'failed') return;
+    void submitRef.current(item.pending, 'retry');
+  }, []);
 
   const suggestedPrompts = PROMPT_KEYS.map((key) => ({
     key,
@@ -506,9 +689,10 @@ export default function CircleAssistantScreen() {
         item={item}
         circleId={circleId}
         onOpenSuggestion={openSuggestion}
+        onRetry={retrySend}
       />
     ),
-    [circleId],
+    [circleId, retrySend],
   );
 
   const listHeader = (
@@ -533,6 +717,22 @@ export default function CircleAssistantScreen() {
       {historyError && !historyLoading ? (
         <View style={styles.historyErrorCard}>
           <Text style={styles.historyErrorText}>{historyError}</Text>
+        </View>
+      ) : null}
+      {conversationMemory && conversationMemory.savedMessageCount > 0 ? (
+        <View style={styles.historyErrorCard}>
+          <Text style={styles.historyErrorText}>
+            {t(
+              conversationMemory.messagesSavedButNotSent > 0
+                ? 'assistant:memory.beyond'
+                : 'assistant:memory.within',
+              {
+                saved: conversationMemory.savedMessageCount,
+                sent: conversationMemory.messagesIncludedAtCap,
+                omitted: conversationMemory.messagesSavedButNotSent,
+              },
+            )}
+          </Text>
         </View>
       ) : null}
     </>
@@ -684,6 +884,36 @@ export default function CircleAssistantScreen() {
 }
 
 const styles = StyleSheet.create({
+  sendingLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    color: colors.onColor,
+    opacity: 0.8,
+  },
+  sendFailure: {
+    marginTop: 6,
+    gap: 6,
+  },
+  sendFailureText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.onColor,
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.pill,
+    backgroundColor: colors.card,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryDark,
+  },
   screen: { flex: 1, backgroundColor: colors.premiumCanvas, minHeight: 0 },
   safeArea: { flex: 1, backgroundColor: colors.premiumCanvas },
   messageList: { flex: 1, minHeight: 0 },

@@ -5,6 +5,8 @@
   "contactTitle": "Ou toujou bezwen èd?",
   "contactText": "Ekip sipò a la pou ou. Kontakte nou pou nenpòt kesyon oswa pwoblèm.",
   "contactAction": "Kontakte sipò",
+  "contactErrorTitle": "Pa jwenn app imèl",
+  "contactErrorBody": "Voye nou yon imèl dirèkteman nan support@circusave.com",
   "sections": {
     "gettingStarted": {
       "title": "Kòmanse",

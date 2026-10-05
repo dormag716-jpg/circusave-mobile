@@ -28,11 +28,7 @@ import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 const FALLBACK_FEATURE_KEYS = [
   'unlimitedCircles',
   'hands',
-  'reminders',
-  'reports',
-  'records',
   'history',
-  'assistant',
 ] as const;
 
 const fallbackPremium: BillingPlan = {

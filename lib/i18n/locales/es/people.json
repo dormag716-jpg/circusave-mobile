@@ -43,6 +43,8 @@
     "waitingGrant_one": "{{count}} en espera · aprueba para otorgar una mano",
     "waitingGrant_other": "{{count}} en espera · aprueba para otorgar una mano",
     "structureLocked": "Estructura bloqueada: no se puede aprobar después de iniciar",
+    "claimsHand": "Quiere reclamar: {{name}}",
+    "claimsAfterStart": "Las solicitudes para reclamar una mano planificada existente aún se pueden aprobar después de iniciar. Las demás solicitudes están bloqueadas.",
     "approveA11y": "Aprobar a {{name}}",
     "declineA11y": "Rechazar a {{name}}",
     "approveExtraA11y": "Aprobar mano adicional para {{name}}",

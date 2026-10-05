@@ -88,7 +88,7 @@ const free = {
     maxParticipatingHands: 20,
     maxOpenCircles: 1,
     aiAssistant: false,
-    aiIntroAvailable: true,
+    aiIntroAvailable: false,
     draftPayoutPdf: false,
     finalPayoutPdf: false,
     advancedReports: false,

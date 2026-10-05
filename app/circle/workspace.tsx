@@ -3527,7 +3527,12 @@ function PeopleTab({
     [members, turnOrder],
   );
   async function handleApprove(requestId: string) {
-    if (!circleNotStarted || structureMutationBusy) {
+    // Connecting an account to an existing planned hand changes no hand or
+    // payout position, so it stays approvable after Start.
+    const claimsPlannedHand = waitlist.some(
+      (entry) => entry.requestId === requestId && entry.claimsPlannedHand,
+    );
+    if ((!circleNotStarted && !claimsPlannedHand) || structureMutationBusy) {
       Alert.alert(
         t('requests.structureLockedTitle'),
         t('requests.structureLockedBody'),
@@ -3546,7 +3551,7 @@ function PeopleTab({
       });
       setPeopleNotice({
         title: t('requests.approveErrorTitle'),
-        body: t('errors.generic'),
+        body: financialActionErrorMessage(e, t('errors.generic')),
         tone: 'warning',
       });
     } finally {
@@ -3555,7 +3560,7 @@ function PeopleTab({
   }
 
   function handleDecline(member: BackendJoinRequest) {
-    if (!circleNotStarted || structureMutationBusy) return;
+    if ((!circleNotStarted && !member.claimsPlannedHand) || structureMutationBusy) return;
     setDeclineTarget(member);
   }
 
@@ -4120,6 +4125,11 @@ function PeopleTab({
                               detail: m.phone || t('requests.pendingApproval'),
                             })}
                           </Text>
+                          {m.claimsPlannedHand && m.matchedMemberName ? (
+                            <Text style={styles.setupListSub}>
+                              {t('requests.claimsHand', { name: m.matchedMemberName })}
+                            </Text>
+                          ) : null}
                         </View>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           <Pressable
@@ -4824,7 +4834,9 @@ function PeopleTab({
               <Text style={styles.peopleCardSub}>
                 {circleNotStarted
                   ? t('requests.waiting', { count: waitlist.length })
-                  : t('requests.structureLocked')}
+                  : waitlist.some((entry) => entry.claimsPlannedHand)
+                    ? t('requests.claimsAfterStart')
+                    : t('requests.structureLocked')}
               </Text>
             </View>
             <View style={styles.peopleCountPill}>
@@ -4843,15 +4855,17 @@ function PeopleTab({
                   {m.displayLabel || memberName(m)}
                 </Text>
                 <Text style={styles.setupListSub}>
-                  {m.isAdditionalHand ||
-                  Number(m.handNumber ?? m.hand_number ?? 1) > 1
-                    ? t('hands.extraMeta', {
-                        number: m.handNumber ?? m.hand_number ?? 1,
-                      })
-                    : m.phone || t('requests.joinTitle')}
+                  {m.claimsPlannedHand && m.matchedMemberName
+                    ? t('requests.claimsHand', { name: m.matchedMemberName })
+                    : m.isAdditionalHand ||
+                        Number(m.handNumber ?? m.hand_number ?? 1) > 1
+                      ? t('hands.extraMeta', {
+                          number: m.handNumber ?? m.hand_number ?? 1,
+                        })
+                      : m.phone || t('requests.joinTitle')}
                 </Text>
               </View>
-              {circleNotStarted ? (
+              {circleNotStarted || m.claimsPlannedHand ? (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <Pressable
                     style={styles.setupGhostBtn}
@@ -5868,7 +5882,7 @@ function frequencyDisplayLabel(value: string, t: TFunction) {
       : normalized === 'monthly'
         ? 'monthly'
         : 'weekly';
-  return t(`createCircle:frequency.options.${key}`);
+  return t(`createCircle:schedule.options.${key}`);
 }
 
 function statusTone(raw: string): 'muted' | 'soft' | 'ready' | 'success' | 'warning' {

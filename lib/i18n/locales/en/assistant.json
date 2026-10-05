@@ -24,15 +24,38 @@
   "refusalBadge": "READ-ONLY · NO ACTION TAKEN",
   "introBadge": "COMPLIMENTARY OVERVIEW",
   "upgrade": {
-    "title": "Keep your assistant",
-    "body": "Organizer Pro includes ongoing circle-aware guidance.",
+    "title": "Organizer Pro",
+    "body": "Organizer Pro adds more circles, reports, reminders, and a higher assistant allowance.",
     "cta": "View plan",
-    "introUsed": "Your complimentary overview is complete. Organizer Pro keeps your circle-aware assistant available whenever you need it."
+    "introUsed": "That overview is finished. You can keep asking within your allowance. Organizer Pro raises the allowance and adds the other organizer tools.",
+    "proRequired": "This request needs Organizer Pro. You can still ask about this circle within your allowance, and the assistant cannot move money."
+  },
+  "greeting": {
+    "title": "CircuSave Assistant",
+    "body": "Ask about a circle when you are ready. Answers use current records, and the assistant cannot move money.",
+    "open": "Open assistant",
+    "openA11y": "Open the CircuSave assistant",
+    "dismissA11y": "Dismiss assistant greeting"
+  },
+  "memory": {
+    "within": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. A long question can leave more out. Saved messages are not current amounts, statuses, or payout order.",
+    "beyond": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. {{omitted}} older messages stay saved and are not sent. Circle records remain the current facts."
   },
   "errors": {
     "generic": "I could not answer right now. Please try again.",
     "historyLoad": "Could not load earlier messages. You can still ask a new question.",
-    "rateLimited": "Too many questions right now. Please wait and try again."
+    "historyLoadContinue": "Could not load earlier messages. Your next question still continues this chat.",
+    "rateLimited": "Too many questions right now. Please wait and try again.",
+    "allowanceDaily": "You have reached today's assistant questions. The allowance resets on the next UTC day.",
+    "allowanceMonthly": "You have reached this month's assistant allowance. It resets at the start of the next UTC month.",
+    "throttled": "Too many attempts failed in a short time. Please wait a few minutes, then retry.",
+    "stillWorking": "This question is still being answered. Retrying will not ask it twice."
+  },
+  "send": {
+    "retry": "Retry",
+    "retryA11y": "Retry sending this question",
+    "notSent": "Not sent",
+    "sending": "Sending…"
   },
   "history": {
     "loading": "Loading conversation…",

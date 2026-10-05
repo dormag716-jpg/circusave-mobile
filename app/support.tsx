@@ -1,8 +1,9 @@
 import { FontAwesome } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '@/lib/shared/theme';
@@ -24,6 +25,14 @@ export default function SupportScreen() {
 
   const toggleSection = (id: string) => {
     setExpandedSection(expandedSection === id ? null : id);
+  };
+
+  const handleContactSupport = async () => {
+    try {
+      await Linking.openURL('mailto:support@circusave.com');
+    } catch {
+      Alert.alert(t('contactErrorTitle'), t('contactErrorBody'));
+    }
   };
 
   return (
@@ -87,7 +96,7 @@ export default function SupportScreen() {
           <FontAwesome name="envelope-o" size={24} color={colors.primary} />
           <Text style={styles.contactTitle}>{t('contactTitle')}</Text>
           <Text style={styles.contactText}>{t('contactText')}</Text>
-          <Pressable style={styles.contactButton} onPress={() => alert('Emailing support@circusave.com')}>
+          <Pressable style={styles.contactButton} onPress={() => { void handleContactSupport(); }}>
             <Text style={styles.contactButtonText}>{t('contactAction')}</Text>
           </Pressable>
         </View>

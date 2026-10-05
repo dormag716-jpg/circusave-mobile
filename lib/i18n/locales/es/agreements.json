@@ -85,5 +85,23 @@
   "additionalAction": "Solicitar otra mano y aceptar la nueva obligación",
   "cancel": "Cancelar",
   "requestSent": "La solicitud y la evidencia de consentimiento se guardaron.",
-  "previewExpired": "La vista previa venció o el círculo cambió. Se requiere un nuevo cálculo del servidor."
+  "previewExpired": "La vista previa venció o el círculo cambió. Se requiere un nuevo cálculo del servidor.",
+  "expectedPotPerRound": "Fondo esperado por ronda",
+  "finalOrderRowNamed": "Posición {{position}} · {{name}} · Mano {{number}}{{suffix}}",
+  "handConnected": "Conectada",
+  "handUnclaimed": "Sin reclamar",
+  "unclaimedNoticeTitle": "Manos sin reclamar",
+  "unclaimedNoticeBody": "Tú llevarás y confirmarás las contribuciones de estas manos hasta que alguien las reclame: {{names}}.",
+  "reviewChanged": "El círculo cambió después de tu revisión. Revisa de nuevo los detalles finales.",
+  "reviewRequired": "Revisa los detalles finales del círculo antes de iniciarlo.",
+  "checkToStart": "Marca cada casilla de arriba para habilitar el inicio.",
+  "blockersTitle": "Antes de poder iniciar",
+  "structural": {
+    "NOT_ORGANIZER": "Solo el organizador puede iniciar este círculo.",
+    "ALREADY_STARTED": "Este círculo ya inició.",
+    "INSUFFICIENT_PARTICIPATING_HANDS": "Un círculo necesita al menos 2 manos participantes.",
+    "PENDING_JOIN_REQUESTS": "Aprueba o rechaza todas las solicitudes de ingreso pendientes.",
+    "PENDING_ADDITIONAL_HAND_REQUESTS": "Aprueba o rechaza todas las solicitudes de manos adicionales pendientes.",
+    "PAYOUT_ORDER_INCOMPLETE": "Asigna una posición de pago a cada mano participante."
+  }
 }

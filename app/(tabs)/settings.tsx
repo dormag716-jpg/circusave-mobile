@@ -240,7 +240,7 @@ export default function SettingsScreen() {
                   try {
                     await signOut();
                   } finally {
-                    resetNavigationToLogin(router);
+                    resetNavigationToLogin();
                   }
                 },
               },

@@ -85,5 +85,23 @@
   "additionalAction": "Mande yon men anplis epi aksepte nouvo obligasyon an",
   "cancel": "Anile",
   "requestSent": "Demann men anplis la ak prèv konsantman an konsève.",
-  "previewExpired": "Aperçu a ekspire oswa sèk la chanje. Yon nouvo kalkil sèvè nesesè."
+  "previewExpired": "Aperçu a ekspire oswa sèk la chanje. Yon nouvo kalkil sèvè nesesè.",
+  "expectedPotPerRound": "Lajan espere pou chak wonn",
+  "finalOrderRowNamed": "Pozisyon {{position}} · {{name}} · Men {{number}}{{suffix}}",
+  "handConnected": "Konekte",
+  "handUnclaimed": "Pa reklame",
+  "unclaimedNoticeTitle": "Men ki pa reklame",
+  "unclaimedNoticeBody": "W ap swiv epi konfime kontribisyon pou men sa yo tèt ou jiskaske yon moun reklame yo: {{names}}.",
+  "reviewChanged": "Gwoup la chanje apre ou te revize l. Revize detay final yo ankò.",
+  "reviewRequired": "Revize detay final gwoup la anvan ou kòmanse.",
+  "checkToStart": "Make chak bwat ki anwo a pou aktive kòmansman an.",
+  "blockersTitle": "Anvan ou ka kòmanse",
+  "structural": {
+    "NOT_ORGANIZER": "Se sèlman òganizatè a ki ka kòmanse gwoup sa a.",
+    "ALREADY_STARTED": "Gwoup sa a deja kòmanse.",
+    "INSUFFICIENT_PARTICIPATING_HANDS": "Yon gwoup bezwen omwen 2 men patisipan.",
+    "PENDING_JOIN_REQUESTS": "Apwouve oswa refize tout demann pou antre ki an tan.",
+    "PENDING_ADDITIONAL_HAND_REQUESTS": "Apwouve oswa refize tout demann pou men adisyonèl ki an tan.",
+    "PAYOUT_ORDER_INCOMPLETE": "Bay chak men patisipan yon pozisyon peman."
+  }
 }

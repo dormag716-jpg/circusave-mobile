@@ -159,6 +159,11 @@ export type BackendJoinRequest = {
   phone?: string | null;
   email?: string | null;
   userId?: string | null;
+  /** True when the request asked to claim an existing planned hand. */
+  claimsPlannedHand?: boolean;
+  matchedMembershipId?: string | null;
+  matchedMemberName?: string | null;
+  matchedHandNumber?: number | null;
 };
 
 export type BackendViewerHand = {
@@ -1882,6 +1887,11 @@ export function sendAiAssistantMessage(
   options?: {
     conversationId?: string | null;
     idempotencyKey?: string;
+    /**
+     * Assistant requests may legitimately outlast the 20s JSON timeout (one or
+     * two provider attempts). Callers pass assistantRequestTimeoutMs().
+     */
+    timeoutMs?: number;
   },
 ): Promise<AiAssistantResponse> {
   const conversationId = String(options?.conversationId || '').trim();
@@ -1895,6 +1905,7 @@ export function sendAiAssistantMessage(
   return requestJson<AiAssistantResponse>(path, {
     method: 'POST',
     token,
+    timeoutMs: options?.timeoutMs,
     headers: {
       'Idempotency-Key': idempotencyKey,
     },
@@ -1933,7 +1944,11 @@ export type AssistantStoredMessage = {
 export function listAssistantConversations(
   token: string,
   circleId: string,
-): Promise<{ conversations: AssistantConversationSummary[] }> {
+): Promise<{
+  conversations: AssistantConversationSummary[];
+  /** Backend's total request budget in seconds (provider attempts + overhead). */
+  requestBudgetSeconds?: number;
+}> {
   return requestJson(`/assistant/circles/${circleId}/conversations`, { token });
 }
 
@@ -1944,6 +1959,16 @@ export function listAssistantMessages(
 ): Promise<{
   conversation: AssistantConversationSummary;
   messages: AssistantStoredMessage[];
+  conversationMemory?: {
+    savedMessageCount: number;
+    modelMessageCap: number;
+    messagesIncludedAtCap: number;
+    messagesSavedButNotSent: number;
+    tokenBudgetMayOmitMore?: boolean;
+    authoritativeFacts?: string;
+    promptVersion?: string;
+  };
+  promptVersion?: string;
 }> {
   return requestJson(
     `/assistant/circles/${circleId}/conversations/${encodeURIComponent(conversationId)}/messages`,

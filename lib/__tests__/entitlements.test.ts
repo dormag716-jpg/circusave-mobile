@@ -44,7 +44,7 @@ describe('entitlements foundation', () => {
     expect(free.capabilities.fullActivityHistory).toBe(false);
     expect(free.capabilities.maxParticipatingHands).toBe(20);
     expect(free.capabilities.maxOpenCircles).toBe(1);
-    expect(free.capabilities.aiIntroAvailable).toBe(true);
+    expect(free.capabilities.aiIntroAvailable).toBe(false);
     expect(free.capabilities.contributionPaymentsEnabled).toBe(false);
     expect(isPremiumPlan(free)).toBe(false);
   });

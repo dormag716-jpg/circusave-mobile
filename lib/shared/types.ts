@@ -175,6 +175,15 @@ export type BackendCircleSummary = {
     confirmedCount: number;
     expectedContributionCount: number;
     percentConfirmed: number;
+    /** Money for the current round, supplied by the backend (dollars and cents). */
+    expectedPot?: number;
+    expectedPotCents?: number;
+    /** Organizer-confirmed contributions only. */
+    confirmedContributions?: number;
+    confirmedCents?: number;
+    /** Reported by members but not yet confirmed by the organizer. */
+    reportedUnconfirmedContributions?: number;
+    reportedUnconfirmedCents?: number;
   };
 };
 

@@ -34,8 +34,7 @@ It allows users to:
 
 
 
-The Mobile app is a user interface. It relies on the CircuSave Backend for core business rules, validation, authentication, authorization, and persistent data.
-
+The Mobile app is the client application. It relies on the CircuSave Backend for core business rules, validation, authentication, authorization, and persistent data.
 
 
 \## Mobile Project Structure
@@ -106,23 +105,241 @@ Examples may include:
 
 
 
-Contains shared application logic, helpers, services, and reusable functionality.
+Contains the shared application logic, services, domain helpers, platform integrations, and reusable functionality used by the mobile app.
 
 
 
-Examples may include:
+The `lib/` folder is organized by responsibility.
 
 
+
+\#### auth/
+
+
+
+Contains authentication and identity-related logic.
+
+
+
+Examples include:
+
+
+
+\- authentication state
 
 \- authentication context
 
-\- API helpers
+\- session restoration
 
-\- theme configuration
+\- session expiration
 
-\- billing logic
+\- Google sign-in
 
-\- utility functions
+\- Apple sign-in
+
+\- federated authentication
+
+
+
+\#### billing/
+
+
+
+Contains subscription and entitlement logic.
+
+
+
+Examples include:
+
+
+
+\- Google Play billing
+
+\- subscription checkout
+
+\- subscription management
+
+\- entitlement state
+
+
+
+\#### circles/
+
+
+
+Contains savings-circle workflows and circle-related application logic.
+
+
+
+Examples include:
+
+
+
+\- circle creation
+
+\- circle setup
+
+\- agreements
+
+\- invitations
+
+\- member and hand management
+
+\- circle chat
+
+\- circle lifecycle
+
+\- circle readiness
+
+
+
+\#### payments/
+
+
+
+Contains contribution, payout, and payment-related logic.
+
+
+
+Examples include:
+
+
+
+\- contribution claims
+
+\- contribution reviews
+
+\- payment destinations
+
+\- payout release logic
+
+\- payment setup
+
+\- payment integration support
+
+\- payment recovery logic
+
+
+
+\#### platform/
+
+
+
+Contains device and platform-specific functionality.
+
+
+
+Examples include:
+
+
+
+\- notifications
+
+\- device lock
+
+\- biometric security
+
+\- clipboard access
+
+\- navigation helpers
+
+\- network handling
+
+\- error logging
+
+
+
+\#### shared/
+
+
+
+Contains general reusable helpers that do not belong to one specific feature area.
+
+
+
+Examples include:
+
+
+
+\- theme
+
+\- shared types
+
+\- configuration
+
+\- presentation helpers
+
+\- hashing utilities
+
+\- shared UI state helpers
+
+
+
+\#### assistant/
+
+
+
+Contains CircuSave assistant-related logic.
+
+
+
+\#### contracts/
+
+
+
+Contains shared contracts and interfaces used by application logic.
+
+
+
+\#### domain/
+
+
+
+Contains domain-level business concepts and models.
+
+
+
+\#### i18n/
+
+
+
+Contains localization and language resources.
+
+
+
+\#### selectors/
+
+
+
+Contains reusable data-selection logic.
+
+
+
+\#### testing/
+
+
+
+Contains shared test helpers and mocks.
+
+
+
+\#### \_\_tests\_\_/
+
+
+
+Contains tests for the mobile application's shared logic.
+
+
+
+\#### api.ts
+
+
+
+Contains the main mobile API integration layer used to communicate with the CircuSave Backend.
+
+
+
+This file currently remains at the root of `lib/` and may be split into smaller API modules in a future refactor.
 
 
 
@@ -371,4 +588,768 @@ The subscription area manages premium or paid CircuSave features.
 
 
 The support area provides help and assistance to users.
+
+
+
+\## How Mobile Communicates With the Backend
+
+
+
+CircuSave Mobile does not independently decide important business rules.
+
+
+
+The Mobile app sends requests to the CircuSave Backend through the API layer.
+
+
+
+The general flow is:
+
+
+
+Mobile screen or feature  
+
+↓  
+
+Mobile API layer  
+
+↓  
+
+CircuSave Backend  
+
+↓  
+
+Authentication and authorization checks  
+
+↓  
+
+Business-rule validation  
+
+↓  
+
+Database read or write  
+
+↓  
+
+Backend response  
+
+↓  
+
+Mobile updates the user interface
+
+
+
+The Mobile app is responsible for:
+
+
+
+\- collecting user input
+
+\- displaying information
+
+\- managing navigation
+
+\- handling local device features
+
+\- showing loading, success, and error states
+
+\- calling backend API endpoints
+
+
+
+The Backend is responsible for:
+
+
+
+\- validating requests
+
+\- enforcing permissions
+
+\- enforcing circle rules
+
+\- protecting financial and membership workflows
+
+\- storing persistent data
+
+\- returning authoritative results
+
+
+
+The Mobile app should not be treated as the source of truth for critical data.
+
+
+
+Important rules should be enforced by the Backend even if similar checks also exist in the Mobile app for user experience.
+
+
+
+The main Mobile API integration currently begins in:
+
+
+
+`lib/api.ts`
+
+
+
+As the project grows, this API layer may be divided into smaller feature-specific modules.
+
+
+
+\## Authentication and Security
+
+
+
+CircuSave Mobile includes authentication and device-level security features to protect user access.
+
+
+
+Authentication-related logic is primarily organized under:
+
+
+
+`lib/auth/`
+
+
+
+Security and device-protection logic is primarily organized under:
+
+
+
+`lib/platform/`
+
+
+
+Authentication responsibilities include:
+
+
+
+\- account sign-in
+
+\- authentication state
+
+\- session restoration
+
+\- session expiration
+
+\- federated sign-in
+
+\- Google identity sign-in
+
+\- Apple identity sign-in
+
+\- authentication boundaries and access checks
+
+
+
+Device-security responsibilities include:
+
+
+
+\- application lock preferences
+
+\- biometric enrollment
+
+\- device-lock state
+
+\- device-lock password handling
+
+\- secure access to protected parts of the app
+
+
+
+The Mobile app may perform local security checks for user experience and device protection, but the Backend remains responsible for validating authenticated requests and enforcing authorization.
+
+
+
+Sensitive authentication state and secrets should not be stored in plain text or committed to source control.
+
+
+
+\## Billing and Subscriptions
+
+
+
+CircuSave Mobile includes subscription and entitlement logic for premium features.
+
+
+
+Billing-related logic is primarily organized under:
+
+
+
+`lib/billing/`
+
+
+
+This area includes:
+
+
+
+\- Google Play billing
+
+\- subscription purchase handling
+
+\- subscription restoration
+
+\- subscription management
+
+\- entitlement checks
+
+\- subscription checkout
+
+\- billing state management
+
+
+
+The Mobile app is responsible for presenting subscription options and interacting with the platform billing system.
+
+
+
+The Backend should remain responsible for validating subscription-related access when server-side verification is required.
+
+
+
+Premium access should be based on verified entitlement state rather than only on what the Mobile interface reports.
+
+
+
+Billing logic should clearly distinguish between:
+
+
+
+\- available subscription products
+
+\- purchase attempts
+
+\- pending purchases
+
+\- successful purchases
+
+\- restored purchases
+
+\- verification failures
+
+\- active entitlements
+
+\- expired or unavailable entitlements
+
+
+
+The main billing modules are located under:
+
+
+
+`lib/billing/`
+
+
+
+\## Testing and Quality Checks
+
+
+
+CircuSave Mobile uses automated tests and TypeScript validation to help prevent regressions.
+
+
+
+The project currently uses:
+
+
+
+\- Jest for automated testing
+
+\- TypeScript for static type checking
+
+
+
+Tests are located primarily under:
+
+
+
+`lib/\_\_tests\_\_/`
+
+
+
+and in other feature-specific test folders such as:
+
+
+
+`components/\_\_tests\_\_/`
+
+
+
+Shared testing helpers and mocks are located under:
+
+
+
+`lib/testing/`
+
+
+
+Important quality checks include:
+
+
+
+\- TypeScript compilation checks
+
+\- automated unit tests
+
+\- runtime behavior tests
+
+\- billing tests
+
+\- authentication tests
+
+\- security tests
+
+\- localization tests
+
+\- payment workflow tests
+
+\- circle workflow tests
+
+
+
+Before committing major changes, the project should normally pass:
+
+
+
+`npx tsc --noEmit`
+
+
+
+and:
+
+
+
+`npm test -- --runInBand`
+
+
+
+A passing test suite does not guarantee that every possible issue is eliminated, but it provides an important safety net when changing application structure or behavior.
+
+
+
+Structural changes such as moving files should be followed by:
+
+
+
+1\. updating imports
+
+2\. running TypeScript checks
+
+3\. running the automated test suite
+
+4\. reviewing Git changes before committing
+
+
+
+\## Development and Run Commands
+
+
+
+CircuSave Mobile uses Expo and React Native for development.
+
+
+
+Common project commands are defined in:
+
+
+
+`package.json`
+
+
+
+Typical commands include:
+
+
+
+`npm start`
+
+
+
+Starts the Expo development server.
+
+
+
+`npm run android`
+
+
+
+Starts the Android development workflow.
+
+
+
+`npm run ios`
+
+
+
+Starts the iOS development workflow when supported by the development environment.
+
+
+
+`npm run web`
+
+
+
+Starts the web version of the Expo application.
+
+
+
+`npm test`
+
+
+
+Runs the Jest test suite.
+
+
+
+Before running the project for the first time, dependencies should normally be installed with:
+
+
+
+`npm install`
+
+
+
+Environment-specific configuration may also be required through:
+
+
+
+`.env`
+
+
+
+The `.env` file may contain sensitive configuration and should not be committed to source control.
+
+
+
+Developers should confirm that the required Backend environment is running and accessible when testing features that depend on API communication.
+
+
+
+
+
+\## Localization and Languages
+
+
+
+CircuSave Mobile supports multiple languages through its internationalization system.
+
+
+
+Localization-related code is organized under:
+
+
+
+`lib/i18n/`
+
+
+
+This area contains:
+
+
+
+\- language resources
+
+\- translated text
+
+\- localization helpers
+
+\- language storage
+
+\- financial presentation formatting
+
+\- localization tests
+
+
+
+Current localization resources include support for:
+
+
+
+\- English
+
+\- Spanish
+
+\- Haitian Creole
+
+
+
+User-facing text should be added through the localization system instead of being hard-coded directly into screens whenever possible.
+
+
+
+This helps keep the app consistent and makes future language support easier to maintain.
+
+
+
+Localization changes should be tested to confirm that:
+
+
+
+\- translated keys exist
+
+\- text renders correctly
+
+\- language switching works
+
+\- financial values remain clear
+
+\- accessibility labels remain meaningful
+
+
+
+\## Environment and Configuration
+
+
+
+CircuSave Mobile uses several configuration files to control application behavior across development and build environments.
+
+
+
+Important configuration files include:
+
+
+
+`app.json`
+
+
+
+Contains the core Expo application configuration.
+
+
+
+`app.config.js`
+
+
+
+Contains dynamic Expo configuration that may depend on environment values.
+
+
+
+`eas.json`
+
+
+
+Contains Expo Application Services build and deployment configuration.
+
+
+
+`.env`
+
+
+
+Contains environment-specific values used by the application.
+
+
+
+Environment values may include things such as:
+
+
+
+\- backend API addresses
+
+\- platform configuration
+
+\- service identifiers
+
+\- feature flags
+
+\- development-specific settings
+
+
+
+Sensitive values should not be hard-coded directly into source files.
+
+
+
+The `.env` file should not be committed when it contains secrets or private configuration.
+
+
+
+Developers should use safe templates or documented setup instructions when other developers need to know which environment variables are required.
+
+
+
+Changes to configuration files should be reviewed carefully because they can affect:
+
+
+
+\- local development
+
+\- Android builds
+
+\- authentication providers
+
+\- billing
+
+\- backend connectivity
+
+\- production behavior
+
+
+
+\## Build and Release
+
+
+
+CircuSave Mobile uses Expo and Expo Application Services for application builds and release workflows.
+
+
+
+Important build configuration is located in:
+
+
+
+`app.json`
+
+
+
+`app.config.js`
+
+
+
+`eas.json`
+
+
+
+The Android native project is located under:
+
+
+
+`android/`
+
+
+
+Before creating a release build, the project should be checked for:
+
+
+
+\- TypeScript errors
+
+\- failing automated tests
+
+\- incorrect environment configuration
+
+\- broken authentication flows
+
+\- billing configuration problems
+
+\- backend connectivity issues
+
+\- missing localization resources
+
+\- incorrect application identifiers
+
+\- production logging or debug behavior
+
+\- security-sensitive configuration
+
+
+
+A production build should use the intended production Backend configuration rather than local development addresses.
+
+
+
+Release-related changes should be reviewed carefully because configuration mistakes can affect:
+
+
+
+\- sign-in
+
+\- subscriptions
+
+\- notifications
+
+\- API communication
+
+\- application updates
+
+\- Play Store deployment
+
+
+
+Build and release work should be treated separately from normal feature development whenever possible so production configuration changes remain easy to review.
+
+
+
+\## Development Rules and Maintenance
+
+
+
+To keep CircuSave Mobile organized and maintainable, new code should follow the existing project structure.
+
+
+
+General rules:
+
+
+
+\- screens and routes belong under `app/`
+
+\- reusable interface components belong under `components/`
+
+\- authentication logic belongs under `lib/auth/`
+
+\- billing and entitlement logic belongs under `lib/billing/`
+
+\- circle-related logic belongs under `lib/circles/`
+
+\- payment and contribution logic belongs under `lib/payments/`
+
+\- device and platform integrations belong under `lib/platform/`
+
+\- general reusable helpers belong under `lib/shared/`
+
+\- localization belongs under `lib/i18n/`
+
+\- tests belong in the appropriate test location
+
+
+
+Avoid placing unrelated files directly in the root of `lib/`.
+
+
+
+The `shared/` folder should not become a catch-all folder. Code should only be placed there when it is genuinely reusable across multiple feature areas.
+
+
+
+Large files should be reviewed periodically to determine whether they should be divided into smaller modules.
+
+
+
+Changes that affect application behavior should normally include appropriate tests.
+
+
+
+Structural refactors should avoid changing business behavior unless that change is intentional and separately reviewed.
+
+
+
+Before committing significant changes:
+
+
+
+1\. review the files that changed
+
+2\. run TypeScript checks
+
+3\. run the automated test suite
+
+4\. confirm no sensitive files are being committed
+
+5\. review Git status
+
+6\. use a clear commit message
+
+7\. push only after the working tree is in the expected state
+
+
+
+
+
+
+
+
 

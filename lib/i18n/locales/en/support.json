@@ -5,6 +5,8 @@
   "contactTitle": "Still need help?",
   "contactText": "Our support team is here for you. Reach out with any questions or issues.",
   "contactAction": "Contact Support",
+  "contactErrorTitle": "No email app found",
+  "contactErrorBody": "Please email us directly at support@circusave.com",
   "sections": {
     "gettingStarted": {
       "title": "Getting started",

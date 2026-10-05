@@ -345,7 +345,15 @@ export default function DashboardScreen() {
             contentContainerStyle={styles.heroCarouselContainer}
           >
             {activeCircles.map((circle) => {
-              const potTotal = circle.contributionAmount * circle.memberCount;
+              // Money comes from the backend. The planned pot is only a fallback
+              // for a backend that does not send current-round amounts yet.
+              const progress = circle.currentRoundProgress;
+              const expectedPot =
+                progress?.expectedPot ??
+                circle.contributionAmount * circle.memberCount;
+              const confirmedAmount = progress?.confirmedContributions ?? null;
+              const reportedAmount =
+                progress?.reportedUnconfirmedContributions ?? 0;
               const detail = circleDetails[circle.id];
               const schedule = circleSchedules[circle.id];
               const payoutDate = resolvePayoutDate(circle, schedule, detail);
@@ -367,8 +375,23 @@ export default function DashboardScreen() {
                   })}
                 >
                   <Text style={styles.heroSub}>{circle.name}</Text>
-                  <Text style={styles.heroLabel}>{t('inPot')}</Text>
-                  <Text style={styles.heroAmount}>{formatMoney(potTotal)}</Text>
+                  <Text style={styles.heroLabel}>{t('expectedPot')}</Text>
+                  <Text style={styles.heroAmount}>{formatMoney(expectedPot)}</Text>
+                  {confirmedAmount !== null ? (
+                    <Text style={styles.heroSecondary}>
+                      {t('confirmedOf', {
+                        confirmed: formatMoney(confirmedAmount),
+                        expected: formatMoney(expectedPot),
+                      })}
+                    </Text>
+                  ) : null}
+                  {reportedAmount > 0 ? (
+                    <Text style={styles.heroSecondary}>
+                      {t('reportedAwaiting', {
+                        amount: formatMoney(reportedAmount),
+                      })}
+                    </Text>
+                  ) : null}
                   <View style={styles.heroFooterRow}>
                     <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                       <Text style={styles.heroFooterText}>
@@ -995,7 +1018,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   heroLabel: {
-    color: colors.primaryBorder,
+    color: 'rgba(255,255,255,0.88)',
     fontSize: 15,
     fontWeight: '700',
     marginTop: 4,
@@ -1006,9 +1029,16 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginVertical: 8,
   },
+  heroSecondary: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
   heroSub: {
-    color: colors.primaryLight,
-    fontSize: 15,
+    color: colors.onColor,
+    fontSize: 16,
+    fontWeight: '800',
   },
   payDueCard: {
     backgroundColor: colors.primarySoft,

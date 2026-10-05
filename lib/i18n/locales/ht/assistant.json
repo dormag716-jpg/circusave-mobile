@@ -24,15 +24,38 @@
   "refusalBadge": "SÈLMAN LEKTI · PA GEN AKSYON",
   "introBadge": "APÈSI GRATIS",
   "upgrade": {
-    "title": "Kenbe asistan ou",
-    "body": "Organizer Pro gen gid kontinyèl ki baze sou sèk la.",
+    "title": "Organizer Pro",
+    "body": "Organizer Pro ajoute plis sèk, rapò, rapèl, ak yon limit asistan ki pi wo.",
     "cta": "Gade plan an",
-    "introUsed": "Apèsi gratis ou a fini. Organizer Pro kenbe asistan an disponib lè ou bezwen li."
+    "introUsed": "Apèsi sa a fini. Ou ka kontinye mande nan limit ou. Organizer Pro ogmante limit la epi li ajoute lòt zouti òganizatè yo.",
+    "proRequired": "Demann sa a bezwen Organizer Pro. Ou ka toujou mande sou sèk sa a nan limit ou, epi asistan an pa ka deplase lajan."
+  },
+  "greeting": {
+    "title": "Asistan CircuSave",
+    "body": "Mande sou yon sèk lè ou pare. Repons yo sèvi ak dosye aktyèl yo, epi asistan an pa ka deplase lajan.",
+    "open": "Louvri asistan",
+    "openA11y": "Louvri asistan CircuSave",
+    "dismissA11y": "Fèmen salitasyon asistan an"
+  },
+  "memory": {
+    "within": "Sove nan chat sa a: {{saved}}. Asistan an resevwa {{sent}} ki pi resan yo. Yon kesyon long ka kite plis mesaj deyò. Mesaj ki sove yo pa montan, estati, ni lòd peman aktyèl.",
+    "beyond": "Sove nan chat sa a: {{saved}}. Asistan an resevwa {{sent}} ki pi resan yo. {{omitted}} ansyen mesaj rete sove epi yo pa voye. Dosye sèk la rete enfòmasyon aktyèl yo."
   },
   "errors": {
     "generic": "Mwen pa t kapab reponn kounye a. Eseye ankò.",
     "historyLoad": "Nou pa t kapab chaje mesaj anvan yo. Ou ka toujou poze yon nouvo kesyon.",
-    "rateLimited": "Twòp kesyon kounye a. Tanpri tann epi eseye ankò."
+    "historyLoadContinue": "Nou pa t kapab chaje mesaj anvan yo. Pwochen kesyon ou a ap kontinye konvèsasyon sa a.",
+    "rateLimited": "Twòp kesyon kounye a. Tanpri tann epi eseye ankò.",
+    "allowanceDaily": "Ou rive nan kesyon asistan jodi a. Limit la rekòmanse nan pwochen jou UTC la.",
+    "allowanceMonthly": "Ou rive nan limit asistan mwa sa a. Li rekòmanse nan kòmansman pwochen mwa UTC la.",
+    "throttled": "Twòp tantativ echwe nan yon kout tan. Tanpri tann kèk minit epi eseye ankò.",
+    "stillWorking": "Y ap toujou reponn kesyon sa a. Reeseye pa p voye l de fwa."
+  },
+  "send": {
+    "retry": "Eseye ankò",
+    "retryA11y": "Eseye voye kesyon sa a ankò",
+    "notSent": "Pa voye",
+    "sending": "Ap voye…"
   },
   "history": {
     "loading": "Chajman konvèsasyon an…",

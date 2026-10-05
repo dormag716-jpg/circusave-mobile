@@ -5,6 +5,8 @@
   "contactTitle": "¿Todavía necesitas ayuda?",
   "contactText": "Nuestro equipo de soporte está para ayudarte. Escríbenos con cualquier pregunta o problema.",
   "contactAction": "Contactar soporte",
+  "contactErrorTitle": "No se encontró app de correo",
+  "contactErrorBody": "Escríbenos directamente a support@circusave.com",
   "sections": {
     "gettingStarted": {
       "title": "Primeros pasos",

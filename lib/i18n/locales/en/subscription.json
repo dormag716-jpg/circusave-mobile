@@ -88,11 +88,7 @@
   "periodYears": "{{count}} years",
   "features": {
     "unlimitedCircles": "Unlimited open circles",
-    "hands": "Up to 50 participating hands",
-    "reminders": "Scheduled and bulk reminders",
-    "reports": "Advanced organizer reports",
-    "records": "Professional records and PDFs",
-    "history": "Complete activity history",
-    "assistant": "Ongoing AI organizer assistance"
+    "hands": "Up to 50 hands per circle",
+    "history": "Complete activity history"
   }
 }

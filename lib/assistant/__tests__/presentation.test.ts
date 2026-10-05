@@ -5,7 +5,11 @@ import {
   assistantComposerOwnsDraft,
   assistantMessageRowUnchanged,
   assistantThreadListKind,
+  assistantConversationMemory,
+  assistantTranscriptFailureKeepsConversation,
   buildAssistantSendOptions,
+  readAssistantConversationMemory,
+  assistantAllowanceErrorKey,
   didConsumeAssistantIntro,
   isAssistantUpgradeEntitlementError,
   shouldAnimateAssistantMessage,
@@ -105,6 +109,38 @@ describe('Susu AI presentation', () => {
         hasUpgradePayload: false,
       }),
     ).toBe(false);
+    expect(
+      assistantAllowanceErrorKey({ errorCode: 'AI_DAILY_REQUEST_LIMIT' }),
+    ).toBe('assistant:errors.allowanceDaily');
+    expect(
+      assistantAllowanceErrorKey({ errorCode: 'AI_MONTHLY_TOKEN_LIMIT' }),
+    ).toBe('assistant:errors.allowanceMonthly');
+    expect(assistantAllowanceErrorKey({ errorCode: 'AI_GLOBAL_COST_LIMIT' })).toBe(
+      null,
+    );
+    expect(assistantAllowanceErrorKey(null)).toBe(null);
+  });
+
+  it('distinguishes the saved transcript from the model window', () => {
+    const within = assistantConversationMemory(4);
+    expect(within.savedMessageCount).toBe(4);
+    expect(within.messagesIncludedAtCap).toBe(4);
+    expect(within.messagesSavedButNotSent).toBe(0);
+    expect(within.authoritativeFacts).toBe('current_circle_context');
+
+    const beyond = assistantConversationMemory(30);
+    expect(beyond.messagesIncludedAtCap).toBe(24);
+    expect(beyond.messagesSavedButNotSent).toBe(6);
+    expect(readAssistantConversationMemory(beyond)?.promptVersion).toBeNull();
+    expect(readAssistantConversationMemory({ savedMessageCount: 'nope' })).toBe(
+      null,
+    );
+  });
+
+  it('keeps a known conversation when the transcript fails to load', () => {
+    expect(assistantTranscriptFailureKeepsConversation('conv-123')).toBe(true);
+    expect(assistantTranscriptFailureKeepsConversation(null)).toBe(false);
+    expect(assistantTranscriptFailureKeepsConversation('  ')).toBe(false);
   });
 
   it('preserves conversationId and Idempotency-Key on send', () => {

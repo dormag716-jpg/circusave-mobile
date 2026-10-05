@@ -5,11 +5,12 @@ import { router, Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import 'react-native-reanimated';
 
 import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
+import { ProAssistantGreeting } from '@/components/ProAssistantGreeting';
 import { useColorScheme } from '@/components/useColorScheme';
 import {
   resetNavigationToLogin,
@@ -120,7 +121,10 @@ function SessionTree() {
             <SessionExpiryController />
             <NotificationNavigationController />
             <UnauthenticatedRouteGuard />
-            <AuthenticatedStack />
+            <View style={{ flex: 1 }}>
+              <AuthenticatedStack />
+              <ProAssistantGreeting />
+            </View>
           </DeviceLockProvider>
         </MarketProvider>
       </EntitlementsProvider>
@@ -141,7 +145,7 @@ function SessionExpiryController() {
       }
       revokeContributionPaymentsCapability();
       await signOut();
-      resetNavigationToLogin(router);
+      resetNavigationToLogin();
     });
   }, [revokeContributionPaymentsCapability, signOut]);
 
@@ -184,7 +188,7 @@ function NotificationNavigationController() {
           return;
         }
         setPostAuthTarget(dashboardHref);
-        resetNavigationToLogin(router);
+        resetNavigationToLogin();
         return;
       }
 
@@ -260,7 +264,7 @@ function UnauthenticatedRouteGuard() {
     if (!decision.reset) {
       return;
     }
-    resetNavigationToLogin(router);
+    resetNavigationToLogin();
   }, [pathname, status]);
 
   return null;

@@ -43,6 +43,8 @@
     "waitingGrant_one": "{{count}} waiting · approve to grant a hand",
     "waitingGrant_other": "{{count}} waiting · approve to grant a hand",
     "structureLocked": "Structure locked — cannot approve after start",
+    "claimsHand": "Wants to claim: {{name}}",
+    "claimsAfterStart": "Requests to claim an existing planned hand can still be approved after start. Other requests are locked.",
     "approveA11y": "Approve {{name}}",
     "declineA11y": "Decline {{name}}",
     "approveExtraA11y": "Approve additional hand for {{name}}",

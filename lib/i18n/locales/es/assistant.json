@@ -24,15 +24,38 @@
   "refusalBadge": "SOLO LECTURA · SIN ACCIÓN",
   "introBadge": "VISTA GENERAL DE CORTESÍA",
   "upgrade": {
-    "title": "Mantén tu asistente",
-    "body": "Organizer Pro incluye orientación continua según tu círculo.",
+    "title": "Organizer Pro",
+    "body": "Organizer Pro añade más círculos, informes, recordatorios y una asignación más alta del asistente.",
     "cta": "Ver plan",
-    "introUsed": "Tu vista general de cortesía ha terminado. Organizer Pro mantiene el asistente disponible cuando lo necesites."
+    "introUsed": "Esa vista general terminó. Puedes seguir preguntando dentro de tu asignación. Organizer Pro aumenta la asignación y añade las demás herramientas del organizador.",
+    "proRequired": "Esta solicitud necesita Organizer Pro. Aún puedes preguntar sobre este círculo dentro de tu asignación, y el asistente no puede mover dinero."
+  },
+  "greeting": {
+    "title": "Asistente CircuSave",
+    "body": "Pregunta sobre un círculo cuando quieras. Las respuestas usan los registros actuales y el asistente no puede mover dinero.",
+    "open": "Abrir asistente",
+    "openA11y": "Abrir el asistente de CircuSave",
+    "dismissA11y": "Cerrar el saludo del asistente"
+  },
+  "memory": {
+    "within": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. Una pregunta larga puede dejar fuera más mensajes. Los mensajes guardados no son montos, estados ni orden de pago actuales.",
+    "beyond": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. {{omitted}} mensajes más antiguos siguen guardados y no se envían. Los registros del círculo siguen siendo los datos actuales."
   },
   "errors": {
     "generic": "No pude responder ahora. Inténtalo de nuevo.",
     "historyLoad": "No se pudieron cargar mensajes anteriores. Aún puedes hacer una pregunta nueva.",
-    "rateLimited": "Demasiadas preguntas ahora. Espera e inténtalo de nuevo."
+    "historyLoadContinue": "No se pudieron cargar los mensajes anteriores. Tu próxima pregunta sigue en esta conversación.",
+    "rateLimited": "Demasiadas preguntas ahora. Espera e inténtalo de nuevo.",
+    "allowanceDaily": "Llegaste al límite de preguntas de hoy. La asignación se restablece el próximo día UTC.",
+    "allowanceMonthly": "Llegaste a la asignación del asistente de este mes. Se restablece al inicio del próximo mes UTC.",
+    "throttled": "Fallaron demasiados intentos en poco tiempo. Espera unos minutos y vuelve a intentarlo.",
+    "stillWorking": "Esta pregunta aún se está respondiendo. Reintentar no la enviará dos veces."
+  },
+  "send": {
+    "retry": "Reintentar",
+    "retryA11y": "Reintentar el envío de esta pregunta",
+    "notSent": "No enviado",
+    "sending": "Enviando…"
   },
   "history": {
     "loading": "Cargando conversación…",

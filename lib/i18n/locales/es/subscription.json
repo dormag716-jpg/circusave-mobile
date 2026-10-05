@@ -88,11 +88,7 @@
   "periodYears": "{{count}} años",
   "features": {
     "unlimitedCircles": "Círculos abiertos ilimitados",
-    "hands": "Hasta 50 manos participantes",
-    "reminders": "Recordatorios programados y masivos",
-    "reports": "Informes avanzados para organizadores",
-    "records": "Registros y PDF profesionales",
-    "history": "Historial de actividad completo",
-    "assistant": "Asistencia continua de IA para organizadores"
+    "hands": "Hasta 50 manos por círculo",
+    "history": "Historial de actividad completo"
   }
 }

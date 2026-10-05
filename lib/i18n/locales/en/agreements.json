@@ -85,5 +85,23 @@
   "additionalAction": "Request additional hand and accept new obligation",
   "cancel": "Cancel",
   "requestSent": "Additional-hand request and consent evidence were saved.",
-  "previewExpired": "The preview expired or the circle changed. A new server-calculated preview is required."
+  "previewExpired": "The preview expired or the circle changed. A new server-calculated preview is required.",
+  "expectedPotPerRound": "Expected pot per round",
+  "finalOrderRowNamed": "Position {{position}} · {{name}} · Hand {{number}}{{suffix}}",
+  "handConnected": "Connected",
+  "handUnclaimed": "Unclaimed",
+  "unclaimedNoticeTitle": "Unclaimed hands",
+  "unclaimedNoticeBody": "You will track and confirm contributions for these hands yourself until someone claims them: {{names}}.",
+  "reviewChanged": "The circle changed after you reviewed it. Review the final details again.",
+  "reviewRequired": "Review the final circle details before starting.",
+  "checkToStart": "Check each box above to enable Start.",
+  "blockersTitle": "Before you can start",
+  "structural": {
+    "NOT_ORGANIZER": "Only the organizer can start this circle.",
+    "ALREADY_STARTED": "This circle has already started.",
+    "INSUFFICIENT_PARTICIPATING_HANDS": "A circle needs at least 2 participating hands.",
+    "PENDING_JOIN_REQUESTS": "Approve or decline all pending join requests.",
+    "PENDING_ADDITIONAL_HAND_REQUESTS": "Approve or decline all pending additional-hand requests.",
+    "PAYOUT_ORDER_INCOMPLETE": "Give every participating hand a payout position."
+  }
 }

@@ -264,3 +264,127 @@ export function snapshotServiceFeeCents(
   const raw = snapshot.fees?.serviceFeeCents;
   return typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, raw) : 0;
 }
+
+/** One payout position on the final review, with who holds it. */
+export type ReviewHandRow = {
+  handId: string;
+  position: number;
+  handNumber: number;
+  name: string;
+  claimed: boolean;
+  userId: string | null;
+  expectedPayoutDate: string | null;
+};
+
+export type ReviewMember = {
+  id?: string | null;
+  handId?: string | null;
+  full_name?: string | null;
+  name?: string | null;
+};
+
+/** Payout order for the review, with the roster name and claim status per hand. */
+export function reviewHandRows(
+  snapshot: CircleAgreementSnapshot,
+  members: ReviewMember[],
+): ReviewHandRow[] {
+  const byId = new Map<string, ReviewMember>();
+  for (const member of members) {
+    const id = String(member.id ?? member.handId ?? '').trim();
+    if (id) byId.set(id, member);
+  }
+  return orderedSnapshotHands(snapshot).map((hand, index) => {
+    const member = byId.get(hand.handId);
+    return {
+      handId: hand.handId,
+      position: hand.payoutPosition || index + 1,
+      handNumber: hand.handNumber,
+      name: String(member?.full_name || member?.name || '').trim(),
+      claimed: Boolean(hand.userId),
+      userId: hand.userId ?? null,
+      expectedPayoutDate: hand.expectedPayoutDate,
+    };
+  });
+}
+
+/** Expected pot for one round: every participating hand pays the same amount. */
+export function snapshotExpectedPotCents(snapshot: CircleAgreementSnapshot): number {
+  const perHand =
+    snapshot.memberReview?.contributionPerHandCents ??
+    snapshot.contributionAmountCents ??
+    0;
+  return Math.max(0, perHand) * snapshot.hands.length;
+}
+
+/**
+ * Start is enabled only when the organizer reviewed this exact snapshot and
+ * checked every confirmation that applies. Nothing is pre-checked.
+ */
+export function canStartFromReview(input: {
+  readiness: CircleAgreementReadiness | null;
+  snapshot: Pick<CircleAgreementSnapshot, 'id' | 'snapshotHash'> | null;
+  /** Hash the checkboxes were ticked for; ticks never carry over to a new snapshot. */
+  reviewedHash: string | null;
+  payoutChecked: boolean;
+  unclaimedChecked: boolean;
+  needsUnclaimedConfirmation: boolean;
+  busy: boolean;
+}): boolean {
+  if (input.busy) return false;
+  const { readiness, snapshot } = input;
+  if (!snapshot || !readiness) return false;
+  if (input.reviewedHash !== snapshot.snapshotHash) return false;
+  if (readiness.snapshotCurrent === false) return false;
+  const structuralOk =
+    readiness.canStartCircle === true ||
+    readiness.canOpenStartFlow === true ||
+    readiness.structureComplete === true;
+  if (!structuralOk) return false;
+  if (!input.payoutChecked) return false;
+  if (input.needsUnclaimedConfirmation && !input.unclaimedChecked) return false;
+  return true;
+}
+
+/** Confirmation flags sent with Start: only what the organizer actually checked. */
+export function startConfirmationFlags(input: {
+  payoutChecked: boolean;
+  unclaimedChecked: boolean;
+  needsUnclaimedConfirmation: boolean;
+}): { confirmPayoutOrder: boolean; confirmUnclaimedHands: boolean } {
+  return {
+    confirmPayoutOrder: input.payoutChecked,
+    confirmUnclaimedHands: input.needsUnclaimedConfirmation
+      ? input.unclaimedChecked
+      : false,
+  };
+}
+
+export type StartReviewErrorCode = 'start_review_stale' | 'start_review_required';
+
+/** Backend code for "what you reviewed is no longer what would start". */
+export function startReviewErrorCode(error: unknown): StartReviewErrorCode | null {
+  const payload =
+    error && typeof error === 'object'
+      ? (error as { payload?: unknown }).payload
+      : null;
+  const code =
+    payload && typeof payload === 'object'
+      ? (payload as Record<string, unknown>).code
+      : null;
+  return code === 'start_review_stale' || code === 'start_review_required'
+    ? code
+    : null;
+}
+
+/** i18n key (agreements namespace) for a structural blocker code, if known. */
+export function structuralBlockerCopyKey(code: string): string | null {
+  const known = [
+    'NOT_ORGANIZER',
+    'ALREADY_STARTED',
+    'INSUFFICIENT_PARTICIPATING_HANDS',
+    'PENDING_JOIN_REQUESTS',
+    'PENDING_ADDITIONAL_HAND_REQUESTS',
+    'PAYOUT_ORDER_INCOMPLETE',
+  ];
+  return known.includes(code) ? `structural.${code}` : null;
+}

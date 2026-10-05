@@ -839,7 +839,7 @@ function frequencyLabel(value: string, t: TFunction) {
       : normalized === 'monthly'
         ? 'monthly'
         : 'weekly';
-  return t(`createCircle:frequency.options.${key}`);
+  return t(`createCircle:schedule.options.${key}`);
 }
 
 function ReviewRow({ label, value }: { label: string; value: string }) {

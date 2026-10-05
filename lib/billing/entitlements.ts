@@ -66,7 +66,7 @@ export function freeEntitlements(): Entitlements {
       maxParticipatingHands: FREE_MAX_PARTICIPATING_HANDS,
       maxOpenCircles: FREE_MAX_OPEN_CIRCLES,
       aiAssistant: false,
-      aiIntroAvailable: true,
+      aiIntroAvailable: false,
       draftPayoutPdf: false,
       finalPayoutPdf: false,
       advancedReports: false,
@@ -158,8 +158,7 @@ export function normalizeEntitlements(raw: unknown): Entitlements {
       source: asSource(body.source),
       capabilities: {
         ...free.capabilities,
-        // Free always keeps intro available unless backend says otherwise.
-        aiIntroAvailable: capsRaw.aiIntroAvailable !== false,
+        aiIntroAvailable: capsRaw.aiIntroAvailable === true,
         contributionPaymentsEnabled:
           capsRaw.contributionPaymentsEnabled === true,
       },

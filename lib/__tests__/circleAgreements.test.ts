@@ -6,6 +6,7 @@ import type {
 import {
   additionalHandFinancialRows,
   canEnableOrganizerStart,
+  canStartFromReview,
   canSubmitAgreementAcceptance,
   getAgreementReadinessStatusKeys,
   getMemberAgreementPrompt,
@@ -14,9 +15,14 @@ import {
   normalizeAgreementLanguage,
   orderedSnapshotHands,
   ownedAgreementHands,
+  reviewHandRows,
   shouldRefreshStaleSnapshot,
   shouldShowMemberAgreementBanner,
+  snapshotExpectedPotCents,
   snapshotServiceFeeCents,
+  startConfirmationFlags,
+  startReviewErrorCode,
+  structuralBlockerCopyKey,
 } from '../circles/circleAgreements';
 
 function readinessFixture(
@@ -315,5 +321,132 @@ describe('agreement readiness semantics (CS-005)', () => {
         busy: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe('final review before Start', () => {
+  const reviewed = {
+    ...snapshot,
+    id: 's1',
+    snapshotHash: 'a'.repeat(64),
+    contributionAmountCents: 5000,
+    memberReview: { contributionPerHandCents: 5000 },
+  } as unknown as CircleAgreementSnapshot;
+  const ready = readinessFixture({ canStartCircle: true, structureComplete: true });
+  const base = {
+    readiness: ready,
+    snapshot: reviewed,
+    reviewedHash: reviewed.snapshotHash,
+    payoutChecked: true,
+    unclaimedChecked: true,
+    needsUnclaimedConfirmation: true,
+    busy: false,
+  };
+
+  it('starts only when this snapshot was reviewed and every confirmation is checked', () => {
+    expect(canStartFromReview(base)).toBe(true);
+    expect(canStartFromReview({ ...base, payoutChecked: false })).toBe(false);
+    expect(canStartFromReview({ ...base, unclaimedChecked: false })).toBe(false);
+    expect(
+      canStartFromReview({
+        ...base,
+        unclaimedChecked: false,
+        needsUnclaimedConfirmation: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('does not carry ticks over to a different snapshot', () => {
+    expect(canStartFromReview({ ...base, reviewedHash: 'b'.repeat(64) })).toBe(false);
+    expect(canStartFromReview({ ...base, reviewedHash: null })).toBe(false);
+  });
+
+  it('stays disabled without a snapshot, readiness, structure, or while busy', () => {
+    expect(canStartFromReview({ ...base, snapshot: null })).toBe(false);
+    expect(canStartFromReview({ ...base, readiness: null })).toBe(false);
+    expect(
+      canStartFromReview({
+        ...base,
+        readiness: readinessFixture({
+          canStartCircle: false,
+          structureComplete: false,
+          canOpenStartFlow: false,
+        }),
+      }),
+    ).toBe(false);
+    expect(
+      canStartFromReview({
+        ...base,
+        readiness: readinessFixture({ canStartCircle: true, snapshotCurrent: false }),
+      }),
+    ).toBe(false);
+    expect(canStartFromReview({ ...base, busy: true })).toBe(false);
+  });
+
+  it('sends only the confirmations the organizer checked', () => {
+    expect(
+      startConfirmationFlags({
+        payoutChecked: true,
+        unclaimedChecked: true,
+        needsUnclaimedConfirmation: true,
+      }),
+    ).toEqual({ confirmPayoutOrder: true, confirmUnclaimedHands: true });
+    expect(
+      startConfirmationFlags({
+        payoutChecked: true,
+        unclaimedChecked: true,
+        needsUnclaimedConfirmation: false,
+      }),
+    ).toEqual({ confirmPayoutOrder: true, confirmUnclaimedHands: false });
+    expect(
+      startConfirmationFlags({
+        payoutChecked: false,
+        unclaimedChecked: false,
+        needsUnclaimedConfirmation: true,
+      }),
+    ).toEqual({ confirmPayoutOrder: false, confirmUnclaimedHands: false });
+  });
+
+  it('lists payout order with roster names and claim status', () => {
+    const rows = reviewHandRows(reviewed, [
+      { id: 'h1', full_name: 'Org One' },
+      { id: 'h3', name: 'Planned Two' },
+    ]);
+    expect(rows.map((row) => row.handId)).toEqual(['h1', 'h3', 'h2']);
+    expect(rows[1]).toMatchObject({ name: 'Planned Two', claimed: true });
+    expect(rows[2].name).toBe('');
+    const unclaimed = reviewHandRows(
+      {
+        ...reviewed,
+        hands: reviewed.hands.map((hand) =>
+          hand.handId === 'h3' ? { ...hand, userId: null } : hand,
+        ),
+      },
+      [],
+    );
+    expect(unclaimed.find((row) => row.handId === 'h3')?.claimed).toBe(false);
+  });
+
+  it('computes the expected pot from the reviewed per-hand amount and all hands', () => {
+    expect(snapshotExpectedPotCents(reviewed)).toBe(15000);
+  });
+
+  it('recognises the backend stale-review and review-required codes', () => {
+    expect(startReviewErrorCode({ payload: { code: 'start_review_stale' } })).toBe(
+      'start_review_stale',
+    );
+    expect(startReviewErrorCode({ payload: { code: 'start_review_required' } })).toBe(
+      'start_review_required',
+    );
+    expect(startReviewErrorCode({ payload: { code: 'other' } })).toBeNull();
+    expect(startReviewErrorCode(new Error('x'))).toBeNull();
+    expect(startReviewErrorCode(null)).toBeNull();
+  });
+
+  it('maps known structural blockers to copy and ignores unknown ones', () => {
+    expect(structuralBlockerCopyKey('PENDING_JOIN_REQUESTS')).toBe(
+      'structural.PENDING_JOIN_REQUESTS',
+    );
+    expect(structuralBlockerCopyKey('SOMETHING_NEW')).toBeNull();
   });
 });
