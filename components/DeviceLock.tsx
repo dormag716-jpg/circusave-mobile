@@ -14,16 +14,18 @@ import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   AppState,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resetNavigationToLogin, shouldCoverSignedOutRoute } from '@/lib/auth/authBoundary';
 import { login, logout } from '@/lib/api';
@@ -370,6 +372,21 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
     model.phase === 'signed_out' && shouldCoverSignedOutRoute(pathname);
   const coverVisible = coverLocked || coverSignedOut;
   const showLock = model.phase === 'locked';
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  const lockScrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    // On short screens the button sits below the fold: bring it above the keyboard.
+    if (keyboardHeight > 0) {
+      const timer = setTimeout(() => lockScrollRef.current?.scrollToEnd({ animated: true }), 60);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [keyboardHeight]);
+  // The lock cover is a Modal window; Android does not resize it for the keyboard,
+  // so pad by the part of the keyboard the SafeAreaView does not already clear.
+  const keyboardPadding =
+    Platform.OS === 'android' ? Math.max(0, keyboardHeight - insets.bottom) : 0;
   const failureText =
     model.failure === 'password_failed'
       ? t('passwordFailed')
@@ -398,8 +415,14 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
           {showLock ? (
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.keyboard}
+              style={[styles.keyboard, { paddingBottom: keyboardPadding }]}
             >
+              <ScrollView
+                ref={lockScrollRef}
+                contentContainerStyle={styles.lockScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
               <View style={styles.lockContent}>
                 <View style={styles.iconCircle}>
                   <FontAwesome name="lock" size={48} color={colors.primary} />
@@ -486,6 +509,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
                   </>
                 )}
               </View>
+              </ScrollView>
             </KeyboardAvoidingView>
           ) : (
             <View style={styles.lockContent} />
@@ -496,7 +520,26 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   );
 }
 
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (event) =>
+      setHeight(event.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+}
+
 const styles = StyleSheet.create({
+  lockScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   lockOverlay: {
     flex: 1,
     backgroundColor: colors.background,

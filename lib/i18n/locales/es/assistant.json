@@ -32,7 +32,7 @@
   },
   "greeting": {
     "title": "Asistente CircuSave",
-    "body": "Pregunta sobre un círculo cuando quieras. Las respuestas usan los registros actuales y el asistente no puede mover dinero.",
+    "body": "Pregunta sobre un círculo. Las respuestas usan los registros actuales; el asistente no puede mover dinero.",
     "open": "Abrir asistente",
     "openA11y": "Abrir el asistente de CircuSave",
     "dismissA11y": "Cerrar el saludo del asistente"

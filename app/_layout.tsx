@@ -122,8 +122,8 @@ function SessionTree() {
             <NotificationNavigationController />
             <UnauthenticatedRouteGuard />
             <View style={{ flex: 1 }}>
-              <AuthenticatedStack />
               <ProAssistantGreeting />
+              <AuthenticatedStack />
             </View>
           </DeviceLockProvider>
         </MarketProvider>

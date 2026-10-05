@@ -1055,6 +1055,7 @@ const styles = StyleSheet.create({
   },
   payDueTitle: {
     color: colors.primaryDark,
+    flexShrink: 1,
     fontSize: 17,
     fontWeight: '900',
   },

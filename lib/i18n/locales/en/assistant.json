@@ -32,7 +32,7 @@
   },
   "greeting": {
     "title": "CircuSave Assistant",
-    "body": "Ask about a circle when you are ready. Answers use current records, and the assistant cannot move money.",
+    "body": "Ask about a circle. Answers use current records; the assistant cannot move money.",
     "open": "Open assistant",
     "openA11y": "Open the CircuSave assistant",
     "dismissA11y": "Dismiss assistant greeting"

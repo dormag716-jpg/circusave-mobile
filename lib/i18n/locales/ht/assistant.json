@@ -32,7 +32,7 @@
   },
   "greeting": {
     "title": "Asistan CircuSave",
-    "body": "Mande sou yon sèk lè ou pare. Repons yo sèvi ak dosye aktyèl yo, epi asistan an pa ka deplase lajan.",
+    "body": "Mande sou yon sèk. Repons yo sèvi ak dosye aktyèl yo; asistan an pa ka deplase lajan.",
     "open": "Louvri asistan",
     "openA11y": "Louvri asistan CircuSave",
     "dismissA11y": "Fèmen salitasyon asistan an"
