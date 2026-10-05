@@ -87,7 +87,7 @@ export function proGreetingInputSignature(input: ProGreetingInput): string {
 }
 
 export type ProGreetingTarget =
-  | { kind: 'assistant'; href: `/circle/assistant?circleId=${string}` }
+  | { kind: 'assistant'; circleId: string }
   | { kind: 'circles' };
 
 /** One authorized circle opens its assistant. Several circles stay on the circle list. */
@@ -98,8 +98,13 @@ export function proGreetingAssistantTarget(
   if (ids.length === 1) {
     return {
       kind: 'assistant',
-      href: `/circle/assistant?circleId=${encodeURIComponent(ids[0])}`,
+      circleId: ids[0],
     };
   }
   return { kind: 'circles' };
+}
+
+/** Full-page href for deep links; sheet-from-home is the primary open path. */
+export function assistantPageHref(circleId: string): `/circle/assistant?circleId=${string}` {
+  return `/circle/assistant?circleId=${encodeURIComponent(circleId)}`;
 }

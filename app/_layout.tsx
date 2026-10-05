@@ -6,10 +6,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 import { Platform, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import 'react-native-reanimated';
 
 import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
+import { AssistantSheetProvider } from '@/components/AssistantSheetContext';
 import { ProAssistantGreeting } from '@/components/ProAssistantGreeting';
 import { useColorScheme } from '@/components/useColorScheme';
 import {
@@ -121,10 +123,14 @@ function SessionTree() {
             <SessionExpiryController />
             <NotificationNavigationController />
             <UnauthenticatedRouteGuard />
-            <View style={{ flex: 1 }}>
-              <ProAssistantGreeting />
-              <AuthenticatedStack />
-            </View>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <AssistantSheetProvider>
+                <View style={{ flex: 1 }}>
+                  <ProAssistantGreeting />
+                  <AuthenticatedStack />
+                </View>
+              </AssistantSheetProvider>
+            </GestureHandlerRootView>
           </DeviceLockProvider>
         </MarketProvider>
       </EntitlementsProvider>

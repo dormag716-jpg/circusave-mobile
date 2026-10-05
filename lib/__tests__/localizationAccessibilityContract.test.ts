@@ -30,7 +30,7 @@ describe('localization accessibility contracts', () => {
 
   test('assistant upgrade copy and composer-adjacent chips meet readable size', () => {
     const source = readFileSync(
-      path.join(__dirname, '../../app/circle/assistant.tsx'),
+      path.join(__dirname, '../../components/CircleAssistantPanel.tsx'),
       'utf8',
     );
     expect(source).toContain('upgradeButtonText: { color: colors.primaryDark, fontWeight: \'900\', fontSize: 12 }');

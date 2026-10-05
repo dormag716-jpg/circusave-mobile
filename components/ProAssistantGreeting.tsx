@@ -19,6 +19,7 @@ import {
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import { myCirclesHref } from '@/lib/platform/navigation';
 import { colors, radii } from '@/lib/shared/theme';
+import { useAssistantSheet } from '@/components/AssistantSheetContext';
 import { useDeviceLock } from '@/components/DeviceLock';
 
 /**
@@ -37,6 +38,7 @@ export function ProAssistantGreeting() {
   const { entitlements, status: entitlementsStatus } = useEntitlements();
   const { t } = useTranslation('assistant');
   const insets = useSafeAreaInsets();
+  const { openAssistant: openAssistantSheet } = useAssistantSheet();
   const [greeting, setGreeting] = useState(initialProGreetingState);
   const [opening, setOpening] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -91,7 +93,8 @@ export function ProAssistantGreeting() {
       );
       setGreeting((current) => dismissProGreeting(current));
       if (target.kind === 'assistant') {
-        router.push(target.href);
+        // Keep home mounted; float the assistant sheet over the dashboard.
+        openAssistantSheet(target.circleId);
         return;
       }
       router.push(myCirclesHref);

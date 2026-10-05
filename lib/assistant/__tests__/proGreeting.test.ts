@@ -97,7 +97,7 @@ describe('signed-in assistant greeting', () => {
   it('opens the assistant for one circle and the circle list otherwise', () => {
     expect(proGreetingAssistantTarget([' circle-1 '])).toEqual({
       kind: 'assistant',
-      href: '/circle/assistant?circleId=circle-1',
+      circleId: 'circle-1',
     });
     expect(proGreetingAssistantTarget(['a', 'b']).kind).toBe('circles');
     expect(proGreetingAssistantTarget([]).kind).toBe('circles');

@@ -42,10 +42,12 @@ describe('workspace keyboard chrome ownership', () => {
 
   it('keeps the Susu header mounted and uses shared composer clearance', () => {
     const source = readFileSync(
-      path.join(__dirname, '..', '..', 'app', 'circle', 'assistant.tsx'),
+      path.join(__dirname, '..', '..', 'components', 'CircleAssistantPanel.tsx'),
       'utf8',
     );
-    expect(source).toMatch(/workspaceChromeLayoutStyle\(keyboardVisible\)/);
+    // The sheet keeps its header (Close, New chat) while typing; the page collapses it.
+    expect(source).toMatch(/workspaceChromeLayoutStyle\(\s*keyboardVisible/);
+    expect(source).toMatch(/presentation !== 'sheet'/);
     expect(source).toMatch(/floatingComposerDockOffset/);
     expect(source).toMatch(/shouldApplyKeyboardGeometry/);
     expect(source).not.toMatch(/!keyboardVisible \?/);

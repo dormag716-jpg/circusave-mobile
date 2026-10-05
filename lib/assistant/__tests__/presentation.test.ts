@@ -157,7 +157,7 @@ describe('Susu AI presentation', () => {
 
   it('keeps assistant history load independent of welcome copy', () => {
     const source = readFileSync(
-      path.join(__dirname, '..', '..', '..', 'app', 'circle', 'assistant.tsx'),
+      path.join(__dirname, '..', '..', '..', 'components', 'CircleAssistantPanel.tsx'),
       'utf8',
     );
     expect(source).toMatch(/welcomeMessageRef\.current = welcomeMessage/);
