@@ -84,8 +84,13 @@ export function logClientError(event: string, error: unknown, context?: LogConte
     ...(status !== undefined ? { status } : {}),
     ...(safeContext(context) ?? {}),
   };
+  // A 4xx is the backend refusing a request for a business reason the screen already
+  // shows the user (for example "A planned hand with recorded activity or a past payout
+  // cannot be claimed."). That is an expected outcome, not an app fault, so it is a
+  // warning; it must not raise the full-screen red error overlay in development.
+  const expectedRejection = status !== undefined && status >= 400 && status < 500;
   // eslint-disable-next-line no-console -- this is the sanctioned logging path.
-  console.error(`[CircuSave] ${event}`, detail);
+  (expectedRejection ? console.warn : console.error)(`[CircuSave] ${event}`, detail);
 }
 
 /** Same contract as logClientError but for non-error diagnostic warnings. */

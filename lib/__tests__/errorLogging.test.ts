@@ -48,6 +48,44 @@ describe('production error logging sanitization', () => {
     expect(calls[0][1]).not.toHaveProperty('payload');
   });
 
+  it('logs an expected 4xx rejection as a warning, not an error', () => {
+    const errors: unknown[][] = [];
+    const warnings: unknown[][] = [];
+    console.error = ((...args: unknown[]) => {
+      errors.push(args);
+    }) as typeof console.error;
+    console.warn = ((...args: unknown[]) => {
+      warnings.push(args);
+    }) as typeof console.warn;
+
+    logClientError(
+      'Unable to approve circle request',
+      new ApiError(
+        'A planned hand with recorded activity or a past payout cannot be claimed.',
+        409,
+        { member: 'private@example.com' },
+      ),
+      { circleId: 'circle-1', requestId: 'request-1' },
+    );
+
+    expect(errors).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0][1]).toEqual(
+      expect.objectContaining({ status: 409, circleId: 'circle-1' }),
+    );
+    expect(JSON.stringify(warnings)).not.toContain('private@example.com');
+  });
+
+  it('keeps server failures and unexpected errors on the error path', () => {
+    const errors: unknown[][] = [];
+    console.error = ((...args: unknown[]) => {
+      errors.push(args);
+    }) as typeof console.error;
+    logClientError('server failed', new ApiError('boom', 500));
+    logClientError('unexpected', new Error('boom'));
+    expect(errors).toHaveLength(2);
+  });
+
   it('sanitizes warning messages the same way', () => {
     const calls: unknown[][] = [];
     console.warn = ((...args: unknown[]) => {
