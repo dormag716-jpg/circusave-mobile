@@ -43,3 +43,6 @@ yarn-error.*
 google-services.json
 
 .env
+
+# Firebase service account private keys (FCM V1 keys go in EAS credentials, not git)
+*-firebase-adminsdk-*.json

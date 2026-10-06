@@ -81,7 +81,7 @@ Route groups:
 
 `AuthSessionProvider` / `useAuthSession` manages session state with these statuses: `loading | authenticated | unauthenticated | error`. Session transitions are serialized through a promise queue (`enqueueAuthTransition`) to prevent races. On login, it registers a push token. On logout, it unregisters. `lib/auth/authBoundary.ts` contains the navigation decision functions (`shouldIssueSignedOutReset`, `resetNavigationToLogin`, and others) used by `_layout.tsx`.
 
-Google sign-in uses `react-native-nitro-google-signin`. Apple sign-in uses `expo-apple-authentication`. Nonces use `expo-crypto`. Those native modules need a dev client or store binary. They do not run in Expo Go. Do not add `google-services.json`.
+Google sign-in uses `react-native-nitro-google-signin`. Apple sign-in uses `expo-apple-authentication`. Nonces use `expo-crypto`. Those native modules need a dev client or store binary. They do not run in Expo Go. `google-services.json` is allowed only for Android push (FCM). `app.config.js` passes it as `android.googleServicesFile` only when the file exists (project root, or the `GOOGLE_SERVICES_JSON` EAS file variable) and stops the build if it has no Android client for `com.circusave.mobile`. Google sign-in does not read it; it keeps using the explicit web client ID. Never commit a Firebase service account key (`*-firebase-adminsdk-*.json`); it belongs in EAS credentials.
 
 ### Entitlements (`lib/billing/`)
 
