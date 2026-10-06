@@ -228,5 +228,9 @@
       "bank": "Account / routing hint",
       "other": "Payment details"
     }
+  },
+  "roundPaidOut": {
+    "title": "Payout recorded for this round",
+    "body": "This round has been paid out, so contributions can no longer be recorded, confirmed or changed. If something looks wrong, contact support."
   }
 }

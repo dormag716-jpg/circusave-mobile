@@ -39,6 +39,7 @@ import {
   myCirclesHref,
 } from '@/lib/platform/navigation';
 import { isOrganizer } from '@/lib/platform/permissions';
+import { isRoundPayoutLocked } from '@/lib/circles/roundPayoutLock';
 import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 import type { BackendCircleSummary, DashboardSummary } from '@/lib/shared/types';
 import {
@@ -761,6 +762,12 @@ function deriveContributionActions(
     const contributionsForRound = schedule.contributions.filter(
       (contribution) => contribution.round === currentRound,
     );
+
+    // A round with a recorded payout is closed to contribution changes; do not
+    // prompt to pay or to verify payments the backend will refuse.
+    if (isRoundPayoutLocked(detail?.currentRoundSummary, schedule.currentRoundSummary, schedule.roundWorkspace)) {
+      continue;
+    }
 
     const perms = schedule.roundWorkspace?.viewerPermissions;
     // Backend financial flags are authoritative — never OR with local role.

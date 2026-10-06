@@ -42,6 +42,7 @@ import {
   sanitizePaymentUserMessage,
   shouldBlockContributionPayActions,
 } from '@/lib/payments/stripeContributionPayment';
+import { isRoundPayoutLocked } from '@/lib/circles/roundPayoutLock';
 import { colors, radii, spacing } from '@/lib/shared/theme';
 import { DecisionSheet } from '@/components/DecisionSheet';
 import { PaymentDestinationList } from '@/components/PaymentDestinationList';
@@ -233,7 +234,13 @@ export default function ContributionPaymentScreen() {
     Boolean(activeHand) &&
     ['due', 'missed', 'rejected'].includes(String(activeHand?.status || ''));
   // Pattern: backend true AND local hand-due condition (never reverse).
-  const canSubmit = backendCanSubmit && handDue;
+  // A round with a recorded payout is closed to contribution changes.
+  const roundPayoutLocked = isRoundPayoutLocked(
+    circle?.currentRoundSummary,
+    snapshot?.currentRoundSummary,
+    snapshot?.roundWorkspace,
+  );
+  const canSubmit = backendCanSubmit && handDue && !roundPayoutLocked;
   const payActionsBlocked = shouldBlockContributionPayActions({
     submitting,
   });
@@ -703,6 +710,16 @@ export default function ContributionPaymentScreen() {
                 {contributionCopy(t, 'rails.markAsSentMeaningBody')}
               </Text>
             ) : null}
+            {roundPayoutLocked ? (
+              <View style={styles.lockedNotice} accessibilityRole="alert">
+                <Text style={styles.lockedNoticeTitle}>
+                  {t('contributions:roundPaidOut.title')}
+                </Text>
+                <Text style={styles.lockedNoticeBody}>
+                  {t('contributions:roundPaidOut.body')}
+                </Text>
+              </View>
+            ) : null}
             <Pressable
               style={[
                 styles.primaryButton,
@@ -1160,6 +1177,17 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
   },
+  lockedNotice: {
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    gap: 4,
+    marginTop: 12,
+    padding: 14,
+  },
+  lockedNoticeTitle: { color: colors.warningText, fontSize: 15, fontWeight: '800' },
+  lockedNoticeBody: { color: colors.warningText, fontSize: 13, lineHeight: 18 },
   disabledButton: {
     opacity: 0.55,
   },

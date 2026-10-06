@@ -94,6 +94,7 @@ import {
   buildClaimInviteShareMessage,
   buildClaimInviteUrl,
 } from '@/lib/circles/claimInvite';
+import { isRoundPayoutLocked } from '@/lib/circles/roundPayoutLock';
 import { copyText } from '@/lib/platform/clipboard';
 import {
   isCircleNotStarted,
@@ -989,6 +990,13 @@ function WorkspaceContent({
 
   const backendPayoutReady = roundWorkspace?.readyForPayout === true;
   const payoutReleased = roundWorkspace?.payoutReleased === true;
+  // A round with a recorded payout is closed to contribution changes (the backend
+  // refuses them); stop offering those actions and say why.
+  const roundPayoutLocked = isRoundPayoutLocked(
+    summary,
+    circle.currentRoundSummary,
+    roundWorkspace,
+  );
 
   const displayPayoutReady = payoutReleased || backendPayoutReady;
 
@@ -1026,10 +1034,12 @@ function WorkspaceContent({
   const canRemindMembers = canShowBackendGatedAction(
     viewerPermissions?.canRemindMembers,
   );
-  const memberCanSubmitContribution = canShowBackendGatedAction(
-    viewerPermissions?.canSubmitOwnContribution,
-    memberContributionCard.anyReportable,
-  );
+  const memberCanSubmitContribution =
+    !roundPayoutLocked &&
+    canShowBackendGatedAction(
+      viewerPermissions?.canSubmitOwnContribution,
+      memberContributionCard.anyReportable,
+    );
   const hasSchedule = Boolean(scheduleData?.schedule?.length);
 
   if (!activeParticipant && secondaryLoading) {
@@ -1592,6 +1602,7 @@ function WorkspaceContent({
               payoutReleasing={payoutReleasing}
               payoutAmount={payoutAmount}
               payoutReleased={payoutReleased}
+              roundPayoutLocked={roundPayoutLocked}
               recipient={recipient}
               schedule={scheduleData?.schedule || []}
               totalMembers={expectedContributionsCount}
@@ -2079,6 +2090,7 @@ function RoundTab({
   payoutReleasing,
   payoutAmount,
   payoutReleased,
+  roundPayoutLocked,
   recipient,
   schedule,
   totalMembers,
@@ -2120,6 +2132,7 @@ function RoundTab({
   payoutReleasing?: boolean;
   payoutAmount?: number;
   payoutReleased: boolean;
+  roundPayoutLocked: boolean;
   recipient?: BackendCircleMember;
   schedule: BackendScheduleRound[];
   totalMembers: number;
@@ -2176,7 +2189,7 @@ function RoundTab({
   const paused = lifecyclePhase === 'paused';
   const closed = lifecyclePhase === 'closed';
   // Financial CTAs only when backend grants; paused/closed never look "live".
-  const financialActionsLocked = paused || closed || completed;
+  const financialActionsLocked = paused || closed || completed || roundPayoutLocked;
 
   const isViewerRecipient = viewerMember && recipient && viewerMember.id === recipient.id;
   const potTarget =
@@ -2400,8 +2413,9 @@ function RoundTab({
     );
   }
 
+  const payoutLockedOnly = roundPayoutLocked && !paused && !closed;
   const lifecycleBanner =
-    paused || closed ? (
+    paused || closed || roundPayoutLocked ? (
       <View
         style={[
           styles.sectionCard,
@@ -2418,7 +2432,11 @@ function RoundTab({
             { color: paused ? colors.warningText : colors.text },
           ]}
         >
-          {paused ? roundPausedTitle() : roundClosedTitle()}
+          {paused
+            ? roundPausedTitle()
+            : payoutLockedOnly
+              ? t('contributions:roundPaidOut.title')
+              : roundClosedTitle()}
         </Text>
         <Text
           style={[
@@ -2426,7 +2444,11 @@ function RoundTab({
             { color: paused ? colors.warningText : colors.muted },
           ]}
         >
-          {paused ? roundPausedSubtitle() : roundClosedSubtitle()}
+          {paused
+            ? roundPausedSubtitle()
+            : payoutLockedOnly
+              ? t('contributions:roundPaidOut.body')
+              : roundClosedSubtitle()}
         </Text>
       </View>
     ) : null;

@@ -228,5 +228,9 @@
       "bank": "Endikasyon kont / routaj",
       "other": "Detay peman"
     }
+  },
+  "roundPaidOut": {
+    "title": "Peman rekòd pou wonn sa a",
+    "body": "Wonn sa a deja peye, kidonk yo pa ka anrejistre, konfime oswa chanje kontribisyon ankò. Si gen yon bagay ki sanble pa kòrèk, kontakte sipò."
   }
 }

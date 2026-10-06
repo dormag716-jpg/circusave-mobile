@@ -228,5 +228,9 @@
       "bank": "Pista de cuenta / ruta",
       "other": "Detalles del pago"
     }
+  },
+  "roundPaidOut": {
+    "title": "Pago registrado para esta ronda",
+    "body": "Esta ronda ya se pagó, así que ya no se pueden registrar, confirmar ni cambiar aportes. Si algo parece incorrecto, contacta a soporte."
   }
 }
