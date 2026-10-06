@@ -144,14 +144,18 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                 : styles.assistantBubble,
         ]}
       >
-        <Text
-          style={[
-            styles.messageText,
-            item.role === 'user' && styles.userMessageText,
-          ]}
-        >
-          {item.message}
-        </Text>
+        {splitMessageParagraphs(item.message).map((paragraph, index) => (
+          <Text
+            key={index}
+            style={[
+              styles.messageText,
+              index > 0 && styles.messageParagraph,
+              item.role === 'user' && styles.userMessageText,
+            ]}
+          >
+            {paragraph}
+          </Text>
+        ))}
         {item.sendStatus === 'sending' ? (
           <Text style={styles.sendingLabel}>{t('assistant:send.sending')}</Text>
         ) : null}
@@ -731,8 +735,8 @@ export function CircleAssistantPanel({
         </View>
       ) : null}
       {conversationMemory && conversationMemory.savedMessageCount > 0 ? (
-        <View style={styles.historyErrorCard}>
-          <Text style={styles.historyErrorText}>
+        <View style={styles.memoryNoticeCard}>
+          <Text style={styles.memoryNoticeText}>
             {t(
               conversationMemory.messagesSavedButNotSent > 0
                 ? 'assistant:memory.beyond'
@@ -928,6 +932,15 @@ export function CircleAssistantPanel({
   );
 }
 
+/** Paragraphs split on blank lines; single line breaks inside one are folded into spaces. */
+function splitMessageParagraphs(message: string): string[] {
+  const parts = String(message ?? '')
+    .split(/\n\s*\n/)
+    .map((part) => part.replace(/\s*\n\s*/g, ' ').trim())
+    .filter(Boolean);
+  return parts.length ? parts : [String(message ?? '')];
+}
+
 const styles = StyleSheet.create({
   sendingLabel: {
     marginTop: 4,
@@ -1046,6 +1059,20 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '600',
   },
+  memoryNoticeCard: {
+    backgroundColor: colors.infoSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.infoBorder,
+    padding: 12,
+    marginBottom: 14,
+  },
+  memoryNoticeText: {
+    color: colors.infoText,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
   contextCard: {
     flexDirection: 'row',
     gap: 12,
@@ -1088,7 +1115,7 @@ const styles = StyleSheet.create({
   },
   avatarRefusal: { backgroundColor: colors.warning },
   avatarError: { backgroundColor: colors.danger },
-  bubble: { maxWidth: '82%', paddingHorizontal: 15, paddingVertical: 12 },
+  bubble: { maxWidth: '86%', paddingHorizontal: 16, paddingVertical: 12 },
   assistantBubble: {
     backgroundColor: colors.card,
     borderRadius: 18,
@@ -1113,9 +1140,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryDark,
     borderRadius: 18,
     borderBottomRightRadius: 5,
-    width: '82%',
   },
-  messageText: { color: colors.text, fontSize: 14, lineHeight: 21 },
+  messageText: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: '400',
+    letterSpacing: 0.1,
+  },
+  messageParagraph: { marginTop: 10 },
   userMessageText: { color: colors.onColor },
   introLabel: {
     color: colors.primary,

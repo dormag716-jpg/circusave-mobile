@@ -10,9 +10,10 @@
     "allCircles": "Tout sèk yo"
   },
   "summary": {
-    "contributed": "Kontribye",
-    "received": "Resevwa",
-    "review": "Pou revize"
+    "contributed": "Kolekte",
+    "received": "Peye bay",
+    "review": "Pou revize",
+    "scopeNote": "Total yo gen ladan yo tout manm sèk yo montre yo, pa sèlman peman pa w."
   },
   "groups": {
     "today": "Jodi a",
@@ -40,6 +41,8 @@
   },
   "provenance": {
     "pending": "Rapòte · ap tann konfimasyon",
+    "reportedThenConfirmed": "Rapòte · konfime pita",
+    "reportedThenRejected": "Rapòte · rejte pita",
     "confirmed": "Òganizatè a konfime li",
     "rejected": "Òganizatè a rejte li"
   },

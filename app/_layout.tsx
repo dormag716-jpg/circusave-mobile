@@ -186,6 +186,12 @@ function NotificationNavigationController() {
         pendingRef.current = data;
         return;
       }
+      // A cold-start tap can arrive before the saved session is restored.
+      // Wait for it instead of treating the user as signed out.
+      if (status === 'loading') {
+        pendingRef.current = data;
+        return;
+      }
 
       const currentAuthToken = String(authToken || '').trim();
       if (status !== 'authenticated' || !currentAuthToken) {
@@ -313,6 +319,7 @@ function AuthenticatedStack() {
         options={{ headerShown: false, gestureEnabled: false }}
       />
       <Stack.Screen name="create-account" options={{ headerShown: false }} />
+      <Stack.Screen name="join-circle" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="create-circle/setup" options={{ headerShown: false }} />
       <Stack.Screen name="circle/workspace" options={{ headerShown: false }} />

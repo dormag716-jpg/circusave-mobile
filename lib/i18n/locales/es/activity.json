@@ -10,9 +10,10 @@
     "allCircles": "Todos los círculos"
   },
   "summary": {
-    "contributed": "Aportado",
-    "received": "Recibido",
-    "review": "Por revisar"
+    "contributed": "Recaudado",
+    "received": "Pagado",
+    "review": "Por revisar",
+    "scopeNote": "Los totales incluyen a todos los miembros de los círculos mostrados, no solo tus pagos."
   },
   "groups": {
     "today": "Hoy",
@@ -40,6 +41,8 @@
   },
   "provenance": {
     "pending": "Reportado · en espera de confirmación",
+    "reportedThenConfirmed": "Reportado · confirmado después",
+    "reportedThenRejected": "Reportado · rechazado después",
     "confirmed": "Confirmado por el organizador",
     "rejected": "Rechazado por el organizador"
   },

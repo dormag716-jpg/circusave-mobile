@@ -50,6 +50,14 @@
   "smartRemindersMemberSummary_other": "{{count}} members · {{frequency}}",
   "culturalTerminology": "Cultural Terminology",
   "currentTerminology": "Currently using terms for: {{market}}",
+  "markets": {
+    "default": "Standard",
+    "susu": "Susu",
+    "tanda": "Tanda",
+    "sol": "Sol",
+    "hagbad": "Hagbad",
+    "pardner": "Pardner"
+  },
   "testNotification": "Test Notification",
   "testNotificationSubtitle": "Schedule a local confirmation",
   "scheduled": "Scheduled",

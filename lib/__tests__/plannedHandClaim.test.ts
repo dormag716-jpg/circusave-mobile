@@ -109,3 +109,33 @@ describe('requestJoin acknowledgment payload', () => {
     });
   });
 });
+
+import { plannedHandClaimStage, resolveJoinPreviewCounts } from '../circles/plannedHandClaim';
+
+describe('plannedHandClaimStage', () => {
+  it('uses before-start wording only for circles that have not started', () => {
+    expect(plannedHandClaimStage('draft')).toBe('beforeStart');
+    expect(plannedHandClaimStage('setup')).toBe('beforeStart');
+    expect(plannedHandClaimStage('Active')).toBe('afterStart');
+    expect(plannedHandClaimStage('paused')).toBe('afterStart');
+    expect(plannedHandClaimStage('completed')).toBe('afterStart');
+  });
+});
+
+describe('resolveJoinPreviewCounts', () => {
+  it('separates joined people from unclaimed hands', () => {
+    expect(
+      resolveJoinPreviewCounts({
+        joinedMembersCount: 1,
+        plannedHandsCount: 2,
+        unclaimedHandsCount: 1,
+        membersCount: 2,
+      }),
+    ).toEqual({ kind: 'split', joined: 1, hands: 2, unclaimed: 1 });
+  });
+
+  it('keeps the legacy total when the backend has no split', () => {
+    expect(resolveJoinPreviewCounts({ membersCount: 2 })).toEqual({ kind: 'legacy', total: 2 });
+    expect(resolveJoinPreviewCounts({})).toEqual({ kind: 'legacy', total: null });
+  });
+});

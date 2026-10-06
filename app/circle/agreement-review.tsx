@@ -10,6 +10,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { frequencyOptionKey } from '@/lib/circles/frequencyLabel';
 import {
   ActivityIndicator,
   Alert,
@@ -94,7 +95,7 @@ function CheckRow({
 }
 
 export default function AgreementReviewScreen() {
-  const { t, i18n } = useTranslation('agreements');
+  const { t, i18n } = useTranslation(['agreements', 'createCircle']);
   const language = normalizeAgreementLanguage(i18n.resolvedLanguage || i18n.language || 'en');
   const { session } = useAuthSession();
   const token = session?.session.token;
@@ -354,7 +355,14 @@ export default function AgreementReviewScreen() {
                 label={t('contributionPerHand')}
                 value={money(snapshot.memberReview.contributionPerHandCents)}
               />
-              <Metric label={t('frequency')} value={snapshot.frequency} />
+              <Metric
+                label={t('frequency')}
+                value={
+                  frequencyOptionKey(snapshot.frequency)
+                    ? t(`createCircle:schedule.options.${frequencyOptionKey(snapshot.frequency)}`)
+                    : snapshot.frequency
+                }
+              />
               <Metric label={t('totalRounds')} value={String(snapshot.totalRounds)} />
               <Metric
                 label={t('expectedPotPerRound')}

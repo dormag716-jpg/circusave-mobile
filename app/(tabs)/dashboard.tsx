@@ -23,6 +23,7 @@ import {
 } from '@/lib/api';
 import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
 import { focusReloadOptions } from '@/lib/auth/authBoundary';
+import { ASSISTANT_FAB_TAB_CONTENT_PADDING } from '@/lib/assistant/assistantFab';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { formatCurrency, formatShortDate } from '@/lib/i18n/formatters';
 import {
@@ -543,15 +544,15 @@ export default function DashboardScreen() {
                 value={String(summary?.activeCircles ?? activeCircles.length)}
                 label={t('activeCircles')}
                 color={colors.primary}
-                detail={
-                  userIsOrganizer
-                    ? t('manageCircles')
-                    : undefined
-                }
               />
             </>
           )}
         </View>
+        {userIsOrganizer && !showSkeleton ? (
+          // Its own centered line, not inside the right-hand card: the floating
+          // assistant button rests at the right edge and would cover it there.
+          <Text style={styles.statsCaption}>{t('manageCircles')}</Text>
+        ) : null}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -904,28 +905,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 100,
+    paddingBottom: ASSISTANT_FAB_TAB_CONTENT_PADDING,
     paddingHorizontal: spacing.screenX,
-    paddingTop: 20,
+    paddingTop: 12,
   },
   greeting: {
-    marginBottom: 28,
+    marginBottom: 16,
   },
   welcomeRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   welcome: {
     color: colors.textStrong,
-    fontSize: 32,
+    fontSize: 25,
     fontWeight: '900',
   },
   roleBadge: {
     borderRadius: radii.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
   organizerBadge: {
     backgroundColor: colors.primary,
@@ -935,27 +936,27 @@ const styles = StyleSheet.create({
   },
   roleBadgeText: {
     color: colors.onColor,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
   },
   subtitle: {
     color: colors.muted,
-    fontSize: 16,
-    marginTop: 4,
+    fontSize: 14,
+    marginTop: 2,
   },
   heroCard: {
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: 28,
-    marginBottom: 24,
-    minHeight: 184,
-    padding: 28,
+    marginBottom: 16,
+    minHeight: 150,
+    padding: 20,
   },
   heroSkeleton: {
     backgroundColor: colors.surfaceMuted,
     borderRadius: 28,
-    marginBottom: 24,
-    minHeight: 184,
+    marginBottom: 16,
+    minHeight: 150,
   },
   skeletonLine: {
     backgroundColor: colors.surfaceMuted,
@@ -976,7 +977,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 20,
     flex: 1,
-    minHeight: 144,
+    minHeight: 110,
   },
   circleSkeleton: {
     backgroundColor: colors.card,
@@ -986,22 +987,22 @@ const styles = StyleSheet.create({
     minHeight: 128,
   },
   heroCarouselContainer: {
-    gap: 16,
-    paddingBottom: 20,
+    gap: 12,
+    paddingBottom: 12,
   },
   carouselHeroCard: {
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: 28,
     marginBottom: 4,
-    padding: 28,
+    padding: 20,
     width: Dimensions.get('window').width - spacing.screenX * 2,
   },
   heroFooterRow: {
     borderTopColor: 'rgba(255,255,255,0.2)',
     borderTopWidth: 1,
-    marginTop: 16,
-    paddingTop: 16,
+    marginTop: 10,
+    paddingTop: 10,
     width: '100%',
     alignItems: 'flex-end',
     flexDirection: 'row',
@@ -1009,42 +1010,42 @@ const styles = StyleSheet.create({
   },
   heroFooterText: {
     color: colors.onColor,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
   },
   heroPayoutDate: {
     color: 'rgba(255,255,255,0.92)',
     flexShrink: 1,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 4,
   },
   heroTapHint: {
     color: 'rgba(255,255,255,0.75)',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   heroLabel: {
     color: 'rgba(255,255,255,0.88)',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
     marginTop: 4,
   },
   heroAmount: {
     color: colors.onColor,
-    fontSize: 48,
+    fontSize: 40,
     fontWeight: '900',
-    marginVertical: 8,
+    marginVertical: 4,
   },
   heroSecondary: {
     color: 'rgba(255,255,255,0.92)',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     marginBottom: 2,
   },
   heroSub: {
     color: colors.onColor,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
   },
   payDueCard: {
@@ -1052,8 +1053,8 @@ const styles = StyleSheet.create({
     borderColor: colors.primaryBorder,
     borderRadius: radii.card,
     borderWidth: 1,
-    marginBottom: 16,
-    padding: 18,
+    marginBottom: 12,
+    padding: 14,
   },
   actionCardHeader: {
     alignItems: 'center',
@@ -1063,14 +1064,14 @@ const styles = StyleSheet.create({
   payDueTitle: {
     color: colors.primaryDark,
     flexShrink: 1,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '900',
   },
   payDueSubtitle: {
     color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
   },
   payDueButton: {
     alignItems: 'center',
@@ -1079,13 +1080,13 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     flexDirection: 'row',
     gap: 8,
-    marginTop: 14,
+    marginTop: 10,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 9,
   },
   payDueButtonText: {
     color: colors.onColor,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
   },
   reviewCard: {
@@ -1093,19 +1094,19 @@ const styles = StyleSheet.create({
     borderColor: colors.warningBorder,
     borderRadius: radii.card,
     borderWidth: 1,
-    marginBottom: 16,
-    padding: 18,
+    marginBottom: 12,
+    padding: 14,
   },
   reviewTitle: {
     color: colors.warningText,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '900',
   },
   reviewSubtitle: {
     color: colors.warningText,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
   },
   reviewButton: {
     alignItems: 'center',
@@ -1114,13 +1115,13 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     flexDirection: 'row',
     gap: 8,
-    marginTop: 14,
+    marginTop: 10,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 9,
   },
   reviewButtonText: {
     color: colors.onColor,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
   },
   errorCard: {
@@ -1161,8 +1162,8 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 16,
-    marginBottom: 32,
+    gap: 12,
+    marginBottom: 20,
   },
   statCard: {
     ...shadows.small,
@@ -1170,20 +1171,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 20,
     flex: 1,
-    minHeight: 144,
-    padding: 20,
+    minHeight: 110,
+    padding: 14,
   },
   statValue: {
     color: colors.textStrong,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
-    marginTop: 12,
+    marginTop: 8,
     textAlign: 'center',
   },
   statLabel: {
     color: colors.muted,
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 4,
+    textAlign: 'center',
+  },
+  statsCaption: {
+    color: colors.success,
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 16,
+    marginTop: -12,
     textAlign: 'center',
   },
   statDetail: {
@@ -1191,20 +1200,21 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     marginTop: 5,
+    paddingHorizontal: 8,
     textAlign: 'center',
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   sectionTitle: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
   },
   seeAll: {
@@ -1212,14 +1222,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   circleList: {
-    gap: 16,
+    gap: 12,
   },
   circleCard: {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
     borderRadius: 24,
     borderWidth: 1,
-    padding: 20,
+    padding: 16,
   },
   circleHeader: {
     alignItems: 'center',
@@ -1229,7 +1239,7 @@ const styles = StyleSheet.create({
   circleName: {
     color: colors.textStrong,
     flex: 1,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
     paddingRight: 12,
   },
@@ -1244,12 +1254,12 @@ const styles = StyleSheet.create({
   },
   progressText: {
     color: colors.primary,
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '900',
   },
   circleMeta: {
     color: colors.muted,
-    marginTop: 8,
+    marginTop: 6,
   },
   recipient: {
     color: colors.text,
@@ -1260,7 +1270,7 @@ const styles = StyleSheet.create({
     color: colors.success,
     fontSize: 12,
     fontWeight: '900',
-    marginTop: 10,
+    marginTop: 8,
   },
   emptyCard: {
     alignItems: 'center',
@@ -1284,7 +1294,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   actionButton: {
     alignItems: 'center',
@@ -1294,12 +1304,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     justifyContent: 'center',
-    minHeight: 58,
+    minHeight: 50,
     paddingHorizontal: 12,
   },
   actionText: {
     color: colors.onColor,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
   },
   secondaryAction: {

@@ -8,6 +8,8 @@
     "completed": "Round complete",
     "paused": "Round paused",
     "collecting": "Collecting",
+    "recorded": "Payout recorded",
+    "recordedDetail": "Contributions are closed",
     "ready": "Ready",
     "released": "Released",
     "unknown": "Round status unavailable"

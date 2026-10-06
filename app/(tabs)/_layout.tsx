@@ -39,9 +39,9 @@ export default function TabLayout() {
           width: '100%',
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '700',
-          lineHeight: 16,
+          lineHeight: 14,
         },
         headerShown: false,
       }}>

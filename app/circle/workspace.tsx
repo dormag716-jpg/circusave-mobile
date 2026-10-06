@@ -94,7 +94,7 @@ import {
   buildClaimInviteShareMessage,
   buildClaimInviteUrl,
 } from '@/lib/circles/claimInvite';
-import { isRoundPayoutLocked } from '@/lib/circles/roundPayoutLock';
+import { isRoundPayoutLocked, roundHeroCollectionChip } from '@/lib/circles/roundPayoutLock';
 import { copyText } from '@/lib/platform/clipboard';
 import {
   isCircleNotStarted,
@@ -140,6 +140,7 @@ import {
   buildManualContributionSubmitPayload,
   claimedPaymentMethodLabelKey,
   MAX_PAYMENT_REFERENCE_LENGTH,
+  ORGANIZER_RECORDED_PAID_NOTE,
 } from '@/lib/payments/contributionClaim';
 import {
   contributionStatusLabel,
@@ -1007,12 +1008,14 @@ function WorkspaceContent({
             ? recipient.full_name || recipient.name
             : t('rounds:recipient'),
         })
-      : displayPayoutReady
-        ? t('rounds:allConfirmed')
-        : roundStatusLabel(
-            roundWorkspace?.currentRoundStatus || circle.status,
-            t,
-          );
+      : roundPayoutLocked
+        ? t('rounds:status.recordedDetail')
+        : displayPayoutReady
+          ? t('rounds:allConfirmed')
+          : roundStatusLabel(
+              roundWorkspace?.currentRoundStatus || circle.status,
+              t,
+            );
   // ────────────────────────────────────────────────────────────────────────
 
   // Financial UI: backend viewerPermissions are authoritative (P0.5.2/P0.5.3).
@@ -1123,9 +1126,9 @@ function WorkspaceContent({
     try {
       await runMoneyMutation({
         mutate: () =>
+          // No payment method or reference: the organizer did not tell us either.
           submitContribution(token, circle.id, member.id, {
-            note: 'Marked paid by organizer.',
-            paymentMethod: 'cash',
+            note: ORGANIZER_RECORDED_PAID_NOTE,
           }),
         goal: 'submitted',
         loadAuthoritativeState: () => loadMemberMoneyState(member.id),
@@ -1707,6 +1710,10 @@ function WorkspaceContent({
     paymentSheet?.kind === 'mark_as_sent'
       ? resolveMarkAsSentTarget(memberContributionCard, paymentSheet.handId)
       : null;
+  const recordPaidOwn =
+    paymentSheet?.kind === 'record_paid' &&
+    Boolean(userId) &&
+    paymentSheet.member.userId === userId;
   const paymentDecisionSheets = (
     <>
       <DecisionSheet
@@ -1774,9 +1781,21 @@ function WorkspaceContent({
         onClose={() => setPaymentSheet(null)}
         icon="check-circle"
         iconTone="success"
-        title={t('contributions:workspace.review.recordPaidTitle')}
-        body={t('contributions:workspace.review.recordPaidBody')}
-        primaryLabel={t('contributions:workspace.recordPaid')}
+        title={t(
+          recordPaidOwn
+            ? 'contributions:workspace.review.recordOwnPaidTitle'
+            : 'contributions:workspace.review.recordPaidTitle',
+        )}
+        body={t(
+          recordPaidOwn
+            ? 'contributions:workspace.review.recordOwnPaidBody'
+            : 'contributions:workspace.review.recordPaidBody',
+        )}
+        primaryLabel={t(
+          recordPaidOwn
+            ? 'contributions:workspace.recordOwnPaid'
+            : 'contributions:workspace.recordPaid',
+        )}
         secondaryLabel={t('contributions:alerts.cancel')}
         busy={actionMemberId != null}
         onPrimary={() => {
@@ -2009,9 +2028,6 @@ function MemberContributionCard({
           <Text style={styles.memberDisclosure}>
             {contributionCopy(t, 'workspace.circuSaveDoesNotSend')}
           </Text>
-          <Text style={styles.memberDisclosure}>
-            {contributionCopy(t, 'workspace.organizerVerifiesAfterReport')}
-          </Text>
         </View>
       ) : null}
 
@@ -2023,9 +2039,6 @@ function MemberContributionCard({
               {awaitingHands.length === 1
                 ? awaitingHands[0].presentation.primaryLabel
                 : contributionCopy(t, 'manualPresentation.reported')}
-            </Text>
-            <Text style={styles.pendingConfirmationText}>
-              {contributionCopy(t, 'manualPresentation.waitingForOrganizer')}
             </Text>
             <Text style={styles.pendingConfirmationText}>
               {contributionCopy(t, 'workspace.reportedNotConfirmed')}
@@ -2414,6 +2427,11 @@ function RoundTab({
   }
 
   const payoutLockedOnly = roundPayoutLocked && !paused && !closed;
+  const collectionChip = roundHeroCollectionChip({
+    payoutReleased,
+    payoutLocked: roundPayoutLocked,
+    payoutReady: displayPayoutReady,
+  });
   const lifecycleBanner =
     paused || closed || roundPayoutLocked ? (
       <View
@@ -2532,11 +2550,14 @@ function RoundTab({
           </View>
           <View
             style={{
-              backgroundColor: payoutReleased
-                ? 'rgba(34,197,94,0.25)'
-                : displayPayoutReady
-                  ? 'rgba(245,158,11,0.3)'
-                  : 'rgba(138,98,52,0.9)',
+              backgroundColor:
+                collectionChip === 'released'
+                  ? 'rgba(34,197,94,0.25)'
+                  : collectionChip === 'ready'
+                    ? 'rgba(245,158,11,0.3)'
+                    : collectionChip === 'recorded'
+                      ? 'rgba(255,255,255,0.2)'
+                      : 'rgba(138,98,52,0.9)',
               paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 16,
@@ -2547,27 +2568,31 @@ function RoundTab({
           >
             <FontAwesome
               name={
-                payoutReleased
+                collectionChip === 'released'
                   ? 'check'
-                  : displayPayoutReady
-                    ? 'check-circle'
-                    : 'clock-o'
+                  : collectionChip === 'recorded'
+                    ? 'lock'
+                    : collectionChip === 'ready'
+                      ? 'check-circle'
+                      : 'clock-o'
               }
               size={14}
-              color={payoutReleased || displayPayoutReady ? colors.onColor : colors.warningBorder}
+              color={collectionChip === 'collecting' ? colors.warningBorder : colors.onColor}
             />
             <Text
               style={{
-                color: payoutReleased || displayPayoutReady ? colors.onColor : colors.warningBorder,
+                color: collectionChip === 'collecting' ? colors.warningBorder : colors.onColor,
                 fontSize: 13,
                 fontWeight: '600',
               }}
             >
-              {payoutReleased
+              {collectionChip === 'released'
                 ? t('rounds:status.released')
-                : displayPayoutReady
-                  ? t('rounds:status.ready')
-                  : t('rounds:status.collecting')}
+                : collectionChip === 'recorded'
+                  ? t('rounds:status.recorded')
+                  : collectionChip === 'ready'
+                    ? t('rounds:status.ready')
+                    : t('rounds:status.collecting')}
             </Text>
           </View>
         </View>
@@ -2814,6 +2839,8 @@ function RoundTab({
             language,
           );
           const isProcessing = processingMemberId === member.id;
+          const isOwnRow =
+            Boolean(viewerMember?.userId) && member.userId === viewerMember?.userId;
           const canMarkPaid =
             !financialActionsLocked &&
             canReviewContributions &&
@@ -2971,10 +2998,13 @@ function RoundTab({
                         >
                           <FontAwesome name="check-circle-o" size={14} color={colors.onColor} />
                           <Text style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}>
-                            {contributionCopy(t, 'workspace.recordPaid')}
+                            {contributionCopy(
+                              t,
+                              isOwnRow ? 'workspace.recordOwnPaid' : 'workspace.recordPaid',
+                            )}
                           </Text>
                         </Pressable>
-                        {canRemindMembers ? (
+                        {canRemindMembers && !isOwnRow ? (
                           <Pressable
                             style={{ flex: 1, backgroundColor: colors.surfaceMuted, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
                             disabled={isProcessing}
@@ -2988,7 +3018,12 @@ function RoundTab({
                         ) : null}
                       </View>
                       <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }}>
-                        {contributionCopy(t, 'workspace.review.recordPaidHelper')}
+                        {contributionCopy(
+                          t,
+                          isOwnRow
+                            ? 'workspace.review.recordOwnPaidHelper'
+                            : 'workspace.review.recordPaidHelper',
+                        )}
                       </Text>
                     </>
                   ) : null}

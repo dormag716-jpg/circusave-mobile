@@ -166,4 +166,16 @@ describe('Susu AI presentation', () => {
       /\[token, circleId, apiLocale, welcomeMessage, t\]/,
     );
   });
+
+  it('shows saved-chat context as a notice, not a load error', () => {
+    const source = readFileSync(
+      path.join(__dirname, '..', '..', '..', 'components', 'CircleAssistantPanel.tsx'),
+      'utf8',
+    );
+    expect(source).toMatch(/assistant:memory\.within/);
+    expect(source).toMatch(/styles\.memoryNoticeCard/);
+    expect(source).not.toMatch(
+      /assistant:memory\.within[\s\S]{0,240}historyErrorCard/,
+    );
+  });
 });

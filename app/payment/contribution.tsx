@@ -216,6 +216,21 @@ export default function ContributionPaymentScreen() {
   const dueHands = viewerHands.filter((hand) =>
     ['due', 'missed', 'rejected'].includes(hand.status),
   );
+  // Hands already reported (awaiting the organizer) or confirmed are settled here:
+  // they are never offered Mark as sent again. Hands still due keep the pay flow.
+  const reportedHands = viewerHands.filter((hand) =>
+    ['submitted', 'late'].includes(hand.status),
+  );
+  const confirmedHands = viewerHands.filter((hand) => hand.status === 'confirmed');
+  const settledState: 'reported' | 'confirmed' | null =
+    dueHands.length > 0
+      ? null
+      : reportedHands.length > 0
+        ? 'reported'
+        : confirmedHands.length > 0
+          ? 'confirmed'
+          : null;
+  const settledHands = settledState === 'reported' ? reportedHands : confirmedHands;
   const activeHandId =
     selectedHandId && dueHands.some((h) => h.id === selectedHandId)
       ? selectedHandId
@@ -465,15 +480,21 @@ export default function ContributionPaymentScreen() {
 
         <View style={styles.amountCard}>
           <Text style={styles.amountLabel}>
-            {viewerHands.length > 1
-              ? t('contributions:totalDue')
-              : t('contributions:contributionDue')}
+            {settledState === 'reported'
+              ? t('contributions:manualPresentation.reported')
+              : settledState === 'confirmed'
+                ? t('contributions:manualPresentation.confirmed')
+                : viewerHands.length > 1
+                  ? t('contributions:totalDue')
+                  : t('contributions:contributionDue')}
           </Text>
           <Text style={styles.amountText}>
             {formatCurrency(
               dueHands.length > 0
                 ? amountPerHand * dueHands.length
-                : totalOwedPerRound,
+                : settledState
+                  ? amountPerHand * settledHands.length
+                  : totalOwedPerRound,
               i18n.resolvedLanguage || i18n.language,
             )}
           </Text>
@@ -615,7 +636,43 @@ export default function ContributionPaymentScreen() {
           </Text>
         ) : null}
 
-        {rails.showManualRail ? (
+        {settledState ? (
+          <View
+            style={[
+              styles.railCard,
+              settledState === 'reported' && styles.pendingNotice,
+            ]}
+            accessibilityRole="summary"
+          >
+            <Text style={styles.railTitle}>
+              {settledState === 'reported'
+                ? contributionCopy(t, 'workspace.reportedBody')
+                : contributionCopy(t, 'workspace.confirmedBody')}
+            </Text>
+            {settledState === 'reported' ? (
+              <Text style={styles.railBody}>
+                {contributionCopy(t, 'workspace.reportedNotConfirmed')}
+              </Text>
+            ) : (
+              <Text style={styles.railBody}>
+                {contributionCopy(t, 'workspace.confirmedExplainer')}
+              </Text>
+            )}
+          </View>
+        ) : null}
+
+        {roundPayoutLocked && settledState ? (
+          <View style={styles.lockedNotice} accessibilityRole="alert">
+            <Text style={styles.lockedNoticeTitle}>
+              {t('contributions:roundPaidOut.title')}
+            </Text>
+            <Text style={styles.lockedNoticeBody}>
+              {t('contributions:roundPaidOut.body')}
+            </Text>
+          </View>
+        ) : null}
+
+        {rails.showManualRail && !settledState ? (
           <View style={styles.railCard}>
             <Text style={styles.railTitle}>
               {contributionCopy(t, 'rails.payOutsideTitle')}
@@ -1176,6 +1233,10 @@ const styles = StyleSheet.create({
     color: colors.onColor,
     fontSize: 17,
     fontWeight: '800',
+  },
+  pendingNotice: {
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
   },
   lockedNotice: {
     backgroundColor: colors.warningSoft,

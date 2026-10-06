@@ -280,6 +280,12 @@ export type BackendInvitePreview = {
   id: string;
   membersCount?: number;
   members_count?: number;
+  /** People who joined (claimed a hand). Absent on older backends. */
+  joinedMembersCount?: number;
+  /** Participating hands, claimed or not. Absent on older backends. */
+  plannedHandsCount?: number;
+  /** Planned hands nobody has claimed yet. Absent on older backends. */
+  unclaimedHandsCount?: number;
   name: string;
   circleCode?: string;
   organizerName?: string;

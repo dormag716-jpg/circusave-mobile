@@ -50,6 +50,14 @@
   "smartRemindersMemberSummary_other": "{{count}} manm · {{frequency}}",
   "culturalTerminology": "Tèm kiltirèl",
   "currentTerminology": "Tèm aktyèl yo: {{market}}",
+  "markets": {
+    "default": "Estanda",
+    "susu": "Susu",
+    "tanda": "Tanda",
+    "sol": "Sol",
+    "hagbad": "Hagbad",
+    "pardner": "Pardner"
+  },
   "testNotification": "Notifikasyon tès",
   "testNotificationSubtitle": "Pwograme yon konfimasyon lokal",
   "scheduled": "Pwograme",

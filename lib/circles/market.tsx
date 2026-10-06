@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuthSession } from '../auth/authContext';
 
-export type MarketType = 'default' | 'susu' | 'tanda' | 'sol' | 'hagbad' | 'pardner';
+import {
+  type MarketType,
+} from './marketTerminology';
+
+export { MARKET_TYPES, marketTerminologyKey, type MarketType } from './marketTerminology';
 
 type Dictionary = {
   circle: string;

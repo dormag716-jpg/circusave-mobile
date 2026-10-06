@@ -10,9 +10,10 @@
     "allCircles": "All circles"
   },
   "summary": {
-    "contributed": "Contributed",
-    "received": "Received",
-    "review": "To review"
+    "contributed": "Collected",
+    "received": "Paid out",
+    "review": "To review",
+    "scopeNote": "Totals cover every member of the circles shown, not only your own payments."
   },
   "groups": {
     "today": "Today",
@@ -40,6 +41,8 @@
   },
   "provenance": {
     "pending": "Reported · waiting for confirmation",
+    "reportedThenConfirmed": "Reported · later confirmed",
+    "reportedThenRejected": "Reported · later rejected",
     "confirmed": "Confirmed by organizer",
     "rejected": "Rejected by organizer"
   },

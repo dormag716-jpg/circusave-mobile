@@ -98,12 +98,14 @@ export default function CreateCircleGuideScreen() {
           </Text>
         </View>
 
-        <View style={styles.planNote}>
-          <FontAwesome name="info-circle" size={16} color={colors.primary} />
-          <Text style={styles.planNoteText}>
-            {t('landing.planNote')}
-          </Text>
-        </View>
+        {hasReachedLimit ? null : (
+          <View style={styles.planNote}>
+            <FontAwesome name="info-circle" size={16} color={colors.primary} />
+            <Text style={styles.planNoteText}>
+              {t('landing.planNote')}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.benefits}>
           <Benefit icon="lock" text={t('landing.ledger')} />
@@ -193,7 +195,7 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 100,
     paddingHorizontal: spacing.screenX,
-    paddingTop: 40,
+    paddingTop: 24,
   },
   hero: {
     alignItems: 'center',
@@ -238,8 +240,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   benefits: {
-    gap: 20,
-    marginBottom: 40,
+    gap: 16,
+    marginBottom: 20,
   },
   benefitRow: {
     alignItems: 'center',

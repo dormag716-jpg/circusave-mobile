@@ -8,11 +8,17 @@ import {
   type NotificationType,
 } from '../i18n/financial-presentation';
 import { colors } from '../shared/theme';
+import {
+  createHandledResponseTracker,
+  resolveNotificationTarget,
+} from './notificationTarget';
 
 export type NotificationResult =
   | { ok: true; token: string }
   | { ok: true; token: null }
   | { ok: false; reason: string };
+
+const handledResponses = createHandledResponseTracker();
 
 // Expo Go doesn't support push notifications — local schedule still works via
 // the raw expo-notifications module in development builds.
@@ -227,64 +233,39 @@ export async function setupNotificationListener(
 
   const Notifications = await import('expo-notifications');
 
-  const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data;
-    if (!data) return;
+  const handleResponse = (
+    response: import('expo-notifications').NotificationResponse,
+  ) => {
+    const request = response.notification.request;
+    const key = `${request.identifier}:${response.actionIdentifier}:${response.notification.date}`;
+    // The same tap can reach us twice: through the listener and through the
+    // cold-start read, or again when this setup runs after an auth change.
+    if (!handledResponses.markHandled(key)) return;
 
-    const circleId =
-      typeof data.circleId === 'string'
-        ? data.circleId
-        : typeof data.circle_id === 'string'
-          ? data.circle_id
-          : null;
-    const conversationId =
-      typeof data.conversationId === 'string'
-        ? data.conversationId
-        : conversationIdFromNotificationLink(
-            typeof data.link === 'string' ? data.link : null,
-          );
-    const notificationType =
-      typeof data.type === 'string'
-        ? data.type
-        : typeof data.notification_type === 'string'
-          ? data.notification_type
-          : null;
+    const target = resolveNotificationTarget(
+      (request.content.data ?? null) as Record<string, unknown> | null,
+    );
+    if (!target) return;
+    void onNavigate({
+      screen: target.screen,
+      circleId: target.circleId,
+      tab: target.tab,
+      conversationId: target.conversationId,
+    });
+  };
 
-    // Direct screen routing
-    if (typeof data.screen === 'string' && circleId) {
-      void onNavigate({
-        screen: data.screen,
-        circleId,
-        conversationId: conversationId || undefined,
-      });
-      return;
-    }
+  const subscription =
+    Notifications.addNotificationResponseReceivedListener(handleResponse);
 
-    // Action-based routing (Phase 5)
-    if (notificationType === 'swap_request') {
-      if (circleId) {
-        void onNavigate({ screen: 'workspace', circleId, tab: 'people' });
-      }
-    } else if (
-      notificationType === 'new_chat_message' ||
-      notificationType === 'chat_message'
-    ) {
-      if (circleId) {
-        void onNavigate({
-          screen: 'workspace',
-          circleId,
-          tab: 'chat',
-          conversationId: conversationId || undefined,
-        });
-      }
-    }
-  });
+  // A tap that launched the app from a killed state never reaches the listener
+  // above; the last response is only available through this getter.
+  const lastResponse = Notifications.getLastNotificationResponse();
+  if (lastResponse) {
+    handleResponse(lastResponse);
+    Notifications.clearLastNotificationResponse();
+  }
 
   return subscription;
 }
 
-export function conversationIdFromNotificationLink(link: string | null) {
-  if (!link) return null;
-  const match = link.match(/[?&]conversationId=([^&]+)/);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
-}
+export { conversationIdFromNotificationLink } from './notificationTarget';

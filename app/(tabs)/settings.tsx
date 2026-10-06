@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
 import { useOpenAssistant } from '@/components/useOpenAssistant';
+import { ASSISTANT_FAB_TAB_CONTENT_PADDING } from '@/lib/assistant/assistantFab';
 import { resetAssistantFabPlacement } from '@/lib/assistant/assistantFabStore';
 
 import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
@@ -20,7 +21,11 @@ import {
   type LanguagePreference,
 } from '@/lib/i18n/types';
 import { scheduleTestNotification } from '@/lib/platform/notifications';
-import { useMarket, type MarketType } from '@/lib/circles/market';
+import {
+  MARKET_TYPES,
+  marketTerminologyKey,
+  useMarket,
+} from '@/lib/circles/market';
 import { colors, radii, spacing } from '@/lib/shared/theme';
 
 export default function SettingsScreen() {
@@ -66,9 +71,7 @@ export default function SettingsScreen() {
 
   const displayName = session?.user.name ?? t('settings:title');
   const email = session?.user.email ?? t('settings:connectedSession');
-  const reliabilityScore = session?.user.reliabilityScore !== undefined
-    ? `${session.user.reliabilityScore}%`
-    : '--%';
+  const reliabilityScore = session?.user.reliabilityScore;
   const subscriptionSubtitle = isPremium
     ? t('settings:organizerProActive')
     : t('settings:freePlanUpgrade');
@@ -99,12 +102,14 @@ export default function SettingsScreen() {
               </View>
               <Text style={styles.email} numberOfLines={1}>{email}</Text>
 
-              <View style={styles.reliabilityBadge}>
-                <FontAwesome name="shield" size={12} color={colors.success} style={{ marginRight: 6 }} />
-                <Text style={styles.reliabilityText}>
-                  {t('settings:reliabilityScore', { score: reliabilityScore })}
-                </Text>
-              </View>
+              {typeof reliabilityScore === 'number' && Number.isFinite(reliabilityScore) ? (
+                <View style={styles.reliabilityBadge}>
+                  <FontAwesome name="shield" size={12} color={colors.success} style={{ marginRight: 6 }} />
+                  <Text style={styles.reliabilityText}>
+                    {t('settings:reliabilityScore', { score: `${reliabilityScore}%` })}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
@@ -216,7 +221,9 @@ export default function SettingsScreen() {
           <MenuItem
             icon="globe"
             title={t('settings:culturalTerminology')}
-            subtitle={t('settings:currentTerminology', { market: market.toUpperCase() })}
+            subtitle={t('settings:currentTerminology', {
+              market: t(`settings:${marketTerminologyKey(market)}`),
+            })}
             onPress={() => setModalVisible(true)}
           />
           <MenuItem
@@ -314,7 +321,7 @@ export default function SettingsScreen() {
               </Text>
               
               <ScrollView showsVerticalScrollIndicator={false}>
-                {(['default', 'susu', 'tanda', 'sol', 'hagbad', 'pardner'] as MarketType[]).map((m) => (
+                {MARKET_TYPES.map((m) => (
                   <Pressable
                     key={m}
                     style={[styles.marketOption, market === m && styles.marketOptionSelected]}
@@ -324,7 +331,7 @@ export default function SettingsScreen() {
                     }}
                   >
                     <Text style={[styles.marketOptionText, market === m && styles.marketOptionTextSelected]}>
-                      {m.toUpperCase()}
+                      {t(`settings:${marketTerminologyKey(m)}`)}
                     </Text>
                     {market === m && (
                       <FontAwesome name="check-circle" size={20} color={colors.primary} />
@@ -403,7 +410,7 @@ function MenuItem({ icon, title, subtitle, hint, badge, onPress, isFirst, isLast
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 100 },
+  content: { paddingBottom: ASSISTANT_FAB_TAB_CONTENT_PADDING },
 
   headerCard: { 
     backgroundColor: colors.card,

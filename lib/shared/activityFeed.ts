@@ -296,33 +296,102 @@ export function groupActivityByDay(
   return order.map((key) => buckets.get(key)!);
 }
 
+function activityInstant(entry: BackendActivity, index: number): number {
+  const parsed = Date.parse(entry.createdAt);
+  return Number.isFinite(parsed) ? parsed : index;
+}
+
+function activityAmount(entry: BackendActivity): number {
+  return typeof entry.amount === 'number' && Number.isFinite(entry.amount)
+    ? Math.abs(entry.amount)
+    : 0;
+}
+
+/**
+ * One contribution is the same circle, round, and member. Ledger rows that
+ * omit a member stay separate so unrelated events are not collapsed.
+ */
+function contributionSlotKey(entry: BackendActivity): string {
+  const member = String(entry.memberId || '').trim();
+  if (!member) return `entry:${entry.id}`;
+  const round = entry.round == null ? '' : String(entry.round);
+  return `${entry.circleId}|${round}|${member}`;
+}
+
+type ContributionSlot = {
+  confirmAt: number;
+  confirmAmount: number;
+  submitAt: number;
+  rejectAt: number;
+  reviewAt: number;
+};
+
+function emptyContributionSlot(): ContributionSlot {
+  return {
+    confirmAt: -1,
+    confirmAmount: 0,
+    submitAt: -1,
+    rejectAt: -1,
+    reviewAt: -1,
+  };
+}
+
+/**
+ * Totals describe the current outcome of each contribution, not the sum of
+ * every ledger event. A submitted row that was later confirmed counts once,
+ * as confirmed, and is not still "to review".
+ */
 export function summarizeActivity(items: BackendActivity[]): ActivitySummary {
-  let contributed = 0;
-  let received = 0;
-  let pendingReview = 0;
-  for (const entry of items) {
+  const slots = new Map<string, ContributionSlot>();
+  const payouts = new Map<string, { at: number; amount: number }>();
+
+  items.forEach((entry, index) => {
     const type = String(entry.type || '').toLowerCase();
-    const amount =
-      typeof entry.amount === 'number' && Number.isFinite(entry.amount)
-        ? Math.abs(entry.amount)
-        : 0;
-    if (
-      type.includes('contribution') &&
-      !type.includes('rejected') &&
-      !type.includes('missed')
-    ) {
-      contributed += amount;
-    }
+    const at = activityInstant(entry, index);
+    const amount = activityAmount(entry);
     if (type.includes('payout')) {
-      received += amount;
+      const roundKey = `${entry.circleId}|${entry.round ?? entry.id}`;
+      const previous = payouts.get(roundKey);
+      if (!previous || at >= previous.at) {
+        payouts.set(roundKey, { at, amount });
+      }
+      return;
     }
-    if (
-      (type.includes('review') && type.includes('required')) ||
-      (type.includes('contribution') && type.includes('submitted'))
+
+    const slotKey = contributionSlotKey(entry);
+    const slot = slots.get(slotKey) ?? emptyContributionSlot();
+    if (type.includes('contribution') && type.includes('confirmed')) {
+      if (at >= slot.confirmAt) {
+        slot.confirmAt = at;
+        slot.confirmAmount = amount;
+      }
+    } else if (type.includes('contribution') && type.includes('submitted')) {
+      if (at >= slot.submitAt) slot.submitAt = at;
+    } else if (
+      type.includes('contribution') &&
+      (type.includes('rejected') || type.includes('missed'))
     ) {
-      pendingReview += 1;
+      if (at >= slot.rejectAt) slot.rejectAt = at;
+    } else if (type.includes('review') && type.includes('required')) {
+      if (at >= slot.reviewAt) slot.reviewAt = at;
+    } else {
+      return;
     }
+    slots.set(slotKey, slot);
+  });
+
+  let contributed = 0;
+  let pendingReview = 0;
+  for (const slot of slots.values()) {
+    if (slot.confirmAt >= 0 && slot.confirmAt >= slot.rejectAt) {
+      contributed += slot.confirmAmount;
+    }
+    const openSubmit = slot.submitAt > slot.confirmAt && slot.submitAt > slot.rejectAt;
+    const openReview = slot.reviewAt > slot.confirmAt && slot.reviewAt > slot.rejectAt;
+    if (openSubmit || openReview) pendingReview += 1;
   }
+  let received = 0;
+  for (const payout of payouts.values()) received += payout.amount;
   return { contributed, received, pendingReview };
 }
 
@@ -711,4 +780,40 @@ export function presentActivityFeed(input: {
     }),
     emptyFilter: input.items.length > 0 && visible.length === 0,
   };
+}
+
+/**
+ * A "reported" row stays in the history, but once the organizer decided on that
+ * contribution it must not keep reading as waiting. Maps each reported row id to
+ * the first later decision for the same circle, round, and member.
+ */
+export function resolvedSubmissionOutcomes(
+  items: BackendActivity[],
+): Map<string, 'confirmed' | 'rejected'> {
+  const decisions = new Map<string, { at: number; outcome: 'confirmed' | 'rejected' }[]>();
+  items.forEach((entry, index) => {
+    const type = String(entry.type || '').toLowerCase();
+    if (!type.includes('contribution')) return;
+    const outcome = type.includes('confirmed')
+      ? 'confirmed'
+      : type.includes('rejected')
+        ? 'rejected'
+        : null;
+    if (!outcome) return;
+    const key = contributionSlotKey(entry);
+    const list = decisions.get(key) ?? [];
+    list.push({ at: activityInstant(entry, index), outcome });
+    decisions.set(key, list);
+  });
+
+  const resolved = new Map<string, 'confirmed' | 'rejected'>();
+  items.forEach((entry, index) => {
+    if (activityProvenanceKind(entry) !== 'pending') return;
+    const at = activityInstant(entry, index);
+    const next = (decisions.get(contributionSlotKey(entry)) ?? [])
+      .filter((decision) => decision.at >= at)
+      .sort((a, b) => a.at - b.at)[0];
+    if (next) resolved.set(entry.id, next.outcome);
+  });
+  return resolved;
 }

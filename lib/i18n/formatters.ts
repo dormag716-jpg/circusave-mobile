@@ -1,3 +1,5 @@
+import { calendarDaysFromToday } from '@/lib/payments/dashboardPayoutDates';
+
 import type { SupportedLanguage } from './types';
 
 const LANGUAGE_LOCALES: Record<SupportedLanguage, string> = {
@@ -96,11 +98,24 @@ export function formatRelativeDate(
   language: string,
   now = new Date(),
 ): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
+  // Date-only values are calendar days. `new Date("YYYY-MM-DD")` is UTC
+  // midnight, which rounds to the wrong day on this side of UTC.
+  const trimmed = String(value ?? '').trim();
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+  let days: number;
+  if (dateOnly) {
+    const calendarDays = calendarDaysFromToday(trimmed, now);
+    if (calendarDays === null) {
+      return value;
+    }
+    days = calendarDays;
+  } else {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    days = Math.round((date.getTime() - now.getTime()) / 86_400_000);
   }
-  const days = Math.round((date.getTime() - now.getTime()) / 86_400_000);
 
   const RelativeTimeFormatCtor = (
     typeof Intl !== 'undefined'

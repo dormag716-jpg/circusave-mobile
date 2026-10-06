@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { getActivity, getCircleDetail } from '@/lib/api';
+import { ASSISTANT_FAB_TAB_CONTENT_PADDING } from '@/lib/assistant/assistantFab';
 import { focusReloadOptions } from '@/lib/auth/authBoundary';
 import { shouldLoadActivity } from '@/lib/auth/activityAuthGate';
 import {
@@ -40,6 +41,7 @@ import {
   mergeActivityItems,
   normalizeActivityResponse,
   presentActivityFeed,
+  resolvedSubmissionOutcomes,
   resolveActivityMemberName,
   type ActivityTypeFilter,
 } from '@/lib/shared/activityFeed';
@@ -245,6 +247,8 @@ export default function ActivityScreen() {
       setRefreshing(false);
     }
   }, [loadActivity]);
+
+  const submissionOutcomes = useMemo(() => resolvedSubmissionOutcomes(entries), [entries]);
 
   const feed = useMemo(
     () =>
@@ -522,6 +526,9 @@ export default function ActivityScreen() {
             </View>
 
             {showSummary ? (
+              <Text style={styles.summaryScope}>{t('activity:summary.scopeNote')}</Text>
+            ) : null}
+            {showSummary ? (
               <View style={styles.summaryRow}>
                 {feed.summary.contributed > 0 ? (
                   <SummaryChip
@@ -676,7 +683,11 @@ export default function ActivityScreen() {
               index === section.data.length - 1 && styles.rowShellLast,
             ]}
           >
-            <ActivityCard entry={item} memberMap={memberMap} />
+            <ActivityCard
+              entry={item}
+              memberMap={memberMap}
+              resolvedOutcome={submissionOutcomes.get(item.id) ?? null}
+            />
             {index < section.data.length - 1 ? (
               <View style={styles.divider} />
             ) : null}
@@ -781,9 +792,11 @@ export default function ActivityScreen() {
 function ActivityCard({
   entry,
   memberMap,
+  resolvedOutcome,
 }: {
   entry: BackendActivity;
   memberMap: Record<string, string>;
+  resolvedOutcome: 'confirmed' | 'rejected' | null;
 }) {
   const { t, i18n } = useTranslation('activity');
   const language = i18n.resolvedLanguage || i18n.language;
@@ -858,7 +871,13 @@ function ActivityCard({
         </Text>
         {provenance ? (
           <Text style={styles.provenance}>
-            {t(`activity:provenance.${provenance}`)}
+            {provenance === 'pending' && resolvedOutcome
+              ? t(
+                  resolvedOutcome === 'confirmed'
+                    ? 'activity:provenance.reportedThenConfirmed'
+                    : 'activity:provenance.reportedThenRejected',
+                )
+              : t(`activity:provenance.${provenance}`)}
           </Text>
         ) : null}
       </View>
@@ -925,7 +944,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 100,
+    paddingBottom: ASSISTANT_FAB_TAB_CONTENT_PADDING,
     paddingHorizontal: spacing.screenX,
     paddingTop: 20,
   },
@@ -949,6 +968,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 15,
     marginTop: 4,
+  },
+  summaryScope: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 8,
   },
   summaryRow: {
     flexDirection: 'row',

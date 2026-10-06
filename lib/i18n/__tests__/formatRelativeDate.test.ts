@@ -123,7 +123,17 @@ describe('formatRelativeDate', () => {
     });
   });
 
+  test('date-only values use the local calendar day', () => {
+    expect(formatRelativeDate('2026-10-05', 'en', new Date(2026, 9, 6, 7, 31, 0))).toBe(
+      'yesterday',
+    );
+    expect(formatRelativeDate('2026-12-14', 'en', new Date(2026, 9, 6, 7, 31, 0))).toBe(
+      'in 69 days',
+    );
+  });
+
   test('invalid date remains safe', () => {
+    expect(formatRelativeDate('2026-02-31', 'en', NOW)).toBe('2026-02-31');
     expect(formatRelativeDate('not-a-date', 'en', NOW)).toBe('not-a-date');
     expect(() => formatRelativeDate('not-a-date', 'en', NOW)).not.toThrow();
   });

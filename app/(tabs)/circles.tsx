@@ -39,6 +39,10 @@ import { buildOpenCircleCapacity } from '@/lib/circles/circleCapacity';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import { formatHandsPeopleMetrics } from '@/lib/circles/circleLifecycleCopy';
 import {
+  ASSISTANT_FAB_MARGIN,
+  ASSISTANT_FAB_SIZE,
+} from '@/lib/assistant/assistantFab';
+import {
   circleWorkspaceHref,
   completedCirclesHref,
   createCircleHref,
@@ -829,7 +833,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 120,
+    // Clears the create button, which sits above the assistant button.
+    paddingBottom: 120 + ASSISTANT_FAB_SIZE + ASSISTANT_FAB_MARGIN,
     paddingHorizontal: spacing.screenX,
     paddingTop: 20,
   },
@@ -1059,7 +1064,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: 34,
-    bottom: 24,
+    // The assistant button uses this same corner. Keep the create/continue
+    // button one button-height above it, with a small gap.
+    bottom: 24 + 68 + ASSISTANT_FAB_MARGIN,
     elevation: 8,
     height: 68,
     justifyContent: 'center',

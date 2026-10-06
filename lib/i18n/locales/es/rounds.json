@@ -8,6 +8,8 @@
     "completed": "Ronda completada",
     "paused": "Ronda en pausa",
     "collecting": "Recaudando",
+    "recorded": "Pago registrado",
+    "recordedDetail": "Los aportes están cerrados",
     "ready": "Lista",
     "released": "Entregado",
     "unknown": "Estado de la ronda no disponible"

@@ -22,3 +22,21 @@ export function isRoundPayoutLocked(...states: RoundPayoutState[]): boolean {
     (state) => state?.payoutRecorded === true || state?.payoutReleased === true,
   );
 }
+
+/**
+ * Hero status chip for the current round. A recorded payout that is not yet
+ * marked released must not keep the in-progress "Collecting" label. Released
+ * still wins, and this never grants a financial action.
+ */
+export type RoundHeroChip = 'released' | 'recorded' | 'ready' | 'collecting';
+
+export function roundHeroCollectionChip(input: {
+  payoutReleased: boolean;
+  payoutLocked: boolean;
+  payoutReady: boolean;
+}): RoundHeroChip {
+  if (input.payoutReleased) return 'released';
+  if (input.payoutLocked) return 'recorded';
+  if (input.payoutReady) return 'ready';
+  return 'collecting';
+}

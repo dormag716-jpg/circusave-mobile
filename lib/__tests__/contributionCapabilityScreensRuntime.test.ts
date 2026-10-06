@@ -174,9 +174,14 @@ jest.mock('../platform/notifications', () => ({
   scheduleTestNotification: jest.fn(),
 }));
 
-jest.mock('../circles/market', () => ({
-  useMarket: () => ({ market: 'us', setMarket: jest.fn() }),
-}));
+jest.mock('../circles/market', () => {
+  const terminology = jest.requireActual('../circles/marketTerminology');
+  return {
+    useMarket: () => ({ market: 'us', setMarket: jest.fn() }),
+    MARKET_TYPES: terminology.MARKET_TYPES,
+    marketTerminologyKey: terminology.marketTerminologyKey,
+  };
+});
 
 const TestRenderer: any = require('react-test-renderer');
 const SettingsScreen: typeof import('../../app/(tabs)/settings').default =

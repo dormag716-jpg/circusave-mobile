@@ -22,6 +22,7 @@ import {
   normalizeActivityResponse,
   presentActivityFeed,
   resolveActivityMemberName,
+  resolvedSubmissionOutcomes,
   shouldShowActivityLoadMore,
   shouldShowActivityUpgrade,
   summarizeActivity,
@@ -286,11 +287,49 @@ describe('filters, grouping, and summaries', () => {
     expect(groups[0].entries[0].id).toBe('t');
   });
 
-  test('summarizes contributed, received, and pending review', () => {
+  test('counts a confirmed contribution once and leaves unresolved reports in review', () => {
     expect(summarizeActivity(items)).toEqual({
-      contributed: 100,
+      contributed: 50,
       received: 400,
-      pendingReview: 2,
+      pendingReview: 0,
+    });
+    expect(
+      summarizeActivity([
+        ...items,
+        activity({
+          id: 'open-submit',
+          type: 'contribution_submitted',
+          amount: 25,
+          memberId: 'member-2',
+          createdAt: '2026-09-03T16:00:00.000Z',
+        }),
+        activity({
+          id: 'rejected-submit',
+          type: 'contribution_submitted',
+          amount: 25,
+          memberId: 'member-3',
+          createdAt: '2026-09-03T15:00:00.000Z',
+        }),
+        activity({
+          id: 'rejected',
+          type: 'contribution_rejected',
+          amount: 25,
+          memberId: 'member-3',
+          createdAt: '2026-09-03T15:05:00.000Z',
+        }),
+        activity({
+          id: 'payout-again',
+          type: 'payout_completed',
+          amount: 400,
+          circleId: 'circle-2',
+          round: 2,
+          createdAt: '2026-08-21T16:00:00.000Z',
+        }),
+      ]),
+    ).toEqual({
+      contributed: 50,
+      received: 400,
+      pendingReview: 1,
     });
   });
 
@@ -560,5 +599,45 @@ describe('activity PDF report', () => {
     ).toBe(false);
     expect(isActivityExportPartial(true)).toBe(true);
     expect(isActivityExportPartial(false)).toBe(false);
+  });
+});
+
+describe('resolvedSubmissionOutcomes', () => {
+  const reported = (id: string, memberId: string, createdAt: string) =>
+    activity({
+      id,
+      type: 'contribution_submitted',
+      memberId,
+      createdAt,
+      verificationStatus: 'pending_organizer_confirmation',
+    });
+
+  test('marks a reported row as later confirmed without removing it', () => {
+    const items = [
+      activity({ id: 'c1', type: 'contribution_confirmed', memberId: 'm1', createdAt: '2026-09-02T16:00:00.000Z' }),
+      reported('s1', 'm1', '2026-09-02T15:00:00.000Z'),
+    ];
+    const outcomes = resolvedSubmissionOutcomes(items);
+    expect(outcomes.get('s1')).toBe('confirmed');
+    expect(items).toHaveLength(2);
+  });
+
+  test('keeps a report with no decision as waiting, and does not cross members', () => {
+    const items = [
+      reported('s1', 'm1', '2026-09-02T15:00:00.000Z'),
+      activity({ id: 'c2', type: 'contribution_confirmed', memberId: 'm2', createdAt: '2026-09-02T16:00:00.000Z' }),
+    ];
+    expect(resolvedSubmissionOutcomes(items).has('s1')).toBe(false);
+  });
+
+  test('a rejection resolves only the report before it; a later re-report stays waiting', () => {
+    const items = [
+      reported('s1', 'm1', '2026-09-02T15:00:00.000Z'),
+      activity({ id: 'r1', type: 'contribution_rejected', memberId: 'm1', createdAt: '2026-09-02T16:00:00.000Z' }),
+      reported('s2', 'm1', '2026-09-02T17:00:00.000Z'),
+    ];
+    const outcomes = resolvedSubmissionOutcomes(items);
+    expect(outcomes.get('s1')).toBe('rejected');
+    expect(outcomes.has('s2')).toBe(false);
   });
 });

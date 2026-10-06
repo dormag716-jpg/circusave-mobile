@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 
-import { isRoundPayoutLocked } from '../roundPayoutLock';
+import { isRoundPayoutLocked, roundHeroCollectionChip } from '../roundPayoutLock';
 
 describe('round payout lock', () => {
   it('locks a round whose payout is recorded', () => {
@@ -33,6 +33,45 @@ describe('round payout lock', () => {
   });
 });
 
+describe('round hero status after a payout is recorded', () => {
+  it('does not keep the collecting label when a payout exists but is not released', () => {
+    expect(
+      roundHeroCollectionChip({
+        payoutReleased: false,
+        payoutLocked: true,
+        payoutReady: false,
+      }),
+    ).toBe('recorded');
+  });
+
+  it('keeps released ahead of the recorded lock', () => {
+    expect(
+      roundHeroCollectionChip({
+        payoutReleased: true,
+        payoutLocked: true,
+        payoutReady: true,
+      }),
+    ).toBe('released');
+  });
+
+  it('still says collecting only when no payout is recorded', () => {
+    expect(
+      roundHeroCollectionChip({
+        payoutReleased: false,
+        payoutLocked: false,
+        payoutReady: false,
+      }),
+    ).toBe('collecting');
+    expect(
+      roundHeroCollectionChip({
+        payoutReleased: false,
+        payoutLocked: false,
+        payoutReady: true,
+      }),
+    ).toBe('ready');
+  });
+});
+
 describe('screens stop offering actions the backend will refuse on a paid-out round', () => {
   const root = path.join(__dirname, '..', '..', '..');
   const read = (...p: string[]) => readFileSync(path.join(root, ...p), 'utf8');
@@ -46,6 +85,9 @@ describe('screens stop offering actions the backend will refuse on a paid-out ro
     expect(workspace).toMatch(/!roundPayoutLocked &&\s*canShowBackendGatedAction/);
     expect(workspace).toMatch(/contributions:roundPaidOut\.title/);
     expect(workspace).toMatch(/contributions:roundPaidOut\.body/);
+    expect(workspace).toContain('roundHeroCollectionChip');
+    expect(workspace).toContain("t('rounds:status.recorded')");
+    expect(workspace).toContain("t('rounds:status.recordedDetail')");
   });
 
   it('the dashboard does not prompt to pay or verify on a paid-out round', () => {

@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   TextInput,
   View,
@@ -34,6 +35,8 @@ import { dashboardHref } from '@/lib/platform/navigation';
 import {
   buildPlannedHandClaimAcknowledgment,
   canSubmitPlannedHandClaim,
+  plannedHandClaimStage,
+  resolveJoinPreviewCounts,
 } from '@/lib/circles/plannedHandClaim';
 import { colors, spacing } from '@/lib/shared/theme';
 
@@ -121,6 +124,14 @@ export default function JoinCircleScreen() {
       setClaimAckChecked(false);
     }
   }
+
+  const { fontScale, width: windowWidth } = useWindowDimensions();
+  // Large text or a narrow screen: stack the stats so labels never break mid-word.
+  const stackStats = fontScale > 1.15 || windowWidth < 340;
+  const afterStart = preview ? plannedHandClaimStage(preview.status) === 'afterStart' : false;
+  const previewCounts = preview
+    ? resolveJoinPreviewCounts(preview)
+    : ({ kind: 'legacy', total: null } as const);
 
   return (
     <SafeAreaView style={sty.screen} edges={['top', 'left', 'right']}>
@@ -223,10 +234,10 @@ export default function JoinCircleScreen() {
               </View>
 
               {/* Stats row */}
-              <View style={sty.stats}>
+              <View style={[sty.stats, stackStats && sty.statsStacked]}>
                 <View style={sty.stat}>
                   <FontAwesome name="dollar" size={13} color={colors.primary} />
-                  <View style={{ marginLeft: 8 }}>
+                  <View style={sty.statBody}>
                     <Text style={sty.statLbl}>{t('contribution')}</Text>
                     <Text style={sty.statVal}>
                       {formatPreviewAmount(
@@ -236,10 +247,10 @@ export default function JoinCircleScreen() {
                     </Text>
                   </View>
                 </View>
-                <View style={sty.divider} />
+                {stackStats ? null : <View style={sty.divider} />}
                 <View style={sty.stat}>
                   <FontAwesome name="refresh" size={13} color={colors.primary} />
-                  <View style={{ marginLeft: 8 }}>
+                  <View style={sty.statBody}>
                     <Text style={sty.statLbl}>{t('frequency')}</Text>
                     <Text style={sty.statVal}>
                       {t(`frequencyValue.${String(preview.frequency).toLowerCase()}`, {
@@ -248,37 +259,54 @@ export default function JoinCircleScreen() {
                     </Text>
                   </View>
                 </View>
-                <View style={sty.divider} />
+                {stackStats ? null : <View style={sty.divider} />}
                 <View style={sty.stat}>
                   <FontAwesome name="users" size={13} color={colors.primary} />
-                  <View style={{ marginLeft: 8 }}>
-                    <Text style={sty.statLbl}>{t('members')}</Text>
+                  <View style={sty.statBody}>
+                    <Text style={sty.statLbl}>
+                      {previewCounts.kind === 'split' ? t('joined') : t('members')}
+                    </Text>
                     <Text style={sty.statVal}>
-                      {preview.membersCount ?? preview.members_count ?? '\u2014'}
+                      {previewCounts.kind === 'split'
+                        ? previewCounts.joined
+                        : previewCounts.total ?? '—'}
                     </Text>
                   </View>
                 </View>
               </View>
+
+              {previewCounts.kind === 'split' ? (
+                <Text style={sty.handsSummary}>
+                  {t('handsSummary', {
+                    count: previewCounts.hands,
+                    unclaimed: previewCounts.unclaimed,
+                  })}
+                </Text>
+              ) : null}
 
               {/* Conditional claim disclosure — backend decides claim vs pending */}
               <View style={sty.infoBanner}>
                 <FontAwesome name="info-circle" size={14} color={colors.info} />
                 <Text style={sty.infoTxt}>{t('claimDisclosureConditional')}</Text>
               </View>
-              <Text style={sty.disclosureBody}>{t('claimDisclosureBody')}</Text>
+              <Text style={sty.disclosureBody}>
+                {t(afterStart ? 'claimDisclosureBodyStarted' : 'claimDisclosureBody')}
+              </Text>
               <Pressable
                 style={sty.ackRow}
                 onPress={() => setClaimAckChecked((value) => !value)}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: claimAckChecked }}
-                accessibilityLabel={t('claimAckLabel')}
+                accessibilityLabel={t(afterStart ? 'claimAckLabelStarted' : 'claimAckLabel')}
               >
                 <View style={[sty.checkbox, claimAckChecked && sty.checkboxChecked]}>
                   {claimAckChecked ? (
                     <FontAwesome name="check" size={12} color={colors.onColor} />
                   ) : null}
                 </View>
-                <Text style={sty.ackLabel}>{t('claimAckLabel')}</Text>
+                <Text style={sty.ackLabel}>
+                  {t(afterStart ? 'claimAckLabelStarted' : 'claimAckLabel')}
+                </Text>
               </Pressable>
 
               {/* Join button — disabled until provisional claim acknowledgment */}
@@ -507,7 +535,9 @@ const sty = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  statsStacked: { flexDirection: 'column', alignItems: 'stretch', gap: 12 },
   stat: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  statBody: { marginLeft: 8, flex: 1, flexShrink: 1 },
   divider: {
     width: 1,
     height: 36,
@@ -525,6 +555,13 @@ const sty = StyleSheet.create({
     fontWeight: '900',
     color: colors.textStrong,
     marginTop: 2,
+  },
+  handsSummary: {
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: '600',
+    marginTop: -6,
+    marginBottom: 14,
   },
   infoBanner: {
     flexDirection: 'row',
