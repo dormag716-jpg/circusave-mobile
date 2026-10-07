@@ -19,6 +19,7 @@ import {
 import type { AuthResponse } from '../api';
 import {
   flushPendingPushTokenUnregister,
+  ensurePushTokenForRestoredSession,
   registerPushTokenForSession,
   unregisterPushTokenForLogout,
 } from '../platform/pushTokenLifecycle';
@@ -83,6 +84,15 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       setSession(nextSession);
       setStatus(nextSession ? 'authenticated' : 'unauthenticated');
       setError(null);
+      const restoredAuthToken = String(nextSession?.session.token || '').trim();
+      if (restoredAuthToken) {
+        // A restored session never went through login, so register this device
+        // for push if it is not yet. Background and nonfatal, like login's.
+        void ensurePushTokenForRestoredSession(
+          restoredAuthToken,
+          () => generation === restoreGeneration.current,
+        ).catch(() => {});
+      }
       return nextSession;
     } catch (refreshError) {
       if (generation !== restoreGeneration.current) {

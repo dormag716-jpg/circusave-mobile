@@ -32,6 +32,8 @@ type PushTokenLifecycleDependencies = {
 
 export type PushRegistrationResult =
   | 'registered'
+  | 'already-registered'
+  | 'superseded'
   | 'permission-denied-or-unavailable'
   | 'pending-cleanup';
 
@@ -94,6 +96,9 @@ export function createPushTokenLifecycle(
   dependencies: PushTokenLifecycleDependencies,
 ) {
   let operationTail: Promise<void> = Promise.resolve();
+  // The session whose push registration is known good in this app process, so a
+  // restored session is checked once instead of on every foreground.
+  let registeredForAuthToken: string | null = null;
 
   function exclusive<T>(operation: () => Promise<T>): Promise<T> {
     const run = operationTail.then(operation, operation);
@@ -157,12 +162,54 @@ export function createPushTokenLifecycle(
         }
         await dependencies.registerRemote(authToken, result.token);
         await dependencies.writeRegisteredToken(result.token);
+        registeredForAuthToken = authToken;
+        return 'registered';
+      });
+    },
+
+    /**
+     * For a session that was restored rather than just created by a login (a
+     * login already registers). Registers this device only when it is not
+     * registered yet, and never asks for notification permission: it needs
+     * permission to be granted already. A token that is already stored and
+     * unchanged costs no network request. `isCurrent` lets the caller drop the
+     * work if a login, logout or newer restore started in the meantime.
+     */
+    ensureRegisteredForSession(
+      authToken: string,
+      isCurrent: () => boolean = () => true,
+    ): Promise<PushRegistrationResult> {
+      return exclusive(async () => {
+        if (!isCurrent()) {
+          return 'superseded';
+        }
+        if (registeredForAuthToken === authToken) {
+          return 'already-registered';
+        }
+        if (!(await claimAndClearPendingWithCurrentSession(authToken))) {
+          return 'pending-cleanup';
+        }
+        const existing = await dependencies.readExistingPushToken();
+        if (!existing.ok || existing.token === null) {
+          return 'permission-denied-or-unavailable';
+        }
+        if ((await dependencies.readRegisteredToken()) === existing.token) {
+          registeredForAuthToken = authToken;
+          return 'already-registered';
+        }
+        if (!isCurrent()) {
+          return 'superseded';
+        }
+        await dependencies.registerRemote(authToken, existing.token);
+        await dependencies.writeRegisteredToken(existing.token);
+        registeredForAuthToken = authToken;
         return 'registered';
       });
     },
 
     unregisterForLogout(authToken: string): Promise<PushUnregisterResult> {
       return exclusive(async () => {
+        registeredForAuthToken = null;
         let pushToken = await dependencies.readRegisteredToken();
         if (!pushToken) {
           const existing = await dependencies.readExistingPushToken();
@@ -233,4 +280,6 @@ const lifecycle = createPushTokenLifecycle({
 export const flushPendingPushTokenUnregister =
   lifecycle.flushPendingUnregister;
 export const registerPushTokenForSession = lifecycle.registerForSession;
+export const ensurePushTokenForRestoredSession =
+  lifecycle.ensureRegisteredForSession;
 export const unregisterPushTokenForLogout = lifecycle.unregisterForLogout;
