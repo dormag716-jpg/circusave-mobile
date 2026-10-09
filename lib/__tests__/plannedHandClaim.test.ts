@@ -56,7 +56,24 @@ describe('planned hand claim acknowledgment (CS-006)', () => {
     expect(enJoin.claimDisclosureBody).toMatch(/does not authorize a payment/i);
     expect(enJoin.claimDisclosureBody).toMatch(/payout order is not final/i);
     expect(enJoin.claimAckLabel).toMatch(/provisional/i);
-    expect(enJoin.claimAckLabel).toMatch(/final acceptance will be required/i);
+    expect(enJoin.claimAckLabel).toMatch(/not a final agreement/i);
+  });
+
+  it('does not promise an acceptance step the backend never requires before start', () => {
+    // The backend starts a circle on the organizer's own checks and confirmations;
+    // it does not wait for members to accept anything. The pre-start claim copy
+    // must describe what is true: a provisional claim, a payout order that can
+    // still change, and details a member can review.
+    const promises =
+      /final acceptance|will be required|review and accept|revisar[áa]s y aceptar[áa]s|se requerir|aceptaci[oó]n final|revize epi aksepte|akseptasyon final|ap obligatwa/i;
+    for (const pack of [enJoin, esJoin, htJoin, enInvite, esInvite, htInvite]) {
+      expect(String(pack.claimDisclosureBody || '')).not.toMatch(promises);
+      expect(String(pack.claimAckLabel || '')).not.toMatch(promises);
+      // It still says the claim is provisional and not a final agreement.
+      expect(String(pack.claimAckLabel || '')).toMatch(
+        /not a final agreement|no es un acuerdo final|pa yon ak[òo] final/i,
+      );
+    }
   });
 });
 
