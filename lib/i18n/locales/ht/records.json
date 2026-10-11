@@ -1,0 +1,166 @@
+{
+  "title": "Dosye",
+  "disclaimer": "Dosye yo se pou swiv aktivite CircuSave sèlman; se pa dokiman labank, taks, legal, ni revni.",
+  "segments": {
+    "overview": "Rezime",
+    "contributions": "Kontribisyon",
+    "payouts": "Peman",
+    "rounds": "Wonn",
+    "documents": "Dokiman"
+  },
+  "overview": {
+    "totalsTitle": "Total gwoup la",
+    "expected": "Atann jiska prezan",
+    "confirmed": "Konfime",
+    "remainingDue": "Rès pou peye",
+    "paidOut": "Peye deja",
+    "currentRound": "Wonn kounye a",
+    "roundNumber": "Wonn {{number}}",
+    "dueOn": "Dwe {{date}}",
+    "needsReview_one": "{{count}} peman ap tann revizyon ou",
+    "needsReview_other": "{{count}} peman ap tann revizyon ou",
+    "needsReviewNone": "Pa gen peman k ap tann revizyon",
+    "reviewInRound": "Revize nan Wonn",
+    "reviewInRoundA11y": "Louvri onglè Wonn pou revize peman yo",
+    "yourRecords": "Dosye ou yo",
+    "nextContribution": "Pwochen kontribisyon",
+    "lastConfirmed": "Dènye konfime",
+    "nothingYet": "Anyen pou kounye a",
+    "openRecordA11y": "Louvri dosye {{reference}}"
+  },
+  "list": {
+    "loading": "N ap chaje dosye yo",
+    "loadError": "Nou pa t kapab chaje dosye yo.",
+    "retry": "Eseye ankò",
+    "loadMore": "Montre plis",
+    "roundHeading": "Wonn {{number}}",
+    "all": "Tout",
+    "filterA11y": "Montre dosye: {{status}}",
+    "emptyContributions": "Poko gen dosye kontribisyon.",
+    "emptyPayouts": "Poko gen dosye peman.",
+    "emptyRounds": "Poko gen dosye wonn.",
+    "emptyFiltered": "Pa gen dosye ki koresponn ak filtè sa a.",
+    "openRecordA11y": "Louvri dosye {{reference}}"
+  },
+  "status": {
+    "contribution": {
+      "due": "Dwe",
+      "submitted": "Voye",
+      "confirmed": "Konfime",
+      "rejected": "Rejte",
+      "late": "An reta",
+      "missed": "Rate",
+      "unknown": "Anrejistre"
+    },
+    "payout": {
+      "scheduled": "Pwograme",
+      "released": "Peye",
+      "unknown": "Anrejistre"
+    },
+    "round": {
+      "open": "Ouvè",
+      "closed": "Fèmen",
+      "unknown": "Anrejistre",
+      "upcoming": "Pwochen"
+    }
+  },
+  "verification": {
+    "title": "Verifikasyon",
+    "verified": "Òganizatè a verifye li",
+    "rejected": "Òganizatè a rejte li",
+    "pending": "L ap tann revizyon òganizatè a",
+    "unverified": "Pa verifye",
+    "reopened": "Reouvri pou yon nouvo rapò",
+    "verifiedOn": "Verifye nan dat",
+    "rejectedOn": "Rejte nan dat",
+    "reason": "Rezon"
+  },
+  "position": "Pozisyon {{number}}",
+  "memberFallback": "Manm",
+  "row": {
+    "recipient": "Moun k ap resevwa: {{name}}",
+    "confirmedOf": "{{confirmed}} sou {{total}} konfime",
+    "scheduledOn": "Pwograme {{date}}",
+    "releasedOn": "Peye {{date}}",
+    "dueOn": "Dwe {{date}}"
+  },
+  "detail": {
+    "kind": {
+      "contribution": "Dosye kontribisyon",
+      "payout": "Dosye peman",
+      "round": "Dosye wonn"
+    },
+    "close": "Fèmen",
+    "loading": "N ap chaje dosye a",
+    "loadError": "Nou pa t kapab chaje dosye sa a.",
+    "retry": "Eseye ankò",
+    "recordNumber": "Nimewo dosye",
+    "detailsTitle": "Detay",
+    "round": "Wonn",
+    "member": "Pozisyon",
+    "recipient": "Moun k ap resevwa",
+    "expected": "Montan ki atann",
+    "netPaid": "Peye net",
+    "refunded": "Ranbouse",
+    "remainingDue": "Rès pou peye",
+    "method": "Metòd peman",
+    "reference": "Referans peman",
+    "note": "Nòt",
+    "dueDate": "Dat limit",
+    "scheduledDate": "Dat pwograme",
+    "released": "Peye",
+    "opened": "Louvri",
+    "closed": "Fèmen",
+    "expectedPot": "Pòt ki atann",
+    "funded": "Lajan konfime",
+    "contributionsTitle": "Kontribisyon",
+    "summaryOnly": "Se sèlman pozisyon, montan, eta ak dat peman sa a ki parèt.",
+    "relatedTitle": "Dosye ki gen rapò",
+    "relatedPayout": "Dosye peman",
+    "relatedRound": "Dosye wonn",
+    "reviewInRound": "Revize nan Wonn",
+    "amount": "Montan",
+    "download": "Telechaje dosye a",
+    "downloadPreparing": "N ap prepare dokiman an",
+    "downloadError": "Nou pa t kapab prepare dokiman an. Tanpri eseye ankò."
+  },
+  "history": {
+    "title": "Istwa dosye a",
+    "empty": "Pa gen istwa anrejistre pou dosye sa a.",
+    "event": {
+      "submitted": "Voye",
+      "confirmed": "Konfime",
+      "rejected": "Rejte",
+      "reopened": "Reouvri",
+      "late": "Make an reta",
+      "missed": "Make rate",
+      "payoutReleased": "Peman fèt",
+      "roundStarted": "Wonn kòmanse",
+      "roundClosed": "Wonn fèmen",
+      "cycleCompleted": "Gwoup la fini",
+      "recorded": "Anrejistre"
+    },
+    "actor": {
+      "organizer": "Òganizatè",
+      "member": "Manm",
+      "system": "CircuSave"
+    },
+    "by": "pa {{actor}}",
+    "showAll": "Montre tout {{count}}",
+    "showLess": "Montre mwens"
+  },
+  "document": {
+    "shareTitle": "Pataje dokiman dosye a",
+    "savedTitle": "Dokiman sove",
+    "savedBody": "Pataje pa disponib sou aparèy sa a. {{filename}} sove."
+  },
+  "documents": {
+    "type": {
+      "statement": "Deklarasyon manm",
+      "contribution": "Dosye kontribisyon",
+      "payout": "Dosye peman",
+      "round": "Dosye wonn"
+    },
+    "superseded": "Ranplase"
+  }
+}

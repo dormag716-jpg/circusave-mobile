@@ -89,5 +89,14 @@
     "circle": "Circle",
     "round": "Round",
     "amount": "Amount"
-  }
+  },
+  "eventsAnon": {
+    "contribution_submitted": "A member submitted a contribution for Round {{round}}.",
+    "contribution_confirmed": "A member's contribution for Round {{round}} was confirmed.",
+    "contribution_rejected": "A member's contribution for Round {{round}} was rejected.",
+    "contribution_missed": "A member missed the Round {{round}} contribution.",
+    "payout_released": "A member received the Round {{round}} payout.",
+    "payment_review_required": "A payment needs your review."
+  },
+  "aMember": "A member"
 }

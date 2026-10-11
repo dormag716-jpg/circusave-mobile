@@ -1,10 +1,8 @@
 /**
- * Circle Records statement center.
+ * Member statements and saved statement documents (the Documents segment of Records).
  * Financial values come only from backend list/snapshot/PDF endpoints.
  */
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { File, Paths } from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import {
   useCallback,
   useEffect,
@@ -23,7 +21,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,25 +34,16 @@ import {
   getMemberStatementSnapshotForUser,
   getMemberStatementsIndex,
   getStatementDocuments,
-  type BackendCircleMember,
-  type BackendLedgerEntry,
-  type BackendWalletSnapshot,
   type MemberStatementIndexRow,
   type MemberStatementSnapshot,
   type MemberStatementsIndex,
   type StatementDocumentSummary,
   type StatementPeriodInput,
 } from '@/lib/api';
+import { documentTypeKey } from '@/lib/records/recordsPresentation';
+import { saveAndSharePdf } from './saveAndSharePdf';
+import { externalContributionProvenanceText } from '@/lib/records/provenanceText';
 import { getInitials } from '@/lib/shared/initials';
-import {
-  ledgerEventLabel,
-  walletStatusLabel,
-  walletTransactionLabel,
-} from '@/lib/i18n/financial-presentation';
-import {
-  formatCurrency,
-  formatRelativeDate,
-} from '@/lib/i18n/formatters';
 import { colors, radii, spacing } from '@/lib/shared/theme';
 import {
   displayMoney,
@@ -69,16 +57,12 @@ import {
   shortStatementId,
 } from '@/lib/shared/statementPresentation';
 
-type RecordsSegment = 'circle' | 'statements' | 'documents';
-
 type Props = {
   circleId: string;
   token: string;
-  members: BackendCircleMember[];
-  ledgerEntries: BackendLedgerEntry[];
-  isPremium: boolean;
   circleName?: string;
-  wallet?: BackendWalletSnapshot;
+  /** Organizers read statements for the whole circle; members only their own. */
+  isOrganizer: boolean;
 };
 
 type SubjectTarget =
@@ -126,20 +110,6 @@ function formatRelativeDays(
   return formatDisplayDate(value, language);
 }
 
-function ledgerIconColor(entry: BackendLedgerEntry): string {
-  const t = String(entry.event_type || entry.type || '');
-  if (t.includes('payout')) return colors.success;
-  if (t.includes('missed') || t.includes('rejected')) return colors.danger;
-  if (t.includes('confirmed') || t.includes('submitted')) return colors.primary;
-  return colors.muted;
-}
-
-function ledgerAmountLabel(entry: BackendLedgerEntry, language: string): string {
-  if (typeof entry.amount !== 'number') return '';
-  const sign = entry.amount < 0 ? '-' : '';
-  return `${sign}${formatCurrency(Math.abs(entry.amount), language, 'USD', 2)}`;
-}
-
 function dedupeById<T extends { id: string }>(entries: T[]): T[] {
   const seen = new Set<string>();
   const unique: T[] = [];
@@ -152,126 +122,11 @@ function dedupeById<T extends { id: string }>(entries: T[]): T[] {
   return unique;
 }
 
-function ledgerRenderKey(
-  entry: Pick<BackendLedgerEntry, 'id' | 'created_at' | 'at'>,
-  index: number,
-): string {
-  return `${entry.id}:${entry.created_at || entry.at || 'no-time'}:${index}`;
-}
-
 function statementLedgerRenderKey(
   entry: Pick<StatementLedgerPreviewEntry, 'id' | 'at' | 'reference'>,
   index: number,
 ): string {
   return `${entry.id}:${entry.at || entry.reference || 'no-time'}:${index}`;
-}
-
-function entryMemberName(
-  entry: BackendLedgerEntry,
-  members: BackendCircleMember[],
-): string {
-  const memberId = String(entry.memberId || entry.metadata?.member_id || '').trim();
-  if (!memberId) return '';
-  const match = members.find((m) => m.id === memberId || m.userId === memberId);
-  return String(match?.full_name || match?.name || '').trim();
-}
-
-type ExternalProvenance = {
-  paymentOrigin?: string | null;
-  verificationStatus?: string | null;
-  reportedBy?: { displayName: string | null } | null;
-  reportedAt?: string | null;
-  confirmedBy?: { displayName: string | null } | null;
-  confirmedAt?: string | null;
-  rejectedBy?: { displayName: string | null } | null;
-  rejectedAt?: string | null;
-};
-
-function externalContributionProvenanceText(
-  item: ExternalProvenance,
-  t: TFunction,
-  language?: string,
-): string | null {
-  if (item.paymentOrigin !== 'external') return null;
-  const reporter =
-    item.reportedBy?.displayName || t('ledger:provenance.unknownReporter');
-  const organizer =
-    item.confirmedBy?.displayName ||
-    item.rejectedBy?.displayName ||
-    t('ledger:provenance.organizer');
-
-  if (item.verificationStatus === 'pending_organizer_confirmation') {
-    return t('ledger:provenance.pending', {
-      member: reporter,
-      date: formatDisplayDateTime(item.reportedAt, language),
-    });
-  }
-  if (item.verificationStatus === 'organizer_confirmed') {
-    return t('ledger:provenance.confirmed', {
-      member: reporter,
-      reportedAt: formatDisplayDateTime(item.reportedAt, language),
-      organizer,
-      confirmedAt: formatDisplayDateTime(item.confirmedAt, language),
-    });
-  }
-  if (item.verificationStatus === 'organizer_rejected') {
-    return t('ledger:provenance.rejected', {
-      organizer,
-      rejectedAt: formatDisplayDateTime(item.rejectedAt, language),
-    });
-  }
-  return null;
-}
-
-function activityProvenanceText(
-  entry: BackendLedgerEntry,
-  t: TFunction,
-  language?: string,
-): string | null {
-  if (entry.paymentOrigin !== 'external') return null;
-  const actor =
-    entry.performedBy?.displayName || t('ledger:provenance.organizer');
-  const at = entry.createdAt || entry.created_at || entry.at;
-  if (entry.verificationStatus === 'pending_organizer_confirmation') {
-    return t('ledger:provenance.pending', {
-      member: actor,
-      date: formatDisplayDateTime(at, language),
-    });
-  }
-  if (entry.verificationStatus === 'organizer_confirmed') {
-    return t('ledger:provenance.activityConfirmed', {
-      organizer: actor,
-      date: formatDisplayDateTime(at, language),
-    });
-  }
-  if (entry.verificationStatus === 'organizer_rejected') {
-    return t('ledger:provenance.rejected', {
-      organizer: actor,
-      rejectedAt: formatDisplayDateTime(at, language),
-    });
-  }
-  return null;
-}
-
-async function saveAndSharePdf(
-  bytes: Uint8Array,
-  filename: string,
-  copy: { dialogTitle: string; savedTitle: string; savedBody: string },
-): Promise<{ uri: string; filename: string }> {
-  const file = new File(Paths.cache, filename);
-  file.create({ overwrite: true });
-  file.write(bytes);
-  const canShare = await Sharing.isAvailableAsync();
-  if (canShare) {
-    await Sharing.shareAsync(file.uri, {
-      mimeType: 'application/pdf',
-      dialogTitle: copy.dialogTitle,
-      UTI: 'com.adobe.pdf',
-    });
-  } else {
-    Alert.alert(copy.savedTitle, copy.savedBody);
-  }
-  return { uri: file.uri, filename };
 }
 
 function friendlyError(message: string, fallback: string): string {
@@ -281,18 +136,18 @@ function friendlyError(message: string, fallback: string): string {
   return trimmed;
 }
 
-export function RecordsStatementCenter({
+/**
+ * Documents segment of Records: member statements (preview, PDF) and saved statement documents.
+ * Financial values come only from backend list/snapshot/PDF endpoints.
+ */
+export function StatementDocumentsSection({
   circleId,
   token,
-  members,
-  ledgerEntries,
-  isPremium,
   circleName,
-  wallet,
+  isOrganizer,
 }: Props) {
   const { t } = useTranslation('ledger');
   const genericError = t('center.genericError');
-  const [segment, setSegment] = useState<RecordsSegment>('statements');
   const [index, setIndex] = useState<MemberStatementsIndex | null>(null);
   const [indexLoading, setIndexLoading] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
@@ -370,13 +225,9 @@ export function RecordsStatementCenter({
   }, [token, circleId, t]);
 
   useEffect(() => {
-    if (segment === 'statements') {
-      void loadIndex();
-    }
-    if (segment === 'documents') {
-      void loadDocuments();
-    }
-  }, [segment, loadIndex, loadDocuments]);
+    void loadIndex();
+    void loadDocuments();
+  }, [loadIndex, loadDocuments]);
 
   const openPreview = async (subject: SubjectTarget) => {
     if (periodMode === 'custom' && (!periodFrom.trim() || !periodTo.trim())) {
@@ -458,61 +309,11 @@ export function RecordsStatementCenter({
     }
   };
 
-  const segments = [
-    { id: 'circle' as const, label: t('center.segmentCircle') },
-    { id: 'statements' as const, label: t('center.segmentStatements') },
-    { id: 'documents' as const, label: t('center.segmentDocuments') },
-  ];
-
   return (
     <View style={styles.root}>
-      <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>{t('center.title')}</Text>
-        <Text style={styles.pageCircleName} numberOfLines={1}>
-          {displayCircleName}
-        </Text>
-        <Text style={styles.pageSubtitle}>{t('center.subtitle')}</Text>
-        <Text style={styles.pageDisclaimer}>{t('center.disclaimer')}</Text>
-      </View>
-
-      <View
-        style={styles.segmentControl}
-        accessibilityRole="tablist"
-      >
-        {segments.map((item) => {
-          const active = segment === item.id;
-          return (
-            <Pressable
-              key={item.id}
-              style={[styles.segmentItem, active && styles.segmentItemActive]}
-              onPress={() => setSegment(item.id)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={item.label}
-            >
-              <Text
-                style={[styles.segmentLabel, active && styles.segmentLabelActive]}
-                numberOfLines={1}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {segment === 'circle' ? (
-        <CircleRecordsPanel
-          entries={ledgerEntries}
-          members={members}
-          isPremium={isPremium}
-          wallet={wallet}
-        />
-      ) : null}
-
-      {segment === 'statements' ? (
-        <MemberStatementsPanel
+      <MemberStatementsPanel
           circleName={resolvedCircleName}
+          isOrganizer={isOrganizer}
           index={index}
           loading={indexLoading}
           error={indexError}
@@ -539,19 +340,15 @@ export function RecordsStatementCenter({
             }
           }}
         />
-      ) : null}
 
-      {segment === 'documents' ? (
-        <DocumentsPanel
+      <DocumentsPanel
           documents={documents}
           loading={documentsLoading}
           error={documentsError}
           sharingDocId={sharingDocId}
           onRefresh={() => void loadDocuments()}
           onShare={(doc) => void reShareDocument(doc)}
-          onGoStatements={() => setSegment('statements')}
         />
-      ) : null}
 
       <Modal
         visible={previewOpen}
@@ -651,163 +448,9 @@ export function RecordsStatementCenter({
   );
 }
 
-function CircleRecordsPanel({
-  entries,
-  members,
-  isPremium,
-  wallet,
-}: {
-  entries: BackendLedgerEntry[];
-  members: BackendCircleMember[];
-  isPremium: boolean;
-  wallet?: BackendWalletSnapshot;
-}) {
-  const { t, i18n } = useTranslation(['ledger', 'wallet']);
-  const language = i18n.resolvedLanguage || i18n.language;
-  const uniqueEntries = useMemo(() => dedupeById(entries), [entries]);
-  const visibleEntries = isPremium ? uniqueEntries : uniqueEntries.slice(0, 10);
-  const hasMore = !isPremium && uniqueEntries.length > 10;
-
-  return (
-    <View style={styles.panel}>
-      <View style={styles.panelHeader}>
-        <View style={styles.iconBubble}>
-          <FontAwesome name="line-chart" size={16} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.panelTitle}>{t('ledger:activity')}</Text>
-          <Text style={styles.panelSub}>
-            {t('ledger:eventCount', { count: uniqueEntries.length })}
-          </Text>
-        </View>
-      </View>
-
-      {uniqueEntries.length === 0 ? (
-        <View style={styles.emptyBlock}>
-          <View style={styles.emptyIcon}>
-            <FontAwesome name="book" size={22} color={colors.subtle} />
-          </View>
-          <Text style={styles.emptyTitle}>{t('ledger:empty')}</Text>
-          <Text style={styles.emptyBody}>{t('ledger:center.activityEmptyBody')}</Text>
-        </View>
-      ) : (
-        visibleEntries.map((entry, index) => {
-          const provenanceText = activityProvenanceText(entry, t, language);
-          return (
-          <View key={ledgerRenderKey(entry, index)}>
-            <View style={styles.ledgerRow}>
-              <View
-                style={[
-                  styles.ledgerIcon,
-                  { backgroundColor: `${ledgerIconColor(entry)}18` },
-                ]}
-              >
-                <FontAwesome name="circle" size={9} color={ledgerIconColor(entry)} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>{ledgerEventLabel(entry, t)}</Text>
-                <Text style={styles.rowMeta}>
-                  {entryMemberName(entry, members)}
-                  {entryMemberName(entry, members) ? ' \u00B7 ' : ''}
-                  {t('ledger:round', { round: entry.round || '\u2014' })}
-                  {' \u00B7 '}
-                  {entry.created_at || entry.at
-                    ? formatRelativeDate(
-                        entry.created_at || entry.at || '',
-                        language,
-                      )
-                    : '\u2014'}
-                </Text>
-                {provenanceText ? (
-                  <Text style={styles.rowMeta}>{provenanceText}</Text>
-                ) : null}
-              </View>
-              {typeof entry.amount === 'number' ? (
-                <Text style={[styles.rowAmount, { color: ledgerIconColor(entry) }]}>
-                  {ledgerAmountLabel(entry, language)}
-                </Text>
-              ) : null}
-            </View>
-            {index < visibleEntries.length - 1 ? <View style={styles.divider} /> : null}
-          </View>
-          );
-        })
-      )}
-
-      {hasMore ? (
-        <View style={styles.upgradeBox}>
-          <FontAwesome name="lock" size={18} color={colors.primary} />
-          <Text style={styles.upgradeTitle}>{t('ledger:upgradeTitle')}</Text>
-          <Text style={styles.upgradeBody}>
-            {t('ledger:upgradeBody', { count: entries.length - 10 })}
-          </Text>
-          <Pressable
-            style={styles.primaryBtn}
-            onPress={() => router.push('/subscription')}
-          >
-            <Text style={styles.primaryBtnText}>{t('ledger:upgradeAction')}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      <View style={[styles.panelHeader, { marginTop: 12 }]}>
-        <View style={styles.iconBubble}>
-          <FontAwesome name="credit-card" size={16} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.panelTitle}>{t('wallet:history')}</Text>
-          <Text style={styles.panelSub}>{t('wallet:title')}</Text>
-        </View>
-      </View>
-      {!wallet?.txns?.length ? (
-        <View style={styles.emptyBlock}>
-          <View style={styles.emptyIcon}>
-            <FontAwesome name="exchange" size={22} color={colors.subtle} />
-          </View>
-          <Text style={styles.emptyTitle}>{t('wallet:empty')}</Text>
-        </View>
-      ) : (
-        wallet.txns.map((transaction, index) => {
-          const amount =
-            typeof transaction.amount === 'number'
-              ? transaction.amount
-              : typeof transaction.amountCents === 'number'
-                ? transaction.amountCents / 100
-                : null;
-          const type = walletTransactionLabel(transaction, t);
-          const status = walletStatusLabel(transaction.status, t);
-          return (
-            <View
-              key={transaction.id || `transaction-${index}`}
-              style={styles.ledgerRow}
-              accessibilityLabel={t('wallet:transactionA11y', {
-                type,
-                status,
-                amount:
-                  amount == null
-                    ? t('wallet:rowUnavailable')
-                    : formatCurrency(amount, language, 'USD', 2),
-              })}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>{type}</Text>
-                <Text style={styles.rowMeta}>{status}</Text>
-              </View>
-              <Text style={styles.rowAmount}>
-                {amount == null
-                  ? '\u2014'
-                  : formatCurrency(amount, language, 'USD', 2)}
-              </Text>
-            </View>
-          );
-        })
-      )}
-    </View>
-  );
-}
-
 function MemberStatementsPanel({
   circleName,
+  isOrganizer,
   index,
   loading,
   error,
@@ -821,6 +464,7 @@ function MemberStatementsPanel({
   onOpenPreview,
 }: {
   circleName: string;
+  isOrganizer: boolean;
   index: MemberStatementsIndex | null;
   loading: boolean;
   error: string | null;
@@ -843,9 +487,14 @@ function MemberStatementsPanel({
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.panelTitle}>{t('center.segmentStatements')}</Text>
           <Text style={styles.panelSub}>
-            {t('center.statementsSub', { circle: circleName })}
+            {t(
+              isOrganizer ? 'center.statementsSub' : 'center.statementsSubMember',
+              { circle: circleName },
+            )}
           </Text>
-          <Text style={styles.panelHint}>{t('center.statementsHint')}</Text>
+          <Text style={styles.panelHint}>
+            {t(isOrganizer ? 'center.statementsHint' : 'center.statementsHintMember')}
+          </Text>
         </View>
         <Pressable
           onPress={onRetry}
@@ -1068,7 +717,6 @@ function DocumentsPanel({
   sharingDocId,
   onRefresh,
   onShare,
-  onGoStatements,
 }: {
   documents: StatementDocumentSummary[];
   loading: boolean;
@@ -1076,9 +724,8 @@ function DocumentsPanel({
   sharingDocId: string | null;
   onRefresh: () => void;
   onShare: (doc: StatementDocumentSummary) => void;
-  onGoStatements: () => void;
 }) {
-  const { t, i18n } = useTranslation('ledger');
+  const { t, i18n } = useTranslation(['ledger', 'records']);
   const language = i18n.resolvedLanguage || i18n.language;
   return (
     <View style={styles.panel}>
@@ -1119,9 +766,6 @@ function DocumentsPanel({
           </View>
           <Text style={styles.emptyTitle}>{t('center.emptyDocumentsTitle')}</Text>
           <Text style={styles.emptyBody}>{t('center.emptyDocumentsBody')}</Text>
-          <Pressable style={styles.primaryBtn} onPress={onGoStatements}>
-            <Text style={styles.primaryBtnText}>{t('center.openStatements')}</Text>
-          </Pressable>
         </View>
       ) : (
         documents.map((doc) => (
@@ -1130,6 +774,10 @@ function DocumentsPanel({
               <FontAwesome name="file-pdf-o" size={16} color={colors.primary} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.docKind} numberOfLines={1}>
+                {t(`records:documents.type.${documentTypeKey(doc.documentType)}`)}
+                {doc.superseded ? ` \u00B7 ${t('records:documents.superseded')}` : ''}
+              </Text>
               <Text style={styles.memberName} numberOfLines={1}>
                 {doc.memberDisplayName || t('center.memberFallback')}
               </Text>
@@ -1980,6 +1628,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  docKind: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
   docReference: {
     fontSize: 11,

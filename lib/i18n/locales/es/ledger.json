@@ -76,12 +76,14 @@
     "monthly": "Mensual"
   },
   "provenance": {
-    "unknownReporter": "Persona que informó desconocida",
     "organizer": "Organizador",
     "pending": "Pago externo informado por {{member}} el {{date}}. En espera de la confirmación del organizador.",
     "confirmed": "Pago externo informado por {{member}} el {{reportedAt}}. Confirmado por {{organizer}} el {{confirmedAt}}.",
     "activityConfirmed": "Informe de pago externo confirmado por {{organizer}} el {{date}}.",
-    "rejected": "Informe de pago externo rechazado por {{organizer}} el {{rejectedAt}}. Esta contribución sigue pendiente."
+    "rejected": "Informe de pago externo rechazado por {{organizer}} el {{rejectedAt}}. Esta contribución sigue pendiente.",
+    "pendingNoReporter": "Pago informado. En espera de la confirmación del organizador.",
+    "confirmedNoDate": "Informe de pago externo confirmado por {{organizer}}.",
+    "rejectedNoDate": "Informe de pago externo rechazado por {{organizer}}. Esta contribución sigue pendiente."
   },
   "upgradeTitle": "Desbloquea el historial completo",
   "upgradeBody_one": "{{count}} actividad adicional está oculta en el plan gratuito.",
@@ -135,11 +137,11 @@
     "contributed": "Aportado",
     "received": "Recibido",
     "outstanding": "Pendiente",
-    "documentsSub": "Estados de cuenta generados antes para este círculo. Vuelve a descargarlos desde la instantánea congelada.",
+    "documentsSub": "Documentos generados antes para este círculo. Vuelve a descargar la copia guardada.",
     "loadingDocuments": "Cargando documentos",
     "loadDocumentsError": "No se pudieron cargar los documentos",
     "emptyDocumentsTitle": "Aún no hay documentos",
-    "emptyDocumentsBody": "Cuando descargas un PDF de estado de cuenta, CircuSave guarda una instantánea filtrada por permisos para que puedas volver a descargarla.",
+    "emptyDocumentsBody": "Cuando descargas un estado de cuenta o un registro en PDF, CircuSave guarda el documento para que puedas descargar la misma copia de nuevo.",
     "openStatements": "Abrir estados de cuenta",
     "shareStatementA11y": "Compartir estado de cuenta de {{name}}",
     "previewKicker": "Estado de actividad del miembro",
@@ -202,6 +204,8 @@
     "contextUnclaimed": "Sin reclamar · {{hands}}",
     "contextOrganizer": "Organizador/a · {{hands}}",
     "contextActive": "Miembro activo · {{hands}}",
-    "contextStatus": "Miembro {{status}} · {{hands}}"
+    "contextStatus": "Miembro {{status}} · {{hands}}",
+    "statementsSubMember": "Consulta tu actividad de aportes y pagos en {{circle}}.\nTu estado de cuenta se limita a este círculo.",
+    "statementsHintMember": "Tus manos en este círculo aparecen como posiciones financieras independientes en el estado de cuenta."
   }
 }

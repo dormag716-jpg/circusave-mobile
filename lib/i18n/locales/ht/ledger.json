@@ -76,12 +76,14 @@
     "monthly": "Chak mwa"
   },
   "provenance": {
-    "unknownReporter": "Moun ki rapòte a pa konnen",
     "organizer": "Òganizatè",
     "pending": "Se {{member}} ki rapòte peman ekstèn nan nan dat {{date}}. L ap tann konfimasyon òganizatè a.",
     "confirmed": "Se {{member}} ki rapòte peman ekstèn nan nan dat {{reportedAt}}. {{organizer}} konfime li nan dat {{confirmedAt}}.",
     "activityConfirmed": "{{organizer}} konfime rapò peman ekstèn nan nan dat {{date}}.",
-    "rejected": "{{organizer}} rejte rapò peman ekstèn nan nan dat {{rejectedAt}}. Kontribisyon sa a toujou dwe."
+    "rejected": "{{organizer}} rejte rapò peman ekstèn nan nan dat {{rejectedAt}}. Kontribisyon sa a toujou dwe.",
+    "pendingNoReporter": "Peman rapòte. L ap tann konfimasyon òganizatè a.",
+    "confirmedNoDate": "{{organizer}} konfime rapò peman ekstèn nan.",
+    "rejectedNoDate": "{{organizer}} rejte rapò peman ekstèn nan. Kontribisyon sa a toujou dwe."
   },
   "upgradeTitle": "Debloke tout istorik la",
   "upgradeBody_one": "{{count}} lòt aktivite kache nan plan gratis la.",
@@ -135,11 +137,11 @@
     "contributed": "Kontribye",
     "received": "Resevwa",
     "outstanding": "Ki rete",
-    "documentsSub": "Deklarasyon ki te deja kreye pou gwoup sa a. Telechaje yo ankò soti nan snapshot ki bloke a.",
+    "documentsSub": "Dokiman ki te deja kreye pou gwoup sa a. Telechaje kopi ki sove a ankò.",
     "loadingDocuments": "N ap chaje dokiman yo",
     "loadDocumentsError": "Nou pa t kapab chaje dokiman yo",
     "emptyDocumentsTitle": "Poko gen dokiman",
-    "emptyDocumentsBody": "Lè ou telechaje yon PDF Deklarasyon Manm, CircuSave sove yon snapshot ki filtre selon pèmisyon pou ou ka telechaje l ankò.",
+    "emptyDocumentsBody": "Lè ou telechaje yon deklarasyon oswa yon dosye an PDF, CircuSave sove dokiman an pou ou ka telechaje menm kopi a ankò.",
     "openStatements": "Louvri deklarasyon manm yo",
     "shareStatementA11y": "Pataje deklarasyon pou {{name}}",
     "previewKicker": "Deklarasyon aktivite manm",
@@ -202,6 +204,8 @@
     "contextUnclaimed": "Poklaime · {{hands}}",
     "contextOrganizer": "Òganizatè · {{hands}}",
     "contextActive": "Manm aktif · {{hands}}",
-    "contextStatus": "Manm {{status}} · {{hands}}"
+    "contextStatus": "Manm {{status}} · {{hands}}",
+    "statementsSubMember": "Gade aktivite kontribisyon ak peman ou nan {{circle}}.\nDeklarasyon ou limite a gwoup sa a.",
+    "statementsHintMember": "Men ou yo nan gwoup sa a parèt kòm pozisyon finansye apa nan deklarasyon an."
   }
 }

@@ -432,6 +432,32 @@ export function resolveActivityMemberName(
   return '';
 }
 
+/**
+ * Which roster names the Activity feed may use. The organizer of a circle sees its members; a
+ * member sees only their own hands. Anyone else stays unnamed, and the feed reads "A member".
+ */
+export function visibleActivityRosterNames(
+  members: ReadonlyArray<{
+    id: string;
+    userId?: string | null;
+    full_name?: string | null;
+    name?: string | null;
+  }>,
+  access: { organizes: boolean; viewerUserId?: string | null },
+  fallbackName: string,
+): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const member of members) {
+    const isOwn =
+      Boolean(access.viewerUserId) && member.userId === access.viewerUserId;
+    if (!access.organizes && !isOwn) continue;
+    const name = member.full_name || member.name || fallbackName;
+    names[member.id] = name;
+    if (member.userId) names[member.userId] = name;
+  }
+  return names;
+}
+
 export function activityNeedsMemberLookup(
   entry: BackendActivity,
   memberMap: Record<string, string>,
