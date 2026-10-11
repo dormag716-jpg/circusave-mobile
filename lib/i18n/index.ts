@@ -17,6 +17,7 @@ import inviteEn from './locales/en/invite.json';
 import joinCircleEn from './locales/en/joinCircle.json';
 import legalEn from './locales/en/legal.json';
 import ledgerEn from './locales/en/ledger.json';
+import recordsEn from './locales/en/records.json';
 import securityEn from './locales/en/security.json';
 import subscriptionEn from './locales/en/subscription.json';
 import navigationEn from './locales/en/navigation.json';
@@ -44,6 +45,7 @@ import inviteEs from './locales/es/invite.json';
 import joinCircleEs from './locales/es/joinCircle.json';
 import legalEs from './locales/es/legal.json';
 import ledgerEs from './locales/es/ledger.json';
+import recordsEs from './locales/es/records.json';
 import securityEs from './locales/es/security.json';
 import subscriptionEs from './locales/es/subscription.json';
 import navigationEs from './locales/es/navigation.json';
@@ -71,6 +73,7 @@ import inviteHt from './locales/ht/invite.json';
 import joinCircleHt from './locales/ht/joinCircle.json';
 import legalHt from './locales/ht/legal.json';
 import ledgerHt from './locales/ht/ledger.json';
+import recordsHt from './locales/ht/records.json';
 import securityHt from './locales/ht/security.json';
 import subscriptionHt from './locales/ht/subscription.json';
 import navigationHt from './locales/ht/navigation.json';
@@ -108,6 +111,7 @@ const resources = {
     joinCircle: joinCircleEn,
     legal: legalEn,
     ledger: ledgerEn,
+    records: recordsEn,
     navigation: navigationEn,
     security: securityEn,
     subscription: subscriptionEn,
@@ -137,6 +141,7 @@ const resources = {
     joinCircle: joinCircleEs,
     legal: legalEs,
     ledger: ledgerEs,
+    records: recordsEs,
     navigation: navigationEs,
     security: securityEs,
     subscription: subscriptionEs,
@@ -166,6 +171,7 @@ const resources = {
     joinCircle: joinCircleHt,
     legal: legalHt,
     ledger: ledgerHt,
+    records: recordsHt,
     navigation: navigationHt,
     security: securityHt,
     subscription: subscriptionHt,
@@ -220,6 +226,7 @@ async function ensureInitialized(language: SupportedLanguage): Promise<void> {
       'joinCircle',
       'legal',
       'ledger',
+      'records',
       'navigation',
       'security',
       'subscription',

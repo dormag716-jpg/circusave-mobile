@@ -98,14 +98,15 @@ const {
   initializeI18n,
 }: typeof import('@/lib/i18n') = require('@/lib/i18n');
 const {
-  RecordsStatementCenter,
-}: typeof import('../RecordsStatementCenter') = require('../RecordsStatementCenter');
+  StatementDocumentsSection,
+}: typeof import('../StatementDocumentsSection') = require('../StatementDocumentsSection');
 const api = jest.requireMock('@/lib/api') as {
   getMemberStatementSnapshotForHand: jest.Mock;
   getMemberStatementSnapshotForUser: jest.Mock;
   getMemberStatementsIndex: jest.Mock;
   getStatementDocuments: jest.Mock;
   downloadMemberStatementPdfForUser: jest.Mock;
+  downloadStatementDocumentPdf: jest.Mock;
 };
 
 const oneHandMember = {
@@ -311,9 +312,7 @@ const previewSnapshot = {
 const baseProps = {
   circleId: 'circle-1',
   token: 'token-1',
-  members: [],
-  ledgerEntries: [],
-  isPremium: true,
+  isOrganizer: true,
   circleName: 'Neighborhood Circle',
 };
 
@@ -362,7 +361,7 @@ async function renderCenter(
   let renderer: any;
   await TestRenderer.act(async () => {
     renderer = TestRenderer.create(
-      React.createElement(RecordsStatementCenter, {
+      React.createElement(StatementDocumentsSection, {
         ...baseProps,
         ...overrides,
       }),
@@ -398,7 +397,7 @@ afterEach(() => {
   renderers = [];
 });
 
-describe('RecordsStatementCenter professional redesign', () => {
+describe('StatementDocumentsSection', () => {
   beforeAll(async () => {
     asyncStorageValues.clear();
     await initializeI18n();
@@ -409,32 +408,7 @@ describe('RecordsStatementCenter professional redesign', () => {
     await changeLanguagePreference('en');
   });
 
-  test('renders statement and activity provenance from additive backend fields', async () => {
-    const renderer = await renderCenter({
-      ledgerEntries: [
-        {
-          id: 'external-confirmation',
-          type: 'contribution_confirmed',
-          at: '2026-07-27T12:00:00Z',
-          amount: 1000,
-          round: 1,
-          memberId: 'hand-antony',
-          paymentOrigin: 'external',
-          verificationStatus: 'organizer_confirmed',
-          performedBy: {
-            userId: 'user-darius',
-            displayName: 'Darius Ward',
-          },
-        },
-      ],
-    });
-    await TestRenderer.act(async () => {
-      pressableWithText(renderer, 'Circle Overview').props.onPress();
-      await flushUpdates();
-    });
-    let text = visibleText(renderer);
-    expect(text).toContain('External payment report confirmed by Darius Ward');
-
+  test('renders statement provenance from additive backend fields', async () => {
     const statementRenderer = await renderCenter();
     await TestRenderer.act(async () => {
       statementRenderer.root
@@ -444,18 +418,36 @@ describe('RecordsStatementCenter professional redesign', () => {
         .props.onPress();
       await flushUpdates();
     });
-    text = visibleText(statementRenderer);
+    const text = visibleText(statementRenderer);
     expect(text).toContain('Externally reported by Antony Powell');
     expect(text).toContain('Confirmed by Darius Ward');
+  });
+
+  test('a legacy confirmation without a stored reporter never reads "Unknown reporter on —"', async () => {
+    const legacy = JSON.parse(JSON.stringify(previewSnapshot));
+    const row = legacy.hands[0].contributions.byRound[0];
+    row.reportedBy = null;
+    row.reportedAt = null;
+    row.confirmedBy = { userId: null, displayName: null };
+    api.getMemberStatementSnapshotForUser.mockResolvedValue(legacy);
+
+    const renderer = await renderCenter();
+    await TestRenderer.act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: 'Open statement for Antony Powell' })
+        .props.onPress();
+      await flushUpdates();
+    });
+    const text = visibleText(renderer);
+    expect(text).not.toContain('Unknown reporter');
+    expect(text).not.toContain('on —');
+    expect(text).toContain('External payment report confirmed by Organizer');
   });
 
   test('shows clean Records hierarchy, circle scope, totals, and humanized hand wording', async () => {
     const renderer = await renderCenter();
     const text = visibleText(renderer);
 
-    expect(text).toContain('Records');
-    expect(text).toContain('Neighborhood Circle');
-    expect(text).toContain('Statements, activity, and circle documents');
     expect(text).toContain('Member Statements');
     expect(text).toContain(
       'View contribution and payout activity for members of Neighborhood Circle.',
@@ -566,23 +558,85 @@ describe('RecordsStatementCenter professional redesign', () => {
     );
   });
 
-  test('keeps segment switching intact with polished labels', async () => {
+  test('shows member statements and saved documents together and loads both', async () => {
     const renderer = await renderCenter();
+    const text = visibleText(renderer);
+    expect(text).toContain('Member Statements');
+    expect(text).toContain('Previously generated documents');
+    expect(api.getMemberStatementsIndex).toHaveBeenCalledWith('token-1', 'circle-1');
+    expect(api.getStatementDocuments).toHaveBeenCalledWith('token-1', 'circle-1');
+    // No activity-feed behavior and no "open statements" shortcut on the same page.
+    expect(text).not.toContain('Circle activity');
+    expect(text).not.toContain('Unlock full history');
+  });
 
-    TestRenderer.act(() => {
-      pressableWithAccessibilityLabel(renderer, 'Circle Overview').props.onPress();
+  test('lists record documents beside statements with a small type label, and marks superseded ones', async () => {
+    const doc = (overrides: Record<string, unknown>) => ({
+      id: 'sdoc-1',
+      circleId: 'circle-1',
+      statementReference: 'MCS-X',
+      documentType: 'circuSave_member_circle_statement',
+      subjectUserId: 'u1',
+      handId: null,
+      memberDisplayName: 'Antony Powell',
+      period: { mode: 'full_circle', from: null, to: null, label: 'Full circle activity' },
+      generatedAt: '2026-10-10T15:00:00Z',
+      generatedByUserId: 'u1',
+      ...overrides,
     });
-    expect(visibleText(renderer)).toContain('Circle activity');
-
+    api.getStatementDocuments.mockResolvedValue({
+      documents: [
+        doc({}),
+        doc({
+          id: 'sdoc-2',
+          statementReference: 'CSC-ABC123-R01-P01-AA-D02',
+          documentType: 'circuSave_contribution_record',
+          memberDisplayName: 'Position 1',
+          recordReference: 'CSC-ABC123-R01-P01-AA',
+          issueNumber: 2,
+          superseded: false,
+          period: { mode: 'record', from: null, to: null, label: 'Round 1' },
+        }),
+        doc({
+          id: 'sdoc-3',
+          statementReference: 'CSC-ABC123-R01-P01-AA-D01',
+          documentType: 'circuSave_contribution_record',
+          memberDisplayName: 'Position 1',
+          recordReference: 'CSC-ABC123-R01-P01-AA',
+          issueNumber: 1,
+          superseded: true,
+        }),
+        doc({ id: 'sdoc-4', statementReference: 'CSP-ABC123-R01-P01-DD-D01', documentType: 'circuSave_payout_record' }),
+        doc({ id: 'sdoc-5', statementReference: 'CSR-ABC123-R01-FF-D01', documentType: 'circuSave_round_record' }),
+      ],
+    });
+    const renderer = await renderCenter();
+    const text = visibleText(renderer);
+    expect(text).toContain('Member statement');
+    expect(text).toContain('Contribution record');
+    expect(text).toContain('Payout record');
+    expect(text).toContain('Round record');
+    expect(text).toContain('Contribution record \u00B7 Superseded');
+    expect(text).toContain('CSC-ABC123-R01-P01-AA-D02');
+    expect(text.match(/Superseded/g)).toHaveLength(1);
+    // Every saved document re-downloads through the same call, whatever its type.
+    api.downloadStatementDocumentPdf.mockResolvedValue({
+      bytes: new Uint8Array([1]),
+      statementReference: 'CSC-ABC123-R01-P01-AA-D02',
+      generatedAt: '2026-10-10T15:00:00Z',
+      filename: 'doc.pdf',
+    });
+    const shareButtons = renderer.root.findAll(
+      (node: any) =>
+        node.type === 'Pressable' &&
+        node.props.accessibilityLabel === 'Share statement for Position 1',
+    );
+    expect(shareButtons).toHaveLength(2);
     await TestRenderer.act(async () => {
-      pressableWithAccessibilityLabel(renderer, 'Documents').props.onPress();
+      shareButtons[0].props.onPress();
       await flushUpdates();
     });
-    expect(visibleText(renderer)).toContain('Previously generated statements');
-    expect(api.getStatementDocuments).toHaveBeenCalledWith(
-      'token-1',
-      'circle-1',
-    );
+    expect(api.downloadStatementDocumentPdf).toHaveBeenCalledWith('token-1', 'circle-1', 'sdoc-2');
   });
 
   test('renders loading, error, retry, and empty states', async () => {
@@ -610,7 +664,7 @@ describe('RecordsStatementCenter professional redesign', () => {
     expect(visibleText(errorRenderer)).toContain('No members to show yet');
   });
 
-  test('does not broaden participant visibility from the component members prop', async () => {
+  test('a member sees member-appropriate copy and only the rows the backend returns', async () => {
     api.getMemberStatementsIndex.mockResolvedValueOnce({
       ...statementIndex,
       viewer: {
@@ -622,20 +676,16 @@ describe('RecordsStatementCenter professional redesign', () => {
       unclaimedHands: [],
     });
 
-    const renderer = await renderCenter({
-      members: [
-        {
-          id: 'membership-outside-index',
-          userId: 'user-outside-index',
-          full_name: 'Not Returned By Statement API',
-        },
-      ],
-    });
+    const renderer = await renderCenter({ isOrganizer: false });
+    const text = visibleText(renderer);
 
     expect(statementRows(renderer, 'Antony Powell')).toHaveLength(1);
-    expect(visibleText(renderer)).not.toContain(
-      'Not Returned By Statement API',
+    expect(statementRows(renderer, 'Darius Ward')).toHaveLength(0);
+    expect(text).toContain(
+      'View your contribution and payout activity in Neighborhood Circle.',
     );
+    expect(text).not.toContain('for members of');
+    expect(text).not.toContain('One row per connected member.');
   });
 
   test('preview uses backend totals, separates hands, humanizes status, hides raw ledger ids by default', async () => {
@@ -713,27 +763,24 @@ describe('RecordsStatementCenter professional redesign', () => {
   });
 });
 
-describe('RecordsStatementCenter locale chrome', () => {
+describe('StatementDocumentsSection locale chrome', () => {
   beforeAll(async () => {
     asyncStorageValues.clear();
     await initializeI18n();
   });
 
   test.each([
-    ['en', 'Records', 'Download PDF', 'Member Statements', 'Retry'],
-    ['es', 'Registros', 'Descargar PDF', 'Estados de cuenta', 'Reintentar'],
-    ['ht', 'Rejis', 'Telechaje PDF', 'Deklarasyon manm yo', 'Eseye ankò'],
+    ['en', 'Download PDF', 'Member Statements', 'Retry'],
+    ['es', 'Descargar PDF', 'Estados de cuenta', 'Reintentar'],
+    ['ht', 'Telechaje PDF', 'Deklarasyon manm yo', 'Eseye ankò'],
   ] as const)(
-    'renders Records chrome in %s',
-    async (language, records, downloadPdf, statements, retry) => {
+    'renders statement chrome in %s',
+    async (language, downloadPdf, statements, retry) => {
       await changeLanguagePreference(language);
       const renderer = await renderCenter();
       const text = visibleText(renderer);
-      expect(text).toContain(records);
       expect(text).toContain(statements);
-      expect(text).toContain('Neighborhood Circle');
       if (language !== 'en') {
-        expect(text).not.toContain('Statements, activity, and circle documents');
         expect(text).not.toContain('Download PDF');
       }
 

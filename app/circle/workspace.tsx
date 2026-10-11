@@ -64,7 +64,7 @@ import {
   type MemberAgreementPrompt,
 } from '@/lib/circles/circleAgreements';
 import { PaymentDestinationList } from '@/components/PaymentDestinationList';
-import { RecordsStatementCenter } from '@/components/records/RecordsStatementCenter';
+import { RecordsCenter } from '@/components/records/RecordsCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
 import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/circles/workspaceAgreementLoad';
@@ -81,7 +81,6 @@ import {
   isWorkspaceChromeCollapsed,
   workspaceChromeLayoutStyle,
 } from '@/lib/shared/workspaceKeyboardChrome';
-import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
   additionalHandConsentHref,
   circleAgreementReviewHref,
@@ -540,8 +539,6 @@ function WorkspaceContent({
   onRefresh: () => void;
   keyboardVisible: boolean;
 }) {
-  const { hasCapability } = useEntitlements();
-  const canExportAdvancedReports = hasCapability('advancedReports');
   const isOrganizer = circle.userRole === 'organizer';
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
@@ -1668,14 +1665,12 @@ function WorkspaceContent({
       ) : null}
 
       {activeTab === 'records' ? (
-        <RecordsStatementCenter
+        <RecordsCenter
           circleId={circle.id}
           token={token ?? ''}
-          members={circle.members || []}
-          ledgerEntries={ledgerEntries}
-          isPremium={canExportAdvancedReports}
           circleName={circle.name}
-          wallet={roundWallet}
+          isOrganizer={circle.userRole === 'organizer'}
+          onReviewInRound={() => setActiveTab('round')}
         />
       ) : null}
     </>

@@ -76,12 +76,14 @@
     "monthly": "Monthly"
   },
   "provenance": {
-    "unknownReporter": "Unknown reporter",
     "organizer": "Organizer",
     "pending": "Externally reported by {{member}} on {{date}}. Awaiting organizer confirmation.",
     "confirmed": "Externally reported by {{member}} on {{reportedAt}}. Confirmed by {{organizer}} on {{confirmedAt}}.",
     "activityConfirmed": "External payment report confirmed by {{organizer}} on {{date}}.",
-    "rejected": "External payment report rejected by {{organizer}} on {{rejectedAt}}. This contribution remains due."
+    "rejected": "External payment report rejected by {{organizer}} on {{rejectedAt}}. This contribution remains due.",
+    "pendingNoReporter": "Payment reported. Awaiting organizer confirmation.",
+    "confirmedNoDate": "External payment report confirmed by {{organizer}}.",
+    "rejectedNoDate": "External payment report rejected by {{organizer}}. This contribution remains due."
   },
   "upgradeTitle": "Unlock full history",
   "upgradeBody_one": "{{count}} more activity is hidden on the free tier.",
@@ -135,11 +137,11 @@
     "contributed": "Contributed",
     "received": "Received",
     "outstanding": "Outstanding",
-    "documentsSub": "Previously generated statements for this circle. Re-download from the frozen snapshot.",
+    "documentsSub": "Previously generated documents for this circle. Re-download the saved copy.",
     "loadingDocuments": "Loading documents",
     "loadDocumentsError": "Could not load documents",
     "emptyDocumentsTitle": "No documents yet",
-    "emptyDocumentsBody": "When you download a Member Circle Statement PDF, CircuSave stores a permission-filtered snapshot so you can re-download it later.",
+    "emptyDocumentsBody": "When you download a statement or a record as a PDF, CircuSave saves the document so you can download the same copy again.",
     "openStatements": "Open Member Statements",
     "shareStatementA11y": "Share statement for {{name}}",
     "previewKicker": "Member Activity Statement",
@@ -202,6 +204,8 @@
     "contextUnclaimed": "Unclaimed · {{hands}}",
     "contextOrganizer": "Organizer · {{hands}}",
     "contextActive": "Active member · {{hands}}",
-    "contextStatus": "{{status}} member · {{hands}}"
+    "contextStatus": "{{status}} member · {{hands}}",
+    "statementsSubMember": "View your contribution and payout activity in {{circle}}.\nYour statement is limited to this circle.",
+    "statementsHintMember": "Your hands in this circle appear as separate financial positions in the statement."
   }
 }

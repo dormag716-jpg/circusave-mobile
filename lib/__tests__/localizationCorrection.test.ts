@@ -117,7 +117,7 @@ describe('narrow localization correction', () => {
     }
   });
 
-  test('RecordsStatementCenter humanizeStatus localizes EN/ES/HT', async () => {
+  test('StatementDocumentsSection humanizeStatus localizes EN/ES/HT', async () => {
     const expected = {
       en: {
         confirmed: 'Contribution confirmed',
@@ -139,7 +139,7 @@ describe('narrow localization correction', () => {
       },
     } as const;
 
-    const records = source('../../components/records/RecordsStatementCenter.tsx');
+    const records = source('../../components/records/StatementDocumentsSection.tsx');
     expect(records).toContain('humanizeStatus(snapshot.member.membershipStatus, t)');
     expect(records).toContain('humanizeStatus(r.status, t)');
     expect(records).toContain('humanizeStatus(payout.status, t)');
