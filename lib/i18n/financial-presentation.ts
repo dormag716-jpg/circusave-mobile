@@ -303,19 +303,25 @@ export function activityEventSentence(
 ): string {
   const type = String(entry.type || '').trim().toLowerCase();
   const round = fields.round ?? entry.round ?? '';
-  const name = fields.name || t('activity:unknownMember');
+  const name = fields.name;
+  // Without a permitted name the sentence is neutral ("A member ...") rather than naming
+  // someone or showing "Unknown member".
+  const sentence = (key: string) =>
+    name
+      ? t(`activity:events.${key}`, { name, round })
+      : t(`activity:eventsAnon.${key}`, { round });
 
   if (type.includes('contribution') && type.includes('submitted')) {
-    return t('activity:events.contribution_submitted', { name, round });
+    return sentence('contribution_submitted');
   }
   if (type.includes('contribution') && type.includes('confirmed')) {
-    return t('activity:events.contribution_confirmed', { name, round });
+    return sentence('contribution_confirmed');
   }
   if (type.includes('contribution') && type.includes('rejected')) {
-    return t('activity:events.contribution_rejected', { name, round });
+    return sentence('contribution_rejected');
   }
   if (type.includes('contribution') && type.includes('missed')) {
-    return t('activity:events.contribution_missed', { name, round });
+    return sentence('contribution_missed');
   }
   if (
     type.includes('payout') &&
@@ -323,13 +329,13 @@ export function activityEventSentence(
       type.includes('received') ||
       type.includes('completed'))
   ) {
-    return t('activity:events.payout_released', { name, round });
+    return sentence('payout_released');
   }
   if (type.includes('round') && type.includes('started')) {
     return t('activity:events.round_started', { round });
   }
   if (type.includes('review') && type.includes('required')) {
-    return t('activity:events.payment_review_required', { name });
+    return sentence('payment_review_required');
   }
   return t('activity:unknownEvent');
 }

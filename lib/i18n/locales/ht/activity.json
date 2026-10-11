@@ -89,5 +89,14 @@
     "member": "Manm",
     "round": "Tou",
     "amount": "Montan"
-  }
+  },
+  "eventsAnon": {
+    "contribution_submitted": "Yon manm soumèt yon kontribisyon pou tou {{round}}.",
+    "contribution_confirmed": "Kontribisyon yon manm pou tou {{round}} konfime.",
+    "contribution_rejected": "Yo rejte kontribisyon yon manm pou tou {{round}}.",
+    "contribution_missed": "Yon manm manke kontribisyon tou {{round}} la.",
+    "payout_released": "Yon manm resevwa peman tou {{round}} la.",
+    "payment_review_required": "Yon revizyon peman nesesè."
+  },
+  "aMember": "Yon manm"
 }

@@ -89,5 +89,14 @@
     "circle": "Círculo",
     "round": "Ronda",
     "amount": "Monto"
-  }
+  },
+  "eventsAnon": {
+    "contribution_submitted": "Un miembro envió una contribución para la ronda {{round}}.",
+    "contribution_confirmed": "Se confirmó la contribución de un miembro para la ronda {{round}}.",
+    "contribution_rejected": "Se rechazó la contribución de un miembro para la ronda {{round}}.",
+    "contribution_missed": "Un miembro no envió la contribución de la ronda {{round}}.",
+    "payout_released": "Un miembro recibió el pago de la ronda {{round}}.",
+    "payment_review_required": "Se requiere revisar un pago."
+  },
+  "aMember": "Un miembro"
 }

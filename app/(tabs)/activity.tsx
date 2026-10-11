@@ -32,6 +32,7 @@ import {
   activityExportFilename,
   activityFetchLimit,
   activityNeedsMemberLookup,
+  visibleActivityRosterNames,
   activityProvenanceKind,
   activityRequestParams,
   buildActivityCsv,
@@ -90,6 +91,10 @@ export default function ActivityScreen() {
   const memberMapRef = useRef<Record<string, string>>({});
   const nextCursorRef = useRef<string | null>(null);
   const token = session?.session.token;
+  const viewerUserId = session?.user?.id;
+  // Circles whose roster was already fetched, so entries that stay unnamed on purpose do not
+  // trigger the same lookup on every load.
+  const lookedUpCirclesRef = useRef<Set<string>>(new Set());
   const hasFullActivityHistory = hasCapability('fullActivityHistory');
   const requestedLimit = activityFetchLimit(hasFullActivityHistory);
   entriesRef.current = entries;
@@ -104,12 +109,13 @@ export default function ActivityScreen() {
       known: Record<string, string>,
       revalidate?: boolean,
     ) => {
+      if (revalidate) lookedUpCirclesRef.current.clear();
       const circleIds = Array.from(
         new Set(
           items
             .filter((entry) => activityNeedsMemberLookup(entry, known))
             .map((entry) => String(entry.circleId || '').trim())
-            .filter(Boolean),
+            .filter((id) => id && !lookedUpCirclesRef.current.has(id)),
         ),
       );
       if (circleIds.length === 0) return known;
@@ -125,20 +131,23 @@ export default function ActivityScreen() {
       }
 
       const nextMap = { ...known };
+      circleIds.forEach((id) => lookedUpCirclesRef.current.add(id));
       for (const detail of details) {
         if (!detail?.members) continue;
-        for (const member of detail.members) {
-          const name =
-            member.full_name || member.name || t('activity:unknownMember');
-          nextMap[member.id] = name;
-          if (member.userId) {
-            nextMap[member.userId] = name;
-          }
-        }
+        // Names resolve only in circles you organize and for your own hands. Everyone else
+        // reads as "A member": a personal name is not needed to understand the event.
+        Object.assign(
+          nextMap,
+          visibleActivityRosterNames(
+            detail.members,
+            { organizes: detail.userRole === 'organizer', viewerUserId },
+            t('activity:aMember'),
+          ),
+        );
       }
       return nextMap;
     },
-    [t],
+    [t, viewerUserId],
   );
 
   const loadActivity = useCallback(
@@ -315,8 +324,7 @@ export default function ActivityScreen() {
   const presentExportRow = useCallback(
     (entry: BackendActivity) => {
       const memberName =
-        resolveActivityMemberName(entry, memberMap) ||
-        t('activity:unknownMember');
+        resolveActivityMemberName(entry, memberMap) || t('activity:aMember');
       const sentence = activityEventSentence(entry, t, {
         name: memberName,
         round: entry.round,
