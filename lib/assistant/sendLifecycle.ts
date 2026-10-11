@@ -138,10 +138,14 @@ export function classifyAssistantSendFailure(
   return { kind: 'rejected', retryable: false };
 }
 
-/** i18n key for a failure, or null when the network-error copy should be used. */
+/**
+ * i18n key for a failure. A connection, timeout or server failure all read as
+ * "temporarily unavailable": the app cannot tell a dead phone connection from a
+ * down server, so the copy must not blame the user's internet.
+ */
 export function assistantSendFailureKey(
   failure: AssistantSendFailure,
-): string | null {
+): string {
   switch (failure.kind) {
     case 'allowance_daily':
       return 'assistant:errors.allowanceDaily';
@@ -155,7 +159,7 @@ export function assistantSendFailureKey(
     case 'offline':
     case 'timeout':
     case 'server':
-      return null;
+      return 'assistant:errors.unavailable';
     default:
       return 'assistant:errors.generic';
   }

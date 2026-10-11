@@ -132,6 +132,15 @@ describe('assistant floating button: bounds', () => {
     expect(b.minY).toBe(insets.top + ASSISTANT_FAB_MARGIN);
   });
 
+  it('rests just above the tab bar so it stays out of short-screen content', () => {
+    // Tab bar is about 47 tall above the bottom inset.
+    const tabBarTop = phone.height - insets.bottom - 47;
+    const b = assistantFabBounds({ ...phone, pathname: '/dashboard' });
+    const gap = tabBarTop - (b.maxY + ASSISTANT_FAB_SIZE);
+    expect(gap).toBeGreaterThanOrEqual(ASSISTANT_FAB_MARGIN);
+    expect(gap).toBeLessThanOrEqual(2 * ASSISTANT_FAB_MARGIN);
+  });
+
   it('keeps more room clear on circle screens for the composer and actions', () => {
     expect(assistantFabBottomReserve('/circle/workspace')).toBe(
       ASSISTANT_FAB_BOTTOM_RESERVE_CIRCLE,

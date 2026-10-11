@@ -28,14 +28,12 @@ describe('localization accessibility contracts', () => {
     expect(source).toContain('<Text style={styles.menuSubtitle}>{subtitle}</Text>');
   });
 
-  test('assistant upgrade copy and composer-adjacent chips meet readable size', () => {
+  test('composer-adjacent chips meet readable size', () => {
     const source = readFileSync(
       path.join(__dirname, '../../components/CircleAssistantPanel.tsx'),
       'utf8',
     );
-    expect(source).toContain('upgradeButtonText: { color: colors.primaryDark, fontWeight: \'900\', fontSize: 12 }');
     expect(source).toContain('minHeight: 44');
-    expect(source).not.toContain('upgradeButtonText: { color: colors.primaryDark, fontWeight: \'900\', fontSize: 10 }');
   });
 
   test('payout-handle surfaces include the external-payment disclosure', () => {

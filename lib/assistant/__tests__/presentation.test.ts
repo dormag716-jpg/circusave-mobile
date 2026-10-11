@@ -10,10 +10,8 @@ import {
   buildAssistantSendOptions,
   readAssistantConversationMemory,
   assistantAllowanceErrorKey,
-  didConsumeAssistantIntro,
-  isAssistantUpgradeEntitlementError,
+  assistantAllowanceResetPhrase,
   shouldAnimateAssistantMessage,
-  shouldRefreshAssistantEntitlements,
   shouldReloadAssistantHistory,
 } from '../presentation';
 
@@ -69,46 +67,7 @@ describe('Susu AI presentation', () => {
     ).toBe(true);
   });
 
-  it('does not refresh entitlements on an ordinary successful reply', () => {
-    expect(
-      shouldRefreshAssistantEntitlements({
-        usedIntro: false,
-        requiresUpgrade: false,
-      }),
-    ).toBe(false);
-  });
-
-  it('refreshes entitlements when intro is consumed or upgrade is required', () => {
-    expect(
-      didConsumeAssistantIntro({
-        hasAiAssistant: false,
-        aiIntroAvailable: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldRefreshAssistantEntitlements({
-        usedIntro: true,
-        requiresUpgrade: false,
-      }),
-    ).toBe(true);
-    expect(
-      isAssistantUpgradeEntitlementError({
-        status: 403,
-        hasUpgradePayload: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldRefreshAssistantEntitlements({
-        usedIntro: false,
-        requiresUpgrade: true,
-      }),
-    ).toBe(true);
-    expect(
-      isAssistantUpgradeEntitlementError({
-        status: 403,
-        hasUpgradePayload: false,
-      }),
-    ).toBe(false);
+  it('maps allowance exhaustion to its own message', () => {
     expect(
       assistantAllowanceErrorKey({ errorCode: 'AI_DAILY_REQUEST_LIMIT' }),
     ).toBe('assistant:errors.allowanceDaily');
@@ -119,6 +78,29 @@ describe('Susu AI presentation', () => {
       null,
     );
     expect(assistantAllowanceErrorKey(null)).toBe(null);
+  });
+
+
+  it('tells the user when the allowance refills in plain words', () => {
+    const daily = assistantAllowanceResetPhrase(
+      { quota: { resetAt: new Date(2026, 9, 11, 20, 0).toISOString() } },
+      'daily',
+      'en',
+    );
+    expect(daily).toMatch(/Oct/);
+    expect(daily).toMatch(/8:00/);
+    expect(
+      assistantAllowanceResetPhrase(
+        { quota: { resetAt: new Date(2026, 10, 1, 20, 0).toISOString() } },
+        'monthly',
+        'en',
+      ),
+    ).toMatch(/Nov/);
+    expect(assistantAllowanceResetPhrase({}, 'daily', 'en')).toBeNull();
+    expect(
+      assistantAllowanceResetPhrase({ quota: { resetAt: 'nope' } }, 'daily', 'en'),
+    ).toBeNull();
+    expect(assistantAllowanceResetPhrase(null, 'daily', 'en')).toBeNull();
   });
 
   it('distinguishes the saved transcript from the model window', () => {

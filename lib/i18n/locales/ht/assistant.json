@@ -9,8 +9,7 @@
   "contextTitle": "Repons ki baze sou sèk ou a",
   "contextCopy": "Mwen ka esplike dosye yo epi sijere kote pou gade, men mwen pa ka deplase lajan ni chanje done sèk la.",
   "welcome": {
-    "premium": "Mwen pare. Mande m sou sèk sa a, konfigirasyon li, kontribisyon, preparasyon peman, oswa sa pou fè apre sa.",
-    "intro": "Ou gen yon apèsi gratis. Mande m sa sèk sa a bezwen apre sa."
+    "premium": "Mwen pare. Mande m sou sèk sa a, konfigirasyon li, kontribisyon, preparasyon peman, oswa sa pou fè apre sa."
   },
   "prompts": {
     "attention": "Kisa ki bezwen atansyon mwen jodi a?",
@@ -22,14 +21,6 @@
   "sendA11y": "Voye mesaj bay asistan an",
   "backA11y": "Tounen",
   "refusalBadge": "SÈLMAN LEKTI · PA GEN AKSYON",
-  "introBadge": "APÈSI GRATIS",
-  "upgrade": {
-    "title": "Organizer Pro",
-    "body": "Organizer Pro ajoute plis sèk, rapò, rapèl, ak yon limit asistan ki pi wo.",
-    "cta": "Gade plan an",
-    "introUsed": "Apèsi sa a fini. Ou ka kontinye mande nan limit ou. Organizer Pro ogmante limit la epi li ajoute lòt zouti òganizatè yo.",
-    "proRequired": "Demann sa a bezwen Organizer Pro. Ou ka toujou mande sou sèk sa a nan limit ou, epi asistan an pa ka deplase lajan."
-  },
   "memory": {
     "within": "Sove nan chat sa a: {{saved}}. Asistan an resevwa {{sent}} ki pi resan yo. Yon kesyon long ka kite plis mesaj deyò. Mesaj ki sove yo pa montan, estati, ni lòd peman aktyèl.",
     "beyond": "Sove nan chat sa a: {{saved}}. Asistan an resevwa {{sent}} ki pi resan yo. {{omitted}} ansyen mesaj rete sove epi yo pa voye. Dosye sèk la rete enfòmasyon aktyèl yo."
@@ -39,10 +30,13 @@
     "historyLoad": "Nou pa t kapab chaje mesaj anvan yo. Ou ka toujou poze yon nouvo kesyon.",
     "historyLoadContinue": "Nou pa t kapab chaje mesaj anvan yo. Pwochen kesyon ou a ap kontinye konvèsasyon sa a.",
     "rateLimited": "Twòp kesyon kounye a. Tanpri tann epi eseye ankò.",
-    "allowanceDaily": "Ou rive nan kesyon asistan jodi a. Limit la rekòmanse nan pwochen jou UTC la.",
-    "allowanceMonthly": "Ou rive nan limit asistan mwa sa a. Li rekòmanse nan kòmansman pwochen mwa UTC la.",
+    "allowanceDaily": "Ou fin itilize tout kesyon SuSu AI pou jodi a. Yo rekòmanse demen.",
+    "allowanceMonthly": "Ou fin itilize limit SuSu AI pou mwa sa a. Li rekòmanse mwa pwochen.",
     "throttled": "Twòp tantativ echwe nan yon kout tan. Tanpri tann kèk minit epi eseye ankò.",
-    "stillWorking": "Y ap toujou reponn kesyon sa a. Reeseye pa p voye l de fwa."
+    "stillWorking": "Y ap toujou reponn kesyon sa a. Reeseye pa p voye l de fwa.",
+    "unavailable": "SuSu AI pa disponib pou kounye a. Eseye ankò.",
+    "allowanceDailyAt": "Ou fin itilize tout kesyon SuSu AI pou jodi a. Yo rekòmanse le {{when}}.",
+    "allowanceMonthlyAt": "Ou fin itilize limit SuSu AI pou mwa sa a. Li rekòmanse le {{when}}."
   },
   "send": {
     "retry": "Eseye ankò",

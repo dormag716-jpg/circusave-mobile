@@ -96,7 +96,15 @@ describe('failure classification', () => {
   });
 
   test('every failure kind maps to a message key or the network copy', () => {
-    expect(assistantSendFailureKey({ kind: 'timeout', retryable: true })).toBeNull();
+    expect(assistantSendFailureKey({ kind: 'timeout', retryable: true })).toBe(
+      'assistant:errors.unavailable',
+    );
+    expect(assistantSendFailureKey({ kind: 'offline', retryable: true })).toBe(
+      'assistant:errors.unavailable',
+    );
+    expect(assistantSendFailureKey({ kind: 'server', retryable: true })).toBe(
+      'assistant:errors.unavailable',
+    );
     expect(assistantSendFailureKey({ kind: 'throttled', retryable: true })).toBe(
       'assistant:errors.throttled',
     );

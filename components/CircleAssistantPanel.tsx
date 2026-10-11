@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,7 +11,10 @@ import {
   Text,
   View,
   type KeyboardEvent,
+  type LayoutChangeEvent,
   type ListRenderItem,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
@@ -31,12 +34,10 @@ import {
   assistantConversationMemory,
   assistantTranscriptFailureKeepsConversation,
   buildAssistantSendOptions,
-  didConsumeAssistantIntro,
-  isAssistantUpgradeEntitlementError,
+  assistantAllowanceResetPhrase,
   readAssistantConversationMemory,
   type AssistantConversationMemory,
   shouldAnimateAssistantMessage,
-  shouldRefreshAssistantEntitlements,
   type AssistantMessageSource,
 } from '@/lib/assistant/presentation';
 import {
@@ -59,14 +60,12 @@ import {
   sendAiAssistantMessage,
 } from '@/lib/api';
 import { useAuthSession } from '@/lib/auth/authContext';
-import { localizedNetworkErrorBody } from '@/lib/platform/networkErrors';
 import {
   FLOATING_COMPOSER_RESTING_HEIGHT,
   floatingComposerBottomOffset,
   floatingComposerDockOffset,
   floatingComposerListPadding,
 } from '@/lib/circles/chatKeyboard';
-import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
   shouldApplyKeyboardGeometry,
   workspaceChromeLayoutStyle,
@@ -79,7 +78,6 @@ type ChatItem = {
   message: string;
   responseType?: NormalizedAssistantReply['responseType'];
   isRefusal?: boolean;
-  isIntro?: boolean;
   navigationSuggestions?: NormalizedAssistantReply['navigationSuggestions'];
   isError?: boolean;
   source?: AssistantMessageSource;
@@ -182,9 +180,6 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         {item.isRefusal ? (
           <Text style={styles.refusalLabel}>{t('assistant:refusalBadge')}</Text>
         ) : null}
-        {item.isIntro ? (
-          <Text style={styles.introLabel}>{t('assistant:introBadge')}</Text>
-        ) : null}
         {item.navigationSuggestions &&
         item.navigationSuggestions.length > 0 &&
         circleId ? (
@@ -232,6 +227,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
 
 export type CircleAssistantPresentation = 'page' | 'sheet';
 
+/** How close to the end (px) still counts as "reading the newest message". */
+const SCROLL_FOLLOW_THRESHOLD = 120;
+
 export function CircleAssistantPanel({
   circleId,
   onClose,
@@ -242,7 +240,6 @@ export function CircleAssistantPanel({
   presentation?: CircleAssistantPresentation;
 }) {
   const { session } = useAuthSession();
-  const { entitlements, refreshEntitlements } = useEntitlements();
   const { t, i18n } = useTranslation(['assistant', 'common']);
   const token = session?.session.token;
   const insets = useSafeAreaInsets();
@@ -259,7 +256,6 @@ export function CircleAssistantPanel({
   const [sending, setSending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [conversationMemory, setConversationMemory] =
     useState<AssistantConversationMemory | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -304,11 +300,92 @@ export function CircleAssistantPanel({
     });
   }, [welcomeMessage]);
 
-  const scrollToEnd = useCallback(() => {
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
-    });
+  // True while the reader is at (or near) the bottom of the thread. New rows,
+  // a failure message and the Retry button all change the content height after
+  // the row is rendered, and the viewport changes when the keyboard opens or
+  // closes, so the list follows both. When the reader scrolls up (a drag or
+  // fling, not our own scroll) the follow pauses.
+  const stickToBottomRef = useRef(true);
+  const contentHeightRef = useRef(0);
+  const viewportHeightRef = useRef(0);
+
+  // FlatList.scrollToEnd lines the last row's bottom edge up with the viewport
+  // and ignores the list's bottom padding, which parks the newest message
+  // under the composer. Scroll to the measured end of the content instead.
+  const scrollToMeasuredEnd = useCallback((animated: boolean) => {
+    const offset = Math.max(
+      0,
+      contentHeightRef.current - viewportHeightRef.current,
+    );
+    listRef.current?.scrollToOffset({ offset, animated });
   }, []);
+
+  const scrollToEnd = useCallback(() => {
+    requestAnimationFrame(() => scrollToMeasuredEnd(true));
+  }, [scrollToMeasuredEnd]);
+
+  // Not animated: an animated scroll would be seen by the scroll handler as
+  // "far from the end" while the content is still growing.
+  const followTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const followContentSize = useCallback(() => {
+    if (!stickToBottomRef.current) return;
+    requestAnimationFrame(() => scrollToMeasuredEnd(false));
+    // A second pass once the sheet and keyboard have finished moving.
+    if (followTimerRef.current) clearTimeout(followTimerRef.current);
+    followTimerRef.current = setTimeout(() => {
+      if (stickToBottomRef.current) scrollToMeasuredEnd(false);
+    }, 260);
+  }, [scrollToMeasuredEnd]);
+
+  const onListContentSizeChange = useCallback(
+    (_width: number, height: number) => {
+      contentHeightRef.current = height;
+      followContentSize();
+    },
+    [followContentSize],
+  );
+
+  const onListLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      viewportHeightRef.current = event.nativeEvent.layout.height;
+      followContentSize();
+    },
+    [followContentSize],
+  );
+
+  useEffect(
+    () => () => {
+      if (followTimerRef.current) clearTimeout(followTimerRef.current);
+    },
+    [],
+  );
+
+  // Only a finger drag can pause the follow. Scroll events caused by the list
+  // growing or by our own scrollToEnd are ignored.
+  const userDraggingRef = useRef(false);
+
+  const markUserDrag = useCallback(() => {
+    userDraggingRef.current = true;
+  }, []);
+
+  const trackBottomDistance = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!userDraggingRef.current) return;
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const distance =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      stickToBottomRef.current = distance < SCROLL_FOLLOW_THRESHOLD;
+    },
+    [],
+  );
+
+  const endUserDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      trackBottomDistance(event);
+      userDraggingRef.current = false;
+    },
+    [trackBottomDistance],
+  );
 
   useEffect(() => {
     scrollToEnd();
@@ -474,7 +551,6 @@ export function CircleAssistantPanel({
     setConversationId(null);
     setConversationMemory(null);
     setHistoryError(null);
-    setUpgradeRequired(false);
     setItems([welcomeItem(welcomeMessage)]);
   }
 
@@ -512,7 +588,6 @@ export function CircleAssistantPanel({
     // Synchronous: a second tap in the same frame never reaches the network.
     if (!sendGuard.tryAcquire()) return;
     setSending(true);
-    setUpgradeRequired(false);
     setHistoryError(null);
     let pending = initial;
     try {
@@ -584,11 +659,6 @@ export function CircleAssistantPanel({
         assistantConversationMemory((current?.savedMessageCount ?? 0) + 2),
       );
 
-      const usedIntro = didConsumeAssistantIntro({
-        hasAiAssistant: entitlements.capabilities.aiAssistant,
-        aiIntroAvailable: entitlements.capabilities.aiIntroAvailable,
-      });
-
       setItems((current) => [
         ...current.map((item) =>
           item.id === working.localId
@@ -601,31 +671,12 @@ export function CircleAssistantPanel({
           message: reply.message,
           responseType: reply.responseType,
           isRefusal: reply.isRefusal,
-          isIntro: usedIntro,
           navigationSuggestions: reply.navigationSuggestions,
           source: 'live',
         },
       ]);
-      if (
-        shouldRefreshAssistantEntitlements({
-          usedIntro,
-          requiresUpgrade: false,
-        })
-      ) {
-        await refreshEntitlements();
-      }
     } catch (error) {
       const failure = classifyAssistantSendFailure(error);
-      const requiresUpgrade = isAssistantUpgradeEntitlementError({
-        status: error instanceof ApiError ? error.status : undefined,
-        hasUpgradePayload: Boolean(
-          error instanceof ApiError &&
-            error.payload &&
-            typeof error.payload === 'object' &&
-            'upgrade' in (error.payload as object),
-        ),
-      });
-      setUpgradeRequired(requiresUpgrade);
       // A first message may have been created and answered by the server even
       // though the response never arrived. Find that conversation so the next
       // question continues it and Retry replays the stored answer.
@@ -638,11 +689,21 @@ export function CircleAssistantPanel({
         }
       }
       const failureKey = assistantSendFailureKey(failure);
-      const failureMessage = requiresUpgrade
-        ? t('assistant:upgrade.proRequired')
-        : failureKey
-          ? t(failureKey)
-          : localizedNetworkErrorBody(error, t);
+      const resetKind =
+        failure.kind === 'allowance_daily'
+          ? 'daily'
+          : failure.kind === 'allowance_monthly'
+            ? 'monthly'
+            : null;
+      const resetPhrase =
+        resetKind && error instanceof ApiError
+          ? assistantAllowanceResetPhrase(error.payload, resetKind, apiLocale)
+          : null;
+      // The "...At" copy names when the allowance refills; without a time from
+      // the server the plain copy ("tomorrow" / "next month") is used.
+      const failureMessage = resetPhrase
+        ? t(`${failureKey}At`, { when: resetPhrase })
+        : t(failureKey);
       const failedPending = {
         ...pending,
         conversationId: knownConversationId,
@@ -654,20 +715,12 @@ export function CircleAssistantPanel({
                 ...item,
                 sendStatus: 'failed',
                 failureMessage,
-                failureRetryable: failure.retryable && !requiresUpgrade,
+                failureRetryable: failure.retryable,
                 pending: failedPending,
               }
             : item,
         ),
       );
-      if (
-        shouldRefreshAssistantEntitlements({
-          usedIntro: false,
-          requiresUpgrade,
-        })
-      ) {
-        await refreshEntitlements();
-      }
     } finally {
       sendGuard.release();
       setSending(false);
@@ -681,6 +734,7 @@ export function CircleAssistantPanel({
     const trimmed = message.trim();
     if (!trimmed || !token || !circleId || historyLoading) return;
     if (sendGuard.isHeld()) return;
+    stickToBottomRef.current = true;
     await submit(newPendingSend(trimmed, conversationIdRef.current), 'new');
   }
 
@@ -688,6 +742,7 @@ export function CircleAssistantPanel({
   const retrySend = useCallback((localId: string) => {
     const item = itemsRef.current.find((entry) => entry.id === localId);
     if (!item?.pending || item.sendStatus !== 'failed') return;
+    stickToBottomRef.current = true;
     void submitRef.current(item.pending, 'retry');
   }, []);
 
@@ -774,27 +829,6 @@ export function CircleAssistantPanel({
         <View style={styles.thinking}>
           <ActivityIndicator size="small" color={colors.primary} />
           <Text style={styles.thinkingText}>{t('assistant:thinking')}</Text>
-        </View>
-      ) : null}
-      {upgradeRequired ? (
-        <View style={styles.upgradeCard}>
-          <View style={styles.upgradeIcon}>
-            <FontAwesome name="diamond" size={16} color={colors.premiumGold} />
-          </View>
-          <View style={styles.upgradeText}>
-            <Text style={styles.upgradeTitle}>{t('assistant:upgrade.title')}</Text>
-            <Text style={styles.upgradeCopy}>{t('assistant:upgrade.body')}</Text>
-          </View>
-          <Pressable
-            style={styles.upgradeButton}
-            onPress={() => router.push('/subscription' as Href)}
-            accessibilityRole="button"
-            accessibilityLabel={t('assistant:upgrade.cta')}
-          >
-            <Text style={styles.upgradeButtonText}>
-              {t('assistant:upgrade.cta')}
-            </Text>
-          </Pressable>
         </View>
       ) : null}
     </>
@@ -895,15 +929,20 @@ export function CircleAssistantPanel({
           data={items}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          extraData={`${sending}:${historyLoading}:${upgradeRequired}`}
+          extraData={`${sending}:${historyLoading}`}
           style={styles.messageList}
           contentContainerStyle={[
             styles.messages,
-            { paddingBottom: 16 + listBottomPadding },
+            { paddingBottom: 24 + listBottomPadding },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          onContentSizeChange={onListContentSizeChange}
+          onLayout={onListLayout}
+          onScrollBeginDrag={markUserDrag}
+          onScrollEndDrag={trackBottomDistance}
+          onMomentumScrollEnd={endUserDrag}
           ListHeaderComponent={listHeader}
           ListFooterComponent={listFooter}
         />
@@ -923,7 +962,7 @@ export function CircleAssistantPanel({
             placeholder={t('assistant:composerPlaceholder')}
             sendA11y={t('assistant:sendA11y')}
             sending={sending}
-            disabled={upgradeRequired || historyLoading}
+            disabled={historyLoading}
             bottomPad={composerBottomPad}
           />
         </View>
@@ -1150,13 +1189,6 @@ const styles = StyleSheet.create({
   },
   messageParagraph: { marginTop: 10 },
   userMessageText: { color: colors.onColor },
-  introLabel: {
-    color: colors.primary,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-    marginTop: 8,
-  },
   refusalLabel: {
     color: colors.warning,
     fontSize: 8,
@@ -1205,38 +1237,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   thinkingText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
-  upgradeCard: {
-    backgroundColor: colors.primaryDark,
-    borderRadius: 20,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    marginTop: 4,
-  },
-  upgradeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  upgradeText: { flex: 1 },
-  upgradeTitle: { color: colors.onColor, fontWeight: '900', fontSize: 13 },
-  upgradeCopy: {
-    color: 'rgba(255,255,255,0.68)',
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  upgradeButton: {
-    backgroundColor: colors.card,
-    borderRadius: radii.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  upgradeButtonText: { color: colors.primaryDark, fontWeight: '900', fontSize: 12 },
   composerDock: {
     left: 0,
     position: 'absolute',

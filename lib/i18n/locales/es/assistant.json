@@ -9,8 +9,7 @@
   "contextTitle": "Respuestas basadas en tu círculo",
   "contextCopy": "Puedo explicar registros y sugerir dónde mirar, pero no puedo mover dinero ni cambiar datos del círculo.",
   "welcome": {
-    "premium": "Estoy listo. Pregúntame sobre este círculo, su configuración, contribuciones, preparación de pagos o qué hacer a continuación.",
-    "intro": "Tienes una vista general de cortesía. Pregúntame qué necesita este círculo a continuación."
+    "premium": "Estoy listo. Pregúntame sobre este círculo, su configuración, contribuciones, preparación de pagos o qué hacer a continuación."
   },
   "prompts": {
     "attention": "¿Qué necesita mi atención hoy?",
@@ -22,14 +21,6 @@
   "sendA11y": "Enviar mensaje al asistente",
   "backA11y": "Volver",
   "refusalBadge": "SOLO LECTURA · SIN ACCIÓN",
-  "introBadge": "VISTA GENERAL DE CORTESÍA",
-  "upgrade": {
-    "title": "Organizer Pro",
-    "body": "Organizer Pro añade más círculos, informes, recordatorios y una asignación más alta del asistente.",
-    "cta": "Ver plan",
-    "introUsed": "Esa vista general terminó. Puedes seguir preguntando dentro de tu asignación. Organizer Pro aumenta la asignación y añade las demás herramientas del organizador.",
-    "proRequired": "Esta solicitud necesita Organizer Pro. Aún puedes preguntar sobre este círculo dentro de tu asignación, y el asistente no puede mover dinero."
-  },
   "memory": {
     "within": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. Una pregunta larga puede dejar fuera más mensajes. Los mensajes guardados no son montos, estados ni orden de pago actuales.",
     "beyond": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. {{omitted}} mensajes más antiguos siguen guardados y no se envían. Los registros del círculo siguen siendo los datos actuales."
@@ -39,10 +30,13 @@
     "historyLoad": "No se pudieron cargar mensajes anteriores. Aún puedes hacer una pregunta nueva.",
     "historyLoadContinue": "No se pudieron cargar los mensajes anteriores. Tu próxima pregunta sigue en esta conversación.",
     "rateLimited": "Demasiadas preguntas ahora. Espera e inténtalo de nuevo.",
-    "allowanceDaily": "Llegaste al límite de preguntas de hoy. La asignación se restablece el próximo día UTC.",
-    "allowanceMonthly": "Llegaste a la asignación del asistente de este mes. Se restablece al inicio del próximo mes UTC.",
+    "allowanceDaily": "Ya usaste todas las preguntas de hoy a SuSu AI. Se restablecen mañana.",
+    "allowanceMonthly": "Ya usaste el límite de SuSu AI de este mes. Se restablece el mes próximo.",
     "throttled": "Fallaron demasiados intentos en poco tiempo. Espera unos minutos y vuelve a intentarlo.",
-    "stillWorking": "Esta pregunta aún se está respondiendo. Reintentar no la enviará dos veces."
+    "stillWorking": "Esta pregunta aún se está respondiendo. Reintentar no la enviará dos veces.",
+    "unavailable": "SuSu AI no está disponible por ahora. Inténtalo de nuevo.",
+    "allowanceDailyAt": "Ya usaste todas las preguntas de hoy a SuSu AI. Se restablecen el {{when}}.",
+    "allowanceMonthlyAt": "Ya usaste el límite de SuSu AI de este mes. Se restablece el {{when}}."
   },
   "send": {
     "retry": "Reintentar",

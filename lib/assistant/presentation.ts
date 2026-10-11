@@ -33,27 +33,6 @@ export function shouldAnimateAssistantMessage(input: {
   return input.source === 'live';
 }
 
-export function shouldRefreshAssistantEntitlements(input: {
-  usedIntro: boolean;
-  requiresUpgrade: boolean;
-}): boolean {
-  return input.usedIntro === true || input.requiresUpgrade === true;
-}
-
-export function didConsumeAssistantIntro(input: {
-  hasAiAssistant: boolean;
-  aiIntroAvailable: boolean;
-}): boolean {
-  return !input.hasAiAssistant && input.aiIntroAvailable;
-}
-
-export function isAssistantUpgradeEntitlementError(input: {
-  status?: number;
-  hasUpgradePayload: boolean;
-}): boolean {
-  return input.status === 403 && input.hasUpgradePayload;
-}
-
 export type AssistantAllowanceErrorKey =
   | 'assistant:errors.allowanceDaily'
   | 'assistant:errors.allowanceMonthly';
@@ -170,4 +149,38 @@ export function assistantMessageRowUnchanged(
     previous.isRefusal === next.isRefusal &&
     previous.isError === next.isError
   );
+}
+
+/**
+ * When the exhausted allowance refills, as a local-time phrase for a message,
+ * or null when the server did not say (the caller then uses the generic copy).
+ * A daily reset shows the date and time; a monthly reset shows only the date.
+ */
+export function assistantAllowanceResetPhrase(
+  payload: unknown,
+  kind: 'daily' | 'monthly',
+  locale: string,
+): string | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+  const quota = (payload as { quota?: unknown }).quota;
+  const raw =
+    quota && typeof quota === 'object'
+      ? (quota as { resetAt?: unknown }).resetAt
+      : undefined;
+  const reset = new Date(String(raw ?? ''));
+  if (!raw || Number.isNaN(reset.getTime())) return null;
+  try {
+    if (kind === 'monthly') {
+      return reset.toLocaleDateString(locale, { month: 'long', day: 'numeric' });
+    }
+    const time = reset.toLocaleTimeString(locale, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    return `${reset.toLocaleDateString(locale, { month: 'short', day: 'numeric' })}, ${time}`;
+  } catch {
+    return null;
+  }
 }

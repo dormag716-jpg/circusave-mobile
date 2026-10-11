@@ -9,8 +9,7 @@
   "contextTitle": "Answers grounded in your circle",
   "contextCopy": "I can explain records and suggest where to look, but I cannot move money or change circle data.",
   "welcome": {
-    "premium": "I am ready. Ask me about this circle, its setup, contributions, payout readiness, or what to do next.",
-    "intro": "You have one complimentary organizer overview. Ask me what this circle needs next."
+    "premium": "I am ready. Ask me about this circle, its setup, contributions, payout readiness, or what to do next."
   },
   "prompts": {
     "attention": "What needs my attention today?",
@@ -22,14 +21,6 @@
   "sendA11y": "Send message to assistant",
   "backA11y": "Go back",
   "refusalBadge": "READ-ONLY · NO ACTION TAKEN",
-  "introBadge": "COMPLIMENTARY OVERVIEW",
-  "upgrade": {
-    "title": "Organizer Pro",
-    "body": "Organizer Pro adds more circles, reports, reminders, and a higher assistant allowance.",
-    "cta": "View plan",
-    "introUsed": "That overview is finished. You can keep asking within your allowance. Organizer Pro raises the allowance and adds the other organizer tools.",
-    "proRequired": "This request needs Organizer Pro. You can still ask about this circle within your allowance, and the assistant cannot move money."
-  },
   "memory": {
     "within": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. A long question can leave more out. Saved messages are not current amounts, statuses, or payout order.",
     "beyond": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. {{omitted}} older messages stay saved and are not sent. Circle records remain the current facts."
@@ -39,10 +30,13 @@
     "historyLoad": "Could not load earlier messages. You can still ask a new question.",
     "historyLoadContinue": "Could not load earlier messages. Your next question still continues this chat.",
     "rateLimited": "Too many questions right now. Please wait and try again.",
-    "allowanceDaily": "You have reached today's assistant questions. The allowance resets on the next UTC day.",
-    "allowanceMonthly": "You have reached this month's assistant allowance. It resets at the start of the next UTC month.",
+    "allowanceDaily": "You have used all of today's SuSu AI questions. They reset tomorrow.",
+    "allowanceMonthly": "You have used this month's SuSu AI allowance. It resets next month.",
     "throttled": "Too many attempts failed in a short time. Please wait a few minutes, then retry.",
-    "stillWorking": "This question is still being answered. Retrying will not ask it twice."
+    "stillWorking": "This question is still being answered. Retrying will not ask it twice.",
+    "unavailable": "SuSu AI is temporarily unavailable. Try again.",
+    "allowanceDailyAt": "You have used all of today's SuSu AI questions. They reset on {{when}}.",
+    "allowanceMonthlyAt": "You have used this month's SuSu AI allowance. It resets on {{when}}."
   },
   "send": {
     "retry": "Retry",

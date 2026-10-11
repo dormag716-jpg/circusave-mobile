@@ -10,14 +10,18 @@
 export const ASSISTANT_FAB_SIZE = 56;
 /** Gap to the screen edges and to the status bar. */
 export const ASSISTANT_FAB_MARGIN = 12;
-/** Space kept clear at the bottom of the main tab screens (the tab bar). */
-export const ASSISTANT_FAB_BOTTOM_RESERVE_TAB = 84;
+/**
+ * Space kept clear at the bottom of the main tab screens: the tab bar (about
+ * 47 above the bottom inset) plus a margin. The default button position rests
+ * just above the tab bar so it stays out of the content area, including the
+ * action buttons at the end of a short dashboard.
+ */
+export const ASSISTANT_FAB_BOTTOM_RESERVE_TAB = 60;
 /**
  * Scroll padding for tab screens that also show the assistant button.
  * Clears the tab bar, the button, and the gap around it.
  */
-export const ASSISTANT_FAB_TAB_CONTENT_PADDING =
-  ASSISTANT_FAB_BOTTOM_RESERVE_TAB + ASSISTANT_FAB_SIZE + ASSISTANT_FAB_MARGIN;
+export const ASSISTANT_FAB_TAB_CONTENT_PADDING = 152;
 /**
  * Space kept clear at the bottom of circle screens, which have no tab bar but do
  * have the chat composer and the payment and approval actions along the bottom.
