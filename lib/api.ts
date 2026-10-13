@@ -1280,8 +1280,17 @@ export function registerPushToken(
     method: 'POST',
     token,
     signal,
-    body: JSON.stringify({ pushToken, platform: 'expo' }),
+    body: JSON.stringify({ pushToken, platform: 'expo', timezone: deviceTimeZone() }),
   });
+}
+
+/** IANA zone name (e.g. "America/New_York") so the server can skip the user's night. */
+function deviceTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function unregisterPushToken(
