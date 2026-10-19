@@ -71,10 +71,20 @@
   "deleteAccount": "Efase kont lan",
   "deleteAccountBody": "Nou anonimite enfòmasyon pèsonèl ou epi efase kont ou selon politik vi prive App Store ak Google Play.",
   "deleteConfirmTitle": "Efase kont lan?",
-  "deleteConfirmBody": "Ou sèten ou vle efase kont ou nèt?\n\n• Detay pèsonèl ou (non, imèl, telefòn) ap vin anonim.\n• Sesyon aktif ou ap revoke tousuit.\n• Dosye tranzaksyon finansye obligatwa yo ap rete pou odit regilasyon.",
+  "deleteConfirmBody": "Ou sèten ou vle efase kont ou nèt? Pa gen retounen.\n\n• Non, imèl, telefòn ak enfòmasyon koneksyon ou yo retire oswa vin anonim.\n• Mesaj ou yo ak nòt peman ou yo efase.\n• Montan ak dat peman ak vèsman yo rete nan dosye sèk la, epi lòt manm yo wè yo kòm \"Itilizatè efase\".\n• Kopi nan backup yo ka rete jiska apeprè 90 jou.",
   "deleteConfirmAction": "Efase kont lan",
   "deletedTitle": "Kont lan efase",
   "deletedBody": "Kont ou efase e li vin anonim.",
   "deleteErrorTitle": "Erè efasman",
-  "deleteErrorBody": "Nou pa t kapab fini efasman kont lan. Tcheke koneksyon ou oswa eseye ankò."
+  "deleteErrorBody": "Nou pa t kapab fini efasman kont lan. Tcheke koneksyon ou oswa eseye ankò.",
+  "deleteBlockedBillingTitle": "Anile abònman ou an anvan",
+  "deleteBlockedBillingBody": "Ou gen yon abònman Premium ki aktif. Anile l, apre sa efase kont ou.",
+  "deleteBlockedGooglePlayTitle": "Anile abònman Google Play ou an",
+  "deleteBlockedGooglePlayBody": "Se Google Play ki fakture abònman Organizer Pro ou an. Louvri Google Play > Peman ak abònman > Abònman, anile l, epi tounen pou efase kont ou.",
+  "deleteBlockedCirclesTitle": "Fini sèk ou yo anvan",
+  "deleteBlockedCirclesBody_one": "Ou òganize {{count}} sèk ki louvri. Fini l, achive l oswa efase l pou manm yo pa rete san òganizatè, epi eseye ankò.",
+  "deleteBlockedCirclesBody_other": "Ou òganize {{count}} sèk ki louvri. Fini yo, achive yo oswa efase yo pou manm yo pa rete san òganizatè, epi eseye ankò.",
+  "deleteBlockedSettleTitle": "Peye sa ou dwe a anvan",
+  "deleteBlockedSettleBody_one": "Ou gen yon kotizasyon ki dwe epi ki poko peye nan {{count}} sèk. Peye l, apre sa efase kont ou. Si ou pa kapab, ekri support@circusave.com epi n ap ede ou.",
+  "deleteBlockedSettleBody_other": "Ou gen kotizasyon ki dwe epi ki poko peye nan {{count}} sèk. Peye yo, apre sa efase kont ou. Si ou pa kapab, ekri support@circusave.com epi n ap ede ou."
 }

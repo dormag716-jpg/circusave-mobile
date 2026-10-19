@@ -71,10 +71,20 @@
   "deleteAccount": "Delete Account",
   "deleteAccountBody": "Anonymize your personal information and delete your account in accordance with App Store & Google Play privacy policies.",
   "deleteConfirmTitle": "Delete Account?",
-  "deleteConfirmBody": "Are you sure you want to permanently delete your account?\n\n• Your personal details (name, email, phone) will be anonymized.\n• Your active session will be revoked immediately.\n• Required financial transaction records will be retained for regulatory audit compliance.",
+  "deleteConfirmBody": "Are you sure you want to permanently delete your account? This cannot be undone.\n\n• Your name, email, phone and sign-in details are removed or anonymized.\n• Your messages and payment notes are cleared.\n• Payment and payout amounts and dates stay in the circle record, shown to other members as \"Deleted User\".\n• Copies in backups can remain for up to about 90 days.",
   "deleteConfirmAction": "Delete Account",
   "deletedTitle": "Account Deleted",
   "deletedBody": "Your account has been deleted and anonymized.",
   "deleteErrorTitle": "Deletion Error",
-  "deleteErrorBody": "Unable to complete account deletion. Please verify your connection or try again."
+  "deleteErrorBody": "Unable to complete account deletion. Please verify your connection or try again.",
+  "deleteBlockedBillingTitle": "Cancel your subscription first",
+  "deleteBlockedBillingBody": "You have an active Premium subscription. Cancel it, then delete your account.",
+  "deleteBlockedGooglePlayTitle": "Cancel your Google Play subscription",
+  "deleteBlockedGooglePlayBody": "Your Organizer Pro subscription is billed by Google Play. Open Google Play > Payments & subscriptions > Subscriptions, cancel it, then come back to delete your account.",
+  "deleteBlockedCirclesTitle": "Finish your circles first",
+  "deleteBlockedCirclesBody_one": "You organize {{count}} open circle. Finish, archive or delete it so members are not left without an organizer, then try again.",
+  "deleteBlockedCirclesBody_other": "You organize {{count}} open circles. Finish, archive or delete them so members are not left without an organizer, then try again.",
+  "deleteBlockedSettleTitle": "Pay what is due first",
+  "deleteBlockedSettleBody_one": "You have a contribution that is due and not yet paid in {{count}} circle. Pay it, then delete your account. If you cannot, email support@circusave.com and we will help.",
+  "deleteBlockedSettleBody_other": "You have contributions that are due and not yet paid in {{count}} circles. Pay them, then delete your account. If you cannot, email support@circusave.com and we will help."
 }

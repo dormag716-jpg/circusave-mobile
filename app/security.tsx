@@ -25,6 +25,7 @@ import * as Sharing from 'expo-sharing';
 
 import { useTranslation } from 'react-i18next';
 
+import { isDeletionPasswordRejected, readAccountDeletionBlock } from '@/lib/auth/accountDeletionBlock';
 import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { stagePasswordResetCodeEntry } from '@/lib/auth/passwordResetEntry';
@@ -394,9 +395,13 @@ export default function SecurityScreen() {
           text: t('deleteConfirmAction'),
           style: 'destructive',
           onPress: async () => {
+            const password = await promptPassword();
+            if (!password) {
+              return;
+            }
             setDeleting(true);
             try {
-              await deleteAccount(token);
+              await deleteAccount(token, password);
               Alert.alert(
                 t('deletedTitle'),
                 t('deletedBody'),
@@ -414,6 +419,33 @@ export default function SecurityScreen() {
                 ],
               );
             } catch (err) {
+              if (isDeletionPasswordRejected(err)) {
+                Alert.alert(t('deleteErrorTitle'), t('confirmDisableFailed'));
+                return;
+              }
+              const block = readAccountDeletionBlock(err);
+              if (block) {
+                // The backend refused on purpose: tell the user what to do first.
+                if (block.kind === 'manage_billing') {
+                  Alert.alert(t('deleteBlockedBillingTitle'), t('deleteBlockedBillingBody'));
+                } else if (block.kind === 'manage_google_play_billing') {
+                  Alert.alert(
+                    t('deleteBlockedGooglePlayTitle'),
+                    t('deleteBlockedGooglePlayBody'),
+                  );
+                } else if (block.kind === 'settle_circle_obligations') {
+                  Alert.alert(
+                    t('deleteBlockedSettleTitle'),
+                    t('deleteBlockedSettleBody', { count: block.circleCount }),
+                  );
+                } else {
+                  Alert.alert(
+                    t('deleteBlockedCirclesTitle'),
+                    t('deleteBlockedCirclesBody', { count: block.circleCount }),
+                  );
+                }
+                return;
+              }
               logClientError('Account deletion failed', err);
               Alert.alert(
                 t('deleteErrorTitle'),
