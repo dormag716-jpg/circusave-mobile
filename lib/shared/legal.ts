@@ -135,7 +135,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '2. Information we collect',
         body:
-          'We may collect account details you provide (such as name, email, phone number, and password credentials), profile preferences, circle membership and organizer roles, contribution and payout records entered or confirmed in the app, device and app usage data needed for security and reliability, and communications you send through support or in-app features.',
+          'We may collect account details you provide (such as name, email, phone number, and password credentials, and sign-in details if you use Google or Apple), profile preferences, circle membership and organizer roles, contribution and payout records entered or confirmed in the app, and payment handles you choose to enter (for example a Cash App tag, Venmo name, or PayPal email). We also collect chat messages inside circles and your conversations with the SuSu AI assistant; the agreements you accept, with the time and the IP address, device description, and app-install identifier recorded with the acceptance; device and app usage data needed for security and reliability, such as push-notification tokens and time zone; and communications you send through support.',
       },
       {
         heading: '3. Payment-related information',
@@ -150,12 +150,12 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '5. How information is shared',
         body:
-          'Circle members and organizers may see information needed for circle operation, such as display names, contribution status, payout order, and related activity. We may share information with service providers that help us host, secure, message, or operate the app, and with payment providers when needed to process or reconcile transactions. We may disclose information if required by law or to protect users, the platform, or the public from harm or fraud.',
+          'Circle members and organizers may see information needed for circle operation, such as display names, contribution status, payout order, chat, and related activity. We share information with service providers that help us run the app: hosting and database (Railway), email delivery (Resend), push notifications (Expo and Google Firebase Cloud Messaging), optional Google or Apple sign-in, the AI providers that process the text you send to the SuSu AI assistant, and Google Play for Organizer Pro billing. If you ask for a text-message code, a text-message provider also handles your phone number. These providers handle information under their own policies. We do not sell personal information. We may disclose information if required by law or to protect users, the platform, or the public from harm or fraud.',
       },
       {
         heading: '6. Retention',
         body:
-          "We retain personal information for as long as your account is active and as needed for legitimate business, security, dispute history, and legal compliance purposes. Contribution and payout records may be retained longer when they are part of a circle's historical ledger.",
+          "We keep personal information while your account is active. You can delete your account in the app (Settings > Security & Privacy > Delete Account) or through Support. When you do, we remove or anonymize your name, contact details, password, sign-in links, messages, payment handles, notes you wrote, notifications, and the network and device details saved with agreements. To keep other members' records accurate, we keep contribution, payout, and ledger amounts, dates, and statuses, signed agreement records, statements and documents already issued (which may still show your name), and notes other people wrote about you. Other members see these as \"Deleted User\". If you owed money when you deleted your account, the amount stays on the record. Backups of our database may keep deleted information for a limited time before they expire; if we restore a backup, we delete your information again. Our service providers, including AI and billing providers, may keep information under their own policies, and we cannot delete it from their systems. We also keep information as needed for security, dispute history, and legal compliance.",
       },
       {
         heading: '7. Security',
@@ -165,7 +165,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '8. Your choices',
         body:
-          'You may update certain profile details in the app, adjust notification preferences where available, and request account-related help through Support. Depending on your location, you may have rights to access, correct, delete, or export personal information, or to object to certain processing. We will respond to valid requests as required by applicable law.',
+          'You may update certain profile details in the app, adjust notification preferences, download your data (Settings > Security & Privacy > Export My Data), delete your account as described in Retention, and request account-related help through Support. Deletion can be paused in some situations, for example while you have an active subscription or still organize an open circle; the app tells you why. Depending on your location, you may have rights to access, correct, delete, or export personal information, or to object to certain processing. We will respond to valid requests as required by applicable law.',
       },
       {
         heading: '9. Children',
@@ -185,7 +185,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '12. Contact',
         body:
-          'Privacy questions can be submitted through Help & Support in Settings.',
+          'Privacy questions can be submitted through Help & Support in Settings or by email to support@circusave.com.',
       },
     ],
   },
