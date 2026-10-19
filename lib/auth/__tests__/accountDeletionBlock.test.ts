@@ -1,5 +1,9 @@
 import { ApiError } from '@/lib/platform/networkErrors';
-import { isDeletionPasswordRejected, readAccountDeletionBlock } from '../accountDeletionBlock';
+import {
+  isDeletionPasswordRejected,
+  isDeletionRateLimited,
+  readAccountDeletionBlock,
+} from '../accountDeletionBlock';
 
 describe('readAccountDeletionBlock', () => {
   it('reads each backend refusal reason from a 409', () => {
@@ -24,6 +28,13 @@ describe('readAccountDeletionBlock', () => {
         new ApiError('x', 409, { action: 'settle_circle_obligations', circleCount: 2 }),
       ),
     ).toEqual({ kind: 'settle_circle_obligations', circleCount: 2 });
+  });
+
+  it('recognizes a rate-limited confirmation', () => {
+    expect(isDeletionRateLimited(new ApiError('x', 429))).toBe(true);
+    expect(isDeletionRateLimited(new ApiError('x', 403))).toBe(false);
+    expect(isDeletionRateLimited(new ApiError('x', 500))).toBe(false);
+    expect(isDeletionRateLimited(new Error('x'))).toBe(false);
   });
 
   it('recognizes a rejected confirmation password', () => {

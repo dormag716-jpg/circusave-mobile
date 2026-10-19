@@ -6,6 +6,11 @@ export type AccountDeletionBlock =
   | { kind: 'settle_circle_obligations'; circleCount: number }
   | { kind: 'close_organized_circles'; circleCount: number };
 
+/** True when too many wrong passwords were typed and the backend refused to check more. */
+export function isDeletionRateLimited(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 429;
+}
+
 /** True when the backend rejected the password typed to confirm deletion. */
 export function isDeletionPasswordRejected(error: unknown): boolean {
   return (

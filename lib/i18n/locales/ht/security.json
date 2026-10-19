@@ -69,9 +69,9 @@
   "exportErrorBody": "Nou pa t kapab ekspòte done ou. Tcheke koneksyon ou.",
   "notAvailable": "N/A",
   "deleteAccount": "Efase kont lan",
-  "deleteAccountBody": "Nou anonimite enfòmasyon pèsonèl ou epi efase kont ou selon politik vi prive App Store ak Google Play.",
+  "deleteAccountBody": "Efase kont ou nèt epi retire non ou, enfòmasyon kontak ou ak mesaj ou yo. Montan peman ak vèsman yo rete nan dosye sèk la, epi lòt manm yo wè yo kòm \"Deleted User\".",
   "deleteConfirmTitle": "Efase kont lan?",
-  "deleteConfirmBody": "Ou sèten ou vle efase kont ou nèt? Pa gen retounen.\n\n• Non, imèl, telefòn ak enfòmasyon koneksyon ou yo retire oswa vin anonim.\n• Mesaj ou yo ak nòt peman ou yo efase.\n• Montan ak dat peman ak vèsman yo rete nan dosye sèk la, epi lòt manm yo wè yo kòm \"Itilizatè efase\".\n• Kopi nan backup yo ka rete jiska apeprè 90 jou.",
+  "deleteConfirmBody": "Ou sèten ou vle efase kont ou nèt? Pa gen retounen.\n\n• Non, imèl, telefòn ak enfòmasyon koneksyon ou yo retire oswa vin anonim.\n• Mesaj ou yo ak nòt peman ou yo efase.\n• Montan ak dat peman ak vèsman yo rete nan dosye sèk la, epi lòt manm yo wè yo kòm \"Deleted User\".\n• Kopi nan backup yo ka rete jiska apeprè 90 jou.",
   "deleteConfirmAction": "Efase kont lan",
   "deletedTitle": "Kont lan efase",
   "deletedBody": "Kont ou efase e li vin anonim.",
@@ -86,5 +86,7 @@
   "deleteBlockedCirclesBody_other": "Ou òganize {{count}} sèk ki louvri. Fini yo, achive yo oswa efase yo pou manm yo pa rete san òganizatè, epi eseye ankò.",
   "deleteBlockedSettleTitle": "Peye sa ou dwe a anvan",
   "deleteBlockedSettleBody_one": "Ou gen yon kotizasyon ki dwe epi ki poko peye nan {{count}} sèk. Peye l, apre sa efase kont ou. Si ou pa kapab, ekri support@circusave.com epi n ap ede ou.",
-  "deleteBlockedSettleBody_other": "Ou gen kotizasyon ki dwe epi ki poko peye nan {{count}} sèk. Peye yo, apre sa efase kont ou. Si ou pa kapab, ekri support@circusave.com epi n ap ede ou."
+  "deleteBlockedSettleBody_other": "Ou gen kotizasyon ki dwe epi ki poko peye nan {{count}} sèk. Peye yo, apre sa efase kont ou. Si ou pa kapab, ekri support@circusave.com epi n ap ede ou.",
+  "deleteRateLimitedTitle": "Twòp tantativ",
+  "deleteRateLimitedBody": "Ou antre yon move modpas twòp fwa. Tann apeprè 15 minit, epi eseye ankò."
 }

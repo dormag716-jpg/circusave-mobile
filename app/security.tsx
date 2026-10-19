@@ -25,7 +25,11 @@ import * as Sharing from 'expo-sharing';
 
 import { useTranslation } from 'react-i18next';
 
-import { isDeletionPasswordRejected, readAccountDeletionBlock } from '@/lib/auth/accountDeletionBlock';
+import {
+  isDeletionPasswordRejected,
+  isDeletionRateLimited,
+  readAccountDeletionBlock,
+} from '@/lib/auth/accountDeletionBlock';
 import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { stagePasswordResetCodeEntry } from '@/lib/auth/passwordResetEntry';
@@ -419,6 +423,10 @@ export default function SecurityScreen() {
                 ],
               );
             } catch (err) {
+              if (isDeletionRateLimited(err)) {
+                Alert.alert(t('deleteRateLimitedTitle'), t('deleteRateLimitedBody'));
+                return;
+              }
               if (isDeletionPasswordRejected(err)) {
                 Alert.alert(t('deleteErrorTitle'), t('confirmDisableFailed'));
                 return;
