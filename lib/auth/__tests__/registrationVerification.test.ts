@@ -76,6 +76,7 @@ describe('describeRegistrationError', () => {
       invalid_phone: 'invalidPhone',
       invalid_password: 'invalidPassword',
       legal_required: 'legalRequired',
+      email_capacity: 'emailCapacity',
     };
     for (const [reason, kind] of Object.entries(kinds)) {
       expect(describeRegistrationError(new ApiError('English text', 400, { reason }))).toEqual({ kind });

@@ -53,6 +53,7 @@ export type RegistrationErrorKind =
   | 'invalidPhone'
   | 'invalidPassword'
   | 'legalRequired'
+  | 'emailCapacity'
   | 'network'
   | 'generic';
 
@@ -112,6 +113,8 @@ export function describeRegistrationError(error: unknown): RegistrationErrorView
       return { kind: 'invalidPassword' };
     case 'legal_required':
       return { kind: 'legalRequired' };
+    case 'email_capacity':
+      return { kind: 'emailCapacity' };
     default:
       return error.status === 429
         ? { kind: 'rateLimited', retryAfterSeconds: retry }
@@ -155,6 +158,8 @@ export function registrationErrorMessage(view: RegistrationErrorView, t: Transla
       return t('verify.errors.invalidPassword');
     case 'legalRequired':
       return t('verify.errors.legalRequired');
+    case 'emailCapacity':
+      return t('verify.errors.emailCapacity');
     case 'network':
       return t('verify.errors.network');
     default:
