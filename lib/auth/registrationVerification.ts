@@ -48,6 +48,11 @@ export type RegistrationErrorKind =
   | 'rateLimited'
   | 'resendTooSoon'
   | 'alreadyRegistered'
+  | 'invalidName'
+  | 'invalidEmail'
+  | 'invalidPhone'
+  | 'invalidPassword'
+  | 'legalRequired'
   | 'network'
   | 'generic';
 
@@ -97,6 +102,16 @@ export function describeRegistrationError(error: unknown): RegistrationErrorView
       return { kind: 'resendTooSoon', retryAfterSeconds: retry };
     case 'already_registered':
       return { kind: 'alreadyRegistered' };
+    case 'invalid_name':
+      return { kind: 'invalidName' };
+    case 'invalid_email':
+      return { kind: 'invalidEmail' };
+    case 'invalid_phone':
+      return { kind: 'invalidPhone' };
+    case 'invalid_password':
+      return { kind: 'invalidPassword' };
+    case 'legal_required':
+      return { kind: 'legalRequired' };
     default:
       return error.status === 429
         ? { kind: 'rateLimited', retryAfterSeconds: retry }
@@ -130,6 +145,16 @@ export function registrationErrorMessage(view: RegistrationErrorView, t: Transla
       return t('verify.errors.resendTooSoon', { seconds: view.retryAfterSeconds ?? 30 });
     case 'alreadyRegistered':
       return t('verify.errors.alreadyRegistered');
+    case 'invalidName':
+      return t('verify.errors.invalidName');
+    case 'invalidEmail':
+      return t('verify.errors.invalidEmail');
+    case 'invalidPhone':
+      return t('verify.errors.invalidPhone');
+    case 'invalidPassword':
+      return t('verify.errors.invalidPassword');
+    case 'legalRequired':
+      return t('verify.errors.legalRequired');
     case 'network':
       return t('verify.errors.network');
     default:

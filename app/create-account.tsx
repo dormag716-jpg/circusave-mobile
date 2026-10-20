@@ -300,7 +300,7 @@ export default function CreateAccountScreen() {
       // Rate limits and connection problems are shown in the user's language.
       const view = describeRegistrationError(err);
       const message =
-        view.kind === 'rateLimited' || view.kind === 'network'
+        view.kind !== 'generic'
           ? registrationErrorMessage(view, t)
           : err instanceof Error && err.message.trim()
             ? err.message

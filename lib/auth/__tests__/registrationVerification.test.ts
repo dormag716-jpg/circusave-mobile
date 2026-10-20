@@ -69,6 +69,19 @@ describe('describeRegistrationError', () => {
     });
   });
 
+  it('maps every sign-up validation reason', () => {
+    const kinds: Record<string, string> = {
+      invalid_name: 'invalidName',
+      invalid_email: 'invalidEmail',
+      invalid_phone: 'invalidPhone',
+      invalid_password: 'invalidPassword',
+      legal_required: 'legalRequired',
+    };
+    for (const [reason, kind] of Object.entries(kinds)) {
+      expect(describeRegistrationError(new ApiError('English text', 400, { reason }))).toEqual({ kind });
+    }
+  });
+
   it('carries the wait time for rate limits and early resends', () => {
     const limited = new ApiError('x', 429, { reason: 'rate_limited' }, { retryAfterSeconds: 90 });
     expect(describeRegistrationError(limited)).toEqual({ kind: 'rateLimited', retryAfterSeconds: 90 });
