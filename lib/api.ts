@@ -35,6 +35,10 @@ import {
   sanitizeUserFacingMessage,
 } from './platform/networkErrors';
 import {
+  readVerificationRequired,
+  type RegistrationVerificationRequired,
+} from './auth/registrationVerification';
+import {
   notifyUnauthorizedSession,
   shouldHandleUnauthorizedSession,
 } from './auth/sessionExpiry';
@@ -1100,13 +1104,22 @@ export type RegistrationLegalAcceptance = {
   electronicConsentVersion: string;
 };
 
+export type RegisterResult =
+  | { status: 'authenticated'; auth: AuthResponse }
+  | RegistrationVerificationRequired;
+
+/**
+ * Starts a sign-up. The Backend emails a code and returns `verification_required`
+ * (no account and no session yet). An older Backend still returns a session, which is
+ * accepted so a new app keeps working until the Backend is updated.
+ */
 export async function register(input: {
   name: string;
   email: string;
   phone?: string;
   password: string;
   legalAcceptance: RegistrationLegalAcceptance;
-}): Promise<AuthResponse> {
+}): Promise<RegisterResult> {
   const payload = await requestJson<unknown>('/auth/mobile/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -1121,7 +1134,47 @@ export async function register(input: {
       electronicConsentVersion: input.legalAcceptance.electronicConsentVersion,
     }),
   });
+  const pending = readVerificationRequired(payload);
+  if (pending) {
+    return pending;
+  }
+  return { status: 'authenticated', auth: normalizeAuthResponse(payload, true) };
+}
+
+/** Completes a sign-up with the emailed code; returns the new session. */
+export async function verifyRegistration(input: {
+  signupId: string;
+  email: string;
+  code: string;
+}): Promise<AuthResponse> {
+  const payload = await requestJson<unknown>('/auth/mobile/register/verify', {
+    method: 'POST',
+    body: JSON.stringify({
+      signupId: input.signupId,
+      email: input.email.trim().toLowerCase(),
+      code: input.code.trim(),
+    }),
+  });
   return normalizeAuthResponse(payload, true);
+}
+
+/** Asks for another code for a sign-up that is still waiting. */
+export async function resendRegistrationCode(input: {
+  signupId: string;
+  email: string;
+}): Promise<RegistrationVerificationRequired> {
+  const payload = await requestJson<unknown>('/auth/mobile/register/resend', {
+    method: 'POST',
+    body: JSON.stringify({
+      signupId: input.signupId,
+      email: input.email.trim().toLowerCase(),
+    }),
+  });
+  const pending = readVerificationRequired(payload);
+  if (!pending) {
+    throw new ApiError('The server response was not understood.', 500, payload);
+  }
+  return pending;
 }
 
 export async function signInWithFederatedProvider(input: {

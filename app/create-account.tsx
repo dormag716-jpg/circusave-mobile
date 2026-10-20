@@ -22,6 +22,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
 import { LegalCheckbox } from '@/components/LegalCheckbox';
 import { register, signInWithFederatedProvider, type AuthResponse } from '@/lib/api';
+import {
+  describeRegistrationError,
+  registrationErrorMessage,
+  stageRegistrationVerification,
+} from '@/lib/auth/registrationVerification';
 import { useAuthSession } from '@/lib/auth/authContext';
 import {
   clearFederatedCredential,
@@ -277,12 +282,29 @@ export default function CreateAccountScreen() {
         password,
         legalAcceptance,
       });
-      await finishAuthenticated(result);
+      if (result.status === 'verification_required') {
+        // The account does not exist yet: the person must prove they own this email.
+        stageRegistrationVerification({
+          signupId: result.signupId,
+          email: normalizedEmail,
+          resendAfterSeconds: result.resendAfterSeconds,
+        });
+        if (!postAuthTarget) {
+          setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+        }
+        router.replace('/verify-email' as Href);
+        return;
+      }
+      await finishAuthenticated(result.auth);
     } catch (err: unknown) {
+      // Rate limits and connection problems are shown in the user's language.
+      const view = describeRegistrationError(err);
       const message =
-        err instanceof Error && err.message.trim()
-          ? err.message
-          : t('common.genericErrorMessage');
+        view.kind === 'rateLimited' || view.kind === 'network'
+          ? registrationErrorMessage(view, t)
+          : err instanceof Error && err.message.trim()
+            ? err.message
+            : t('common.genericErrorMessage');
       Alert.alert(t('create.createErrorTitle'), message);
     } finally {
       setIsSubmitting(false);

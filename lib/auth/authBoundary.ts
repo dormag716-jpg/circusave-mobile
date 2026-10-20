@@ -118,6 +118,7 @@ const PUBLIC_EXACT = new Set([
   '/',
   '/login',
   '/create-account',
+  '/verify-email',
   '/join-circle',
   '/+not-found',
   '+not-found',

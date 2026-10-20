@@ -319,6 +319,7 @@ function AuthenticatedStack() {
         options={{ headerShown: false, gestureEnabled: false }}
       />
       <Stack.Screen name="create-account" options={{ headerShown: false }} />
+      <Stack.Screen name="verify-email" options={{ headerShown: false }} />
       <Stack.Screen name="join-circle" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="create-circle/setup" options={{ headerShown: false }} />
