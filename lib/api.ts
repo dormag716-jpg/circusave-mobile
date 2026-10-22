@@ -1,3 +1,4 @@
+import { currentEmailLanguage } from './i18n/emailLanguage';
 import type {
   ActivityResponse,
   BackendCircleSummary,
@@ -1132,6 +1133,7 @@ export async function register(input: {
       privacyVersion: input.legalAcceptance.privacyVersion,
       fundsDisclosureVersion: input.legalAcceptance.fundsDisclosureVersion,
       electronicConsentVersion: input.legalAcceptance.electronicConsentVersion,
+      language: currentEmailLanguage(),
     }),
   });
   const pending = readVerificationRequired(payload);
@@ -1168,6 +1170,7 @@ export async function resendRegistrationCode(input: {
     body: JSON.stringify({
       signupId: input.signupId,
       email: input.email.trim().toLowerCase(),
+      language: currentEmailLanguage(),
     }),
   });
   const pending = readVerificationRequired(payload);
@@ -1210,7 +1213,10 @@ export function requestPasswordReset(input: {
 }): Promise<PasswordResetRequestResult> {
   return requestJson<PasswordResetRequestResult>('/auth/forgot-password/request', {
     method: 'POST',
-    body: JSON.stringify({ email: input.email.trim().toLowerCase() }),
+    body: JSON.stringify({
+      email: input.email.trim().toLowerCase(),
+      language: currentEmailLanguage(),
+    }),
   });
 }
 

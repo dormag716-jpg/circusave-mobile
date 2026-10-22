@@ -173,7 +173,7 @@ describe('auth normalization preserves payment preferences (via getAuthSession)'
       expect.stringContaining('/auth/forgot-password/request'),
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ email: 'ada@example.com' }),
+        body: JSON.stringify({ email: 'ada@example.com', language: 'en' }),
       }),
     );
   });

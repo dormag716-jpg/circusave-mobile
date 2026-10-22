@@ -25,13 +25,16 @@ import {
   normalizeCodeInput,
   readRegistrationVerification,
   registrationErrorMessage,
+  isRegistrationExpired,
   secondsUntil,
+  updateRegistrationResendAt,
   type RegistrationErrorView,
 } from '@/lib/auth/registrationVerification';
 import { colors, shadows, spacing } from '@/lib/shared/theme';
 import { useKeyboardReveal } from '@/lib/shared/useKeyboardReveal';
 
 const CREATE_ACCOUNT_HREF = '/create-account' as Href;
+const SIGN_IN_HREF = '/login' as Href;
 
 export default function VerifyEmailScreen() {
   const { t } = useTranslation('auth');
@@ -51,6 +54,11 @@ export default function VerifyEmailScreen() {
   const startOver = useCallback(() => {
     clearRegistrationVerification();
     router.replace(CREATE_ACCOUNT_HREF);
+  }, []);
+
+  const backToSignIn = useCallback(() => {
+    clearRegistrationVerification();
+    router.replace(SIGN_IN_HREF);
   }, []);
 
   // Count down to the next allowed resend.
@@ -117,6 +125,7 @@ export default function VerifyEmailScreen() {
       const now = Date.now();
       setNowMs(now);
       setResendAtMs(now + next.resendAfterSeconds * 1000);
+      updateRegistrationResendAt(now + next.resendAfterSeconds * 1000);
       Alert.alert(t('verify.resentTitle'), t('verify.resentMessage', { email: pending.email }));
     } catch (err: unknown) {
       const view = describeRegistrationError(err);
@@ -129,6 +138,35 @@ export default function VerifyEmailScreen() {
     } finally {
       setBusy(null);
     }
+  }
+
+  if (pending && isRegistrationExpired(pending, nowMs)) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+        <View style={styles.scrollContent}>
+          <View style={styles.card}>
+            <Text style={styles.title}>{t('verify.expiredTitle')}</Text>
+            <Text style={styles.subtitle}>{t('verify.expiredMessage')}</Text>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={startOver}
+              accessibilityRole="button"
+              accessibilityLabel={t('verify.expiredAction')}
+            >
+              <Text style={styles.primaryText}>{t('verify.expiredAction')}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.linkButton}
+              onPress={backToSignIn}
+              accessibilityRole="button"
+              accessibilityLabel={t('verify.expiredSignIn')}
+            >
+              <Text style={styles.linkText}>{t('verify.expiredSignIn')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (!pending) {

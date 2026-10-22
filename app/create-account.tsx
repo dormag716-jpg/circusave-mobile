@@ -288,6 +288,7 @@ export default function CreateAccountScreen() {
           signupId: result.signupId,
           email: normalizedEmail,
           resendAfterSeconds: result.resendAfterSeconds,
+          signupExpiresAt: result.signupExpiresAt,
         });
         if (!postAuthTarget) {
           setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));

@@ -1,5 +1,11 @@
 import { ApiError } from '@/lib/platform/networkErrors';
 
+import {
+  forgetPendingRegistration,
+  loadPendingRegistration,
+  savePendingRegistration,
+} from './pendingRegistrationStorage';
+
 /**
  * Registration now ends with an emailed code. The Backend returns
  * `verification_required` and creates no account and no session until the code
@@ -11,6 +17,8 @@ export type RegistrationVerificationRequired = {
   signupId: string;
   expiresAt: string;
   resendAfterSeconds: number;
+  /** When the whole sign-up expires. Only the start answer carries it. */
+  signupExpiresAt?: string;
   /** Only a local development Backend returns this. It is never shown. */
   devCode?: string;
 };
@@ -35,6 +43,9 @@ export function readVerificationRequired(
     expiresAt: typeof record.expiresAt === 'string' ? record.expiresAt : '',
     resendAfterSeconds:
       Number.isFinite(resend) && resend >= 0 ? Math.floor(resend) : DEFAULT_RESEND_SECONDS,
+    ...(typeof record.signupExpiresAt === 'string'
+      ? { signupExpiresAt: record.signupExpiresAt }
+      : {}),
     ...(typeof record.devCode === 'string' ? { devCode: record.devCode } : {}),
   };
 }
@@ -167,38 +178,80 @@ export function registrationErrorMessage(view: RegistrationErrorView, t: Transla
   }
 }
 
-// ----------------------------------------------------- in-memory sign-up state
+// ------------------------------------------------------------- sign-up in progress
 
 export type PendingRegistrationView = {
   signupId: string;
   email: string;
   /** When the next code may be requested (ms since epoch). */
   resendAvailableAtMs: number;
+  /** When the Backend stops accepting this sign-up (ms since epoch); null if unknown. */
+  signupExpiresAtMs: number | null;
 };
 
-// Held in memory only. The password is never kept here or on the phone; if the app is
-// closed the person simply starts again.
+// Held in memory while the app runs. A copy of the four fields above (never the password, the
+// code or a token) is kept on the device so a closed app can come back to the code screen.
 let pending: PendingRegistrationView | null = null;
 
 export function stageRegistrationVerification(input: {
   signupId: string;
   email: string;
   resendAfterSeconds: number;
+  /** ISO time from the start answer. */
+  signupExpiresAt?: string;
   nowMs?: number;
 }): void {
+  const expiry = input.signupExpiresAt ? Date.parse(input.signupExpiresAt) : NaN;
   pending = {
     signupId: input.signupId,
     email: input.email.trim().toLowerCase(),
     resendAvailableAtMs: (input.nowMs ?? Date.now()) + Math.max(input.resendAfterSeconds, 0) * 1000,
+    signupExpiresAtMs: Number.isFinite(expiry) ? expiry : null,
   };
+  void savePendingRegistration(pending);
 }
 
 export function readRegistrationVerification(): PendingRegistrationView | null {
   return pending;
 }
 
+/** The new time the next code may be requested; kept for a restart. */
+export function updateRegistrationResendAt(resendAvailableAtMs: number): void {
+  if (!pending) {
+    return;
+  }
+  pending = { ...pending, resendAvailableAtMs };
+  void savePendingRegistration(pending);
+}
+
 export function clearRegistrationVerification(): void {
   pending = null;
+  void forgetPendingRegistration();
+}
+
+/**
+ * After the app was closed: bring the saved sign-up back into memory. Never replaces one that is
+ * already in memory.
+ */
+export async function restoreRegistrationVerification(
+  nowMs: number = Date.now(),
+): Promise<PendingRegistrationView | null> {
+  if (pending) {
+    return pending;
+  }
+  const saved = await loadPendingRegistration(nowMs);
+  if (saved && !pending) {
+    pending = saved;
+  }
+  return pending;
+}
+
+/** True once the Backend would no longer accept this sign-up. An unknown expiry is never "expired". */
+export function isRegistrationExpired(
+  view: Pick<PendingRegistrationView, 'signupExpiresAtMs'>,
+  nowMs: number = Date.now(),
+): boolean {
+  return view.signupExpiresAtMs !== null && view.signupExpiresAtMs <= nowMs;
 }
 
 /** Whole seconds left until `targetMs`, never below zero. */

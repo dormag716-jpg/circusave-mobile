@@ -9,6 +9,7 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from 'react';
+import { clearRegistrationVerification } from './registrationVerification';
 import type { Href } from 'expo-router';
 
 import {
@@ -133,6 +134,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
             // Authentication remains available while cleanup stays queued.
           }
 
+          clearRegistrationVerification();
           bindUserPresentationCaches(nextSession.user.id);
           await persistAuthSession(nextSession);
           setSession(nextSession);

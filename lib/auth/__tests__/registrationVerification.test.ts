@@ -120,6 +120,7 @@ describe('pending sign-up state and countdown', () => {
       signupId: 'sup_1',
       email: 'person@example.com',
       resendAvailableAtMs: 1_030_000,
+      signupExpiresAtMs: null,
     });
     clearRegistrationVerification();
     expect(readRegistrationVerification()).toBeNull();
