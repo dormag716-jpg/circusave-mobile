@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { runSystemPrompt } from './systemPromptGuard';
 import { Platform } from 'react-native';
 
 import { i18n } from '../i18n';
@@ -78,7 +79,7 @@ export async function registerForPushNotifications(): Promise<NotificationResult
   const Notifications = await import('expo-notifications');
 
   // 1. Request permission
-  const { granted } = await Notifications.requestPermissionsAsync();
+  const { granted } = await runSystemPrompt(() => Notifications.requestPermissionsAsync());
   if (!granted) {
     return { ok: false, reason: 'Notification permission was not granted.' };
   }
@@ -157,7 +158,7 @@ export async function scheduleLocalNotification(input: {
 
   const Notifications = await import('expo-notifications');
 
-  const { granted } = await Notifications.requestPermissionsAsync();
+  const { granted } = await runSystemPrompt(() => Notifications.requestPermissionsAsync());
   if (!granted) {
     return { ok: false, reason: 'Notification permission was not granted.' };
   }

@@ -1,13 +1,46 @@
-import { Redirect } from 'expo-router';
+import { Redirect, type Href } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { useAuthSession } from '@/lib/auth/authContext';
+import { restoreRegistrationVerification } from '@/lib/auth/registrationVerification';
 import { colors } from '@/lib/shared/theme';
+
+const VERIFY_EMAIL_HREF = '/verify-email' as Href;
 
 export default function Index() {
   const { status } = useAuthSession();
+  // After the app was closed during sign-up, bring back the saved code-screen state before
+  // choosing where to go. null = still looking.
+  const [hasPendingSignup, setHasPendingSignup] = useState<boolean | null>(null);
 
-  if (status === 'loading') {
+  useEffect(() => {
+    if (status !== 'unauthenticated' && status !== 'error') {
+      return undefined;
+    }
+    let cancelled = false;
+    setHasPendingSignup(null);
+    restoreRegistrationVerification()
+      .then((saved) => {
+        if (!cancelled) {
+          setHasPendingSignup(Boolean(saved));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHasPendingSignup(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
+  if (status === 'authenticated') {
+    return <Redirect href="/(tabs)/dashboard" />;
+  }
+
+  if (status === 'loading' || hasPendingSignup === null) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -15,11 +48,7 @@ export default function Index() {
     );
   }
 
-  if (status === 'authenticated') {
-    return <Redirect href="/(tabs)/dashboard" />;
-  }
-
-  return <Redirect href="/login" />;
+  return hasPendingSignup ? <Redirect href={VERIFY_EMAIL_HREF} /> : <Redirect href="/login" />;
 }
 
 const styles = StyleSheet.create({

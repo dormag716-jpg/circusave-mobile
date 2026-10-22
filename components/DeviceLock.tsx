@@ -36,6 +36,7 @@ import {
   subscribeAppLockPreferences,
 } from '@/lib/platform/appLockPreferences';
 import { verifyAccountPassword } from '@/lib/platform/deviceLockPassword';
+import { isSystemPromptActive } from '@/lib/platform/systemPromptGuard';
 import {
   INITIAL_DEVICE_LOCK,
   deviceLockCoversProtectedContent,
@@ -162,6 +163,10 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     dispatch({ type: 'app_state', next: AppState.currentState, now: Date.now() });
     const subscription = AppState.addEventListener('change', (next) => {
+      // A system permission dialog is not the person leaving the app.
+      if (next !== 'active' && isSystemPromptActive()) {
+        return;
+      }
       if (
         next === 'background' &&
         biometricGate.current &&
