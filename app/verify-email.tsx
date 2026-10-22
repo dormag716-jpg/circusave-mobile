@@ -187,7 +187,7 @@ export default function VerifyEmailScreen() {
               <Text style={styles.label}>{t('verify.codeLabel')}</Text>
               <TextInput
                 onFocus={onFieldFocus}
-                style={styles.codeInput}
+                style={[styles.codeInput, code.length === 0 && styles.codeInputEmpty]}
                 placeholder={t('verify.codePlaceholder')}
                 placeholderTextColor={colors.subtle}
                 accessibilityLabel={t('verify.codeLabel')}
@@ -304,6 +304,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     textAlign: 'center',
   },
+  // A placeholder cannot be styled on its own, so it would inherit the wide digit spacing and be clipped
+  // in longer languages. While the field is empty use a plain style; typed digits keep the spaced look.
+  codeInputEmpty: { fontSize: 17, fontWeight: '600', letterSpacing: 0 },
   hint: { color: colors.muted, fontSize: 13, marginBottom: 20, marginTop: 10 },
   errorText: { color: colors.danger, fontSize: 14, fontWeight: '700', marginBottom: 20, marginTop: 10 },
   primaryButton: {
