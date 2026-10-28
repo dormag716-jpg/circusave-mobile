@@ -71,7 +71,7 @@
   "deleteAccount": "Eliminar cuenta",
   "deleteAccountBody": "Elimina tu cuenta de forma permanente y borra tu nombre, tus datos de contacto y tus mensajes. Los montos de pagos y desembolsos permanecen en el registro del círculo, y los demás miembros los ven como \"Deleted User\".",
   "deleteConfirmTitle": "¿Eliminar la cuenta?",
-  "deleteConfirmBody": "¿Seguro que quieres eliminar tu cuenta de forma permanente? No se puede deshacer.\n\n• Tu nombre, correo, teléfono y datos de acceso se eliminan o se anonimizan.\n• Tus mensajes y notas de pago se borran.\n• Los montos y fechas de pagos y desembolsos permanecen en el registro del círculo y se muestran a los demás miembros como \"Deleted User\".\n• Las copias en respaldos pueden permanecer hasta unos 90 días.",
+  "deleteConfirmBody": "¿Seguro que quieres eliminar tu cuenta de forma permanente? No se puede deshacer.\n\n• Tu nombre, correo, teléfono y datos de acceso se eliminan o se anonimizan.\n• Tus mensajes y notas de pago se borran.\n• Los montos y fechas de pagos y desembolsos permanecen en el registro del círculo y se muestran a los demás miembros como \"Deleted User\".\n• Las copias en respaldos pueden permanecer hasta unos 120 días.",
   "deleteConfirmAction": "Eliminar cuenta",
   "deletedTitle": "Cuenta eliminada",
   "deletedBody": "Tu cuenta se eliminó y se anonimizó.",

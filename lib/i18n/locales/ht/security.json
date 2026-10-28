@@ -71,7 +71,7 @@
   "deleteAccount": "Efase kont lan",
   "deleteAccountBody": "Efase kont ou nèt epi retire non ou, enfòmasyon kontak ou ak mesaj ou yo. Montan peman ak vèsman yo rete nan dosye sèk la, epi lòt manm yo wè yo kòm \"Deleted User\".",
   "deleteConfirmTitle": "Efase kont lan?",
-  "deleteConfirmBody": "Ou sèten ou vle efase kont ou nèt? Pa gen retounen.\n\n• Non, imèl, telefòn ak enfòmasyon koneksyon ou yo retire oswa vin anonim.\n• Mesaj ou yo ak nòt peman ou yo efase.\n• Montan ak dat peman ak vèsman yo rete nan dosye sèk la, epi lòt manm yo wè yo kòm \"Deleted User\".\n• Kopi nan backup yo ka rete jiska apeprè 90 jou.",
+  "deleteConfirmBody": "Ou sèten ou vle efase kont ou nèt? Pa gen retounen.\n\n• Non, imèl, telefòn ak enfòmasyon koneksyon ou yo retire oswa vin anonim.\n• Mesaj ou yo ak nòt peman ou yo efase.\n• Montan ak dat peman ak vèsman yo rete nan dosye sèk la, epi lòt manm yo wè yo kòm \"Deleted User\".\n• Kopi nan backup yo ka rete jiska apeprè 120 jou.",
   "deleteConfirmAction": "Efase kont lan",
   "deletedTitle": "Kont lan efase",
   "deletedBody": "Kont ou efase e li vin anonim.",

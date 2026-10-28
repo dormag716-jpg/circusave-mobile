@@ -71,7 +71,7 @@
   "deleteAccount": "Delete Account",
   "deleteAccountBody": "Permanently deletes your account and removes your name, contact details and messages. Payment and payout amounts stay in circle records, shown to other members as \"Deleted User\".",
   "deleteConfirmTitle": "Delete Account?",
-  "deleteConfirmBody": "Are you sure you want to permanently delete your account? This cannot be undone.\n\n• Your name, email, phone and sign-in details are removed or anonymized.\n• Your messages and payment notes are cleared.\n• Payment and payout amounts and dates stay in the circle record, shown to other members as \"Deleted User\".\n• Copies in backups can remain for up to about 90 days.",
+  "deleteConfirmBody": "Are you sure you want to permanently delete your account? This cannot be undone.\n\n• Your name, email, phone and sign-in details are removed or anonymized.\n• Your messages and payment notes are cleared.\n• Payment and payout amounts and dates stay in the circle record, shown to other members as \"Deleted User\".\n• Copies in backups can remain for up to about 120 days.",
   "deleteConfirmAction": "Delete Account",
   "deletedTitle": "Account Deleted",
   "deletedBody": "Your account has been deleted and anonymized.",
