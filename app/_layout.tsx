@@ -1,20 +1,35 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { router, Stack } from 'expo-router';
+import { router, Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StripeProvider } from '@stripe/stripe-react-native';
+import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
-import { useEffect } from 'react';
+import { Platform, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import 'react-native-reanimated';
 
-import { DeviceLockProvider } from '@/components/DeviceLock';
+import { DeviceLockProvider, useDeviceLock } from '@/components/DeviceLock';
+import { AssistantSheetProvider } from '@/components/AssistantSheetContext';
+import { AssistantFabLayer } from '@/components/AssistantFabLayer';
 import { useColorScheme } from '@/components/useColorScheme';
-import { AuthSessionProvider, useAuthSession } from '@/lib/authContext';
-import { MarketProvider } from '@/lib/market';
-import { circleWorkspaceHref } from '@/lib/navigation';
-import { initializeNotifications, setupNotificationListener } from '@/lib/notifications';
+import {
+  resetNavigationToLogin,
+  shouldDeferProtectedNavigation,
+  shouldIssueSignedOutReset,
+} from '@/lib/auth/authBoundary';
+import { AuthSessionProvider, useAuthSession } from '@/lib/auth/authContext';
+import { getCircleDetail } from '@/lib/api';
+import { EntitlementsProvider, useEntitlements } from '@/lib/billing/entitlementsContext';
+import { initializeI18n } from '@/lib/i18n';
+import { shouldHideLaunchSplash } from '@/lib/platform/launchSplash';
+import { MarketProvider } from '@/lib/circles/market';
+import { circleWorkspaceHref, dashboardHref } from '@/lib/platform/navigation';
+import { authorizeNotificationNavigation } from '@/lib/platform/notificationNavigation';
+import { initializeNotifications, setupNotificationListener } from '@/lib/platform/notifications';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { registerUnauthorizedSessionHandler } from '@/lib/auth/sessionExpiry';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -29,8 +44,8 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const [i18nReady, setI18nReady] = useState(false);
   const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
 
@@ -40,89 +55,283 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-      // Set up the foreground notification handler once fonts are ready.
-      // Fire-and-forget — notification failure must never crash the app.
-      void initializeNotifications();
+    let active = true;
 
-      // Set up deep link listener for tapped notifications
-      const setupListener = async () => {
-        const subscription = await setupNotificationListener((data) => {
-          if (data.screen === 'workspace' && data.circleId) {
-            router.push(circleWorkspaceHref(data.circleId, data.tab));
-          }
-        });
-        return subscription;
-      };
-      
-      const subPromise = setupListener();
+    void initializeI18n()
+      .catch((initializationError) => {
+        logClientError('Unable to initialize localization.', initializationError);
+      })
+      .finally(() => {
+        if (active) {
+          setI18nReady(true);
+        }
+      });
 
-      return () => {
-        subPromise.then((sub) => sub?.remove()).catch(() => {});
-      };
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || !i18nReady) {
+      return;
     }
-  }, [loaded]);
+    // Do not hide the splash here — wait for the first real route frame.
+    // Fire-and-forget — notification failure must never crash the app.
+    void initializeNotifications();
 
-  if (!loaded) {
+  }, [i18nReady, loaded]);
+
+  if (!loaded || !i18nReady) {
     return null;
   }
 
   return <RootLayoutNav />;
 }
 
+function LaunchSplashController() {
+  const { status } = useAuthSession();
+  const { isInitializing } = useDeviceLock();
+  const hidden = useRef(false);
+
+  useEffect(() => {
+    if (hidden.current) {
+      return;
+    }
+    if (
+      !shouldHideLaunchSplash({
+        authStatus: status,
+        deviceLockInitializing: isInitializing,
+      })
+    ) {
+      return;
+    }
+    hidden.current = true;
+    void SplashScreen.hideAsync();
+  }, [isInitializing, status]);
+
+  return null;
+}
+
+function SessionTree() {
+  return (
+    <AuthSessionProvider>
+      <EntitlementsProvider>
+        <MarketProvider>
+          <DeviceLockProvider>
+            <LaunchSplashController />
+            <SessionExpiryController />
+            <NotificationNavigationController />
+            <UnauthenticatedRouteGuard />
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <AssistantSheetProvider>
+                <AssistantFabLayer>
+                  <AuthenticatedStack />
+                </AssistantFabLayer>
+              </AssistantSheetProvider>
+            </GestureHandlerRootView>
+          </DeviceLockProvider>
+        </MarketProvider>
+      </EntitlementsProvider>
+    </AuthSessionProvider>
+  );
+}
+
+function SessionExpiryController() {
+  const { status, signOut } = useAuthSession();
+  const { revokeContributionPaymentsCapability } = useEntitlements();
+  const statusRef = useRef(status);
+  statusRef.current = status;
+
+  useEffect(() => {
+    return registerUnauthorizedSessionHandler(async () => {
+      if (statusRef.current !== 'authenticated') {
+        return;
+      }
+      revokeContributionPaymentsCapability();
+      await signOut();
+      resetNavigationToLogin();
+    });
+  }, [revokeContributionPaymentsCapability, signOut]);
+
+  return null;
+}
+
+type NotificationTarget = {
+  screen: string;
+  circleId: string;
+  tab?: string;
+  conversationId?: string;
+};
+
+function NotificationNavigationController() {
+  const { session, status, setPostAuthTarget } = useAuthSession();
+  const { isInitializing, isLocked } = useDeviceLock();
+  const authToken = session?.session.token;
+  const pendingRef = useRef<NotificationTarget | null>(null);
+  const followGeneration = useRef(0);
+  const defer = shouldDeferProtectedNavigation({
+    locked: isLocked,
+    initializing: isInitializing,
+  });
+  const deferRef = useRef(defer);
+  deferRef.current = defer;
+
+  const openTarget = useCallback(
+    async (data: NotificationTarget, generation: number) => {
+      if (data.screen !== 'workspace' || !data.circleId) {
+        return;
+      }
+      if (deferRef.current) {
+        pendingRef.current = data;
+        return;
+      }
+      // A cold-start tap can arrive before the saved session is restored.
+      // Wait for it instead of treating the user as signed out.
+      if (status === 'loading') {
+        pendingRef.current = data;
+        return;
+      }
+
+      const currentAuthToken = String(authToken || '').trim();
+      if (status !== 'authenticated' || !currentAuthToken) {
+        if (followGeneration.current !== generation) {
+          return;
+        }
+        setPostAuthTarget(dashboardHref);
+        resetNavigationToLogin();
+        return;
+      }
+
+      const decision = await authorizeNotificationNavigation({
+        authenticated: true,
+        authorize: () =>
+          getCircleDetail(currentAuthToken, data.circleId, {
+            revalidate: true,
+          }),
+      });
+      if (followGeneration.current !== generation || deferRef.current) {
+        if (deferRef.current) {
+          pendingRef.current = data;
+        }
+        return;
+      }
+      if (decision === 'workspace') {
+        router.push(
+          circleWorkspaceHref(
+            data.circleId,
+            data.tab,
+            data.conversationId,
+          ),
+        );
+      } else {
+        router.replace(dashboardHref);
+      }
+    },
+    [authToken, setPostAuthTarget, status],
+  );
+
+  useEffect(() => {
+    const generation = ++followGeneration.current;
+    const subPromise = setupNotificationListener(async (data) => {
+      if (followGeneration.current !== generation) {
+        return;
+      }
+      await openTarget(data, generation);
+    });
+
+    return () => {
+      subPromise.then((sub) => sub?.remove()).catch(() => {});
+    };
+  }, [openTarget]);
+
+  useEffect(() => {
+    if (defer) {
+      return;
+    }
+    const pending = pendingRef.current;
+    if (!pending) {
+      return;
+    }
+    pendingRef.current = null;
+    void openTarget(pending, followGeneration.current);
+  }, [defer, openTarget]);
+
+  return null;
+}
+
+function UnauthenticatedRouteGuard() {
+  const { status } = useAuthSession();
+  const pathname = usePathname();
+  const lastResetKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    const decision = shouldIssueSignedOutReset({
+      status,
+      pathname,
+      lastResetKey: lastResetKey.current,
+    });
+    lastResetKey.current = decision.nextKey;
+    if (!decision.reset) {
+      return;
+    }
+    resetNavigationToLogin();
+  }, [pathname, status]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const isStripeSupported = Platform.OS !== 'web' && Constants.executionEnvironment !== 'storeClient';
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      {isStripeSupported ? (
-        <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''} merchantIdentifier="merchant.com.circusave">
-          <AuthSessionProvider>
-            <MarketProvider>
-              <DeviceLockProvider>
-                <AuthenticatedStack />
-              </DeviceLockProvider>
-            </MarketProvider>
-          </AuthSessionProvider>
-        </StripeProvider>
-      ) : (
-        <AuthSessionProvider>
-          <MarketProvider>
-            <DeviceLockProvider>
-              <AuthenticatedStack />
-            </DeviceLockProvider>
-          </MarketProvider>
-        </AuthSessionProvider>
-      )}
+      <StatusBar style="dark" />
+      <SessionTree />
     </ThemeProvider>
   );
 }
 
 function AuthenticatedStack() {
   const { postAuthTarget, setPostAuthTarget, status } = useAuthSession();
+  const { isInitializing, isLocked } = useDeviceLock();
   const authenticated = status === 'authenticated';
-  const unauthenticated = status === 'unauthenticated' || status === 'error';
 
   useEffect(() => {
-    if (authenticated && postAuthTarget) {
+    if (
+      authenticated &&
+      postAuthTarget &&
+      !shouldDeferProtectedNavigation({
+        locked: isLocked,
+        initializing: isInitializing,
+      })
+    ) {
       router.replace(postAuthTarget);
       setPostAuthTarget(null);
     }
-  }, [authenticated, postAuthTarget, setPostAuthTarget]);
+  }, [authenticated, isInitializing, isLocked, postAuthTarget, setPostAuthTarget]);
 
   return (
     <Stack>
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="login"
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
       <Stack.Screen name="create-account" options={{ headerShown: false }} />
+      <Stack.Screen name="verify-email" options={{ headerShown: false }} />
+      <Stack.Screen name="join-circle" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="create-circle/setup" options={{ headerShown: false }} />
       <Stack.Screen name="circle/workspace" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/assistant" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/reminder-schedule" options={{ headerShown: false }} />
+      <Stack.Screen name="smart-reminders" options={{ headerShown: false }} />
       <Stack.Screen name="circle/invite" options={{ headerShown: false }} />
       <Stack.Screen name="invite/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="circle/payment-setup" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/agreement-review" options={{ headerShown: false }} />
+      <Stack.Screen name="circle/additional-hand" options={{ headerShown: false }} />
       {/* circle/history is intentionally not registered until the backend
           history endpoint is connected. The screen file is kept as a shell.
           Re-add the Stack.Screen line below when ready:
@@ -131,6 +340,12 @@ function AuthenticatedStack() {
       <Stack.Screen name="automated-payments" options={{ headerShown: false }} />
       <Stack.Screen name="subscription" options={{ headerShown: false }} />
       <Stack.Screen name="security" options={{ headerShown: false }} />
+      <Stack.Screen name="language" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/index" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/how-money-moves" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/electronic-consent" options={{ headerShown: false }} />
     </Stack>
   );
 }

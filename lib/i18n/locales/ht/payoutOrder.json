@@ -1,0 +1,28 @@
+{
+  "review": {
+    "title": "Revize lòd peman an",
+    "body": "Konfime chak men ki patisipe nan bon pozisyon. Lòd la ap bloke lè gwoup la kòmanse.",
+    "confirm": "Konfime lòd la",
+    "empty": "Pa gen lòd peman disponib pou kounye a.",
+    "hint": "Chanje pozisyon yo. Konfime lòd la lè w kòmanse gwoup la; montre men yo pa fini revizyon an.",
+    "stillRequired": "Estrikti a konplè. Revizyon an toujou nesesè lè w kòmanse.",
+    "missing": "Pa nan lòd la",
+    "needsAttention": "Lòd peman an bezwen atansyon",
+    "missingCount_one": "{{count}} men pa nan lòd la.",
+    "missingCount_other": "{{count}} men pa nan lòd la.",
+    "duplicateCount_one": "{{count}} pozisyon repete.",
+    "duplicateCount_other": "{{count}} pozisyon repete.",
+    "unknownCount_one": "{{count}} pozisyon enkoni.",
+    "unknownCount_other": "{{count}} pozisyon enkoni.",
+    "moveUp": "Monte",
+    "moveDown": "Desann",
+    "moveMemberUp": "Monte {{name}}",
+    "moveMemberDown": "Desann {{name}}",
+    "position": "Pozisyon {{position}}",
+    "notInOrder": "Pa nan lòd la",
+    "unavailable": "Pa gen lòd peman disponib pou kounye a."
+  },
+  "errors": {
+    "reorderTitle": "Nou pa t ka chanje lòd la"
+  }
+}

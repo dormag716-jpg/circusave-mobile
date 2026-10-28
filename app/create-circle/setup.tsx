@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Alert,
   ActivityIndicator,
@@ -16,77 +16,114 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
-import { addCircleMember, createCircle, startCircle, getCircleDetail } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
+import { createCircle, getCircleDetail, getCircles } from '@/lib/api';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { buildOpenCircleCapacity } from '@/lib/circles/circleCapacity';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
-  circleInviteHref,
+  applyDraftDefaults,
+  buildCreateCirclePayload,
+  buildPlannedMemberRows,
+  calculateCircleMetrics,
+  createMemberDraftId,
+  ensureMemberDraftId,
+  isOrganizerSelf,
+  memberDisplayName,
+  validateMinimumHands,
+  validatePlanCapacity,
+  type MemberDraft,
+} from '@/lib/circles/createCircleWizard';
+import {
   circleWorkspaceHref,
   createCircleHref,
-} from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
+  createCircleSuccessDestinations,
+} from '@/lib/platform/navigation';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 import { Avatar } from '@/components/Avatar';
+import { DecisionSheet } from '@/components/DecisionSheet';
+import { CREATE_CIRCLE_STEPS } from '@/lib/circles/createCircleFlow';
+import { formatCurrency } from '@/lib/i18n/formatters';
+import { normalizeFrequencyKey, type CircleFrequencyKey } from '@/lib/circles/reminderCircleSummary';
 
-const steps = [
-  'Name your circle',
-  'Contribution amount',
-  'Schedule',
-  'Add members',
-  'Payout order',
-  'Review & Create',
-] as const;
+/** Initial wizard: organizer-alone setup only. Payout order is finalized later. */
+const steps = CREATE_CIRCLE_STEPS;
 
-const amountPresets = ['$50', '$100', '$200', '$500'] as const;
-const scheduleOptions = ['Weekly', 'Bi-weekly', 'Monthly'] as const;
-
-type MemberDraft = {
-  /** Stable React list identity — not the phone (multiple hands may share a phone). */
-  draftId: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-};
+const amountPresets = [50, 100, 200, 500] as const;
+const scheduleOptions: CircleFrequencyKey[] = ['weekly', 'biweekly', 'monthly'];
 
 const DRAFT_KEY = 'circle_wizard_draft';
 
-/** Client-side stable id for draft member rows (not a backend membership id). */
-function createMemberDraftId(): string {
-  return `md_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 11)}`;
-}
-
-function ensureMemberDraftId(member: MemberDraft): MemberDraft {
-  if (member.draftId) {
-    return member;
-  }
-  return { ...member, draftId: createMemberDraftId() };
-}
+const emptyNewMember = (): MemberDraft => ({
+  draftId: '',
+  email: '',
+  firstName: '',
+  lastName: '',
+  phone: '',
+  handNumber: 1,
+});
 
 export default function CircleSetupWizardScreen() {
+  const { t, i18n: translation } = useTranslation('createCircle');
   const { session } = useAuthSession();
+  const { planTier } = useEntitlements();
   const { sourceCircleId } = useLocalSearchParams<{ sourceCircleId: string }>();
   const [activeStep, setActiveStep] = useState(0);
   const [circleName, setCircleName] = useState('');
   const [amount, setAmount] = useState('$100');
   const [customAmount, setCustomAmount] = useState('');
-  const [schedule, setSchedule] = useState('Weekly');
+  const [schedule, setSchedule] = useState<CircleFrequencyKey>('weekly');
   const [members, setMembers] = useState<MemberDraft[]>([]);
-  const [newMember, setNewMember] = useState<MemberDraft>({
-    draftId: '',
-    email: '',
-    firstName: '',
-    lastName: '',
-    phone: '',
-  });
+  const [organizerParticipates, setOrganizerParticipates] = useState(true);
+  const [newMember, setNewMember] = useState<MemberDraft>(emptyNewMember());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
+  const [createdCircleId, setCreatedCircleId] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Draft helpers ──────────────────────────────────────────────────────────
+  const organizerName = session?.user.name?.trim() || t('members.organizer');
+  const language = translation.resolvedLanguage || translation.language;
+  const formatMoney = useCallback(
+    (value: number) => formatCurrency(value, language),
+    [language],
+  );
+  const organizerIdentity = {
+    id: session?.user.id,
+    name: session?.user.name,
+    email: session?.user.email,
+    phone: null as string | null,
+  };
+
+  const contributionAmount = customAmount.trim()
+    ? `$${customAmount.trim().replace(/^\$/, '')}`
+    : amount;
+  const contributionValue = parseAmount(contributionAmount) ?? 0;
+  const metrics = useMemo(
+    () => calculateCircleMetrics(members, organizerParticipates, contributionValue),
+    [members, organizerParticipates, contributionValue],
+  );
+  const plannedRows = useMemo(
+    () => buildPlannedMemberRows(members, organizerParticipates, organizerName),
+    [members, organizerParticipates, organizerName],
+  );
+
   const saveDraft = useCallback(
-    (overrides?: Partial<{ activeStep: number; circleName: string; amount: string; customAmount: string; schedule: string; members: MemberDraft[] }>) => {
-      if (sourceCircleId) return; // don't persist template-clone flows
+    (
+      overrides?: Partial<{
+        activeStep: number;
+        circleName: string;
+        amount: string;
+        customAmount: string;
+        schedule: string;
+        members: MemberDraft[];
+        organizerParticipates: boolean;
+      }>,
+    ) => {
+      if (sourceCircleId) return;
       const draft = {
         activeStep: overrides?.activeStep ?? activeStep,
         circleName: overrides?.circleName ?? circleName,
@@ -94,56 +131,89 @@ export default function CircleSetupWizardScreen() {
         customAmount: overrides?.customAmount ?? customAmount,
         schedule: overrides?.schedule ?? schedule,
         members: overrides?.members ?? members,
+        organizerParticipates:
+          overrides?.organizerParticipates ?? organizerParticipates,
       };
       SecureStore.setItemAsync(DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
     },
-    [activeStep, circleName, amount, customAmount, schedule, members, sourceCircleId],
+    [
+      activeStep,
+      circleName,
+      amount,
+      customAmount,
+      schedule,
+      members,
+      organizerParticipates,
+      sourceCircleId,
+    ],
   );
 
   function clearDraft() {
     SecureStore.deleteItemAsync(DRAFT_KEY).catch(() => {});
   }
 
-  // Auto-save draft 600ms after any state change
   useEffect(() => {
     if (!draftLoaded) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => saveDraft(), 600);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [activeStep, circleName, amount, customAmount, schedule, members, draftLoaded, saveDraft]);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [
+    activeStep,
+    circleName,
+    amount,
+    customAmount,
+    schedule,
+    members,
+    organizerParticipates,
+    draftLoaded,
+    saveDraft,
+  ]);
 
-  // Load saved draft on first mount (unless cloning a circle)
   useEffect(() => {
     if (sourceCircleId) {
       setDraftLoaded(true);
       return;
     }
     SecureStore.getItemAsync(DRAFT_KEY).then((raw) => {
-      if (!raw) { setDraftLoaded(true); return; }
+      if (!raw) {
+        setDraftLoaded(true);
+        return;
+      }
       try {
         const draft = JSON.parse(raw);
-        const hasContent = draft.circleName || (draft.members && draft.members.length > 0);
-        if (!hasContent) { setDraftLoaded(true); return; }
+        const hasContent =
+          draft.circleName || (draft.members && draft.members.length > 0);
+        if (!hasContent) {
+          setDraftLoaded(true);
+          return;
+        }
         Alert.alert(
-          '📋 Resume your circle?',
-          `You were in the middle of setting up "${draft.circleName || 'a new circle'}". Would you like to continue where you left off?`,
+          t('draft.resumeTitle'),
+          t('draft.resumeBody', {
+            circleName: draft.circleName || t('draft.newCircle'),
+          }),
           [
             {
-              text: 'Start fresh',
+              text: t('actions.startFresh'),
               style: 'destructive',
-              onPress: () => { clearDraft(); setDraftLoaded(true); },
+              onPress: () => {
+                clearDraft();
+                setDraftLoaded(true);
+              },
             },
             {
-              text: 'Resume',
+              text: t('actions.resume'),
               onPress: () => {
-                setActiveStep(draft.activeStep ?? 0);
-                setCircleName(draft.circleName ?? '');
-                setAmount(draft.amount ?? '$100');
-                setCustomAmount(draft.customAmount ?? '');
-                setSchedule(draft.schedule ?? 'Weekly');
-                setMembers(
-                  ((draft.members ?? []) as MemberDraft[]).map(ensureMemberDraftId),
-                );
+                const restored = applyDraftDefaults(draft, steps.length - 1);
+                setActiveStep(restored.activeStep);
+                setCircleName(restored.circleName);
+                setAmount(restored.amount);
+                setCustomAmount(restored.customAmount);
+                setSchedule(normalizeFrequencyKey(restored.schedule));
+                setMembers(restored.members);
+                setOrganizerParticipates(restored.organizerParticipates);
                 setDraftLoaded(true);
               },
             },
@@ -163,113 +233,160 @@ export default function CircleSetupWizardScreen() {
       try {
         const detail = await getCircleDetail(session.session.token, sourceCircleId);
         setCircleName(detail.name);
-        
-        const amtStr = `$${detail.contributionAmount}`;
-        if ((amountPresets as readonly string[]).includes(amtStr)) {
-          setAmount(amtStr);
+
+        const sourceAmount = Number(detail.contributionAmount);
+        if ((amountPresets as readonly number[]).includes(sourceAmount)) {
+          setAmount(`$${sourceAmount}`);
+          setCustomAmount('');
         } else {
-          setAmount('Custom');
-          setCustomAmount(detail.contributionAmount.toString());
+          setAmount(`$${sourceAmount}`);
+          setCustomAmount(String(sourceAmount));
+        }
+        if (detail.frequency) {
+          setSchedule(normalizeFrequencyKey(String(detail.frequency)));
         }
 
-        const prefilledMembers: MemberDraft[] = detail.members.map((m) => {
-          const parts = (m.full_name || m.name || '').trim().split(' ');
-          return {
-            draftId: createMemberDraftId(),
-            firstName: parts[0] || '',
-            lastName: parts.slice(1).join(' ') || '',
-            email: m.email || '',
-            phone: m.phone || '',
-          };
-        });
-        // Remove the organizer themselves from the draft members if they are in the list
-        // Since the backend handles the organizer automatically during createCircle
-        const filteredMembers = prefilledMembers.filter(m => m.email !== session?.user.email);
-        setMembers(filteredMembers);
-      } catch (e) {
-        // Silently ignore, just start fresh
+        const sourceMembers = Array.isArray(detail.members) ? detail.members : [];
+        const prefilledMembers: MemberDraft[] = sourceMembers
+          .map((m) => {
+            const sourceMember = m || {};
+            const parts = (sourceMember.full_name || sourceMember.name || '')
+              .trim()
+              .split(' ');
+            return ensureMemberDraftId({
+              draftId: createMemberDraftId(),
+              firstName: parts[0] || '',
+              lastName: parts.slice(1).join(' ') || '',
+              email: sourceMember.email || '',
+              phone: sourceMember.phone || '',
+              handNumber: 1,
+            });
+          })
+          .filter(
+            (m) =>
+              !isOrganizerSelf(m, {
+                email: session?.user.email,
+                phone: null,
+              }),
+          );
+        setMembers(prefilledMembers);
+        setOrganizerParticipates(true);
+      } catch (error) {
+        logClientError('Unable to load source circle for create-circle setup', error);
+        // Start fresh on load failure.
       }
     }
-    loadSourceCircle();
-  }, [sourceCircleId, session?.session.token]);
+    void loadSourceCircle();
+  }, [sourceCircleId, session?.session.token, session?.user.email]);
 
   const isLastStep = activeStep === steps.length - 1;
-  const contributionAmount = customAmount.trim()
-    ? `$${customAmount.trim().replace(/^\$/, '')}`
-    : amount;
 
   function addMember() {
-    const member = normalizeMemberDraft(newMember);
+    const normalized = normalizeMemberDraft(newMember);
 
-    if (!member.firstName || !member.lastName) {
-      Alert.alert('Name required', 'Enter the member first and last name.');
+    if (!normalized.firstName || !normalized.lastName) {
+      Alert.alert(t('errors.memberNameTitle'), t('errors.memberNameBody'));
       return;
     }
-    if (!member.phone) {
-      Alert.alert('Phone required', 'Enter a phone number for this member.');
+    if (!normalized.phone) {
+      Alert.alert(t('errors.memberPhoneTitle'), t('errors.memberPhoneBody'));
+      return;
+    }
+    if (isOrganizerSelf(normalized, organizerIdentity)) {
+      Alert.alert(
+        t('errors.organizerDuplicateTitle'),
+        t('errors.organizerDuplicateBody'),
+      );
       return;
     }
     if (
       members.some(
         (existingMember) =>
-          existingMember.phone === member.phone ||
+          existingMember.phone === normalized.phone ||
           memberDisplayName(existingMember).toLowerCase() ===
-            memberDisplayName(member).toLowerCase(),
+            memberDisplayName(normalized).toLowerCase(),
       )
     ) {
-      Alert.alert('Duplicate', 'Member already added.');
+      Alert.alert(t('errors.duplicateTitle'), t('errors.duplicateBody'));
       return;
     }
-    setMembers((currentMembers) => [
-      ...currentMembers,
+
+    const nextMembers = [
+      ...members,
       {
-        ...member,
-        draftId: member.draftId || createMemberDraftId(),
+        ...normalized,
+        draftId: normalized.draftId || createMemberDraftId(),
+        handNumber: 1,
       },
-    ]);
-    setNewMember({
-      draftId: '',
-      email: '',
-      firstName: '',
-      lastName: '',
-      phone: '',
-    });
+    ];
+    const capError = validatePlanCapacity(
+      nextMembers,
+      organizerParticipates,
+      planTier,
+    );
+    if (capError) {
+      Alert.alert(t('errors.planLimitTitle'), capacityErrorMessage());
+      return;
+    }
+
+    setMembers(nextMembers);
+    setNewMember(emptyNewMember());
   }
 
   function removeMember(draftId: string) {
-    setMembers((currentMembers) =>
-      currentMembers.filter((member) => member.draftId !== draftId),
-    );
+    setMembers((current) => current.filter((member) => member.draftId !== draftId));
   }
 
   async function goNext() {
     if (isSubmitting) return;
 
     if (activeStep === 0 && !circleName.trim()) {
-      Alert.alert('Name needed', 'Please give your circle a name.');
+      Alert.alert(t('errors.circleNameTitle'), t('errors.circleNameBody'));
       return;
     }
-    if (activeStep === 1 && !parseAmount(contributionAmount)) {
-      Alert.alert('Amount needed', 'Enter a valid contribution amount.');
-      return;
+    if (activeStep === 1) {
+      if (!parseAmount(contributionAmount)) {
+        Alert.alert(t('errors.amountTitle'), t('errors.amountBody'));
+        return;
+      }
     }
-    if (activeStep === 3 && members.length < 2) {
-      Alert.alert('Add members', 'Add at least 2 members to continue.');
-      return;
+    if (activeStep === 4) {
+      if (!schedule) {
+        Alert.alert(t('errors.scheduleTitle'), t('errors.scheduleBody'));
+        return;
+      }
+    }
+    if (activeStep === 3) {
+      const minError = validateMinimumHands(members, organizerParticipates);
+      if (minError) {
+        Alert.alert(t('errors.addMembersTitle'), minimumHandsMessage());
+        return;
+      }
     }
     if (isLastStep) {
-      // Show organizer consent modal instead of immediately creating
+      const minError = validateMinimumHands(members, organizerParticipates);
+      if (minError) {
+        Alert.alert(t('errors.cannotCreateTitle'), minimumHandsMessage());
+        return;
+      }
+      const capError = validatePlanCapacity(
+        members,
+        organizerParticipates,
+        planTier,
+      );
+      if (capError) {
+        Alert.alert(t('errors.planLimitTitle'), capacityErrorMessage());
+        return;
+      }
       setShowConsentModal(true);
       return;
     }
-    setActiveStep((currentStep) =>
-      Math.min(currentStep + 1, steps.length - 1),
-    );
+    setActiveStep((current) => Math.min(current + 1, steps.length - 1));
   }
 
   function goBack() {
     if (activeStep > 0) {
-      setActiveStep((currentStep) => Math.max(currentStep - 1, 0));
+      setActiveStep((current) => Math.max(current - 1, 0));
       return;
     }
     router.replace(createCircleHref);
@@ -277,65 +394,77 @@ export default function CircleSetupWizardScreen() {
 
   async function createCircleFromWizard() {
     const token = session?.session.token;
-
     if (!token) {
-      Alert.alert('Sign in required', 'Your session is missing an access token.');
+      Alert.alert(t('errors.signInTitle'), t('errors.signInBody'));
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const createdCircle = await createCircle(token, {
-        name: circleName.trim() || 'Untitled Circle',
+      // Free plan: block a second open circle before calling the API.
+      try {
+        const existing = await getCircles(token);
+        const openCap = buildOpenCircleCapacity({
+          circles: existing,
+          organizerRoleOrTier: planTier,
+          organizerOwnedOnly: true,
+        });
+        if (openCap.atCapacity) {
+          Alert.alert(
+            t('errors.openCircleLimitTitle'),
+            t('errors.openCircleLimitBody'),
+            openCap.primaryOpenCircleId
+              ? [
+                  {
+                    text: t('actions.openExisting'),
+                    onPress: () =>
+                      router.replace(
+                        circleWorkspaceHref(openCap.primaryOpenCircleId!),
+                      ),
+                  },
+                  { text: t('actions.ok'), style: 'cancel' },
+                ]
+              : [{ text: t('actions.ok') }],
+          );
+          return;
+        }
+      } catch (error) {
+        logClientError('Unable to check open-circle capacity before creation', error);
+        // Server still enforces; continue if list fails.
+      }
+
+      const payload = buildCreateCirclePayload({
+        circleName: circleName.trim() || 'Untitled Circle',
         contributionAmount: requireAmount(contributionAmount),
         frequency: scheduleToFrequency(schedule),
         startDate: todayIsoDate(),
+        members,
+        organizerParticipates,
       });
 
-      for (const member of members) {
-        await addCircleMember(token, createdCircle.id, {
-          firstName: member.firstName,
-          lastName: member.lastName,
-          phone: member.phone,
-          email: member.email || undefined,
-        });
-      }
-
-      await startCircle(token, createdCircle.id);
-
-      // Circle created — clear the saved draft
+      const createdCircle = await createCircle(token, payload);
       clearDraft();
-
-      Alert.alert(
-        'Circle created',
-        'Share invites so members can join and claim their spots.',
-        [
-          {
-            text: 'Invite members',
-            onPress: () =>
-              router.replace(circleInviteHref(createdCircle.id)),
-          },
-          {
-            text: 'Open workspace',
-            style: 'cancel',
-            onPress: () =>
-              router.replace(circleWorkspaceHref(createdCircle.id)),
-          },
-        ],
-      );
+      setCreatedCircleId(createdCircle.id);
     } catch (error) {
-      Alert.alert(
-        'Unable to create circle',
-        error instanceof Error
-          ? error.message
-          : 'The circle could not be created.',
-      );
+      logClientError('Unable to create circle from setup wizard', error);
+      Alert.alert(t('errors.createFailedTitle'), t('errors.createFailedBody'));
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // ── Consent modal ──────────────────────────────────────────────────────────
+  function minimumHandsMessage() {
+    return organizerParticipates
+      ? t('validation.minimumHandsParticipating')
+      : t('validation.minimumHandsOrganizingOnly');
+  }
+
+  function capacityErrorMessage() {
+    return planTier === 'premium'
+      ? t('validation.premiumCapacity', { count: 50 })
+      : t('validation.freeCapacity', { count: 20, premiumCount: 50 });
+  }
+
   function ConsentModal() {
     return (
       <Modal
@@ -344,77 +473,135 @@ export default function CircleSetupWizardScreen() {
         animationType="slide"
         onRequestClose={() => setShowConsentModal(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 44 }}>
-
-            {/* Icon */}
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              padding: 28,
+              paddingBottom: 44,
+            }}
+          >
             <View style={{ alignItems: 'center', marginBottom: 20 }}>
-              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
-                <FontAwesome name="lock" size={32} color="#7c3aed" />
+              <View
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 36,
+                  backgroundColor: colors.primarySoft,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginBottom: 16,
+                }}
+              >
+                <FontAwesome name="lock" size={32} color={colors.primary} />
               </View>
-              <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827', textAlign: 'center' }}>Ready to launch?</Text>
-              <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginTop: 8, lineHeight: 22 }}>
-                Once your circle is started, <Text style={{ fontWeight: '800', color: '#111827' }}>you will not be able to add or remove members.</Text> Make sure everyone below is correct before continuing.
+              <Text
+                style={{
+                  fontSize: 22,
+                  fontWeight: '900',
+                  color: colors.textStrong,
+                  textAlign: 'center',
+                }}
+              >
+                {t('confirmation.title')}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 15,
+                  color: colors.muted,
+                  textAlign: 'center',
+                  marginTop: 8,
+                  lineHeight: 22,
+                }}
+              >
+                {t('confirmation.body')}
               </Text>
             </View>
 
-            {/* Member summary */}
-            <View style={{ backgroundColor: '#f9fafb', borderRadius: 16, padding: 16, marginBottom: 20 }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Circle Roster ({members.length + 1} members)</Text>
-              {/* Organizer row */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                  <FontAwesome name="star" size={14} color="#7c3aed" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>You (Organizer)</Text>
-                  <Text style={{ fontSize: 12, color: '#6b7280' }}>Receives payout #1</Text>
-                </View>
-              </View>
-              {members.slice(0, 4).map((m) => (
-                <View key={m.draftId} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#ede9fe', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#7c3aed' }}>{(m.firstName[0] || '').toUpperCase()}{(m.lastName[0] || '').toUpperCase()}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>{memberDisplayName(m)}</Text>
-                    <Text style={{ fontSize: 12, color: '#6b7280' }}>{m.phone}</Text>
-                  </View>
-                </View>
-              ))}
-              {members.length > 4 ? (
-                <Text style={{ fontSize: 13, color: '#6b7280', fontWeight: '600', textAlign: 'center', marginTop: 4 }}>+ {members.length - 4} more members</Text>
-              ) : null}
-            </View>
-
-            {/* Warning banner */}
-            <View style={{ flexDirection: 'row', backgroundColor: '#fff7ed', borderRadius: 12, borderWidth: 1, borderColor: '#fed7aa', padding: 12, marginBottom: 24, alignItems: 'flex-start', gap: 10 }}>
-              <FontAwesome name="exclamation-triangle" size={16} color="#f97316" style={{ marginTop: 1 }} />
-              <Text style={{ flex: 1, fontSize: 13, color: '#92400e', lineHeight: 19 }}>
-                <Text style={{ fontWeight: '800' }}>This action is final.</Text> After starting, the member list is locked. Contribution amount and schedule are also locked.
+            <View
+              style={{
+                flexDirection: 'row',
+                backgroundColor: colors.warningSoft,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: colors.warningBorder,
+                padding: 12,
+                marginBottom: 24,
+                alignItems: 'flex-start',
+                gap: 10,
+              }}
+            >
+              <FontAwesome
+                name="exclamation-triangle"
+                size={16}
+                color={colors.warningStrong}
+                style={{ marginTop: 1 }}
+              />
+              <Text style={{ flex: 1, fontSize: 13, color: colors.warningText, lineHeight: 19 }}>
+                <Text style={{ fontWeight: '800' }}>
+                  {t('confirmation.warningTitle')}
+                </Text>{' '}
+                {t('confirmation.warningBody')}
               </Text>
             </View>
 
-            {/* Buttons */}
             <Pressable
-              style={({ pressed }) => [{ backgroundColor: '#7c3aed', borderRadius: 20, minHeight: 56, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }, pressed && { opacity: 0.85 }, isSubmitting && { opacity: 0.65 }]}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: colors.primary,
+                  borderRadius: 20,
+                  minHeight: 56,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                },
+                pressed && { opacity: 0.85 },
+                isSubmitting && { opacity: 0.65 },
+              ]}
               onPress={async () => {
                 setShowConsentModal(false);
                 await createCircleFromWizard();
               }}
               disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isSubmitting ? t('loading.creating') : t('actions.createCircle')
+              }
+              accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onColor} />
               ) : (
-                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>Yes, start the circle</Text>
+                <Text style={{ color: colors.onColor, fontSize: 17, fontWeight: '900' }}>
+                  {t('actions.createCircle')}
+                </Text>
               )}
             </Pressable>
             <Pressable
-              style={({ pressed }) => [{ borderRadius: 20, minHeight: 52, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb' }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                {
+                  borderRadius: 20,
+                  minHeight: 52,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.cardBorder,
+                },
+                pressed && { opacity: 0.7 },
+              ]}
               onPress={() => setShowConsentModal(false)}
             >
-              <Text style={{ color: '#374151', fontSize: 16, fontWeight: '700' }}>Go back and review</Text>
+              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>
+                {t('actions.reviewAgain')}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -425,465 +612,702 @@ export default function CircleSetupWizardScreen() {
   return (
     <>
       <ConsentModal />
+      <DecisionSheet
+        visible={Boolean(createdCircleId)}
+        onClose={() => undefined}
+        icon="check"
+        iconTone="success"
+        title={t('success.title')}
+        body={t('success.body')}
+        primaryLabel={t('actions.setContributionInstructions')}
+        secondaryLabel={t('actions.continueSetup')}
+        onSecondary={() => {
+          if (createdCircleId) {
+            router.replace(
+              createCircleSuccessDestinations(createdCircleId).continueSetup,
+            );
+          }
+        }}
+        onPrimary={() => {
+          if (createdCircleId) {
+            router.replace(
+              createCircleSuccessDestinations(createdCircleId)
+                .contributionPaymentSetup,
+            );
+          }
+        }}
+      />
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardView}
         >
-          <View style={styles.progressHeader}>
-            <Pressable
-              onPress={goBack}
-              style={styles.backBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <FontAwesome
-                name="chevron-left"
-                size={22}
-                color={colors.text}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.progressHeader}>
+              <Pressable
+                onPress={goBack}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t('accessibility.goBack')}
+              >
+                <FontAwesome name="chevron-left" size={22} color={colors.text} />
+              </Pressable>
+              <Text style={styles.stepCounter}>
+                {t('progress.step', {
+                  current: activeStep + 1,
+                  total: steps.length,
+                })}
+              </Text>
+            </View>
+
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${((activeStep + 1) / steps.length) * 100}%` },
+                ]}
               />
-            </Pressable>
-            <Text style={styles.stepCounter}>
-              Step {activeStep + 1} of {steps.length}
+            </View>
+
+            <Text style={styles.mainTitle}>
+              {t(`steps.${steps[activeStep].id}`)}
             </Text>
-          </View>
 
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${((activeStep + 1) / steps.length) * 100}%` },
-              ]}
-            />
-          </View>
+            <View style={styles.card}>
+              {/* STEP 1 — Circle details */}
+              {activeStep === 0 ? (
+                <>
+                  <Text style={styles.label}>{t('basics.nameQuestion')}</Text>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      marginBottom: 16,
+                      fontSize: 14,
+                      lineHeight: 20,
+                    }}
+                  >
+                    {t('basics.description')}
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    value={circleName}
+                    onChangeText={setCircleName}
+                    placeholder={t('basics.namePlaceholder')}
+                    placeholderTextColor={colors.subtle}
+                    autoCapitalize="words"
+                    returnKeyType="done"
+                  />
+                </>
+              ) : null}
 
-          <Text style={styles.mainTitle}>{steps[activeStep]}</Text>
-
-          <View style={styles.card}>
-            {activeStep === 0 ? (
-              <>
-                <Text style={styles.label}>
-                  What should we call this circle?
-                </Text>
-                <Text style={{ color: colors.muted, marginBottom: 16, fontSize: 14, lineHeight: 20 }}>
-                  A savings circle is a trusted group where everyone contributes and takes turns receiving the full pot.
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={circleName}
-                  onChangeText={setCircleName}
-                  placeholder="e.g. Family Savings, Church Group"
-                  placeholderTextColor={colors.subtle}
-                  autoCapitalize="words"
-                  returnKeyType="done"
-                />
-              </>
-            ) : null}
-
-            {activeStep === 1 ? (
-              <>
-                <Text style={styles.label}>
-                  How much will each member contribute?
-                </Text>
-                <View style={styles.presetRow}>
-                  {amountPresets.map((preset) => (
-                    <Pressable
-                      key={preset}
-                      style={[
-                        styles.preset,
-                        !customAmount &&
-                          amount === preset &&
-                          styles.presetActive,
-                      ]}
-                      onPress={() => {
-                        setAmount(preset);
-                        setCustomAmount('');
-                      }}
-                    >
-                      <Text
+              {/* STEP 2 — Contribution setup */}
+              {activeStep === 1 ? (
+                <>
+                  <Text style={styles.label}>{t('amount.question')}</Text>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      marginBottom: 16,
+                      fontSize: 14,
+                      lineHeight: 20,
+                    }}
+                  >
+                    {t('amount.description')}
+                  </Text>
+                  <View style={styles.presetRow}>
+                    {amountPresets.map((preset) => {
+                      const selected =
+                        !customAmount && parseAmount(amount) === preset;
+                      return (
+                      <Pressable
+                        key={preset}
                         style={[
-                          styles.presetText,
-                          !customAmount &&
-                            amount === preset &&
-                            styles.presetActiveText,
+                          styles.preset,
+                          selected && styles.presetActive,
                         ]}
+                        onPress={() => {
+                          setAmount(`$${preset}`);
+                          setCustomAmount('');
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={formatMoney(preset)}
                       >
-                        {preset}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <TextInput
-                  style={styles.input}
-                  value={customAmount}
-                  onChangeText={(value) =>
-                    setCustomAmount(value.replace(/[^\d.]/g, ''))
-                  }
-                  placeholder="Or enter custom amount"
-                  placeholderTextColor={colors.subtle}
-                  keyboardType="decimal-pad"
-                />
-              </>
-            ) : null}
+                        <Text
+                          style={[
+                            styles.presetText,
+                            selected && styles.presetActiveText,
+                          ]}
+                        >
+                          {formatMoney(preset)}
+                        </Text>
+                      </Pressable>
+                      );
+                    })}
+                  </View>
+                  <TextInput
+                    style={styles.input}
+                    value={customAmount}
+                    onChangeText={(value) =>
+                      setCustomAmount(value.replace(/[^\d.]/g, ''))
+                    }
+                    placeholder={t('amount.customPlaceholder')}
+                    placeholderTextColor={colors.subtle}
+                    keyboardType="decimal-pad"
+                  />
 
-            {activeStep === 2 ? (
-              <>
-                <Text style={styles.label}>
-                  How often should contributions happen?
-                </Text>
-                {scheduleOptions.map((option) => (
+                </>
+              ) : null}
+
+              {/* STEP 3 — Organizer participation */}
+              {activeStep === 2 ? (
+                <>
+                  <Text style={styles.label}>
+                    {t('organizer.question')}
+                  </Text>
                   <Pressable
-                    key={option}
                     style={[
                       styles.option,
-                      schedule === option && styles.optionActive,
+                      organizerParticipates && styles.optionActive,
                     ]}
-                    onPress={() => setSchedule(option)}
+                    onPress={() => setOrganizerParticipates(true)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: organizerParticipates }}
                   >
                     <Text
                       style={[
                         styles.optionText,
-                        schedule === option && styles.optionActiveText,
+                        organizerParticipates && styles.optionActiveText,
                       ]}
                     >
-                      {option}
+                      {t('organizer.participateTitle')}
+                    </Text>
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        fontSize: 13,
+                        lineHeight: 18,
+                        color: organizerParticipates ? colors.primarySoft : colors.muted,
+                      }}
+                    >
+                      {t('organizer.participateBody')}
                     </Text>
                   </Pressable>
-                ))}
-              </>
-            ) : null}
+                  <Pressable
+                    style={[
+                      styles.option,
+                      !organizerParticipates && styles.optionActive,
+                    ]}
+                    onPress={() => setOrganizerParticipates(false)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: !organizerParticipates }}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        !organizerParticipates && styles.optionActiveText,
+                      ]}
+                    >
+                      {t('organizer.organizeOnlyTitle')}
+                    </Text>
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        fontSize: 13,
+                        lineHeight: 18,
+                        color: !organizerParticipates ? colors.primarySoft : colors.muted,
+                      }}
+                    >
+                      {t('organizer.organizeOnlyBody')}
+                    </Text>
+                  </Pressable>
+                  {organizerParticipates ? (
+                    <Text
+                      style={{
+                        marginTop: 8,
+                        fontSize: 13,
+                        color: colors.muted,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {t('organizer.handExplanation')}
+                    </Text>
+                  ) : null}
+                </>
+              ) : null}
 
-            {activeStep === 3 ? (
-              <>
-                {/* Header with member count */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <Text style={styles.label}>Add trusted members</Text>
-                  {members.length > 0 && (
-                    <View style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
-                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{members.length} added</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={{ color: colors.muted, marginBottom: 20, fontSize: 14, lineHeight: 20 }}>
-                  We'll send each person an invite via phone or email.
-                </Text>
-
-                {/* Input form card */}
-                <View style={{ backgroundColor: `${colors.primary}06`, borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}20`, padding: 16, marginBottom: 20, gap: 12 }}>
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>First Name</Text>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: '#fff' }]}
-                        value={newMember.firstName}
-                        onChangeText={(firstName) =>
-                          setNewMember((current) => ({ ...current, firstName }))
-                        }
-                        placeholder="First name"
-                        placeholderTextColor={colors.subtle}
-                        autoCapitalize="words"
-                        returnKeyType="next"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Last Name</Text>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: '#fff' }]}
-                        value={newMember.lastName}
-                        onChangeText={(lastName) =>
-                          setNewMember((current) => ({ ...current, lastName }))
-                        }
-                        placeholder="Last name"
-                        placeholderTextColor={colors.subtle}
-                        autoCapitalize="words"
-                        returnKeyType="next"
-                      />
-                    </View>
+              {/* STEP 4 — Add members (other people only) */}
+              {activeStep === 3 ? (
+                <>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <Text style={styles.label}>{t('members.title')}</Text>
+                    {members.length > 0 ? (
+                      <View
+                        style={{
+                          backgroundColor: colors.primary,
+                          borderRadius: 12,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text
+                          style={{ color: colors.onColor, fontSize: 13, fontWeight: '800' }}
+                        >
+                          {t('members.added', { count: members.length })}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      marginBottom: 20,
+                      fontSize: 14,
+                      lineHeight: 20,
+                    }}
+                  >
+                    {t('members.description')}
+                  </Text>
 
-                  <View>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Phone Number</Text>
-                    <View style={{ position: 'relative' }}>
+                  <View
+                    style={{
+                      backgroundColor: `${colors.primary}06`,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: `${colors.primary}20`,
+                      padding: 16,
+                      marginBottom: 20,
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.fieldLabel}>{t('members.firstName')}</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: colors.card }]}
+                          value={newMember.firstName}
+                          onChangeText={(firstName) =>
+                            setNewMember((current) => ({ ...current, firstName }))
+                          }
+                          placeholder={t('members.firstNamePlaceholder')}
+                          placeholderTextColor={colors.subtle}
+                          autoCapitalize="words"
+                          returnKeyType="next"
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.fieldLabel}>{t('members.lastName')}</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: colors.card }]}
+                          value={newMember.lastName}
+                          onChangeText={(lastName) =>
+                            setNewMember((current) => ({ ...current, lastName }))
+                          }
+                          placeholder={t('members.lastNamePlaceholder')}
+                          placeholderTextColor={colors.subtle}
+                          autoCapitalize="words"
+                          returnKeyType="next"
+                        />
+                      </View>
+                    </View>
+
+                    <View>
+                      <Text style={styles.fieldLabel}>{t('members.phone')}</Text>
                       <TextInput
-                        style={[styles.input, { backgroundColor: '#fff', paddingLeft: 44 }]}
+                        style={[styles.input, { backgroundColor: colors.card }]}
                         value={newMember.phone}
                         onChangeText={(phone) =>
                           setNewMember((current) => ({ ...current, phone }))
                         }
-                        placeholder="(555) 000-0000"
+                        placeholder={t('members.phonePlaceholder')}
                         placeholderTextColor={colors.subtle}
                         keyboardType="phone-pad"
                         returnKeyType="next"
                       />
-                      <View style={{ position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' }}>
-                        <FontAwesome name="phone" size={16} color={colors.primary} />
-                      </View>
                     </View>
-                  </View>
 
-                  <View>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Email <Text style={{ color: colors.subtle, fontWeight: '600', textTransform: 'none' }}>(optional)</Text></Text>
-                    <View style={{ position: 'relative' }}>
+                    <View>
+                      <Text style={styles.fieldLabel}>
+                        {t('members.email')}{' '}
+                        <Text
+                          style={{
+                            color: colors.subtle,
+                            fontWeight: '600',
+                            textTransform: 'none',
+                          }}
+                        >
+                          {t('members.optional')}
+                        </Text>
+                      </Text>
                       <TextInput
-                        style={[styles.input, { backgroundColor: '#fff', paddingLeft: 44 }]}
+                        style={[styles.input, { backgroundColor: colors.card }]}
                         value={newMember.email}
                         onChangeText={(email) =>
                           setNewMember((current) => ({ ...current, email }))
                         }
-                        placeholder="member@email.com"
+                        placeholder={t('members.emailPlaceholder')}
                         placeholderTextColor={colors.subtle}
                         autoCapitalize="none"
                         keyboardType="email-address"
                         onSubmitEditing={addMember}
                         returnKeyType="done"
                       />
-                      <View style={{ position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' }}>
-                        <FontAwesome name="envelope-o" size={15} color={colors.primary} />
-                      </View>
                     </View>
+
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.addBtn,
+                        { flexDirection: 'row', gap: 8 },
+                        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                      ]}
+                      onPress={addMember}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('accessibility.addMember')}
+                    >
+                      <FontAwesome name="user-plus" size={16} color={colors.onColor} />
+                      <Text style={styles.addBtnText}>{t('actions.addMember')}</Text>
+                    </Pressable>
                   </View>
 
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.addBtn,
-                      { flexDirection: 'row', gap: 8 },
-                      pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
-                    ]}
-                    onPress={addMember}
-                    accessibilityRole="button"
-                    accessibilityLabel="Add member"
-                  >
-                    <FontAwesome name="user-plus" size={16} color="#fff" />
-                    <Text style={styles.addBtnText}>Add Member</Text>
-                  </Pressable>
-                </View>
-
-                {/* Members list — capped height so form stays in view */}
-                {members.length > 0 ? (
-                  <View style={{ borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}15`, overflow: 'hidden', backgroundColor: '#fff' }}>
-                    {/* Sticky header inside the list box */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        Circle Members
-                      </Text>
-                      <View style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
-                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>{members.length}</Text>
-                      </View>
-                    </View>
-
-                    {/* Scrollable list — max 3 cards visible (~228px), scrolls for more */}
-                    <ScrollView
-                      style={{ maxHeight: 228 }}
-                      contentContainerStyle={{ gap: 0 }}
-                      nestedScrollEnabled={true}
-                      showsVerticalScrollIndicator={true}
+                  {members.length > 0 ? (
+                    <View
+                      style={{
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: `${colors.primary}15`,
+                        overflow: 'hidden',
+                        backgroundColor: colors.card,
+                      }}
                     >
-                      {members.map((member, index) => {
-                        return (
-                          <View key={member.draftId}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10 }}>
-                              <View style={{ marginRight: 12 }}>
-                                <Avatar name={memberDisplayName(member)} size={40} />
-                              </View>
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>{memberDisplayName(member)}</Text>
-                                <Text style={{ fontSize: 13, color: colors.muted, marginTop: 1 }}>{member.phone}{member.email ? ` · ${member.email}` : ''}</Text>
-                              </View>
-                              <Pressable
-                                onPress={() => removeMember(member.draftId)}
-                                style={({ pressed }) => [{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#fee2e2', justifyContent: 'center', alignItems: 'center' }, pressed && { opacity: 0.7 }]}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Remove ${memberDisplayName(member)}`}
-                              >
-                                <FontAwesome name="times" size={12} color="#ef4444" />
-                              </Pressable>
+                      {members.map((member, index) => (
+                        <View key={member.draftId}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 14,
+                              paddingVertical: 10,
+                            }}
+                          >
+                            <View style={{ marginRight: 12 }}>
+                              <Avatar name={memberDisplayName(member)} size={40} />
                             </View>
-                            {index < members.length - 1 ? (
-                              <View style={{ height: 1, backgroundColor: '#f3f4f6', marginLeft: 66 }} />
-                            ) : null}
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: '800',
+                                  color: colors.textStrong,
+                                }}
+                              >
+                                {t('members.handLabel', {
+                                  name: memberDisplayName(member),
+                                  number: member.handNumber ?? 1,
+                                })}
+                              </Text>
+                              <Text
+                                style={{
+                                  fontSize: 13,
+                                  color: colors.muted,
+                                  marginTop: 1,
+                                }}
+                              >
+                                {member.phone}
+                                {member.email ? ` · ${member.email}` : ''}
+                              </Text>
+                            </View>
+                            <Pressable
+                              onPress={() => removeMember(member.draftId)}
+                              style={({ pressed }) => [
+                                {
+                                  width: 30,
+                                  height: 30,
+                                  borderRadius: 15,
+                                  backgroundColor: colors.dangerSoft,
+                                  justifyContent: 'center',
+                                  alignItems: 'center',
+                                },
+                                pressed && { opacity: 0.7 },
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel={t('accessibility.removeMember', {
+                                name: memberDisplayName(member),
+                              })}
+                            >
+                              <FontAwesome name="times" size={12} color={colors.danger} />
+                            </Pressable>
                           </View>
-                        );
-                      })}
-                    </ScrollView>
+                          {index < members.length - 1 ? (
+                            <View
+                              style={{
+                                height: 1,
+                                backgroundColor: colors.surfaceMuted,
+                                marginLeft: 66,
+                              }}
+                            />
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          fontWeight: '800',
+                          color: colors.text,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {t('members.emptyTitle')}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          color: colors.muted,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {organizerParticipates
+                          ? t('members.emptyParticipating')
+                          : t('members.emptyOrganizingOnly')}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : null}
 
-                    {/* Scroll hint when there are many members */}
-                    {members.length > 3 ? (
-                      <View style={{ paddingVertical: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f3f4f6', backgroundColor: '#fafafa' }}>
-                        <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '600' }}>
-                          <FontAwesome name="arrows-v" size={11} color={colors.muted} /> Scroll to see all {members.length} members
+              {/* STEP 5 — Schedule and deterministic estimate preview */}
+              {activeStep === 4 ? (
+                <>
+                  <Text style={styles.label}>{t('schedule.question')}</Text>
+                  <Text style={styles.helperText}>
+                    {t('schedule.description')}
+                  </Text>
+                  {scheduleOptions.map((option) => (
+                    <Pressable
+                      key={option}
+                      style={[styles.option, schedule === option && styles.optionActive]}
+                      onPress={() => setSchedule(option)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: schedule === option }}
+                    >
+                      <Text style={[styles.optionText, schedule === option && styles.optionActiveText]}>
+                        {scheduleLabel(option, t)}
+                      </Text>
+                    </Pressable>
+                  ))}
+
+                  <View style={[styles.infoBox, { marginTop: 16 }]}>
+                    <Text style={styles.infoText}>{t('schedule.payoutDeferred')}</Text>
+                  </View>
+                </>
+              ) : null}
+
+              {/* STEP 6 — Review draft structure (no payout order finalization) */}
+              {isLastStep ? (
+                <View>
+                  <Text style={styles.label}>{t('review.title')}</Text>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      marginBottom: 16,
+                      fontSize: 14,
+                      lineHeight: 20,
+                    }}
+                  >
+                    {t('review.description')}
+                  </Text>
+
+                  <View style={styles.reviewSummaryCard}>
+                    <View style={styles.reviewSummaryHeader}>
+                      <Text style={styles.reviewSummaryName}>
+                        {circleName || t('review.untitledCircle')}
+                      </Text>
+                      <View style={styles.reviewSummaryBadge}>
+                        <Text style={styles.reviewSummaryBadgeText}>
+                          {scheduleLabel(schedule, t)}
                         </Text>
                       </View>
+                    </View>
+
+                    <View style={styles.metricsGrid}>
+                      <MetricCell
+                        label={t('review.contribution')}
+                        value={formatMoney(metrics.contributionPerHand)}
+                      />
+                      <MetricCell
+                        label={t('review.frequency')}
+                        value={scheduleLabel(schedule, t)}
+                      />
+                      <MetricCell
+                        label={t('review.organizer')}
+                        value={
+                          organizerParticipates
+                            ? t('review.participates')
+                            : t('review.organizeOnly')
+                        }
+                      />
+                      <MetricCell
+                        label={t('review.plannedPeople')}
+                        value={String(metrics.people)}
+                      />
+                      <MetricCell
+                        label={t('review.plannedHands')}
+                        value={String(metrics.totalHands)}
+                      />
+                      <MetricCell
+                        label={t('review.estimatedRounds')}
+                        value={String(metrics.rounds)}
+                      />
+                      <MetricCell
+                        label={t('review.estimatedPot')}
+                        value={formatMoney(metrics.potSize)}
+                      />
+                    </View>
+                    {!organizerParticipates ? (
+                      <Text
+                        style={{
+                          marginTop: 12,
+                          fontSize: 12,
+                          color: colors.muted,
+                          lineHeight: 17,
+                        }}
+                      >
+                        {t('review.organizingOnlyNote')}
+                      </Text>
                     ) : null}
                   </View>
+
+                  <View
+                    style={{
+                      marginTop: 16,
+                      marginBottom: 8,
+                      backgroundColor: colors.infoSoft,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: colors.infoBorder,
+                      padding: 12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        color: colors.infoText,
+                        lineHeight: 19,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {t('schedule.payoutDeferred')}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.label, { marginTop: 16 }]}>
+                    {t('review.plannedMembers')}
+                  </Text>
+                  <ScrollView
+                    style={{ maxHeight: 360, marginHorizontal: -4, paddingHorizontal: 4 }}
+                    contentContainerStyle={styles.reviewMembersList}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                  >
+                    {plannedRows.map((row) => (
+                      <View key={row.key} style={styles.reviewMemberCard}>
+                        <View style={styles.reviewMemberAvatar}>
+                          {row.isOrganizer ? (
+                            <FontAwesome name="star" size={14} color={colors.primary} />
+                          ) : (
+                            <Text style={styles.reviewMemberAvatarText}>
+                              {row.handNumber}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.reviewMemberInfo}>
+                          <Text style={styles.reviewMemberName}>
+                            {t('members.handLabel', {
+                              name: row.name,
+                              number: row.handNumber,
+                            })}
+                          </Text>
+                          <Text style={styles.reviewMemberSub}>
+                            {row.isOrganizer
+                              ? t('members.organizerParticipates')
+                              : row.phone || t('members.plannedMember')}
+                          </Text>
+                        </View>
+                        {row.isOrganizer ? (
+                          <View style={styles.organizerBadge}>
+                            <Text style={styles.organizerBadgeText}>
+                              {t('members.organizer')}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.navRow}>
+              <Pressable
+                style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+                onPress={goBack}
+                accessibilityRole="button"
+                accessibilityLabel={t('accessibility.back')}
+              >
+                <Text style={styles.backText}>{t('actions.back')}</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.nextButton,
+                  isSubmitting && styles.disabledButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={goNext}
+                disabled={isSubmitting}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isSubmitting
+                    ? t('loading.creating')
+                    : isLastStep
+                      ? t('actions.createCircle')
+                      : t('actions.continue')
+                }
+                accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color={colors.onColor} />
                 ) : (
-                  <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${colors.primary}10`, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
-                      <FontAwesome name="users" size={28} color={colors.primary} />
-                    </View>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 4 }}>No members yet</Text>
-                    <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center' }}>Add at least 2 trusted people to start your circle.</Text>
-                  </View>
+                  <Text style={styles.nextText}>
+                    {isLastStep ? t('actions.createCircle') : t('actions.continue')}
+                  </Text>
                 )}
-              </>
-            ) : null}
-
-            {activeStep === 4 ? (
-              <View>
-                <Text style={styles.label}>Set the payout order</Text>
-                <Text style={{ color: colors.muted, marginBottom: 16, fontSize: 14, lineHeight: 20 }}>
-                  You (the organizer) will receive the first payout by default. Set the order for your invited members below.
-                </Text>
-                <View style={styles.reviewMembers}>
-                  {members.map((member, index) => (
-                    <View key={member.draftId} style={[styles.memberTag, { justifyContent: 'space-between', paddingVertical: 14, marginBottom: 8 }]}>
-                      <Text style={[styles.memberTagText, { fontSize: 15 }]}>
-                        {index + 2}. {memberDisplayName(member)}
-                      </Text>
-                      <View style={{ flexDirection: 'row', gap: 16 }}>
-                        {index > 0 ? (
-                          <Pressable onPress={() => {
-                            const newMembers = [...members];
-                            const temp = newMembers[index - 1];
-                            newMembers[index - 1] = newMembers[index];
-                            newMembers[index] = temp;
-                            setMembers(newMembers);
-                          }}>
-                            <FontAwesome name="arrow-up" size={18} color={colors.primary} />
-                          </Pressable>
-                        ) : (
-                          <View style={{ width: 18 }} />
-                        )}
-                        {index < members.length - 1 ? (
-                          <Pressable onPress={() => {
-                            const newMembers = [...members];
-                            const temp = newMembers[index + 1];
-                            newMembers[index + 1] = newMembers[index];
-                            newMembers[index] = temp;
-                            setMembers(newMembers);
-                          }}>
-                            <FontAwesome name="arrow-down" size={18} color={colors.primary} />
-                          </Pressable>
-                        ) : (
-                          <View style={{ width: 18 }} />
-                        )}
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            {isLastStep ? (
-              <View>
-                <Text style={styles.label}>Review your circle</Text>
-                
-                <View style={styles.reviewSummaryCard}>
-                  <View style={styles.reviewSummaryHeader}>
-                    <Text style={styles.reviewSummaryName}>{circleName || 'Untitled Circle'}</Text>
-                    <View style={styles.reviewSummaryBadge}>
-                      <Text style={styles.reviewSummaryBadgeText}>{schedule}</Text>
-                    </View>
-                  </View>
-                  
-                  <View style={styles.reviewSummaryRow}>
-                    <View style={styles.reviewSummaryStat}>
-                      <Text style={styles.reviewSummaryStatLabel}>Contribution</Text>
-                      <Text style={styles.reviewSummaryStatValue}>{contributionAmount || '$100'}</Text>
-                    </View>
-                    <View style={styles.reviewSummaryStat}>
-                      <Text style={styles.reviewSummaryStatLabel}>Pot Size</Text>
-                      <Text style={styles.reviewSummaryStatValue}>
-                        ${(requireAmount(contributionAmount) * (members.length + 1)).toLocaleString()}
-                      </Text>
-                    </View>
-                    <View style={styles.reviewSummaryStat}>
-                      <Text style={styles.reviewSummaryStatLabel}>Members</Text>
-                      <Text style={styles.reviewSummaryStatValue}>{members.length + 1}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <Text style={[styles.label, { marginTop: 24 }]}>Payout Order</Text>
-                <ScrollView 
-                  style={{ maxHeight: 360, marginHorizontal: -4, paddingHorizontal: 4 }} 
-                  contentContainerStyle={styles.reviewMembersList}
-                  nestedScrollEnabled={true}
-                  showsVerticalScrollIndicator={true}
-                >
-                  <View style={styles.reviewMemberCard}>
-                    <View style={styles.reviewMemberAvatar}>
-                      <Text style={styles.reviewMemberAvatarText}>1</Text>
-                    </View>
-                    <View style={styles.reviewMemberInfo}>
-                      <Text style={styles.reviewMemberName}>You (Organizer)</Text>
-                      <Text style={styles.reviewMemberSub}>Receives the first payout</Text>
-                    </View>
-                  </View>
-                  
-                  {members.map((member, index) => (
-                    <View key={member.draftId} style={styles.reviewMemberCard}>
-                      <View style={styles.reviewMemberAvatar}>
-                        <Text style={styles.reviewMemberAvatarText}>{index + 2}</Text>
-                      </View>
-                      <View style={styles.reviewMemberInfo}>
-                        <Text style={styles.reviewMemberName}>{memberDisplayName(member)}</Text>
-                        <Text style={styles.reviewMemberSub}>{member.phone}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.navRow}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.backButton,
-                pressed && styles.pressed,
-              ]}
-              onPress={goBack}
-              accessibilityRole="button"
-            >
-              <Text style={styles.backText}>Back</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.nextButton,
-                isSubmitting && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-              onPress={goNext}
-              disabled={isSubmitting}
-              accessibilityRole="button"
-              accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.nextText}>
-                  {isLastStep ? 'Create Circle' : 'Continue'}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </>
   );
 }
 
-function ReviewItem({ label, value }: { label: string; value: string }) {
+function MetricCell({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.reviewItem}>
-      <Text style={styles.reviewLabel}>{label}</Text>
-      <Text style={styles.reviewValue}>{value}</Text>
+    <View style={styles.metricCell}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
@@ -901,10 +1325,12 @@ function requireAmount(value: string) {
   return amount;
 }
 
-function scheduleToFrequency(value: string): 'weekly' | 'biweekly' | 'monthly' {
-  if (value === 'Bi-weekly') return 'biweekly';
-  if (value === 'Monthly') return 'monthly';
-  return 'weekly';
+function scheduleToFrequency(value: string): CircleFrequencyKey {
+  return normalizeFrequencyKey(value);
+}
+
+function scheduleLabel(value: string, t: TFunction<'createCircle'>) {
+  return t(`schedule.options.${normalizeFrequencyKey(value)}`);
 }
 
 function todayIsoDate() {
@@ -918,11 +1344,8 @@ function normalizeMemberDraft(member: MemberDraft): MemberDraft {
     firstName: member.firstName.trim(),
     lastName: member.lastName.trim(),
     phone: member.phone.trim(),
+    handNumber: 1,
   };
-}
-
-function memberDisplayName(member: MemberDraft) {
-  return `${member.firstName} ${member.lastName}`.trim();
 }
 
 const styles = StyleSheet.create({
@@ -987,6 +1410,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 12,
   },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.muted,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  helperText: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  infoBox: {
+    backgroundColor: colors.infoSoft,
+    borderColor: colors.infoBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  infoText: {
+    color: colors.infoText,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 19,
+  },
   input: {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
@@ -1020,7 +1470,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   presetActiveText: {
-    color: '#ffffff',
+    color: colors.onColor,
   },
   option: {
     backgroundColor: colors.primarySoft,
@@ -1039,18 +1489,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   optionActiveText: {
-    color: '#ffffff',
-  },
-  memberForm: {
-    gap: 10,
-    marginBottom: 16,
-  },
-  memberNameRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  memberNameInput: {
-    flex: 1,
+    color: colors.onColor,
   },
   addBtn: {
     alignItems: 'center',
@@ -1061,13 +1500,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   addBtnText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontWeight: '700',
-  },
-  membersList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
   },
   memberTag: {
     alignItems: 'center',
@@ -1084,119 +1518,117 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontWeight: '700',
   },
-  emptyMembers: {
-    color: colors.muted,
-    fontSize: 13,
-  },
-  reviewItem: {
-    borderBottomColor: colors.cardBorder,
-    borderBottomWidth: 1,
-    paddingVertical: 12,
-  },
-  reviewLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  reviewValue: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '800',
-    marginTop: 4,
-  },
   reviewMembers: {
-    gap: 6,
-    marginTop: 16,
+    gap: 0,
   },
   reviewSummaryCard: {
-    backgroundColor: `${colors.primary}08`,
-    borderColor: `${colors.primary}20`,
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
     borderRadius: radii.card,
     borderWidth: 1,
-    padding: 20,
-    marginBottom: 8,
+    padding: 18,
   },
   reviewSummaryHeader: {
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   reviewSummaryName: {
     color: colors.textStrong,
-    fontSize: 22,
-    fontWeight: '900',
     flex: 1,
+    fontSize: 18,
+    fontWeight: '900',
+    marginRight: 12,
   },
   reviewSummaryBadge: {
     backgroundColor: colors.primary,
+    borderRadius: radii.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: radii.pill,
   },
   reviewSummaryBadgeText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 12,
     fontWeight: '800',
-    textTransform: 'uppercase',
   },
-  reviewSummaryRow: {
+  metricsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  reviewSummaryStat: {
-    flex: 1,
+  metricCell: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    minWidth: '30%',
+    flexGrow: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  reviewSummaryStatLabel: {
+  metricLabel: {
     color: colors.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    marginBottom: 4,
+    letterSpacing: 0.4,
   },
-  reviewSummaryStatValue: {
+  metricValue: {
     color: colors.textStrong,
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '900',
+    marginTop: 4,
   },
   reviewMembersList: {
-    gap: 12,
+    gap: 10,
+    paddingBottom: 8,
   },
   reviewMemberCard: {
-    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
+    borderRadius: 14,
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
+    flexDirection: 'row',
+    padding: 12,
   },
   reviewMemberAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: `${colors.primary}20`,
     alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 18,
+    height: 36,
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 12,
+    width: 36,
   },
   reviewMemberAvatarText: {
-    color: colors.primary,
+    color: colors.primaryDark,
     fontWeight: '900',
-    fontSize: 16,
   },
   reviewMemberInfo: {
     flex: 1,
   },
   reviewMemberName: {
     color: colors.textStrong,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   reviewMemberSub: {
     color: colors.muted,
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 2,
+  },
+  organizerBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  organizerBadgeText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
   },
   navRow: {
     flexDirection: 'row',
@@ -1204,35 +1636,34 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: 'center',
-    borderColor: colors.primary,
-    borderRadius: radii.pill,
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 16,
     borderWidth: 1,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 58,
+    minHeight: 56,
   },
   backText: {
-    color: colors.primary,
-    fontWeight: '700',
+    color: colors.text,
+    fontWeight: '800',
   },
   nextButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    flex: 1,
+    borderRadius: 16,
+    flex: 1.4,
     justifyContent: 'center',
-    minHeight: 58,
+    minHeight: 56,
   },
   nextText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '700',
+    color: colors.onColor,
+    fontWeight: '900',
   },
   disabledButton: {
     opacity: 0.65,
   },
   pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.985 }],
+    opacity: 0.88,
   },
 });

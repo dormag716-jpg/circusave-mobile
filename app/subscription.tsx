@@ -1,294 +1,1051 @@
-﻿import React from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View, Pressable, Alert, Dimensions } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, radii, spacing, shadows } from '@/lib/theme';
-import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 
-const { width } = Dimensions.get('window');
+import { type BillingPlan } from '@/lib/api';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
+import {
+  getAndroidApplicationPackage,
+  openGooglePlaySubscriptionManagement,
+} from '@/lib/billing/googlePlaySubscriptionManagement';
+import { logClientWarning } from '@/lib/platform/errorLogging';
+import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 
-const plans = [
-  {
-    name: "Free",
-    price: 0,
-    period: "forever",
-    tagline: "Perfect for starting your first circle",
-    features: [
-      "1 active circle only",
-      "Up to 20 members per circle",
-      "Track current round",
-      "View payment progress",
-      "Basic payout order",
-    ],
-    buttonText: "Continue Free",
-    popular: false,
-    theme: 'light',
-  },
-  {
-    name: "Premium Organizer",
-    price: 4.99,
-    period: "per month",
-    tagline: "For organizers who manage serious circles",
-    features: [
-      "Unlimited circles",
-      "More members per circle",
-      "Full circle history",
-      "Advanced records & exports",
-      "Better reminders",
-      "Priority support",
-    ],
-    buttonText: "Upgrade — $4.99/mo",
-    popular: true,
-    theme: 'primary',
-  },
-  {
-    name: "Circle Pro",
-    price: 9.99,
-    period: "per month",
-    tagline: "For community leaders & larger groups",
-    features: [
-      "Everything in Premium",
-      "Multiple organizers",
-      "Advanced member roles",
-      "Full ledger exports",
-      "Circle archive",
-    ],
-    buttonText: "Start Circle Pro",
-    popular: false,
-    theme: 'dark',
-  },
-];
+const FALLBACK_FEATURE_KEYS = [
+  'unlimitedCircles',
+  'hands',
+  'history',
+] as const;
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const fallbackPremium: BillingPlan = {
+  id: 'premium',
+  name: 'Organizer Pro',
+  tagline:
+    'Run multiple circles with less chasing, clearer records, and professional proof.',
+  monthlyPriceCents: 799,
+  annualPriceCents: 5999,
+  annualSavingsCents: 3589,
+  trialDays: 7,
+  features: [...FALLBACK_FEATURE_KEYS],
+};
 
-function PlanButton({ plan, onPress }: { plan: typeof plans[0], onPress: () => void }) {
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const isLight = plan.theme === 'light';
-  
-  return (
-    <AnimatedPressable
-      onPressIn={() => { scale.value = withSpring(0.95, { damping: 12, stiffness: 200 }); }}
-      onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
-      onPress={onPress}
-      style={[
-        styles.button,
-        isLight ? styles.buttonLight : styles.buttonDark,
-        plan.theme === 'primary' && { backgroundColor: '#fff' },
-        animatedStyle
-      ]}
-    >
-      <Text style={[
-        styles.buttonText,
-        isLight ? styles.buttonTextLight : styles.buttonTextDark,
-        plan.theme === 'primary' && { color: colors.primaryDark }
-      ]}>
-        {plan.buttonText}
-      </Text>
-    </AnimatedPressable>
-  );
-}
+type BillingInterval = 'monthly' | 'annual';
 
 export default function SubscriptionScreen() {
+  const { t } = useTranslation(['subscription', 'common']);
+  const { session, status: authStatus } = useAuthSession();
+  const {
+    entitlements,
+    isPremium,
+    refreshEntitlements,
+    googlePlayBillingState: playState,
+    googlePlayPlans: playPlans,
+    initializeGooglePlayBilling,
+    purchaseGooglePlaySubscription: runGooglePlayPurchase,
+    restoreGooglePlayPurchases: runGooglePlayRestore,
+    retryGooglePlayCompletion: runGooglePlayCompletionRetry,
+  } = useEntitlements();
+  const token = session?.session.token;
+  const isAndroid = Platform.OS === 'android';
+  const isIos = Platform.OS === 'ios';
+  const [premium] = useState<BillingPlan>(fallbackPremium);
+  const [interval, setInterval] = useState<BillingInterval>('annual');
+  const [action, setAction] = useState<'portal' | null>(null);
+  const playOperationLocked = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (
+        !isAndroid ||
+        isPremium ||
+        authStatus !== 'authenticated' ||
+        !token
+      ) {
+        return undefined;
+      }
+      void initializeGooglePlayBilling().catch(() => {
+        logClientWarning(
+          'Google Play billing initialization failed.',
+          new Error('Google Play billing initialization failed.'),
+        );
+      });
+      return undefined;
+    }, [
+      authStatus,
+      initializeGooglePlayBilling,
+      isAndroid,
+      isPremium,
+      token,
+    ]),
+  );
+
+  useEffect(() => {
+    if (
+      playState.status === 'ready' ||
+      playState.status === 'disabled' ||
+      playState.status === 'unsupported' ||
+      playState.status === 'succeeded' ||
+      playState.status === 'failed'
+    ) {
+      playOperationLocked.current = false;
+    }
+  }, [playState.status]);
+
+  const selectedPlayPlan = playPlans?.[interval] ?? null;
+  const playBusy = [
+    'connecting',
+    'loading_products',
+    'purchasing',
+    'pending',
+    'verifying',
+    'restoring',
+  ].includes(playState.status);
+  const playCanPurchase =
+    playState.status === 'ready' && selectedPlayPlan !== null && !isPremium;
+  const playCanRestore =
+    playPlans !== null &&
+    !playBusy &&
+    (playState.status === 'ready' ||
+      playState.status === 'succeeded' ||
+      playState.status === 'failed');
+  const isGooglePlayEntitlement =
+    isAndroid && entitlements.source === 'google_play';
+
+  function formatPlayPeriod(period: string | null): string {
+    if (!period) return '';
+    const match = /^P(\d+)([DWMY])$/.exec(period);
+    if (!match) return period;
+    const count = Number(match[1]);
+    const units = {
+      D: count === 1 ? 'periodDay' : 'periodDays',
+      W: count === 1 ? 'periodWeek' : 'periodWeeks',
+      M: count === 1 ? 'periodMonth' : 'periodMonths',
+      Y: count === 1 ? 'periodYear' : 'periodYears',
+    } as const;
+    return t(units[match[2] as keyof typeof units], { count });
+  }
+
+  async function startGooglePlayPurchase() {
+    if (!playCanPurchase || playOperationLocked.current) {
+      return;
+    }
+    playOperationLocked.current = true;
+    try {
+      await runGooglePlayPurchase(interval);
+    } catch {
+      playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
+
+  async function restoreGooglePlayPurchases() {
+    if (!playCanRestore || playOperationLocked.current) {
+      return;
+    }
+    playOperationLocked.current = true;
+    try {
+      await runGooglePlayRestore();
+    } catch {
+      playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
+
+  async function retryGooglePlayCompletion() {
+    if (playOperationLocked.current) {
+      return;
+    }
+    playOperationLocked.current = true;
+    try {
+      await runGooglePlayCompletionRetry();
+    } catch {
+      playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
+
+  async function openGooglePlayManagement() {
+    setAction('portal');
+    try {
+      const packageName = getAndroidApplicationPackage();
+      if (!packageName) {
+        throw new Error('Google Play subscription management is unavailable.');
+      }
+      await openGooglePlaySubscriptionManagement(packageName, undefined);
+      await refreshEntitlements();
+    } catch {
+      Alert.alert(t('billingUnavailable'), t('playManagementUnavailable'));
+    } finally {
+      setAction(null);
+    }
+  }
+
+  const playStatusMessage = (() => {
+    if (!isAndroid || isPremium) return null;
+    if (playState.status === 'disabled') {
+      return {
+        title: t('playComingSoon'),
+        body: t('playComingSoonBody'),
+        tone: 'neutral' as const,
+      };
+    }
+    if (playState.status === 'unsupported') {
+      return {
+        title: t('playUnavailableTitle'),
+        body: t('playUnavailableBody'),
+        tone: 'error' as const,
+      };
+    }
+    if (
+      playState.status === 'connecting' ||
+      playState.status === 'loading_products'
+    ) {
+      return {
+        title: t('playLoadingTitle'),
+        body: t('playLoadingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'purchasing') {
+      return {
+        title: t('playPurchasingTitle'),
+        body: t('playPurchasingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'pending') {
+      return {
+        title: t('playPendingTitle'),
+        body: t('playPendingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'verifying') {
+      return {
+        title: t('playVerifyingTitle'),
+        body: t('playVerifyingBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'restoring') {
+      return {
+        title: t('playRestoringTitle'),
+        body: t('playRestoringBody'),
+        tone: 'pending' as const,
+      };
+    }
+    if (playState.status === 'succeeded') {
+      const noPurchases =
+        playState.operation === 'restore' &&
+        playState.restore?.eligible === 0;
+      return {
+        title: noPurchases
+          ? t('playRestoreNoneTitle')
+          : playState.operation === 'restore'
+            ? t('playRestoreSucceededTitle')
+            : t('playSucceededTitle'),
+        body: noPurchases
+          ? t('playRestoreNoneBody')
+          : playState.operation === 'restore'
+            ? t('playRestoreSucceededBody')
+            : t('playSucceededBody'),
+        tone: 'success' as const,
+      };
+    }
+    if (playState.status === 'failed') {
+      return {
+        title:
+          playState.code === 'transaction_completion_failed'
+            ? t('playCompletionPendingTitle')
+            : t('playUnavailableTitle'),
+        body:
+          playState.code === 'transaction_completion_failed'
+            ? t('playCompletionPendingBody')
+            : t('playUnavailableBody'),
+        tone: 'error' as const,
+      };
+    }
+    if (playState.status === 'ready' && playState.outcome === 'canceled') {
+      return {
+        title: t('playCanceledTitle'),
+        body: t('playCanceledBody'),
+        tone: 'neutral' as const,
+      };
+    }
+    return null;
+  })();
+
   return (
-    <View style={styles.container}>
-      <View style={styles.backgroundAccent} />
+    <View style={styles.screen}>
+      <View style={styles.glowTop} />
+      <View style={styles.glowBottom} />
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          
-          <Animated.View entering={FadeInDown.springify().damping(14)} style={styles.header}>
-            <View style={styles.badgeContainer}>
-              <Text style={styles.badgeText}>PLANS & PRICING</Text>
-            </View>
-            <Text style={styles.title}>Unlock More Power</Text>
-            <Text style={styles.subtitle}>
-              Start free. Upgrade when you need more tools to manage your circles.
-            </Text>
-          </Animated.View>
-
-          <View style={styles.plans}>
-            {plans.map((plan, index) => {
-              const isDark = plan.theme === 'dark';
-              const isPrimary = plan.theme === 'primary';
-              const textColor = isDark || isPrimary ? '#fff' : colors.textStrong;
-              const mutedColor = isDark || isPrimary ? 'rgba(255,255,255,0.75)' : colors.muted;
-              
-              return (
-                <Animated.View 
-                  key={index} 
-                  entering={FadeInDown.delay(100 + index * 100).springify().damping(14)}
-                  style={[
-                    styles.planCard,
-                    isDark && styles.darkCard,
-                    isPrimary && styles.primaryCard,
-                    plan.popular && shadows.medium
-                  ]}
-                >
-                  {plan.popular && (
-                    <View style={styles.popularBadge}>
-                      <Text style={styles.popularText}>MOST POPULAR</Text>
-                    </View>
-                  )}
-
-                  <Text style={[styles.planName, { color: textColor }]}>{plan.name}</Text>
-                  
-                  <View style={styles.priceContainer}>
-                    <Text style={[styles.price, { color: textColor }]}>${plan.price}</Text>
-                    <Text style={[styles.period, { color: mutedColor }]}>/{plan.period}</Text>
-                  </View>
-                  
-                  <Text style={[styles.tagline, { color: mutedColor }]}>{plan.tagline}</Text>
-
-                  <View style={[styles.divider, isDark || isPrimary ? { backgroundColor: 'rgba(255,255,255,0.15)' } : {}]} />
-
-                  <View style={styles.features}>
-                    {plan.features.map((feature, i) => (
-                      <View key={i} style={styles.featureRow}>
-                        <View style={[styles.iconWrapper, isDark || isPrimary ? { backgroundColor: 'rgba(255,255,255,0.2)' } : { backgroundColor: colors.successSoft }]}>
-                          <FontAwesome 
-                            name="check" 
-                            size={10} 
-                            color={isDark || isPrimary ? '#fff' : colors.success} 
-                          />
-                        </View>
-                        <Text style={[styles.featureText, { color: textColor }]}>{feature}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <PlanButton 
-                    plan={plan} 
-                    onPress={() => {
-                      if (plan.price === 0) {
-                        router.back();
-                      } else {
-                        Alert.alert("Coming Soon", "Premium subscriptions will be available soon.");
-                      }
-                    }} 
-                  />
-                </Animated.View>
-              );
-            })}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.topBar}>
+            <Pressable
+              onPress={() => router.back()}
+              style={styles.iconButton}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={t('common:goBack')}
+            >
+              <FontAwesome
+                name="chevron-left"
+                size={18}
+                color={colors.textStrong}
+              />
+            </Pressable>
+            <Text style={styles.topTitle}>{t('plans')}</Text>
+            <View style={styles.iconButtonPlaceholder} />
           </View>
 
-          <Animated.Text entering={FadeInDown.delay(500).springify()} style={styles.note}>
-            Cancel anytime. Your circles and ledger stay safe in the backend.
-          </Animated.Text>
-          
+          <Animated.View entering={FadeInUp.springify()} style={styles.hero}>
+            <View style={styles.crown}>
+              <FontAwesome name="diamond" size={20} color={colors.premiumGold} />
+            </View>
+            <Text style={styles.eyebrow}>{t('eyebrow')}</Text>
+            <Text style={styles.heroTitle}>{t('heroTitle')}</Text>
+            <Text style={styles.heroCopy}>{premium.tagline}</Text>
+
+            {isPremium ? (
+              <View style={styles.activePill}>
+                <FontAwesome name="check-circle" size={14} color={colors.successSoft} />
+                <Text style={styles.activePillText}>
+                  {entitlements.subscriptionStatus === 'trialing'
+                    ? t('trialActive')
+                    : t('active')}
+                </Text>
+              </View>
+            ) : selectedPlayPlan?.trial ? (
+              <Text style={styles.trialCopy}>
+                {t('playTrialCopy', {
+                  period: formatPlayPeriod(
+                    selectedPlayPlan.trial.billingPeriod,
+                  ),
+                })}
+              </Text>
+            ) : null}
+          </Animated.View>
+
+          {isIos && !isPremium ? (
+            <View
+              style={[styles.checkoutStatus, styles.checkoutStatusCanceled]}
+              accessibilityLiveRegion="polite"
+            >
+              <FontAwesome
+                name="info-circle"
+                size={17}
+                color={colors.primaryDark}
+              />
+              <View style={styles.checkoutStatusText}>
+                <Text style={styles.checkoutStatusTitle}>
+                  {t('iosUnavailableTitle')}
+                </Text>
+                <Text style={styles.checkoutStatusBody}>
+                  {t('iosUnavailableBody')}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {playStatusMessage ? (
+            <View
+              style={[
+                styles.checkoutStatus,
+                playStatusMessage.tone === 'pending' &&
+                  styles.checkoutStatusPending,
+                playStatusMessage.tone === 'neutral' &&
+                  styles.checkoutStatusCanceled,
+                playStatusMessage.tone === 'error' && styles.playStatusError,
+              ]}
+              accessibilityLiveRegion="polite"
+            >
+              {playStatusMessage.tone === 'pending' ? (
+                <ActivityIndicator color={colors.primaryDark} />
+              ) : (
+                <FontAwesome
+                  name={
+                    playStatusMessage.tone === 'success'
+                      ? 'check-circle'
+                      : 'info-circle'
+                  }
+                  size={17}
+                  color={
+                    playStatusMessage.tone === 'error'
+                      ? colors.dangerText
+                      : colors.primaryDark
+                  }
+                />
+              )}
+              <View style={styles.checkoutStatusText}>
+                <Text style={styles.checkoutStatusTitle}>
+                  {playStatusMessage.title}
+                </Text>
+                <Text style={styles.checkoutStatusBody}>
+                  {playStatusMessage.body}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {!isPremium && isAndroid ? (
+            <Animated.View
+              entering={FadeInDown.delay(100).springify()}
+              style={styles.billingToggle}
+            >
+              <IntervalButton
+                active={interval === 'monthly'}
+                label={t('monthly')}
+                disabled={!playPlans || playBusy}
+                onPress={() => setInterval('monthly')}
+              />
+              <IntervalButton
+                active={interval === 'annual'}
+                label={t('annual')}
+                disabled={!playPlans || playBusy}
+                onPress={() => setInterval('annual')}
+              />
+            </Animated.View>
+          ) : null}
+
+          <Animated.View
+            entering={FadeInDown.delay(180).springify()}
+            style={styles.priceCard}
+          >
+            <View style={styles.priceHeader}>
+              <View>
+                <Text style={styles.planName}>
+                  {isAndroid && selectedPlayPlan
+                    ? selectedPlayPlan.title
+                    : t('productName')}
+                </Text>
+                <Text style={styles.planAudience}>
+                  {isAndroid && selectedPlayPlan
+                    ? selectedPlayPlan.description
+                    : t('audience')}
+                </Text>
+              </View>
+              <View style={styles.recommendedBadge}>
+                <FontAwesome name="star" size={10} color={colors.primaryDark} />
+                <Text style={styles.recommendedText}>
+                  {isPremium ? t('yourPlan') : t('bestValue')}
+                </Text>
+              </View>
+            </View>
+
+            {!isPremium ? (
+              isAndroid ? (
+                selectedPlayPlan ? (
+                  <View style={styles.priceRow}>
+                    <Text style={styles.playPrice}>
+                      {selectedPlayPlan.displayPrice}
+                    </Text>
+                    {selectedPlayPlan.billingPeriod ? (
+                      <View style={styles.priceMeta}>
+                        <Text style={styles.pricePeriod}>
+                          {t('playBillingPeriod', {
+                            period: formatPlayPeriod(
+                              selectedPlayPlan.billingPeriod,
+                            ),
+                          })}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={styles.playPricePlaceholder}>
+                    {playBusy ? (
+                      <ActivityIndicator color={colors.primaryDark} />
+                    ) : null}
+                    <Text style={styles.playPricePlaceholderText}>
+                      {playState.status === 'disabled'
+                        ? t('playComingSoon')
+                        : t('playUnavailableBody')}
+                    </Text>
+                  </View>
+                )
+              ) : (
+                <View style={styles.playPricePlaceholder}>
+                  <Text style={styles.playPricePlaceholderText}>
+                    {t('iosUnavailableBody')}
+                  </Text>
+                </View>
+              )
+            ) : (
+              <View style={styles.activeSummary}>
+                <Text style={styles.activeSummaryTitle}>
+                  {t('unlockedTitle')}
+                </Text>
+                <Text style={styles.activeSummaryText}>
+                  {entitlements.cancelAtPeriodEnd
+                    ? t('willNotRenew')
+                    : t('subscriptionReady')}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
+            <View style={styles.features}>
+              {premium.features.map((feature, index) => (
+                <View key={feature} style={styles.featureRow}>
+                  <View
+                    style={[
+                      styles.featureIcon,
+                      index < 2 && styles.featureIconFeatured,
+                    ]}
+                  >
+                    <FontAwesome
+                      name={featureIcon(feature)}
+                      size={13}
+                      color={
+                        index < 2 ? colors.onColor : colors.primaryDark
+                      }
+                    />
+                  </View>
+                  <Text style={styles.featureText}>
+                    {t(`features.${feature}`, { defaultValue: feature })}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {isPremium ? (
+              isGooglePlayEntitlement ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={() => void openGooglePlayManagement()}
+                  disabled={action !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('playManageSubscription')}
+                  accessibilityState={{ disabled: action !== null }}
+                >
+                  {action === 'portal' ? (
+                    <ActivityIndicator color={colors.onColor} />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryButtonText}>
+                        {t('playManageSubscription')}
+                      </Text>
+                      <FontAwesome
+                        name="external-link"
+                        size={14}
+                        color={colors.onColor}
+                      />
+                    </>
+                  )}
+                </Pressable>
+              ) : null
+            ) : isAndroid ? (
+              <>
+                {playPlans ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      (!playCanPurchase || playBusy) && styles.buttonDisabled,
+                      pressed && playCanPurchase && styles.buttonPressed,
+                    ]}
+                    onPress={() => void startGooglePlayPurchase()}
+                    disabled={!playCanPurchase || playBusy}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      selectedPlayPlan?.trial
+                        ? t('playPurchaseTrial')
+                        : t('playPurchase')
+                    }
+                    accessibilityState={{
+                      disabled: !playCanPurchase || playBusy,
+                    }}
+                  >
+                    {playBusy && playState.status !== 'pending' ? (
+                      <ActivityIndicator color={colors.onColor} />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>
+                        {selectedPlayPlan?.trial
+                          ? t('playPurchaseTrial')
+                          : t('playPurchase')}
+                      </Text>
+                    )}
+                  </Pressable>
+                ) : null}
+                {playPlans ? (
+                  <Pressable
+                    style={[
+                      styles.restoreButton,
+                      !playCanRestore && styles.buttonDisabled,
+                    ]}
+                    onPress={() => void restoreGooglePlayPurchases()}
+                    disabled={!playCanRestore}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('playRestore')}
+                    accessibilityState={{ disabled: !playCanRestore }}
+                  >
+                    <Text style={styles.restoreButtonText}>
+                      {t('playRestore')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {playState.status === 'failed' &&
+                playState.code === 'transaction_completion_failed' ? (
+                  <Pressable
+                    style={styles.restoreButton}
+                    onPress={() => void retryGooglePlayCompletion()}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('playRetryCompletion')}
+                  >
+                    <Text style={styles.restoreButtonText}>
+                      {t('playRetryCompletion')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
+            ) : null}
+          </Animated.View>
+
+          {!isPremium ? (
+            <Animated.View
+              entering={FadeInDown.delay(260).springify()}
+              style={styles.freeCard}
+            >
+              <View style={styles.freeIcon}>
+                <FontAwesome name="heart-o" size={17} color={colors.success} />
+              </View>
+              <View style={styles.freeText}>
+                <Text style={styles.freeTitle}>{t('freeTitle')}</Text>
+                <Text style={styles.freeCopy}>{t('freeCopy')}</Text>
+              </View>
+            </Animated.View>
+          ) : null}
+
+          <Text style={styles.footer}>
+            {isAndroid ? t('playFooter') : t('iosFooter')}
+          </Text>
         </ScrollView>
       </SafeAreaView>
     </View>
   );
 }
 
+function IntervalButton({
+  active,
+  label,
+  badge,
+  disabled = false,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  badge?: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active, disabled }}
+      style={[
+        styles.intervalButton,
+        active && styles.intervalButtonActive,
+        disabled && styles.buttonDisabled,
+      ]}
+    >
+      <Text
+        style={[styles.intervalText, active && styles.intervalTextActive]}
+      >
+        {label}
+      </Text>
+      {badge ? (
+        <View style={styles.savingsBadge}>
+          <Text style={styles.savingsText}>{badge}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function featureIcon(
+  feature: string,
+): React.ComponentProps<typeof FontAwesome>['name'] {
+  const value = feature.toLowerCase();
+  if (value.includes('circle')) return 'circle-o-notch';
+  if (value.includes('reminder')) return 'bell';
+  if (value.includes('report') || value.includes('history')) return 'line-chart';
+  if (value.includes('pdf') || value.includes('record')) return 'file-text';
+  if (value.includes('ai')) return 'magic';
+  return 'check';
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  backgroundAccent: {
-    position: 'absolute',
-    top: -width * 0.5,
-    left: -width * 0.2,
-    width: width * 1.4,
-    height: width * 1.4,
-    borderRadius: width * 0.7,
-    backgroundColor: colors.primarySoft,
-    opacity: 0.7,
-  },
+  screen: { flex: 1, backgroundColor: colors.premiumCanvas },
   safeArea: { flex: 1 },
-  content: { padding: spacing.screenX, paddingBottom: 60, paddingTop: 10 },
-  
-  header: { alignItems: 'center', marginBottom: 40 },
-  badgeContainer: {
-    backgroundColor: 'rgba(107, 70, 193, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    marginBottom: 16,
+  content: {
+    paddingHorizontal: spacing.screenX,
+    paddingBottom: 56,
   },
-  badgeText: {
-    color: colors.primaryDark,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  title: { fontSize: 36, fontWeight: '900', color: colors.textStrong, marginBottom: 12, letterSpacing: -0.5 },
-  subtitle: { textAlign: 'center', color: colors.muted, fontSize: 16, lineHeight: 24, paddingHorizontal: 10 },
-
-  plans: { gap: 24 },
-  planCard: {
-    backgroundColor: '#fff',
-    borderRadius: 32,
-    padding: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    ...shadows.small,
-  },
-  darkCard: {
-    backgroundColor: '#0F172A',
-    borderColor: '#1E293B',
-  },
-  primaryCard: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primaryDark,
-  },
-  popularBadge: {
+  glowTop: {
     position: 'absolute',
-    top: -14,
-    alignSelf: 'center',
-    backgroundColor: colors.warning,
-    borderRadius: 999,
-    paddingHorizontal: 16,
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+    backgroundColor: colors.premiumGlow,
+    top: -260,
+    right: -150,
+  },
+  glowBottom: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: colors.premiumMintGlow,
+    bottom: -140,
+    left: -120,
+  },
+  topBar: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(107,70,193,0.10)',
+  },
+  iconButtonPlaceholder: { width: 44 },
+  topTitle: { fontSize: 15, fontWeight: '800', color: colors.textStrong },
+  hero: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: 30,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    marginTop: 8,
+    overflow: 'hidden',
+    ...shadows.medium,
+  },
+  crown: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  eyebrow: {
+    color: colors.premiumLavender,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    marginBottom: 10,
+  },
+  heroTitle: {
+    color: colors.onColor,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: -1.2,
+    fontWeight: '900',
+  },
+  heroCopy: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 14,
+  },
+  trialCopy: {
+    color: colors.premiumGold,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 18,
+  },
+  activePill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 18,
+    paddingHorizontal: 12,
     paddingVertical: 8,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(16,185,129,0.18)',
+  },
+  activePillText: { color: colors.successSoft, fontWeight: '800', fontSize: 12 },
+  checkoutStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.successSoft,
+    borderRadius: 18,
+    padding: 15,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  checkoutStatusPending: {
+    backgroundColor: colors.premiumLavenderBadge,
+  },
+  checkoutStatusCanceled: {
+    backgroundColor: colors.card,
+  },
+  playStatusError: {
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
+  },
+  checkoutStatusText: { flex: 1 },
+  checkoutStatusTitle: {
+    color: colors.primaryDark,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  checkoutStatusBody: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  billingToggle: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    padding: 5,
+    borderRadius: radii.pill,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  intervalButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 7,
+  },
+  intervalButtonActive: {
+    backgroundColor: colors.card,
     ...shadows.small,
   },
-  popularText: { color: '#fff', fontWeight: '900', fontSize: 11, letterSpacing: 1 },
-
-  planName: { fontSize: 24, fontWeight: '900', marginBottom: 8, letterSpacing: -0.3 },
-  priceContainer: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 8 },
-  price: { fontSize: 48, fontWeight: '900', letterSpacing: -1.5 },
-  period: { fontSize: 16, marginLeft: 4, fontWeight: '600' },
-  tagline: { fontSize: 15, lineHeight: 22, marginBottom: 24 },
-  
+  intervalText: { color: colors.muted, fontWeight: '800', fontSize: 13 },
+  intervalTextActive: { color: colors.primaryDark },
+  savingsBadge: {
+    backgroundColor: colors.successSoft,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  savingsText: { color: colors.successText, fontSize: 8, fontWeight: '900' },
+  priceCard: {
+    backgroundColor: colors.card,
+    borderRadius: 28,
+    marginTop: 18,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    ...shadows.medium,
+  },
+  priceHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  planName: { color: colors.textStrong, fontSize: 21, fontWeight: '900' },
+  planAudience: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  recommendedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.premiumLavenderBadge,
+    borderRadius: radii.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  recommendedText: {
+    color: colors.primaryDark,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 24,
+  },
+  currency: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.textStrong,
+    marginTop: 8,
+  },
+  price: {
+    fontSize: 54,
+    lineHeight: 60,
+    fontWeight: '900',
+    letterSpacing: -2,
+    color: colors.textStrong,
+  },
+  playPrice: {
+    flexShrink: 1,
+    fontSize: 42,
+    lineHeight: 50,
+    fontWeight: '900',
+    letterSpacing: -1.5,
+    color: colors.textStrong,
+  },
+  playPricePlaceholder: {
+    minHeight: 72,
+    marginTop: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  playPricePlaceholderText: {
+    flex: 1,
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  priceMeta: { marginLeft: 7, marginTop: 16 },
+  pricePeriod: { color: colors.muted, fontWeight: '700', fontSize: 12 },
+  equivalent: {
+    color: colors.successText,
+    fontWeight: '800',
+    fontSize: 11,
+    marginTop: 3,
+  },
+  activeSummary: {
+    backgroundColor: colors.successSoft,
+    padding: 16,
+    borderRadius: 18,
+    marginTop: 22,
+  },
+  activeSummaryTitle: {
+    color: colors.successText,
+    fontWeight: '900',
+    fontSize: 15,
+  },
+  activeSummaryText: {
+    color: colors.successText,
+    opacity: 0.85,
+    fontSize: 12,
+    marginTop: 4,
+  },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    marginBottom: 24,
+    backgroundColor: colors.cardBorder,
+    marginVertical: 22,
   },
-
-  features: { gap: 16, marginBottom: 36 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  iconWrapper: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+  features: { gap: 14, marginBottom: 24 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  featureIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  featureText: { fontSize: 15, flex: 1, fontWeight: '500' },
-
-  button: {
-    borderRadius: radii.pill,
-    paddingVertical: 18,
+  featureIconFeatured: { backgroundColor: colors.primary },
+  featureText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '600',
+  },
+  primaryButton: {
+    minHeight: 54,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
     ...shadows.small,
   },
-  buttonLight: { backgroundColor: colors.primarySoft, elevation: 0 },
-  buttonDark: { backgroundColor: colors.primary },
-  
-  buttonText: { fontWeight: '800', fontSize: 16 },
-  buttonTextLight: { color: colors.primaryDark },
-  buttonTextDark: { color: '#fff' },
-
-  note: {
-    textAlign: 'center',
+  buttonDisabled: { opacity: 0.5 },
+  buttonPressed: { opacity: 0.88, transform: [{ scale: 0.99 }] },
+  primaryButtonText: {
+    color: colors.onColor,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  cancelButton: { alignItems: 'center', paddingVertical: 14 },
+  cancelButtonText: { color: colors.danger, fontWeight: '700', fontSize: 13 },
+  restoreButton: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  restoreButtonText: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  managementUnavailable: {
     color: colors.muted,
-    marginTop: 40,
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  freeCard: {
+    flexDirection: 'row',
+    gap: 13,
+    backgroundColor: 'rgba(255,255,255,0.70)',
+    borderRadius: 20,
+    padding: 17,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  freeIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: colors.successSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  freeText: { flex: 1 },
+  freeTitle: { color: colors.textStrong, fontWeight: '900', fontSize: 14 },
+  freeCopy: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  footer: {
+    color: colors.subtle,
+    textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 24,
+    paddingHorizontal: 20,
   },
 });

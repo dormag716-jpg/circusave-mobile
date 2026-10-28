@@ -1,8 +1,9 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   FlatList,
   StyleSheet,
@@ -10,45 +11,123 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
-import { getCircles, getCircleDetail, type BackendCircleDetail } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
+import {
+  deleteAllSetupDrafts,
+  deleteCircle,
+  getCircles,
+  getCircleDetail,
+  type BackendCircleDetail,
+} from '@/lib/api';
+import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { focusReloadOptions } from '@/lib/auth/authBoundary';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { seedCircleWorkspaceCache } from '@/lib/circles/circleWorkspaceCache';
+import {
+  mergeRetainedCircleDetails,
+  selectCircleDetailTargets,
+  shouldUseSilentCirclesRefresh,
+} from '@/lib/shared/circlesListPaint';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+  shouldShowBlockingLoadState,
+} from '@/lib/shared/requestGeneration';
+import { formatCurrency } from '@/lib/i18n/formatters';
+import { buildOpenCircleCapacity } from '@/lib/circles/circleCapacity';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
+import { formatHandsPeopleMetrics } from '@/lib/circles/circleLifecycleCopy';
+import {
+  ASSISTANT_FAB_MARGIN,
+  ASSISTANT_FAB_SIZE,
+} from '@/lib/assistant/assistantFab';
 import {
   circleWorkspaceHref,
   completedCirclesHref,
   createCircleHref,
-} from '@/lib/navigation';
-import { isOrganizer } from '@/lib/permissions';
-import { colors, spacing } from '@/lib/theme';
-import type { BackendCircleSummary } from '@/lib/types';
-
-const SETUP_STATUSES = new Set(['setup', 'forming', 'paused']);
+} from '@/lib/platform/navigation';
+import { isOrganizer } from '@/lib/platform/permissions';
+import { colors, spacing } from '@/lib/shared/theme';
+import type { BackendCircleSummary } from '@/lib/shared/types';
+import {
+  circleLifecycleBadgeLabel,
+  getCircleListLifecycle,
+  getViewerPayoutPosition,
+  isActiveCircleStatus,
+  isClosedCircleStatus,
+  isPausedCircleStatus,
+  isSetupCircleStatus,
+} from '@/lib/circles/circleSummary';
 
 type ListItem =
   | { type: 'header'; id: string; title: string; count: number }
   | { type: 'circle'; id: string; circle: BackendCircleSummary };
 
 export default function CirclesScreen() {
-  const { session } = useAuthSession();
+  const { t } = useTranslation('circles');
+  const { session, status } = useAuthSession();
+  const { planTier } = useEntitlements();
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [howItWorksExpanded, setHowItWorksExpanded] = useState(false);
+  const [purgingSetup, setPurgingSetup] = useState(false);
   const [circleDetails, setCircleDetails] = useState<
     Record<string, BackendCircleDetail>
   >({});
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasLastKnownStateRef = useRef(false);
   const token = session?.session.token;
   const userId = session?.user?.id;
 
   const activeCircles = useMemo(
-    () => circles.filter((circle) => circle.status === 'active'),
+    () =>
+      circles.filter(
+        (circle) =>
+          circle.status !== 'archived' &&
+          isActiveCircleStatus(circle.status, circle.pot_status),
+      ),
     [circles],
   );
   const setupCircles = useMemo(
-    () => circles.filter((circle) => SETUP_STATUSES.has(circle.status)),
+    () =>
+      circles.filter(
+        (circle) =>
+          circle.status !== 'archived' && isSetupCircleStatus(circle.status),
+      ),
     [circles],
   );
-  const hasAnyCircles = activeCircles.length > 0 || setupCircles.length > 0;
+  const pausedCircles = useMemo(
+    () =>
+      circles.filter(
+        (circle) =>
+          circle.status !== 'archived' && isPausedCircleStatus(circle.status),
+      ),
+    [circles],
+  );
+  const closedCircles = useMemo(
+    () =>
+      circles.filter(
+        (circle) =>
+          isClosedCircleStatus(circle.status) || circle.status === 'archived',
+      ),
+    [circles],
+  );
+  const hasAnyCircles =
+    activeCircles.length > 0 ||
+    setupCircles.length > 0 ||
+    pausedCircles.length > 0 ||
+    closedCircles.length > 0;
+  const openCap = useMemo(
+    () =>
+      buildOpenCircleCapacity({
+        circles,
+        organizerRoleOrTier: planTier,
+        organizerOwnedOnly: true,
+      }),
+    [circles, planTier],
+  );
 
   const listData = useMemo(() => {
     const items: ListItem[] = [];
@@ -60,7 +139,7 @@ export default function CirclesScreen() {
       items.push({
         type: 'header',
         id: 'header-setup',
-        title: 'In setup',
+        title: t('inSetup'),
         count: setupCircles.length,
       });
       for (const circle of setupCircles) {
@@ -72,7 +151,7 @@ export default function CirclesScreen() {
       items.push({
         type: 'header',
         id: 'header-active',
-        title: 'Active Circles',
+        title: t('activeCircles'),
         count: activeCircles.length,
       });
       for (const circle of activeCircles) {
@@ -80,54 +159,197 @@ export default function CirclesScreen() {
       }
     }
 
-    return items;
-  }, [activeCircles, setupCircles, hasAnyCircles]);
-
-  const loadCircles = useCallback(async () => {
-    if (!token) {
-      setError('Your session is missing an access token. Sign in again.');
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const summaries = await getCircles(token);
-      setCircles(summaries);
-
-      const detailTargets = summaries.filter(
-        (c) => c.status === 'active' || SETUP_STATUSES.has(c.status),
-      );
-      const details = await Promise.all(
-        detailTargets.map((c) => getCircleDetail(token, c.id).catch(() => null)),
-      );
-
-      const detailsMap: Record<string, BackendCircleDetail> = {};
-      detailTargets.forEach((circle, index) => {
-        const detail = details[index];
-        if (detail) {
-          detailsMap[circle.id] = detail;
-        }
+    // Paused / closed are never folded into Active (P0.5.3).
+    if (pausedCircles.length > 0) {
+      items.push({
+        type: 'header',
+        id: 'header-paused',
+        title: t('status.paused', { defaultValue: 'Paused' }),
+        count: pausedCircles.length,
       });
-      setCircleDetails(detailsMap);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load your circles.',
-      );
-    } finally {
-      setLoading(false);
+      for (const circle of pausedCircles) {
+        items.push({ type: 'circle', id: circle.id, circle });
+      }
     }
-  }, [token]);
+
+    if (closedCircles.length > 0) {
+      items.push({
+        type: 'header',
+        id: 'header-closed',
+        title: t('status.closed', { defaultValue: 'Closed' }),
+        count: closedCircles.length,
+      });
+      for (const circle of closedCircles) {
+        items.push({ type: 'circle', id: circle.id, circle });
+      }
+    }
+
+    return items;
+  }, [
+    activeCircles,
+    setupCircles,
+    pausedCircles,
+    closedCircles,
+    hasAnyCircles,
+    t,
+  ]);
+
+  const loadCircles = useCallback(
+    async (options?: { silent?: boolean; revalidate?: boolean }) => {
+      const generation = requestGeneration.current.next();
+      const accessToken = String(token ?? '').trim();
+      // Logout / unauthenticated: quiet no-op (not sessionMissing).
+      if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
+        }
+        return;
+      }
+
+      const firstPaint = !hasLastKnownStateRef.current;
+      if (!options?.silent && firstPaint) {
+        setLoading(true);
+      }
+      if (requestGeneration.current.isCurrent(generation)) {
+        setError(null);
+      }
+
+      try {
+        const getOptions = options?.revalidate ? { revalidate: true } : undefined;
+        const summaries = await getCircles(accessToken, getOptions);
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
+        hasLastKnownStateRef.current = true;
+        setCircles(summaries);
+        setLoading(false);
+
+        const toLoad = selectCircleDetailTargets(summaries);
+        const details = await Promise.all(
+          toLoad.map((circle) =>
+            getCircleDetail(accessToken, circle.id, getOptions).catch(() => null),
+          ),
+        );
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+
+        const incoming: Record<string, BackendCircleDetail> = {};
+        toLoad.forEach((circle, index) => {
+          const detail = details[index];
+          if (detail) {
+            incoming[circle.id] = detail;
+            seedCircleWorkspaceCache({
+              circleId: circle.id,
+              detail,
+            });
+          }
+        });
+        setCircleDetails((current) =>
+          mergeRetainedCircleDetails({
+            current,
+            incoming,
+            circleIds: summaries.map((circle) => circle.id),
+          }),
+        );
+      } catch {
+        if (!requestGeneration.current.isCurrent(generation)) {
+          return;
+        }
+        setError(t('loadError'));
+        if (shouldReplaceFinancialStateOnError(hasLastKnownStateRef.current)) {
+          setCircles([]);
+          setCircleDetails({});
+        }
+      } finally {
+        if (requestGeneration.current.isCurrent(generation)) {
+          setLoading(false);
+        }
+      }
+    },
+    [status, t, token],
+  );
 
   useFocusEffect(
     useCallback(() => {
-      void loadCircles();
+      void loadCircles(focusReloadOptions(hasLastKnownStateRef.current));
     }, [loadCircles]),
   );
+
+  const organizerSetupCircles = useMemo(
+    () =>
+      setupCircles.filter(
+        (c) => String(c.userRole || '').toLowerCase() === 'organizer',
+      ),
+    [setupCircles],
+  );
+
+  function confirmPurgeAllSetup() {
+    if (!token || organizerSetupCircles.length === 0 || purgingSetup) {
+      return;
+    }
+    Alert.alert(
+      t('deleteAllTitle'),
+      t('deleteAllMessage', { count: organizerSetupCircles.length }),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('deletePermanently'),
+          style: 'destructive',
+          onPress: () => void purgeAllSetup(),
+        },
+      ],
+    );
+  }
+
+  async function purgeAllSetup() {
+    if (!token) return;
+    setPurgingSetup(true);
+    try {
+      const result = await deleteAllSetupDrafts(token);
+      await loadCircles({ silent: true, revalidate: true });
+      Alert.alert(
+        t('setupRemovedTitle'),
+        result.deletedCount > 0
+          ? t('setupRemoved', { count: result.deletedCount })
+          : t('nothingRemoved'),
+      );
+    } catch {
+      Alert.alert(
+        t('deleteSetupError'),
+        t('tryAgain'),
+      );
+    } finally {
+      setPurgingSetup(false);
+    }
+  }
+
+  async function confirmDeleteOneSetup(circle: BackendCircleSummary) {
+    if (!token) return;
+    Alert.alert(
+      t('archiveOneTitle'),
+      t('deleteOneMessage', { circleName: circle.name }),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('archive'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCircle(token, circle.id);
+              await loadCircles({ silent: true, revalidate: true });
+            } catch {
+              Alert.alert(
+                t('deleteErrorTitle'),
+                t('tryAgain'),
+              );
+            }
+          },
+        },
+      ],
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -140,10 +362,37 @@ export default function CirclesScreen() {
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.title}>My Circles</Text>
+                <Text style={styles.title}>{t('myCircles')}</Text>
                 <Text style={styles.subtitle}>
-                  Your savings groups — setup and active.
+                  {t('subtitle')}
                 </Text>
+                {!openCap.unlimited ? (
+                  <Text style={styles.freePlanHint}>
+                    {t('freePlan')}
+                    {openCap.usedOpenCircles > 0
+                      ? t('openCount', { count: openCap.usedOpenCircles })
+                      : ''}
+                  </Text>
+                ) : null}
+                {organizerSetupCircles.length > 0 ? (
+                  <Pressable
+                    style={styles.purgeSetupBtn}
+                    onPress={confirmPurgeAllSetup}
+                    disabled={purgingSetup}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('deleteAllAccessibility')}
+                  >
+                    {purgingSetup ? (
+                      <ActivityIndicator color={colors.danger} size="small" />
+                    ) : (
+                      <Text style={styles.purgeSetupBtnText}>
+                        {t('deleteAllSetup', {
+                          count: organizerSetupCircles.length,
+                        })}
+                      </Text>
+                    )}
+                  </Pressable>
+                ) : null}
               </View>
               <Pressable
                 style={({ pressed }) => [{
@@ -153,32 +402,60 @@ export default function CirclesScreen() {
                 }, pressed && { opacity: 0.7 }]}
                 onPress={() => router.push('/join-circle')}
                 accessibilityRole="button"
-                accessibilityLabel="Join circle by code"
+                accessibilityLabel={t('joinByCodeAccessibility')}
               >
                 <FontAwesome name="key" size={13} color={colors.primary} />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>Join by Code</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>{t('joinByCode')}</Text>
               </Pressable>
             </View>
+            {error && hasAnyCircles ? (
+              <View style={styles.inlineErrorBanner}>
+                <FontAwesome name="warning" size={14} color={colors.warning} />
+                <Text style={styles.inlineErrorText}>{error}</Text>
+                <Pressable
+                  onPress={() =>
+                    void loadCircles({
+                      silent: true,
+                      revalidate: true,
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={t('retryCircles')}
+                >
+                  <Text style={styles.inlineErrorRetry}>{t('retry')}</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
-          loading ? (
+          shouldShowBlockingLoadState(
+            loading,
+            hasLastKnownStateRef.current || hasAnyCircles,
+          ) ? (
             <View style={styles.centerCard}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={styles.centerText}>Loading circles…</Text>
+              <Text style={styles.centerText}>{t('loading')}</Text>
             </View>
           ) : error ? (
             <View style={styles.centerCard}>
               <FontAwesome name="warning" size={32} color={colors.warning} />
-              <Text style={styles.emptyTitle}>Unable to load circles</Text>
+              <Text style={styles.emptyTitle}>{t('loadErrorTitle')}</Text>
               <Text style={styles.emptySubtitle}>{error}</Text>
               <Pressable
                 style={styles.retryButton}
-                onPress={() => void loadCircles()}
+                onPress={() =>
+                  void loadCircles({
+                    silent: shouldUseSilentCirclesRefresh(
+                      hasLastKnownStateRef.current,
+                    ),
+                    revalidate: true,
+                  })
+                }
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading circles"
+                accessibilityLabel={t('retryCircles')}
               >
-                <Text style={styles.retryButtonText}>Retry</Text>
+                <Text style={styles.retryButtonText}>{t('retry')}</Text>
               </Pressable>
             </View>
           ) : (
@@ -200,6 +477,12 @@ export default function CirclesScreen() {
               circle={item.circle}
               detail={circleDetails[item.circle.id]}
               userId={userId}
+              onDeleteSetup={
+                isSetupCircleStatus(item.circle.status) &&
+                isOrganizer(item.circle.userRole)
+                  ? () => void confirmDeleteOneSetup(item.circle)
+                  : undefined
+              }
             />
           );
         }}
@@ -213,12 +496,12 @@ export default function CirclesScreen() {
               ]}
               onPress={() => router.push(completedCirclesHref)}
               accessibilityRole="button"
-              accessibilityLabel="View completed circles"
+              accessibilityLabel={t('viewCompletedAccessibility')}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.completedLinkTitle}>Completed circles</Text>
+                <Text style={styles.completedLinkTitle}>{t('completedCircles')}</Text>
                 <Text style={styles.completedLinkSubtitle}>
-                  View finished groups and restart one if you want.
+                  {t('completedDescription')}
                 </Text>
               </View>
               <FontAwesome name="chevron-right" size={16} color={colors.muted} />
@@ -235,7 +518,7 @@ export default function CirclesScreen() {
                 accessibilityRole="button"
               >
                 <Text style={[styles.howItWorksTitle, { marginBottom: 0 }]}>
-                  How joining works
+                  {t('joiningTitle')}
                 </Text>
                 <FontAwesome
                   name={howItWorksExpanded ? 'chevron-up' : 'chevron-down'}
@@ -252,10 +535,10 @@ export default function CirclesScreen() {
                     </View>
                     <View style={styles.stepContent}>
                       <Text style={styles.stepTitle}>
-                        Get the invite link from the organizer
+                        {t('joinStep1Title')}
                       </Text>
                       <Text style={styles.stepDescription}>
-                        The organizer shares a unique link to join their circle.
+                        {t('joinStep1Description')}
                       </Text>
                     </View>
                   </View>
@@ -265,9 +548,9 @@ export default function CirclesScreen() {
                       <Text style={styles.stepNumberText}>2</Text>
                     </View>
                     <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>Open the link & Log In</Text>
+                      <Text style={styles.stepTitle}>{t('joinStep2Title')}</Text>
                       <Text style={styles.stepDescription}>
-                        Tap the link and log into your account (or sign up).
+                        {t('joinStep2Description')}
                       </Text>
                     </View>
                   </View>
@@ -277,9 +560,9 @@ export default function CirclesScreen() {
                       <Text style={styles.stepNumberText}>3</Text>
                     </View>
                     <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>Tap Join</Text>
+                      <Text style={styles.stepTitle}>{t('joinStep3Title')}</Text>
                       <Text style={styles.stepDescription}>
-                        You will instantly be added to the circle roster.
+                        {t('joinStep3Description')}
                       </Text>
                     </View>
                   </View>
@@ -289,10 +572,9 @@ export default function CirclesScreen() {
                       <Text style={styles.stepNumberText}>4</Text>
                     </View>
                     <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>Access your workspace</Text>
+                      <Text style={styles.stepTitle}>{t('joinStep4Title')}</Text>
                       <Text style={styles.stepDescription}>
-                        Track contributions, see payouts, and know when it's
-                        your turn!
+                        {t('joinStep4Description')}
                       </Text>
                     </View>
                   </View>
@@ -305,11 +587,29 @@ export default function CirclesScreen() {
 
       <Pressable
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        onPress={() => router.push(createCircleHref)}
+        onPress={() => {
+          if (openCap.atCapacity && openCap.primaryOpenCircleId) {
+            router.push(circleWorkspaceHref(openCap.primaryOpenCircleId));
+            return;
+          }
+          if (openCap.atCapacity) {
+            router.push(createCircleHref);
+            return;
+          }
+          router.push(createCircleHref);
+        }}
         accessibilityRole="button"
-        accessibilityLabel="Create circle"
+        accessibilityLabel={
+          openCap.atCapacity
+            ? t('continueOpenCircle')
+            : t('createCircle')
+        }
       >
-        <FontAwesome name="plus" size={28} color="#ffffff" />
+        <FontAwesome
+          name={openCap.atCapacity ? 'arrow-right' : 'plus'}
+          size={28}
+          color={colors.onColor}
+        />
       </Pressable>
     </SafeAreaView>
   );
@@ -319,18 +619,46 @@ function CircleCard({
   circle,
   detail,
   userId,
+  onDeleteSetup,
 }: {
   circle: BackendCircleSummary;
   detail?: BackendCircleDetail;
   userId?: string;
+  onDeleteSetup?: () => void;
 }) {
+  const { t, i18n } = useTranslation('circles');
   const userIsOrganizer = isOrganizer(circle.userRole);
-  const isSetup = SETUP_STATUSES.has(circle.status);
+  const isSetup = isSetupCircleStatus(circle.status);
+  const lifecycle = getCircleListLifecycle(circle.status, circle.pot_status);
+  const isPaused = lifecycle === 'paused';
+  const isClosed = lifecycle === 'closed';
+  const isLiveActive = lifecycle === 'active';
+  const badgeLabel = circleLifecycleBadgeLabel(circle.status, circle.pot_status);
   const progress = circle.currentRoundProgress?.percentConfirmed ?? 0;
 
-  const totalRounds = detail?.members?.length ?? circle.memberCount;
+  const handCount =
+    detail?.handCount ??
+    circle.handCount ??
+    detail?.participatingHandCount ??
+    circle.participatingHandCount ??
+    circle.memberCount;
+  const peopleCount =
+    detail?.uniquePeopleCount ??
+    detail?.uniqueMemberCount ??
+    circle.uniquePeopleCount ??
+    circle.uniqueMemberCount ??
+    null;
+  const totalRounds =
+    detail?.totalRounds ??
+    circle.totalRounds ??
+    handCount;
   const viewerPosition =
-    detail && userId ? getViewerPosition(detail, userId) : null;
+    detail && userId ? getViewerPayoutPosition(detail, userId) : null;
+  const peopleHandsLabel = formatHandsPeopleMetrics({
+    handCount,
+    uniqueMemberCount: peopleCount,
+    memberCount: handCount,
+  });
 
   return (
     <Pressable
@@ -338,7 +666,9 @@ function CircleCard({
       onPress={() => router.push(circleWorkspaceHref(circle.id))}
       accessibilityRole="button"
       accessibilityLabel={
-        isSetup ? `Continue setup for ${circle.name}` : `Open ${circle.name}`
+        isSetup
+          ? t('continueSetupFor', { circleName: circle.name })
+          : t('openCircle', { circleName: circle.name })
       }
     >
       <View style={styles.cardHeader}>
@@ -347,26 +677,79 @@ function CircleCard({
             <Text style={styles.circleName}>{circle.name}</Text>
             {isSetup ? (
               <View style={styles.setupTag}>
-                <Text style={styles.setupTagText}>Setup</Text>
+                <Text style={styles.setupTagText}>{t('setup')}</Text>
               </View>
-            ) : null}
+            ) : (
+              <View
+                style={[
+                  styles.setupTag,
+                  isPaused
+                    ? { backgroundColor: colors.warningSoft }
+                    : isClosed
+                      ? { backgroundColor: colors.surfaceMuted }
+                      : isLiveActive
+                        ? { backgroundColor: colors.successSoft }
+                        : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.setupTagText,
+                    {
+                      color: isPaused
+                        ? colors.warningText
+                        : isClosed
+                          ? colors.text
+                          : isLiveActive
+                            ? colors.successText
+                            : colors.primary,
+                    },
+                  ]}
+                >
+                  {t(`status.${lifecycle}`, { defaultValue: badgeLabel })}
+                </Text>
+              </View>
+            )}
             {userIsOrganizer ? (
               <View style={styles.organizerTag}>
-                <Text style={styles.organizerTagText}>Organizer</Text>
+                <Text style={styles.organizerTagText}>{t('organizer')}</Text>
               </View>
             ) : null}
           </View>
           {isSetup ? (
-            <Text style={styles.circleMeta}>
-              {capitalize(circle.status)} • {circle.memberCount}{' '}
-              {circle.memberCount === 1 ? 'member' : 'members'} •{' '}
-              {formatMoney(circle.contributionAmount)}
-            </Text>
+            <>
+              <Text style={styles.circleMeta}>
+                {t(`status.${circle.status}`, { defaultValue: circle.status })} •{' '}
+                {peopleHandsLabel} •{' '}
+                {formatCurrency(
+                  circle.contributionAmount,
+                  i18n.resolvedLanguage || i18n.language,
+                )}
+              </Text>
+              {onDeleteSetup ? (
+                <Pressable
+                  style={styles.cardDeleteBtn}
+                  onPress={onDeleteSetup}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('deleteSetupAccessibility', {
+                    circleName: circle.name,
+                  })}
+                >
+                  <FontAwesome name="trash-o" size={14} color={colors.danger} />
+                  <Text style={styles.cardDeleteBtnText}>{t('deletePermanently')}</Text>
+                </Pressable>
+              ) : null}
+            </>
           ) : (
             <>
               <Text style={styles.circleMeta}>
-                {capitalize(circle.frequency)} • Round {circle.currentRound} of{' '}
-                {totalRounds}
+                {t(`frequency.${circle.frequency}`, {
+                  defaultValue: circle.frequency,
+                })}{' '}
+                • {t('round', { current: circle.currentRound, total: totalRounds })}
+                {isPaused || isClosed
+                  ? ` • ${t(`status.${lifecycle}`, { defaultValue: badgeLabel })}`
+                  : ''}
               </Text>
               {viewerPosition ? (
                 <Text
@@ -377,13 +760,13 @@ function CircleCard({
                     marginTop: 4,
                   }}
                 >
-                  Your position: #{viewerPosition}
+                  {t('yourPosition', { position: viewerPosition })}
                 </Text>
               ) : null}
             </>
           )}
         </View>
-        {!isSetup ? (
+        {!isSetup && isLiveActive ? (
           <View style={{ alignItems: 'center' }}>
             <View style={styles.progressRing}>
               <Text style={styles.progressText}>{progress}%</Text>
@@ -396,8 +779,10 @@ function CircleCard({
                 marginTop: 6,
               }}
             >
-              {circle.currentRoundProgress?.confirmedCount ?? 0} of {totalRounds}{' '}
-              confirmed
+              {t('confirmed', {
+                confirmed: circle.currentRoundProgress?.confirmedCount ?? 0,
+                total: totalRounds,
+              })}
             </Text>
           </View>
         ) : null}
@@ -405,62 +790,41 @@ function CircleCard({
 
       <View style={styles.detailsRow}>
         <View style={styles.detail}>
-          <Text style={styles.detailLabel}>Contribution</Text>
+          <Text style={styles.detailLabel}>{t('contributionLabel')}</Text>
           <Text style={styles.detailValue}>
-            {formatMoney(circle.contributionAmount)}
+            {formatCurrency(
+              circle.contributionAmount,
+              i18n.resolvedLanguage || i18n.language,
+            )}
           </Text>
         </View>
         <View style={styles.detail}>
-          <Text style={styles.detailLabel}>Members</Text>
-          <Text style={styles.detailValue}>{circle.memberCount}</Text>
+          <Text style={styles.detailLabel}>{t('members')}</Text>
+          <Text style={styles.detailValue}>{peopleHandsLabel}</Text>
         </View>
       </View>
 
       <View style={styles.openButton}>
         <Text style={styles.openButtonText}>
-          {isSetup ? 'Continue setup' : 'Open Circle'}
+          {isSetup ? t('continueSetup') : t('openCircleButton')}
         </Text>
-        <FontAwesome name="arrow-right" size={18} color="#ffffff" />
+        <FontAwesome name="arrow-right" size={18} color={colors.onColor} />
       </View>
     </Pressable>
   );
 }
 
 function EmptyState() {
+  const { t } = useTranslation('circles');
   return (
     <View style={styles.emptyState}>
       <FontAwesome name="users" size={80} color={colors.muted} />
-      <Text style={styles.emptyTitle}>No circles yet</Text>
+      <Text style={styles.emptyTitle}>{t('emptyTitle')}</Text>
       <Text style={styles.emptySubtitle}>
-        Create a savings group or join one with an invite link.
+        {t('emptyDescription')}
       </Text>
     </View>
   );
-}
-
-function getViewerPosition(detail: BackendCircleDetail, userId: string) {
-  const ordered = [...detail.members].sort((a, b) => {
-    const posA = detail.turnOrder.indexOf(a.id);
-    const posB = detail.turnOrder.indexOf(b.id);
-    const nA = posA === -1 ? 9999 : posA;
-    const nB = posB === -1 ? 9999 : posB;
-    return nA - nB;
-  });
-  const viewer = ordered.find((m) => m.userId === userId);
-  return viewer ? ordered.indexOf(viewer) + 1 : null;
-}
-
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function capitalize(value: string) {
-  if (value === 'biweekly') return 'Bi-weekly';
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
 const styles = StyleSheet.create({
@@ -469,7 +833,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 120,
+    // Clears the create button, which sits above the assistant button.
+    paddingBottom: 120 + ASSISTANT_FAB_SIZE + ASSISTANT_FAB_MARGIN,
     paddingHorizontal: spacing.screenX,
     paddingTop: 20,
   },
@@ -486,6 +851,67 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     marginTop: 4,
+  },
+  freePlanHint: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  inlineErrorBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warning,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inlineErrorText: {
+    color: colors.warningText,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  inlineErrorRetry: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  purgeSetupBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSoft,
+  },
+  purgeSetupBtnText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  cardDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: colors.dangerSoft,
+  },
+  cardDeleteBtnText: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '800',
   },
   sectionHeader: {
     alignItems: 'center',
@@ -542,7 +968,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   organizerTagText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 11,
     fontWeight: '900',
   },
@@ -553,7 +979,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   setupTagText: {
-    color: '#92400E',
+    color: colors.warningText,
     fontSize: 11,
     fontWeight: '900',
   },
@@ -606,7 +1032,7 @@ const styles = StyleSheet.create({
     minHeight: 58,
   },
   openButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 17,
     fontWeight: '900',
   },
@@ -631,20 +1057,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   retryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontWeight: '900',
   },
   fab: {
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: 34,
-    bottom: 24,
+    // The assistant button uses this same corner. Keep the create/continue
+    // button one button-height above it, with a small gap.
+    bottom: 24 + 68 + ASSISTANT_FAB_MARGIN,
     elevation: 8,
     height: 68,
     justifyContent: 'center',
     position: 'absolute',
     right: 24,
-    shadowColor: '#000000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

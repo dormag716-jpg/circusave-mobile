@@ -1,46 +1,88 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCircles } from '@/lib/api';
-import type { BackendCircleSummary } from '@/lib/types';
-import { useAuthSession } from '@/lib/authContext';
-import { colors, radii, spacing } from '@/lib/theme';
+import type { BackendCircleSummary } from '@/lib/shared/types';
+import { useAuthSession } from '@/lib/auth/authContext';
+import {
+  buildOpenCircleCapacity,
+} from '@/lib/circles/circleCapacity';
+import {
+  shouldShowCreateTabLimitCard,
+} from '@/lib/shared/createTabPaint';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
+import { circleWorkspaceHref, myCirclesHref } from '@/lib/platform/navigation';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+} from '@/lib/shared/requestGeneration';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
 
 export default function CreateCircleGuideScreen() {
+  const { t } = useTranslation('createCircle');
   const { session } = useAuthSession();
+  const { planTier } = useEntitlements();
   const token = session?.session.token;
-  
-  const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasSnapshotRef = useRef(false);
+
+  const load = useCallback(async () => {
+    const generation = requestGeneration.current.next();
     if (!token) {
-      setLoading(false);
       return;
     }
-    getCircles(token)
-      .then(setCircles)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+
+    try {
+      const next = await getCircles(token);
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      hasSnapshotRef.current = true;
+      setHasSnapshot(true);
+      setCircles(next);
+    } catch {
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      if (shouldReplaceFinancialStateOnError(hasSnapshotRef.current)) {
+        setCircles([]);
+      }
+    }
   }, [token]);
 
-  const activeCircles = circles.filter(c => c.status === 'active');
-  const hasReachedLimit = activeCircles.length >= 1;
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      </SafeAreaView>
+  const openCap = buildOpenCircleCapacity({
+    circles,
+    organizerRoleOrTier: planTier,
+    organizerOwnedOnly: true,
+  });
+  const hasReachedLimit = shouldShowCreateTabLimitCard({
+    hasSnapshot,
+    atCapacity: openCap.atCapacity,
+  });
+  const existingId = openCap.primaryOpenCircleId;
+  const existing = existingId
+    ? circles.find((c) => c.id === existingId)
+    : undefined;
+  const existingIsSetup =
+    existing &&
+    ['draft', 'setup', 'forming'].includes(
+      String(existing.status || '').toLowerCase(),
     );
-  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -50,17 +92,25 @@ export default function CreateCircleGuideScreen() {
       >
         <View style={styles.hero}>
           <Text style={styles.emoji}>👥</Text>
-          <Text style={styles.title}>Start a new Circle</Text>
+          <Text style={styles.title}>{t('landing.title')}</Text>
           <Text style={styles.subtitle}>
-            Create a trusted savings group with family or friends.{'\n'}
-            Simple, transparent, and secure.
+            {t('landing.subtitle')}
           </Text>
         </View>
 
+        {hasReachedLimit ? null : (
+          <View style={styles.planNote}>
+            <FontAwesome name="info-circle" size={16} color={colors.primary} />
+            <Text style={styles.planNoteText}>
+              {t('landing.planNote')}
+            </Text>
+          </View>
+        )}
+
         <View style={styles.benefits}>
-          <Benefit icon="lock" text="Authoritative ledger" />
-          <Benefit icon="users" text="Trusted members only" />
-          <Benefit icon="calendar" text="Automatic reminders" />
+          <Benefit icon="lock" text={t('landing.ledger')} />
+          <Benefit icon="users" text={t('landing.trusted')} />
+          <Benefit icon="calendar" text={t('landing.reminders')} />
         </View>
 
         {hasReachedLimit ? (
@@ -68,15 +118,38 @@ export default function CreateCircleGuideScreen() {
             <View style={styles.limitIcon}>
               <FontAwesome name="lock" size={24} color={colors.warning} />
             </View>
-            <Text style={styles.limitTitle}>Circle Limit Reached</Text>
-            <Text style={styles.limitText}>
-              Free accounts are limited to 1 active circle. Upgrade to Premium to create unlimited circles.
-            </Text>
+            <Text style={styles.limitTitle}>{t('landing.limitTitle')}</Text>
+            <Text style={styles.limitText}>{t('landing.limitMessage')}</Text>
+            {existingId ? (
+              <Pressable
+                style={styles.upgradeButton}
+                onPress={() => router.push(circleWorkspaceHref(existingId))}
+              >
+                <Text style={styles.upgradeButtonText}>
+                  {existingIsSetup
+                    ? t('landing.continueCircle', {
+                        circleName:
+                          existing?.name || t('landing.circleFallback'),
+                      })
+                    : t('landing.openCircle', {
+                        circleName:
+                          existing?.name || t('landing.circleFallback'),
+                      })}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.upgradeButton}
+                onPress={() => router.push(myCirclesHref)}
+              >
+                <Text style={styles.upgradeButtonText}>{t('landing.myCircles')}</Text>
+              </Pressable>
+            )}
             <Pressable
-              style={styles.upgradeButton}
+              style={styles.secondaryButton}
               onPress={() => router.push('/subscription')}
             >
-              <Text style={styles.upgradeButtonText}>View Plans</Text>
+              <Text style={styles.secondaryButtonText}>{t('landing.premium')}</Text>
             </Pressable>
           </View>
         ) : (
@@ -88,13 +161,13 @@ export default function CreateCircleGuideScreen() {
               ]}
               onPress={() => router.push('/create-circle/setup')}
               accessibilityRole="button"
-              accessibilityLabel="Create new circle"
+              accessibilityLabel={t('landing.createAccessibility')}
             >
-              <Text style={styles.primaryButtonText}>Create New Circle</Text>
+              <Text style={styles.primaryButtonText}>{t('landing.create')}</Text>
             </Pressable>
 
             <Text style={styles.note}>
-              Takes about 2 minutes • You can edit later
+              {t('landing.note')}
             </Text>
           </>
         )}
@@ -122,11 +195,11 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 100,
     paddingHorizontal: spacing.screenX,
-    paddingTop: 40,
+    paddingTop: 24,
   },
   hero: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
   },
   emoji: {
     fontSize: 64,
@@ -145,9 +218,30 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
+  planNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    padding: 14,
+    marginBottom: 28,
+  },
+  planNoteText: {
+    flex: 1,
+    color: colors.primaryDark,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  planNoteStrong: {
+    fontWeight: '900',
+  },
   benefits: {
-    gap: 20,
-    marginBottom: 40,
+    gap: 16,
+    marginBottom: 20,
   },
   benefitRow: {
     alignItems: 'center',
@@ -178,7 +272,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 18,
     fontWeight: '900',
   },
@@ -191,13 +285,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   limitCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: radii.card,
     padding: spacing.card,
     alignItems: 'center',
@@ -223,7 +312,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.muted,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     lineHeight: 22,
   },
   upgradeButton: {
@@ -233,10 +322,21 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     width: '100%',
     alignItems: 'center',
+    marginBottom: 10,
   },
   upgradeButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 16,
+    fontWeight: '800',
+  },
+  secondaryButton: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: colors.primary,
+    fontSize: 15,
     fontWeight: '800',
   },
 });

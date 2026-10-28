@@ -1,0 +1,28 @@
+{
+  "review": {
+    "title": "Revisar orden de pagos",
+    "body": "Confirma que cada mano participante esté en la posición correcta. El orden se bloquea al iniciar el círculo.",
+    "confirm": "Confirmar orden",
+    "empty": "Aún no hay un orden de pagos disponible.",
+    "hint": "Reordena las posiciones. Confirma el orden al iniciar el círculo; mostrar las manos no completa la revisión.",
+    "stillRequired": "La estructura está completa. Falta revisarla al iniciar.",
+    "missing": "Falta en el orden",
+    "needsAttention": "El orden de pagos necesita atención",
+    "missingCount_one": "Falta {{count}} mano en el orden.",
+    "missingCount_other": "Faltan {{count}} manos en el orden.",
+    "duplicateCount_one": "Hay {{count}} posición duplicada.",
+    "duplicateCount_other": "Hay {{count}} posiciones duplicadas.",
+    "unknownCount_one": "Hay {{count}} posición desconocida.",
+    "unknownCount_other": "Hay {{count}} posiciones desconocidas.",
+    "moveUp": "Mover arriba",
+    "moveDown": "Mover abajo",
+    "moveMemberUp": "Mover a {{name}} arriba",
+    "moveMemberDown": "Mover a {{name}} abajo",
+    "position": "Posición {{position}}",
+    "notInOrder": "Fuera del orden",
+    "unavailable": "Aún no hay un orden de pagos disponible."
+  },
+  "errors": {
+    "reorderTitle": "No se pudo reordenar"
+  }
+}

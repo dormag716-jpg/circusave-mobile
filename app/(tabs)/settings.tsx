@@ -1,38 +1,85 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
-import { useState, useEffect } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, type Href, useFocusEffect } from 'expo-router';
+import { useCallback, useState, useEffect } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
+import { useOpenAssistant } from '@/components/useOpenAssistant';
+import { ASSISTANT_FAB_TAB_CONTENT_PADDING } from '@/lib/assistant/assistantFab';
+import { resetAssistantFabPlacement } from '@/lib/assistant/assistantFabStore';
 
-import { useAuthSession } from '@/lib/authContext';
+import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
-import { scheduleTestNotification } from '@/lib/notifications';
-import { useMarket, type MarketType } from '@/lib/market';
-import { colors, radii, spacing } from '@/lib/theme';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { readLanguagePreference } from '@/lib/i18n/language-storage';
+import {
+  LANGUAGE_OPTIONS,
+  type LanguagePreference,
+} from '@/lib/i18n/types';
+import { scheduleTestNotification } from '@/lib/platform/notifications';
+import {
+  MARKET_TYPES,
+  marketTerminologyKey,
+  useMarket,
+} from '@/lib/circles/market';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 export default function SettingsScreen() {
+  const { i18n, t } = useTranslation(['settings', 'navigation']);
   const { session, signOut } = useAuthSession();
+  const { isPremium, hasCapability } = useEntitlements();
+  const contributionPaymentsEnabled = hasCapability(
+    'contributionPaymentsEnabled',
+  );
   const { market, setMarket } = useMarket();
+  const { open: openAssistant } = useOpenAssistant();
+  const [assistantResetDone, setAssistantResetDone] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
+  const [languagePreference, setLanguagePreference] =
+    useState<LanguagePreference>('system');
 
   useEffect(() => {
-    if (!session?.session.token) return;
-    getLinkedAccounts(session.session.token).then(setAccounts).catch(console.error);
-  }, [session?.session.token]);
+    if (!session?.session.token || !contributionPaymentsEnabled) {
+      setAccounts([]);
+      return;
+    }
+    getLinkedAccounts(session.session.token)
+      .then(setAccounts)
+      .catch((error) => {
+        logClientError('Unable to load linked accounts', error);
+      });
+  }, [contributionPaymentsEnabled, session?.session.token]);
 
-  const displayName = session?.user.name ?? 'Settings';
-  const email = session?.user.email ?? 'Connected to backend session';
-  const reliabilityScore = session?.user.reliabilityScore !== undefined 
-    ? `${session.user.reliabilityScore}%` 
-    : '--%';
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void readLanguagePreference().then((preference) => {
+        if (active) {
+          setLanguagePreference(preference);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  const displayName = session?.user.name ?? t('settings:title');
+  const email = session?.user.email ?? t('settings:connectedSession');
+  const reliabilityScore = session?.user.reliabilityScore;
+  const subscriptionSubtitle = isPremium
+    ? t('settings:organizerProActive')
+    : t('settings:freePlanUpgrade');
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        
+
         {/* Profile Header */}
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>
@@ -42,84 +89,156 @@ export default function SettingsScreen() {
                 <FontAwesome name="check-circle" size={18} color={colors.primary} />
               </View>
             </View>
-            
+
             <View style={styles.headerInfo}>
-              <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
-              <Text style={styles.email} numberOfLines={1}>{email}</Text>
-              
-              <View style={styles.reliabilityBadge}>
-                <FontAwesome name="shield" size={12} color={colors.success} style={{ marginRight: 6 }} />
-                <Text style={styles.reliabilityText}>Reliability Score: {reliabilityScore}</Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+                {isPremium ? (
+                  <View style={styles.premiumBadge}>
+                    <FontAwesome name="star" size={10} color={colors.onColor} style={{ marginRight: 4 }} />
+                    <Text style={styles.premiumBadgeText}>{t('settings:organizerProBadge')}</Text>
+                  </View>
+                ) : null}
               </View>
+              <Text style={styles.email} numberOfLines={1}>{email}</Text>
+
+              {typeof reliabilityScore === 'number' && Number.isFinite(reliabilityScore) ? (
+                <View style={styles.reliabilityBadge}>
+                  <FontAwesome name="shield" size={12} color={colors.success} style={{ marginRight: 6 }} />
+                  <Text style={styles.reliabilityText}>
+                    {t('settings:reliabilityScore', { score: `${reliabilityScore}%` })}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
 
         {/* Section: Financial */}
-        <Text style={styles.sectionTitle}>Financial & Payments</Text>
+        <Text style={styles.sectionTitle}>{t('settings:financialPayments')}</Text>
         <View style={styles.sectionContainer}>
-          <MenuItem
-            icon="bank"
-            title="Automated Payments"
-            subtitle={accounts.length > 0 ? "Bank account linked" : "Connect your bank account"}
-            badge={accounts.length > 0 ? "CONNECTED" : undefined}
-            onPress={() => router.push('/automated-payments')}
-            isFirst
-          />
+          {contributionPaymentsEnabled ? (
+            <MenuItem
+              icon="bank"
+              title={t('settings:automatedPayments')}
+              subtitle={accounts.length > 0 ? t('settings:bankLinked') : t('settings:connectBank')}
+              badge={accounts.length > 0 ? t('settings:connected') : undefined}
+              onPress={() => router.push('/automated-payments')}
+              isFirst
+            />
+          ) : null}
           <MenuItem
             icon="credit-card"
-            title="Payment Preferences"
-            subtitle="CashApp, Venmo, PayPal"
+            title={t('settings:paymentPreferences')}
+            subtitle={t('settings:paymentPreferencesSubtitle')}
             onPress={() => router.push('/payment-preferences')}
+            isFirst={!contributionPaymentsEnabled}
           />
           <MenuItem
             icon="history"
-            title="Completed Circles"
-            subtitle="View your past savings groups"
+            title={t('settings:completedCircles')}
+            subtitle={t('settings:completedCirclesSubtitle')}
             onPress={() => router.push('/completed-circles')}
             isLast
           />
         </View>
 
+        <Text style={styles.sectionTitle}>{t('settings:organizerTools')}</Text>
+        <View style={styles.sectionContainer}>
+          <MenuItem
+            icon="bell"
+            title={t('settings:smartReminders')}
+            subtitle={t('settings:smartRemindersSubtitle')}
+            onPress={() => router.push('/smart-reminders' as Href)}
+            isFirst
+            isLast
+          />
+        </View>
+
+        {/* Section: Assistant */}
+        <Text style={styles.sectionTitle}>{t('settings:assistantSection')}</Text>
+        <View style={styles.sectionContainer}>
+          <MenuItem
+            icon="magic"
+            title={t('settings:assistantOpen')}
+            subtitle={t('settings:assistantOpenSubtitle')}
+            hint={t('settings:assistantOpenHint')}
+            onPress={() => void openAssistant()}
+            isFirst
+          />
+          <MenuItem
+            icon="undo"
+            title={t('settings:assistantResetPosition')}
+            subtitle={
+              assistantResetDone
+                ? t('settings:assistantResetDone')
+                : t('settings:assistantResetSubtitle')
+            }
+            hint={t('settings:assistantResetHint')}
+            onPress={() => {
+              void resetAssistantFabPlacement();
+              setAssistantResetDone(true);
+              AccessibilityInfo.announceForAccessibility(t('settings:assistantResetDone'));
+            }}
+            isLast
+          />
+        </View>
+
         {/* Section: Account & Security */}
-        <Text style={styles.sectionTitle}>Account & Security</Text>
+        <Text style={styles.sectionTitle}>{t('settings:accountSecurity')}</Text>
         <View style={styles.sectionContainer}>
           <MenuItem
             icon="lock"
-            title="Security"
-            subtitle="Password, recovery, and devices"
+            title={t('settings:security')}
+            subtitle={t('settings:securitySubtitle')}
             onPress={() => router.push('/security')}
             isFirst
           />
           <MenuItem
-            icon="star-o"
-            title="Subscription"
-            subtitle="View plans and upgrade options"
+            icon="star"
+            title={t('settings:subscription')}
+            subtitle={subscriptionSubtitle}
+            badge={isPremium ? t('settings:organizerProBadge') : undefined}
             onPress={() => router.push('/subscription')}
             isLast
           />
         </View>
 
         {/* Section: Preferences */}
-        <Text style={styles.sectionTitle}>Preferences</Text>
+        <Text style={styles.sectionTitle}>{t('settings:preferences')}</Text>
         <View style={styles.sectionContainer}>
           <MenuItem
-            icon="globe"
-            title="Cultural Terminology"
-            subtitle={`Currently using terms for: ${market.toUpperCase()}`}
-            onPress={() => setModalVisible(true)}
+            icon="language"
+            title={t('settings:language')}
+            subtitle={getLanguagePreferenceLabel(
+              languagePreference,
+              i18n.resolvedLanguage || i18n.language,
+              t('settings:usePhoneLanguage'),
+            )}
+            onPress={() => router.push('/language')}
             isFirst
           />
           <MenuItem
+            icon="globe"
+            title={t('settings:culturalTerminology')}
+            subtitle={t('settings:currentTerminology', {
+              market: t(`settings:${marketTerminologyKey(market)}`),
+            })}
+            onPress={() => setModalVisible(true)}
+          />
+          <MenuItem
             icon="bell-o"
-            title="Test Notification"
-            subtitle="Schedule a local confirmation"
+            title={t('settings:testNotification')}
+            subtitle={t('settings:testNotificationSubtitle')}
             onPress={async () => {
               const result = await scheduleTestNotification('test');
               if (result.ok) {
-                Alert.alert('Scheduled', 'Test notification will appear in 2 seconds.');
+                Alert.alert(t('settings:scheduled'), t('settings:scheduledMessage'));
               } else {
-                Alert.alert('Notifications unavailable', result.reason);
+                Alert.alert(
+                  t('settings:notificationsUnavailable'),
+                  t('settings:genericFailure'),
+                );
               }
             }}
             isLast
@@ -127,14 +246,20 @@ export default function SettingsScreen() {
         </View>
 
         {/* Section: Support */}
-        <Text style={styles.sectionTitle}>Support & About</Text>
+        <Text style={styles.sectionTitle}>{t('settings:supportAbout')}</Text>
         <View style={styles.sectionContainer}>
           <MenuItem
             icon="question-circle-o"
-            title="Help & Support"
-            subtitle="FAQs, contact support"
+            title={t('settings:helpSupport')}
+            subtitle={t('settings:helpSupportSubtitle')}
             onPress={() => router.push('/support')}
             isFirst
+          />
+          <MenuItem
+            icon="file-text-o"
+            title={t('settings:legalPolicies')}
+            subtitle={t('settings:legalPoliciesSubtitle')}
+            onPress={() => router.push('/legal' as Href)}
             isLast
           />
         </View>
@@ -145,19 +270,31 @@ export default function SettingsScreen() {
             styles.signOutButton,
             pressed && styles.signOutButtonPressed
           ]}
-          onPress={async () => {
-            try {
-              await signOut();
-            } catch (e) {}
-            router.replace('/login');
-          }}
+          onPress={() =>
+            Alert.alert(t('settings:signOutTitle'), t('settings:signOutMessage'), [
+              { text: t('settings:cancel'), style: 'cancel' },
+              {
+                text: t('settings:signOut'),
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await signOut();
+                  } finally {
+                    resetNavigationToLogin();
+                  }
+                },
+              },
+            ])
+          }
+          accessibilityRole="button"
+          accessibilityLabel={t('settings:signOut')}
         >
-          <FontAwesome name="sign-out" size={20} color="#EF4444" style={{ marginRight: 8 }} />
-          <Text style={styles.signOutText}>Sign Out</Text>
+          <FontAwesome name="sign-out" size={20} color={colors.danger} style={{ marginRight: 8 }} />
+          <Text style={styles.signOutText}>{t('settings:signOut')}</Text>
         </Pressable>
 
         {/* Version */}
-        <Text style={styles.version}>CircuSave v1.0.0 â€¢ Build 2026.06</Text>
+        <Text style={styles.version}>CircuSave v1.0.0 - Build 2026.06</Text>
 
         {/* Cultural Terminology Modal */}
         <Modal
@@ -169,17 +306,22 @@ export default function SettingsScreen() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Terminology</Text>
-                <Pressable onPress={() => setModalVisible(false)} hitSlop={20}>
+                <Text style={styles.modalTitle}>{t('settings:selectTerminology')}</Text>
+                <Pressable
+                  onPress={() => setModalVisible(false)}
+                  hitSlop={20}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('settings:closeTerminology')}
+                >
                   <FontAwesome name="times" size={24} color={colors.muted} />
                 </Pressable>
               </View>
               <Text style={styles.modalDescription}>
-                Choose your cultural terminology. This changes what we call savings groups across the app.
+                {t('settings:terminologyDescription')}
               </Text>
               
               <ScrollView showsVerticalScrollIndicator={false}>
-                {(['default', 'susu', 'tanda', 'sol', 'hagbad', 'pardner'] as MarketType[]).map((m) => (
+                {MARKET_TYPES.map((m) => (
                   <Pressable
                     key={m}
                     style={[styles.marketOption, market === m && styles.marketOptionSelected]}
@@ -189,7 +331,7 @@ export default function SettingsScreen() {
                     }}
                   >
                     <Text style={[styles.marketOptionText, market === m && styles.marketOptionTextSelected]}>
-                      {m.toUpperCase()}
+                      {t(`settings:${marketTerminologyKey(m)}`)}
                     </Text>
                     {market === m && (
                       <FontAwesome name="check-circle" size={20} color={colors.primary} />
@@ -206,10 +348,29 @@ export default function SettingsScreen() {
   );
 }
 
-function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
+function getLanguagePreferenceLabel(
+  preference: LanguagePreference,
+  currentLanguage: string,
+  systemLabel: string,
+) {
+  if (preference === 'system') {
+    const currentLabel =
+      LANGUAGE_OPTIONS.find((option) => option.value === currentLanguage)?.label ??
+      LANGUAGE_OPTIONS[1].label;
+    return `${systemLabel} · ${currentLabel}`;
+  }
+
+  return (
+    LANGUAGE_OPTIONS.find((option) => option.value === preference)?.label ??
+    LANGUAGE_OPTIONS[1].label
+  );
+}
+
+function MenuItem({ icon, title, subtitle, hint, badge, onPress, isFirst, isLast }: {
   icon: React.ComponentProps<typeof FontAwesome>['name'];
   title: string;
   subtitle: string;
+  hint?: string;
   badge?: string;
   onPress: () => void;
   isFirst?: boolean;
@@ -224,13 +385,16 @@ function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
         pressed && styles.menuItemPressed
       ]} 
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${subtitle}`}
+      accessibilityHint={hint}
     >
       <View style={styles.menuIconContainer}>
         <FontAwesome name={icon} size={20} color={colors.primary} />
       </View>
       <View style={styles.menuText}>
         <Text style={styles.menuTitle}>{title}</Text>
-        <Text style={styles.menuSubtitle} numberOfLines={1}>{subtitle}</Text>
+        <Text style={styles.menuSubtitle}>{subtitle}</Text>
       </View>
       {badge && (
         <View style={styles.menuBadge}>
@@ -245,8 +409,8 @@ function MenuItem({ icon, title, subtitle, badge, onPress, isFirst, isLast }: {
 
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { paddingBottom: 100 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  content: { paddingBottom: ASSISTANT_FAB_TAB_CONTENT_PADDING },
 
   headerCard: { 
     backgroundColor: colors.card,
@@ -277,15 +441,15 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
-  avatarText: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
+  avatarText: { color: colors.onColor, fontSize: 32, fontWeight: '800', textAlign: 'center' },
   badgeContainer: {
     position: 'absolute',
     bottom: 2,
     right: 2,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 2,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -295,7 +459,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  name: { fontSize: 24, fontWeight: '900', color: colors.textStrong, marginBottom: 2 },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 2,
+  },
+  name: { fontSize: 22, fontWeight: '900', color: colors.textStrong },
+  premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  premiumBadgeText: {
+    color: colors.onColor,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
   email: { color: colors.muted, fontSize: 14, marginBottom: 12 },
   reliabilityBadge: {
     flexDirection: 'row',
@@ -330,7 +515,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
     overflow: 'hidden',
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
     shadowRadius: 8,
@@ -356,7 +541,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
   },
   menuItemPressed: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.surfaceMuted,
   },
   
   menuIconContainer: { 
@@ -400,7 +585,7 @@ const styles = StyleSheet.create({
   signOutButtonPressed: {
     backgroundColor: `${colors.danger}20`,
   },
-  signOutText: { color: '#EF4444', fontWeight: '700', fontSize: 16 },
+  signOutText: { color: colors.danger, fontWeight: '700', fontSize: 16 },
 
   version: {
     textAlign: 'center',
@@ -424,7 +609,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 40,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
@@ -473,4 +658,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   }
 });
-

@@ -1,0 +1,56 @@
+{
+  "channel": "Mizajou CircuSave",
+  "fallback": {
+    "title": "Mizajou CircuSave",
+    "body": "Louvri CircuSave pou wè dènye mizajou a."
+  },
+  "contribution_due": {
+    "title": "Kontribisyon pou peye",
+    "body": "Kontribisyon pa ou pou tou {{round}} dwe peye."
+  },
+  "contribution_overdue": {
+    "title": "Kontribisyon anreta",
+    "body": "Kontribisyon pa ou pou tou {{round}} anreta."
+  },
+  "payment_submitted": {
+    "title": "Peman pou verifye",
+    "body": "{{name}} rapòte yon peman pou verifye."
+  },
+  "payment_confirmed": {
+    "title": "Peman resevwa",
+    "body": "Òganizatè a konfime li resevwa peman ou a."
+  },
+  "payment_rejected": {
+    "title": "Peman an bezwen atansyon",
+    "body": "Òganizatè a pa resevwa peman sa a.",
+    "bodyWithReason": "Òganizatè a pa resevwa peman sa a. Rezon: {{reason}}"
+  },
+  "payment_instructions_updated": {
+    "title": "Enstriksyon peman yo chanje",
+    "body": "{{circle}} chanje kote pou voye kontribisyon ou."
+  },
+  "organizer_review_required": {
+    "title": "Peman pou verifye",
+    "body": "{{name}} rapòte yon peman pou verifye."
+  },
+  "payout_ready": {
+    "title": "Peman pare",
+    "body": "Peman tou {{round}} la pare pou livre."
+  },
+  "payout_completed": {
+    "title": "Peman fini",
+    "body": "Peman tou {{round}} la fini."
+  },
+  "round_started": {
+    "title": "Tou a kòmanse",
+    "body": "Tou {{round}} aktif kounye a."
+  },
+  "next_round_started": {
+    "title": "Pwochen tou a kòmanse",
+    "body": "Tou {{round}} aktif kounye a."
+  },
+  "circle_completed": {
+    "title": "Sèk la fini",
+    "body": "{{circle}} fini tout tou yo."
+  }
+}

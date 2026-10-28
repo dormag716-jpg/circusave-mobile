@@ -1,147 +1,564 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as SecureStore from 'expo-secure-store';
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { usePathname } from 'expo-router';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  ActivityIndicator,
+  AppState,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radii, spacing } from '@/lib/theme';
-
-const SECURE_STORE_KEY = 'circusave_require_local_auth';
+import { resetNavigationToLogin, shouldCoverSignedOutRoute } from '@/lib/auth/authBoundary';
+import { login, logout } from '@/lib/api';
+import { useAuthSession } from '@/lib/auth/authContext';
+import {
+  isCompatibleStrongBiometric,
+  loadAppLockPreferences,
+  subscribeAppLockPreferences,
+} from '@/lib/platform/appLockPreferences';
+import { verifyAccountPassword } from '@/lib/platform/deviceLockPassword';
+import { isSystemPromptActive } from '@/lib/platform/systemPromptGuard';
+import {
+  INITIAL_DEVICE_LOCK,
+  deviceLockCoversProtectedContent,
+  reduceDeviceLock,
+  shouldStartBiometricPrompt,
+  supportsNativeBiometrics,
+  type BiometricPromptResult,
+  type DeviceLockEvent,
+} from '@/lib/platform/deviceLockState';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 type DeviceLockContextType = {
-  isLockEnabled: boolean;
-  setLockEnabled: (enabled: boolean) => Promise<void>;
+  isLocked: boolean;
+  isInitializing: boolean;
 };
 
 const DeviceLockContext = createContext<DeviceLockContextType>({
-  isLockEnabled: false,
-  setLockEnabled: async () => {},
+  isLocked: true,
+  isInitializing: true,
 });
 
 export function useDeviceLock() {
   return useContext(DeviceLockContext);
 }
 
+function classifyBiometricResult(
+  result: LocalAuthentication.LocalAuthenticationResult,
+): BiometricPromptResult {
+  if (result.success) {
+    return 'success';
+  }
+  if (
+    result.error === 'user_cancel' ||
+    result.error === 'app_cancel' ||
+    result.error === 'system_cancel'
+  ) {
+    return 'canceled';
+  }
+  if (
+    result.error === 'not_available' ||
+    result.error === 'not_enrolled' ||
+    result.error === 'passcode_not_set' ||
+    result.error === 'user_fallback'
+  ) {
+    return 'unavailable';
+  }
+  return 'failed';
+}
+
 export function DeviceLockProvider({ children }: { children: React.ReactNode }) {
-  const [isLockEnabled, setIsLockEnabled] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true);
-  const appState = useRef(AppState.currentState);
+  const { t } = useTranslation('deviceLock');
+  const { session, status } = useAuthSession();
+  const pathname = usePathname();
+  const [model, dispatch] = useReducer(reduceDeviceLock, INITIAL_DEVICE_LOCK);
+  const [appState, setAppState] = useState(AppState.currentState);
+  const [passwordDraft, setPasswordDraft] = useState('');
+  const modelRef = useRef(model);
+  const promptedGeneration = useRef(-1);
+  const promptGenerationRef = useRef(model.promptGeneration);
+  const biometricGate = useRef(false);
+  const passwordGate = useRef(false);
+  const attemptCounter = useRef(0);
+  const sessionKey = session?.user.id && session.session.id
+    ? `${session.user.id}:${session.session.id}`
+    : '';
+  const sessionKeyRef = useRef(sessionKey);
+  modelRef.current = model;
+  promptGenerationRef.current = model.promptGeneration;
+  sessionKeyRef.current = sessionKey;
 
   useEffect(() => {
+    dispatch({ type: 'auth_status', status, sessionKey });
+  }, [sessionKey, status]);
+
+  useEffect(() => {
+    const userId = session?.user.id ?? '';
+    if (status !== 'authenticated' || !userId) {
+      return undefined;
+    }
+    let active = true;
+    const publish = (preferences: {
+      appLockEnabled: boolean;
+      biometricUnlockEnabled: boolean;
+    }) => {
+      dispatch({ type: 'preferences', ...preferences });
+    };
     void (async () => {
+      let compatible = false;
       try {
-        const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY);
-        const enabled = stored === 'true';
-        setIsLockEnabled(enabled);
-        if (enabled) {
-          setIsLocked(true);
-          await authenticate();
-        }
+        const [hasHardware, isEnrolled, enrolledLevel] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+          LocalAuthentication.getEnrolledLevelAsync(),
+        ]);
+        compatible = isCompatibleStrongBiometric({
+          hasHardware: hasHardware === true,
+          isEnrolled: isEnrolled === true,
+          enrolledLevel: typeof enrolledLevel === 'number' ? enrolledLevel : 0,
+        });
       } catch {
-        // ignore
-      } finally {
-        setIsInitializing(false);
+        compatible = false;
       }
-    })();
-  }, []);
-
-  const authenticate = async () => {
-    try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
-      if (!hasHardware || !isEnrolled) {
-        // Fallback if hardware/biometrics not set up
-        setIsLocked(false);
+      const loaded = await loadAppLockPreferences(userId, compatible);
+      if (!active) {
         return;
       }
-
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Unlock CircuSave',
-        fallbackLabel: 'Use Passcode',
-      });
-
-      if (result.success) {
-        setIsLocked(false);
+      publish(
+        loaded.ok
+          ? loaded.preferences
+          : { appLockEnabled: true, biometricUnlockEnabled: false },
+      );
+    })();
+    const unsubscribe = subscribeAppLockPreferences((changedUserId, preferences) => {
+      if (changedUserId === userId) {
+        publish(preferences);
       }
-    } catch {
-      // If biometric API fails for any reason, fail open so the user isn't locked out
-      setIsLocked(false);
-    }
-  };
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [session?.user.id, status]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        // App has come to the foreground
-        if (isLockEnabled) {
-          setIsLocked(true);
-          void authenticate();
-        }
+    dispatch({ type: 'app_state', next: AppState.currentState, now: Date.now() });
+    const subscription = AppState.addEventListener('change', (next) => {
+      // A system permission dialog is not the person leaving the app.
+      if (next !== 'active' && isSystemPromptActive()) {
+        return;
       }
-      appState.current = nextAppState;
+      if (
+        next === 'background' &&
+        biometricGate.current &&
+        Platform.OS === 'android' &&
+        typeof LocalAuthentication.cancelAuthenticate === 'function'
+      ) {
+        void LocalAuthentication.cancelAuthenticate().catch(() => undefined);
+      }
+      setAppState(next);
+      dispatch({ type: 'app_state', next, now: Date.now() });
     });
-
     return () => {
       subscription.remove();
     };
-  }, [isLockEnabled]);
+  }, []);
 
-  const setLockEnabled = async (enabled: boolean) => {
-    try {
-      await SecureStore.setItemAsync(SECURE_STORE_KEY, enabled ? 'true' : 'false');
-    } catch {
-      // ignore storage failures — in-memory state is still updated
+  useEffect(() => {
+    if (model.phase !== 'locked') {
+      promptedGeneration.current = -1;
+      setPasswordDraft('');
     }
-    setIsLockEnabled(enabled);
+  }, [model.phase]);
+
+  const runBiometric = async () => {
+    if (biometricGate.current || passwordGate.current) {
+      return;
+    }
+    if (!supportsNativeBiometrics(Platform.OS)) {
+      dispatch({ type: 'show_password_fallback' });
+      return;
+    }
+    const attemptId = attemptCounter.current + 1;
+    const attemptSessionKey = sessionKeyRef.current;
+    const started = reduceDeviceLock(modelRef.current, {
+      type: 'biometric_started',
+      attemptId,
+      sessionKey: attemptSessionKey,
+    });
+    if (!started.authenticating || started.attemptId !== attemptId) {
+      return;
+    }
+    attemptCounter.current = attemptId;
+    biometricGate.current = true;
+    promptedGeneration.current = promptGenerationRef.current;
+    dispatch({
+      type: 'biometric_started',
+      attemptId,
+      sessionKey: attemptSessionKey,
+    });
+    let outcome: BiometricPromptResult = 'unavailable';
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!hasHardware || !isEnrolled) {
+        outcome = 'unavailable';
+      } else {
+        // Class 3 only. The device passcode stays off here because the
+        // CircuSave password fallback is the recovery path. A weaker face
+        // unlock is not accepted for this financial lock.
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: t('unlockPrompt'),
+          cancelLabel: t('cancel'),
+          fallbackLabel: '',
+          disableDeviceFallback: true,
+          biometricsSecurityLevel: 'strong',
+        });
+        outcome = classifyBiometricResult(result);
+      }
+    } catch {
+      outcome = 'unavailable';
+    } finally {
+      biometricGate.current = false;
+      const resultEvent: DeviceLockEvent = {
+        type: 'biometric_result',
+        result: outcome,
+        attemptId,
+        sessionKey: attemptSessionKey,
+        appState: AppState.currentState,
+      };
+      const preview = reduceDeviceLock(modelRef.current, resultEvent);
+      dispatch(resultEvent);
+      if (
+        preview.phase === 'locked' &&
+        !preview.authenticating &&
+        AppState.currentState === 'active' &&
+        promptedGeneration.current !== promptGenerationRef.current
+      ) {
+        void runBiometric();
+      }
+    }
   };
 
-  if (isInitializing) {
-    return <View style={styles.container} />; // blank screen while checking
-  }
+  useEffect(() => {
+    if (
+      !supportsNativeBiometrics(Platform.OS) &&
+      model.phase === 'locked' &&
+      !model.passwordFallback &&
+      !model.authenticating &&
+      !model.passwordSubmitting
+    ) {
+      dispatch({ type: 'show_password_fallback' });
+      return;
+    }
+    if (
+      !shouldStartBiometricPrompt({
+        phase: model.phase,
+        authenticating: model.authenticating,
+        passwordSubmitting: model.passwordSubmitting,
+        passwordFallback: model.passwordFallback,
+        biometricUnlockEnabled: model.biometricUnlockEnabled,
+        appState,
+        platform: Platform.OS,
+        promptedGeneration: promptedGeneration.current,
+        promptGeneration: model.promptGeneration,
+      })
+    ) {
+      return;
+    }
+    const generation = model.promptGeneration;
+    const timer = setTimeout(() => {
+      if (promptedGeneration.current === generation) {
+        return;
+      }
+      if (AppState.currentState !== 'active') {
+        return;
+      }
+      if (
+        modelRef.current.phase !== 'locked' ||
+        modelRef.current.authenticating ||
+        modelRef.current.passwordSubmitting ||
+        modelRef.current.passwordFallback
+      ) {
+        return;
+      }
+      void runBiometric();
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [
+    appState,
+    model.authenticating,
+    model.biometricUnlockEnabled,
+    model.passwordFallback,
+    model.passwordSubmitting,
+    model.phase,
+    model.promptGeneration,
+    t,
+  ]);
+
+  const submitPassword = async () => {
+    if (passwordGate.current || biometricGate.current) {
+      return;
+    }
+    const password = passwordDraft;
+    const attemptId = attemptCounter.current + 1;
+    const attemptSessionKey = sessionKeyRef.current;
+    const started = reduceDeviceLock(modelRef.current, {
+      type: 'password_submitted',
+      attemptId,
+      sessionKey: attemptSessionKey,
+    });
+    if (!started.passwordSubmitting || started.attemptId !== attemptId) {
+      return;
+    }
+    attemptCounter.current = attemptId;
+    passwordGate.current = true;
+    dispatch({
+      type: 'password_submitted',
+      attemptId,
+      sessionKey: attemptSessionKey,
+    });
+    setPasswordDraft('');
+    let outcome: 'success' | 'failed' = 'failed';
+    try {
+      const result = await verifyAccountPassword({
+        email: session?.user.email || '',
+        password,
+        expectedUserId: session?.user.id || '',
+        login,
+        revokeVerificationSession: (token) => logout(token),
+      });
+      outcome = result === 'success' ? 'success' : 'failed';
+    } catch {
+      outcome = 'failed';
+    } finally {
+      passwordGate.current = false;
+      dispatch({
+        type: 'password_result',
+        result: outcome,
+        attemptId,
+        sessionKey: attemptSessionKey,
+        appState: AppState.currentState,
+      });
+    }
+  };
+
+  const value = useMemo<DeviceLockContextType>(
+    () => ({
+      isLocked: model.phase === 'locked',
+      isInitializing: model.phase === 'initializing',
+    }),
+    [model.phase],
+  );
+
+  const coverLocked = deviceLockCoversProtectedContent(model);
+  const coverSignedOut =
+    model.phase === 'signed_out' && shouldCoverSignedOutRoute(pathname);
+  const coverVisible = coverLocked || coverSignedOut;
+  const showLock = model.phase === 'locked';
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  const lockScrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    // On short screens the button sits below the fold: bring it above the keyboard.
+    if (keyboardHeight > 0) {
+      const timer = setTimeout(() => lockScrollRef.current?.scrollToEnd({ animated: true }), 60);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [keyboardHeight]);
+  // The lock cover is a Modal window; Android does not resize it for the keyboard,
+  // so pad by the part of the keyboard the SafeAreaView does not already clear.
+  const keyboardPadding =
+    Platform.OS === 'android' ? Math.max(0, keyboardHeight - insets.bottom) : 0;
+  const failureText =
+    model.failure === 'password_failed'
+      ? t('passwordFailed')
+      : model.failure === 'biometric_canceled'
+        ? t('canceled')
+        : model.failure === 'biometric_failed'
+          ? t('failed')
+          : null;
 
   return (
-    <DeviceLockContext.Provider value={{ isLockEnabled, setLockEnabled }}>
+    <DeviceLockContext.Provider value={value}>
       {children}
-      {isLocked && (
+      <Modal
+        visible={coverVisible}
+        animationType="none"
+        transparent={false}
+        statusBarTranslucent
+        presentationStyle="fullScreen"
+        onRequestClose={() => {
+          if (modelRef.current.phase === 'signed_out') {
+            resetNavigationToLogin();
+          }
+        }}
+      >
         <SafeAreaView style={styles.lockOverlay} edges={['top', 'bottom']}>
-          <View style={styles.lockContent}>
-            <View style={styles.iconCircle}>
-              <FontAwesome name="lock" size={48} color={colors.primary} />
-            </View>
-            <Text style={styles.title}>App Locked</Text>
-            <Text style={styles.subtitle}>
-              Verify your identity to access your savings circles.
-            </Text>
-            <Pressable style={styles.unlockButton} onPress={() => void authenticate()}>
-              <Text style={styles.unlockButtonText}>Unlock App</Text>
-            </Pressable>
-          </View>
+          {showLock ? (
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={[styles.keyboard, { paddingBottom: keyboardPadding }]}
+            >
+              <ScrollView
+                ref={lockScrollRef}
+                contentContainerStyle={styles.lockScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+              <View style={styles.lockContent}>
+                <View style={styles.iconCircle}>
+                  <FontAwesome name="lock" size={48} color={colors.primary} />
+                </View>
+                <Text style={styles.title}>{t('appLocked')}</Text>
+                <Text style={styles.subtitle}>{t('verifyIdentity')}</Text>
+                {failureText ? <Text style={styles.errorText}>{failureText}</Text> : null}
+                {model.passwordFallback ? (
+                  <>
+                    <Text style={styles.passwordBody}>{t('passwordBody')}</Text>
+                    <TextInput
+                      value={passwordDraft}
+                      onChangeText={setPasswordDraft}
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="current-password"
+                      textContentType="password"
+                      placeholder={t('passwordPlaceholder')}
+                      placeholderTextColor={colors.subtle}
+                      style={styles.input}
+                      editable={!model.passwordSubmitting}
+                      accessibilityLabel={t('passwordPlaceholder')}
+                      onSubmitEditing={() => {
+                        void submitPassword();
+                      }}
+                    />
+                    <Pressable
+                      style={styles.unlockButton}
+                      onPress={() => {
+                        void submitPassword();
+                      }}
+                      disabled={model.passwordSubmitting || passwordDraft.length === 0}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('verifyPassword')}
+                    >
+                      {model.passwordSubmitting ? (
+                        <ActivityIndicator color={colors.onColor} />
+                      ) : (
+                        <Text style={styles.unlockButtonText}>{t('verifyPassword')}</Text>
+                      )}
+                    </Pressable>
+                    {supportsNativeBiometrics(Platform.OS) ? (
+                      <Pressable
+                        style={styles.secondaryButton}
+                        onPress={() => {
+                          dispatch({ type: 'retry_biometric' } satisfies DeviceLockEvent);
+                          void runBiometric();
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('unlockApp')}
+                      >
+                        <Text style={styles.secondaryButtonText}>{t('unlockApp')}</Text>
+                      </Pressable>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Pressable
+                      style={styles.unlockButton}
+                      onPress={() => {
+                        void runBiometric();
+                      }}
+                      disabled={model.authenticating}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('unlockApp')}
+                    >
+                      {model.authenticating ? (
+                        <ActivityIndicator color={colors.onColor} />
+                      ) : (
+                        <Text style={styles.unlockButtonText}>{t('unlockApp')}</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={styles.secondaryButton}
+                      onPress={() => {
+                        dispatch({ type: 'show_password_fallback' });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('usePassword')}
+                    >
+                      <Text style={styles.secondaryButtonText}>{t('usePassword')}</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          ) : (
+            <View style={styles.lockContent} />
+          )}
         </SafeAreaView>
-      )}
+      </Modal>
     </DeviceLockContext.Provider>
   );
 }
 
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (event) =>
+      setHeight(event.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  lockScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 9999,
+  },
+  keyboard: {
+    flex: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
   },
   lockContent: {
     alignItems: 'center',
+    alignSelf: 'stretch',
     padding: spacing.screenX,
   },
   iconCircle: {
@@ -163,17 +580,57 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
+  },
+  passwordBody: {
+    fontSize: 15,
+    color: colors.muted,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  input: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    color: colors.textStrong,
+    fontSize: 16,
+    marginBottom: 16,
+    minHeight: 52,
+    paddingHorizontal: 16,
   },
   unlockButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
     backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    minHeight: 52,
+    justifyContent: 'center',
     paddingHorizontal: 32,
     paddingVertical: 16,
-    borderRadius: radii.pill,
   },
   unlockButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '600',
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    marginTop: 12,
+    minHeight: 44,
+  },
+  secondaryButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

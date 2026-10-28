@@ -1,9 +1,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -12,19 +16,44 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   addCircleMember,
   getCircleDetail,
+  getMemberAccessToken,
   type BackendCircleDetail,
   type BackendCircleMember,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { circleWorkspaceHref } from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { copyText } from '@/lib/platform/clipboard';
+import { logClientError } from '@/lib/platform/errorLogging';
+import {
+  buildClaimInviteShareMessage,
+  buildClaimInviteUrl,
+  buildGenericCircleInviteShareMessage,
+} from '@/lib/circles/claimInvite';
+import { isUnclaimedHand } from '@/lib/circles/circleLifecycleCopy';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
+import {
+  inviteFieldScrollOffsetFromWindow,
+  inviteFormKeyboardBehavior,
+  inviteFormKeyboardDismissMode,
+  inviteFormScrollPadding,
+} from '@/lib/circles/inviteFormKeyboard';
+import {
+  validatePlannedHandAdd,
+  type PlannedHandAddFieldErrors,
+} from '@/lib/circles/plannedHandAdd';
+import { isCircleSetupState, getCircleLifecyclePhase } from '@/lib/circles/startCircleReadiness';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 export default function InviteMemberScreen() {
+  const { t } = useTranslation(['invite', 'people']);
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const focusedFieldRef = useRef<View | null>(null);
+  const scrollOffsetRef = useRef(0);
   const { session } = useAuthSession();
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
@@ -37,11 +66,15 @@ export default function InviteMemberScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [fullName, setFullName] = useState('');
-  const [contact, setContact] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<PlannedHandAddFieldErrors>({});
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [sharingClaimId, setSharingClaimId] = useState<string | null>(null);
 
   async function loadInviteData() {
     if (!token || !circleId) {
-      setError('Missing token or circle ID.');
+      setError(t('organizer.missingContext'));
       setLoading(false);
       return;
     }
@@ -53,11 +86,8 @@ export default function InviteMemberScreen() {
       const circleResponse = await getCircleDetail(token, circleId);
       setCircle(circleResponse);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load invite details.',
-      );
+      logClientError('Unable to load organizer invite details', loadError, { circleId });
+      setError(t('organizer.loadError'));
     } finally {
       setLoading(false);
     }
@@ -67,72 +97,237 @@ export default function InviteMemberScreen() {
     void loadInviteData();
   }, [circleId, token]);
 
+  function scrollToFocusedField(anchor: View | null = focusedFieldRef.current) {
+    if (anchor) {
+      focusedFieldRef.current = anchor;
+    }
+    const target = focusedFieldRef.current;
+    const scroll = scrollRef.current;
+    if (!target || !scroll) return;
+
+    const nativeScroll = scroll.getNativeScrollRef();
+    if (!nativeScroll) return;
+
+    target.measureInWindow((_x, fieldWindowY) => {
+      nativeScroll.measureInWindow((_scrollX, scrollWindowY) => {
+        scroll.scrollTo({
+          y: inviteFieldScrollOffsetFromWindow({
+            fieldWindowY,
+            scrollWindowY,
+            currentScrollY: scrollOffsetRef.current,
+          }),
+          animated: true,
+        });
+      });
+    });
+  }
+
+  useEffect(() => {
+    const eventName =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(eventName, () => {
+      scrollToFocusedField();
+    });
+    return () => sub.remove();
+  }, []);
+
+  function syncFieldErrors(
+    next: { fullName: string; phone: string; email: string },
+    submitted = attemptedSubmit,
+  ) {
+    const result = validatePlannedHandAdd(next);
+    if (submitted) {
+      setFieldErrors(result.errors);
+      return;
+    }
+    setFieldErrors({
+      phone: next.phone.trim() ? result.errors.phone : undefined,
+      email: next.email.trim() ? result.errors.email : undefined,
+    });
+  }
+
+  const unclaimedHands = useMemo(() => {
+    const members = circle?.members ?? [];
+    const turnOrder = Array.isArray(circle?.turnOrder) ? circle!.turnOrder : [];
+    const ordered = [...members].sort((a, b) => {
+      const posA = turnOrder.indexOf(a.id);
+      const posB = turnOrder.indexOf(b.id);
+      const norm = (p: number) => (p === -1 ? Number.MAX_SAFE_INTEGER : p);
+      return norm(posA) - norm(posB);
+    });
+    return ordered.filter(
+      (member) =>
+        member.isParticipating !== false && isUnclaimedHand(member),
+    );
+  }, [circle]);
+
   async function sendInvite() {
     if (!token || !circle) {
-      Alert.alert('Invite unavailable', 'Circle details are not loaded yet.');
+      Alert.alert(t('unavailableTitle'), t('organizer.circleMissing'));
       return;
     }
 
-    const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
-    const firstName = nameParts[0] ?? '';
-    const lastName = nameParts.slice(1).join(' ');
-    const trimmedContact = contact.trim();
-
-    if (!firstName) {
-      Alert.alert('Full name required', 'Enter the person you want to invite.');
+    setAttemptedSubmit(true);
+    const result = validatePlannedHandAdd({ fullName, phone, email });
+    setFieldErrors(result.errors);
+    if (!result.ok) {
+      if (result.errors.fullName) {
+        Alert.alert(
+          t('organizer.fullNameRequiredTitle'),
+          t('organizer.fullNameRequiredMessage'),
+        );
+      } else if (result.errors.phone) {
+        Alert.alert(t('organizer.contactRequiredTitle'), t('organizer.invalidPhone'));
+      } else if (result.errors.email) {
+        Alert.alert(t('organizer.contactRequiredTitle'), t('organizer.invalidEmail'));
+      } else {
+        Alert.alert(
+          t('organizer.contactRequiredTitle'),
+          t('organizer.contactRequiredMessage'),
+        );
+      }
       return;
     }
 
-    if (!trimmedContact) {
-      Alert.alert('Contact required', 'Enter a phone number or email address.');
+    const capacity = circle.rosterCapacity;
+    if (capacity?.atCapacity || (capacity?.remainingHands ?? 1) <= 0) {
+      Alert.alert(
+        t('organizer.planLimitTitle'),
+        capacity?.tier === 'premium'
+          ? t('organizer.premiumLimit', { count: capacity.maxHands ?? 50 })
+          : t('organizer.freeLimit', { count: capacity?.maxHands ?? 20 }),
+      );
       return;
     }
 
     setSubmitting(true);
     try {
       await addCircleMember(token, circle.id, {
-        firstName,
-        lastName,
-        email: trimmedContact.includes('@') ? trimmedContact : undefined,
-        phone: trimmedContact.includes('@') ? '' : trimmedContact,
+        firstName: result.payload.firstName,
+        lastName: result.payload.lastName,
+        phone: result.payload.phone,
+        email: result.payload.email || undefined,
       });
+      Keyboard.dismiss();
       await loadInviteData();
       setFullName('');
-      setContact('');
+      setPhone('');
+      setEmail('');
+      setFieldErrors({});
+      setAttemptedSubmit(false);
       Alert.alert(
-        'Invite updated',
-        'The person was added to the active roster.'
+        t('organizer.plannedAddedTitle'),
+        t('organizer.plannedAddedMessage'),
       );
     } catch (inviteError) {
+      logClientError('Unable to add planned circle hand', inviteError, { circleId });
       Alert.alert(
-        'Unable to add member',
-        inviteError instanceof Error
-          ? inviteError.message
-          : 'The backend rejected the invite request.',
+        t('organizer.addErrorTitle'),
+        t('genericError'),
       );
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleShareLink() {
-    if (!circle) return;
+  async function handleCopyCircleCode() {
+    const shortCode = String(circle?.circleCode || '').trim();
+    if (!shortCode) {
+      Alert.alert(
+        t('people:invite.codeUnavailableTitle'),
+        t('people:invite.codeUnavailable'),
+      );
+      return;
+    }
     try {
-      await Share.share({
-        message: `Join my savings circle '${circle.name}' on CircuSave! Download the app and sign up to see our round: https://circusave.com/invite/${circle.id}`,
-      });
-    } catch (error) {
-      Alert.alert('Unable to share link', 'An error occurred while trying to open the share menu.');
+      const result = await copyText(shortCode);
+      if (result === 'clipboard') {
+        Alert.alert(
+          t('people:invite.codeCopiedTitle'),
+          t('people:invite.codeCopied', { code: shortCode }),
+        );
+      } else if (result !== 'share') {
+        Alert.alert(t('people:invite.codeTitle'), shortCode);
+      }
+    } catch (copyError) {
+      logClientError('Unable to copy circle code', copyError, { circleId });
+      Alert.alert(t('people:invite.copyErrorTitle'), t('genericError'));
     }
   }
 
+  async function handleShareGenericLink() {
+    if (!circle) return;
+    try {
+      await Share.share({
+        message: buildGenericCircleInviteShareMessage({
+          circleName: circle.name,
+          circleId: circle.id,
+          circleCode: circle.circleCode,
+          formatMessage: ({ circleName, circleCode, inviteUrl }) =>
+            circleCode
+              ? t('organizer.genericShareWithCode', {
+                  circleName,
+                  circleCode,
+                  inviteUrl,
+                })
+              : t('organizer.genericShareWithoutCode', {
+                  circleName,
+                  inviteUrl,
+                }),
+        }),
+      });
+    } catch {
+      Alert.alert(t('organizer.shareErrorTitle'), t('organizer.shareErrorMessage'));
+    }
+  }
+
+  async function handleShareClaimInvite(member: BackendCircleMember) {
+    if (!token || !circle || sharingClaimId) {
+      return;
+    }
+    setSharingClaimId(member.id);
+    try {
+      const { claimToken } = await getMemberAccessToken(
+        circle.id,
+        member.id,
+        token,
+      );
+      const claimUrl = buildClaimInviteUrl(circle.id, claimToken);
+      await Share.share({
+        message: buildClaimInviteShareMessage({
+          circleName: circle.name,
+          handName:
+            member.displayLabel ||
+            memberName(member, t('organizer.unavailableFallback')),
+          claimUrl,
+          formatMessage: ({ circleName, handName, claimUrl: url }) =>
+            t('organizer.claimShareMessage', {
+              circleName,
+              handName,
+              claimUrl: url,
+            }),
+        }),
+      });
+    } catch (shareError) {
+      logClientError('Unable to share planned-hand claim invite', shareError, {
+        circleId: circle.id,
+        memberId: member.id,
+      });
+      Alert.alert(
+        t('organizer.claimShareErrorTitle'),
+        t('organizer.claimShareErrorMessage'),
+      );
+    } finally {
+      setSharingClaimId(null);
+    }
+  }
 
   if (loading) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.statusText}>Loading invite details...</Text>
+          <Text style={styles.statusText}>{t('loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -143,31 +338,73 @@ export default function InviteMemberScreen() {
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <FontAwesome name="warning" size={32} color={colors.warning} />
-          <Text style={styles.statusTitle}>Invite unavailable</Text>
+          <Text style={styles.statusTitle}>{t('unavailableTitle')}</Text>
           <Text style={styles.statusText}>
-            {error ?? 'The backend did not return this circle.'}
+            {error ?? t('organizer.circleMissing')}
           </Text>
           <Pressable
             style={styles.primaryButton}
             onPress={() => void loadInviteData()}
             accessibilityRole="button"
-            accessibilityLabel="Retry invite details"
+            accessibilityLabel={t('retryAccessibility')}
           >
-            <Text style={styles.primaryButtonText}>Retry</Text>
+            <Text style={styles.primaryButtonText}>{t('retry')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
-
   const hasReachedLimit = (circle.members?.length || 0) >= 20;
+  // Authoritative: setup phase only (status/startedAt/isStarted) — never schedule.
+  const structureUnlocked = isCircleSetupState(circle);
+  const phase = getCircleLifecyclePhase(circle);
+
+  if (!structureUnlocked) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+        <View style={styles.statusCard}>
+          <FontAwesome name="lock" size={32} color={colors.muted} />
+          <Text style={styles.statusTitle}>{t('organizer.rosterLocked')}</Text>
+          <Text style={styles.statusText}>
+            {phase === 'completed'
+              ? t('organizer.completedLocked')
+              : t('organizer.startedLocked')}
+          </Text>
+          <Pressable
+            style={styles.primaryButton}
+            onPress={() => router.replace(circleWorkspaceHref(circle.id))}
+            accessibilityRole="button"
+            accessibilityLabel={t('organizer.backWorkspaceAccessibility')}
+          >
+            <Text style={styles.primaryButtonText}>{t('organizer.backWorkspace')}</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={inviteFormKeyboardBehavior(Platform.OS)}
+        keyboardVerticalOffset={0}
+      >
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: inviteFormScrollPadding(insets.bottom) },
+        ]}
+        keyboardDismissMode={inviteFormKeyboardDismissMode(Platform.OS)}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         keyboardShouldPersistTaps="handled"
+        onScroll={(event) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
@@ -175,69 +412,211 @@ export default function InviteMemberScreen() {
             style={styles.backButton}
             onPress={() => router.replace(circleWorkspaceHref(circle.id))}
             accessibilityRole="button"
-            accessibilityLabel="Back to circle workspace"
+            accessibilityLabel={t('organizer.backWorkspaceAccessibility')}
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
           <View style={styles.headerCopy}>
-            <Text style={styles.kicker}>Invite Members</Text>
+            <Text style={styles.kicker}>{t('organizer.kicker')}</Text>
             <Text style={styles.title}>{circle.name}</Text>
           </View>
         </View>
+
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>{t('organizer.circleInviteTitle')}</Text>
+          <Text style={styles.sectionSubtitle}>
+            {t('organizer.circleInviteSubtitle')}
+          </Text>
+          <View style={styles.codeBlock}>
+            <Text style={styles.codeLabel}>{t('people:invite.circleCode')}</Text>
+            <View style={styles.codeRow}>
+              <Text
+                selectable
+                style={styles.codeValue}
+                accessibilityLabel={t('people:invite.codeA11y', {
+                  code: circle.circleCode || t('people:common.unavailable'),
+                })}
+              >
+                {circle.circleCode || '-'}
+              </Text>
+              <View style={styles.codeActions}>
+                <Pressable
+                  style={styles.iconBtn}
+                  disabled={!circle.circleCode}
+                  onPress={() => void handleCopyCircleCode()}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('people:invite.copy')}
+                >
+                  <FontAwesome name="copy" size={15} color={colors.text} />
+                </Pressable>
+                <Pressable
+                  style={styles.iconBtn}
+                  disabled={!circle.circleCode}
+                  onPress={() => void handleShareGenericLink()}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('people:invite.share')}
+                >
+                  <FontAwesome name="share-alt" size={15} color={colors.primary} />
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {unclaimedHands.length > 0 ? (
+          <View style={styles.formCard}>
+            <Text style={styles.sectionTitle}>{t('organizer.claimSectionTitle')}</Text>
+            <Text style={styles.sectionSubtitle}>
+              {t('organizer.claimSubtitle')}
+            </Text>
+            <View style={styles.claimList}>
+              {unclaimedHands.map((member, index) => (
+                <View key={member.id} style={styles.claimRow}>
+                  <View style={styles.claimPosition}>
+                    <Text style={styles.claimPositionText}>{index + 1}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.claimName} numberOfLines={1}>
+                      {member.displayLabel ||
+                        memberName(member, t('organizer.unavailableFallback'))}
+                    </Text>
+                    <Text style={styles.claimMeta}>
+                      {t('organizer.awaitingClaim')}
+                      {member.phone ? ` · ${member.phone}` : ''}
+                      {member.email && !member.phone ? ` · ${member.email}` : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={[
+                      styles.claimShareButton,
+                      sharingClaimId === member.id && styles.disabledButton,
+                    ]}
+                    disabled={sharingClaimId === member.id}
+                    onPress={() => void handleShareClaimInvite(member)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('organizer.shareClaimAccessibility', {
+                      name: memberName(
+                        member,
+                        t('organizer.unavailableFallback'),
+                      ),
+                    })}
+                  >
+                    {sharingClaimId === member.id ? (
+                      <ActivityIndicator color={colors.primary} size="small" />
+                    ) : (
+                      <>
+                        <FontAwesome
+                          name="link"
+                          size={13}
+                          color={colors.primary}
+                        />
+                        <Text style={styles.claimShareText}>
+                          {t('organizer.shareClaim')}
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.formCard, { backgroundColor: colors.successSoft }]}>
+            <Text style={[styles.sectionTitle, { color: colors.successText }]}>
+              {t('organizer.allClaimed')}
+            </Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.successText }]}>
+              {t('organizer.allClaimedSubtitle')}
+            </Text>
+          </View>
+        )}
 
         {hasReachedLimit ? (
           <View style={[styles.formCard, { borderColor: colors.warning, borderWidth: 1 }]}>
             <View style={{ alignItems: 'center', marginBottom: 16 }}>
               <FontAwesome name="lock" size={32} color={colors.warning} />
             </View>
-            <Text style={[styles.sectionTitle, { textAlign: 'center' }]}>Member Limit Reached</Text>
-            <Text style={[styles.sectionSubtitle, { textAlign: 'center', marginBottom: 24 }]}>
-              Free accounts are limited to 20 members per circle. Upgrade to Premium to add more members.
+            <Text style={[styles.sectionTitle, { textAlign: 'center' }]}>
+              {t('organizer.handLimit')}
+            </Text>
+            <Text
+              style={[
+                styles.sectionSubtitle,
+                { textAlign: 'center', marginBottom: 24 },
+              ]}
+            >
+              {t('organizer.handLimitMessage')}
             </Text>
             <Pressable
               style={styles.primaryButton}
               onPress={() => router.push('/subscription')}
             >
-              <Text style={styles.primaryButtonText}>View Plans</Text>
+              <Text style={styles.primaryButtonText}>{t('organizer.viewPlans')}</Text>
             </Pressable>
           </View>
         ) : (
           <>
-            <Pressable
-              style={styles.shareHeroCard}
-              onPress={() => void handleShareLink()}
-              accessibilityRole="button"
-              accessibilityLabel="Share invite link"
-            >
-              <View style={styles.shareHeroIcon}>
-                <FontAwesome name="share-alt" size={24} color={colors.primary} />
-              </View>
-              <View style={styles.shareHeroContent}>
-                <Text style={styles.shareHeroTitle}>Share invite link</Text>
-                <Text style={styles.shareHeroText}>
-                  Send a secure link for members to join
-                </Text>
-              </View>
-            </Pressable>
-
             <View style={styles.formCard}>
-              <Text style={styles.sectionTitle}>Or add manually</Text>
+              <Text style={styles.sectionTitle}>{t('organizer.addPlannedTitle')}</Text>
               <Text style={styles.sectionSubtitle}>
-                If you know their contact info, add them here
+                {t('organizer.addPlannedSubtitle')}
               </Text>
               <View style={styles.formSpacer} />
               <Field
-                label="Full name"
+                label={t('organizer.fullName')}
                 value={fullName}
-                onChangeText={setFullName}
-                placeholder="Enter member name"
+                onChangeText={(value) => {
+                  setFullName(value);
+                  syncFieldErrors({ fullName: value, phone, email });
+                }}
+                placeholder={t('organizer.fullNamePlaceholder')}
+                autoCapitalize="words"
+                error={
+                  fieldErrors.fullName
+                    ? t('organizer.fullNameRequiredMessage')
+                    : undefined
+                }
+                onInputFocus={scrollToFocusedField}
               />
               <Field
-                label="Phone or email"
-                value={contact}
-                onChangeText={setContact}
-                placeholder="Phone number or email"
+                label={t('organizer.phone')}
+                value={phone}
+                onChangeText={(value) => {
+                  setPhone(value);
+                  syncFieldErrors({ fullName, phone: value, email });
+                }}
+                placeholder={t('organizer.phonePlaceholder')}
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+                textContentType="telephoneNumber"
+                error={
+                  fieldErrors.phone
+                    ? t('organizer.invalidPhone')
+                    : attemptedSubmit && fieldErrors.contact && !email.trim()
+                      ? t('organizer.contactRequiredMessage')
+                      : undefined
+                }
+                onInputFocus={scrollToFocusedField}
+              />
+              <Field
+                label={t('organizer.email')}
+                value={email}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  syncFieldErrors({ fullName, phone, email: value });
+                }}
+                placeholder={t('organizer.emailPlaceholder')}
                 keyboardType="email-address"
+                autoCapitalize="none"
+                textContentType="emailAddress"
+                error={
+                  fieldErrors.email
+                    ? t('organizer.invalidEmail')
+                    : attemptedSubmit && fieldErrors.contact && !phone.trim()
+                      ? t('organizer.contactRequiredMessage')
+                      : undefined
+                }
+                onInputFocus={scrollToFocusedField}
               />
             </View>
 
@@ -246,22 +625,25 @@ export default function InviteMemberScreen() {
               disabled={submitting}
               onPress={() => void sendInvite()}
               accessibilityRole="button"
-              accessibilityLabel="Send invite"
+              accessibilityLabel={t('organizer.addPlanned')}
             >
               <Text style={styles.primaryButtonText}>
-                {submitting ? 'Sending...' : 'Send Invite'}
+                {submitting ? t('organizer.saving') : t('organizer.addPlanned')}
               </Text>
             </Pressable>
           </>
         )}
-
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-function memberName(member: BackendCircleMember | undefined) {
-  return member?.full_name || member?.name || 'Unavailable';
+function memberName(
+  member: BackendCircleMember | undefined,
+  fallback: string,
+) {
+  return member?.full_name || member?.name || fallback;
 }
 
 function Field({
@@ -271,16 +653,25 @@ function Field({
   placeholder,
   keyboardType,
   multiline,
+  autoCapitalize,
+  textContentType,
+  error,
+  onInputFocus,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
-  keyboardType?: 'default' | 'email-address';
+  keyboardType?: 'default' | 'email-address' | 'phone-pad';
   multiline?: boolean;
+  autoCapitalize?: 'none' | 'words';
+  textContentType?: 'emailAddress' | 'telephoneNumber' | 'name';
+  error?: string;
+  onInputFocus?: (anchor: View | null) => void;
 }) {
+  const wrapRef = useRef<View>(null);
   return (
-    <View style={styles.fieldWrap}>
+    <View ref={wrapRef} collapsable={false} style={styles.fieldWrap}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         value={value}
@@ -288,20 +679,34 @@ function Field({
         placeholder={placeholder}
         placeholderTextColor={colors.subtle}
         keyboardType={keyboardType ?? 'default'}
+        autoCapitalize={autoCapitalize ?? 'sentences'}
+        autoCorrect={keyboardType !== 'email-address'}
+        textContentType={textContentType}
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
-        style={[styles.input, multiline && styles.noteInput]}
+        accessibilityLabel={label}
+        onFocus={() => onInputFocus?.(wrapRef.current)}
+        style={[
+          styles.input,
+          multiline && styles.noteInput,
+          error ? styles.inputError : null,
+        ]}
       />
+      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
   );
 }
-
-
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
   },
   content: {
     flexGrow: 1,
@@ -312,82 +717,101 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 18,
+    marginBottom: 20,
+  },
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
+    marginRight: 8,
   },
   headerCopy: {
     flex: 1,
   },
-  backButton: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.cardBorder,
-    borderRadius: 18,
-    borderWidth: 1,
-    height: 48,
-    justifyContent: 'center',
-    width: 48,
-  },
   kicker: {
-    color: colors.muted,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   title: {
-    color: colors.textStrong,
-    fontSize: 30,
+    fontSize: 22,
     fontWeight: '900',
+    color: colors.textStrong,
     marginTop: 2,
   },
-  shareHeroCard: {
+  statusCard: {
+    flex: 1,
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.card,
-    flexDirection: 'row',
-    gap: 16,
+    justifyContent: 'center',
+    padding: 32,
+  },
+  statusTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textStrong,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  statusText: {
+    fontSize: 15,
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 22,
     marginBottom: 24,
-    padding: 20,
+  },
+  shareHeroCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderWidth: 1,
+    borderColor: `${colors.primary}20`,
+    marginBottom: 16,
   },
   shareHeroIcon: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 999,
-    height: 48,
-    justifyContent: 'center',
     width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: `${colors.primary}12`,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   shareHeroContent: {
     flex: 1,
   },
   shareHeroTitle: {
-    color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
+    color: colors.textStrong,
   },
   shareHeroText: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 13,
+    color: colors.muted,
     marginTop: 2,
+    lineHeight: 18,
   },
   formCard: {
     backgroundColor: colors.card,
-    borderColor: colors.cardBorder,
     borderRadius: radii.card,
+    padding: 18,
     borderWidth: 1,
-    marginTop: 16,
-    padding: spacing.card,
+    borderColor: `${colors.primary}15`,
+    marginBottom: 16,
   },
   sectionTitle: {
-    color: colors.text,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '900',
+    color: colors.textStrong,
   },
   sectionSubtitle: {
+    fontSize: 14,
     color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 4,
+    marginTop: 6,
+    lineHeight: 20,
   },
   formSpacer: {
     height: 16,
@@ -396,62 +820,137 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   fieldLabel: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '900',
-    marginBottom: 7,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
   },
   input: {
+    minHeight: 50,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: `${colors.primary}25`,
     backgroundColor: colors.background,
-    borderColor: '#e7e5e4',
-    borderRadius: radii.control,
-    borderWidth: 1,
-    color: colors.text,
+    paddingHorizontal: 14,
     fontSize: 16,
-    minHeight: 54,
-    paddingHorizontal: 16,
+    color: colors.textStrong,
   },
   noteInput: {
-    minHeight: 94,
-    paddingTop: 14,
+    minHeight: 90,
+    paddingTop: 12,
+  },
+  inputError: {
+    borderColor: colors.danger,
+  },
+  fieldError: {
+    marginTop: 6,
+    fontSize: 13,
+    color: colors.dangerText,
+    fontWeight: '700',
+  },
+  codeBlock: {
+    marginTop: 16,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+  },
+  codeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  codeValue: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.textStrong,
+    letterSpacing: 1,
+  },
+  codeActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${colors.primary}12`,
+  },
+  claimList: {
+    marginTop: 14,
+    gap: 10,
+  },
+  claimRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  claimPosition: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: `${colors.primary}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  claimPositionText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.primary,
+  },
+  claimName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  claimMeta: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  claimShareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: `${colors.primary}12`,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  claimShareText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
   },
   primaryButton: {
-    alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: radii.control,
-    justifyContent: 'center',
-    marginTop: 18,
+    borderRadius: radii.control || 12,
     minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 16,
     fontWeight: '900',
   },
   disabledButton: {
     opacity: 0.55,
-  },
-  statusCard: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.cardBorder,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    margin: spacing.screenX,
-    padding: spacing.card,
-  },
-  statusTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '900',
-    marginTop: 12,
-  },
-  statusText: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 21,
-    marginTop: 8,
-    textAlign: 'center',
   },
 });

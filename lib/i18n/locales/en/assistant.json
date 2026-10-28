@@ -1,0 +1,78 @@
+{
+  "entry": {
+    "title": "Ask CircuSave",
+    "subtitle": "Circle-aware guidance",
+    "openA11y": "Open CircuSave assistant for this circle"
+  },
+  "title": "SuSu AI",
+  "subtitle": "Your CircuSave assistant",
+  "contextTitle": "Answers grounded in your circle",
+  "contextCopy": "I can explain records and suggest where to look, but I cannot move money or change circle data.",
+  "welcome": {
+    "premium": "I am ready. Ask me about this circle, its setup, contributions, payout readiness, or what to do next."
+  },
+  "prompts": {
+    "attention": "What needs my attention today?",
+    "ready": "Is this circle ready for the next step?",
+    "explainRound": "Explain the current round in simple terms."
+  },
+  "thinking": "Reading the latest circle facts…",
+  "composerPlaceholder": "Ask about this circle…",
+  "sendA11y": "Send message to assistant",
+  "backA11y": "Go back",
+  "refusalBadge": "READ-ONLY · NO ACTION TAKEN",
+  "memory": {
+    "within": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. A long question can leave more out. Saved messages are not current amounts, statuses, or payout order.",
+    "beyond": "Saved in this chat: {{saved}}. The assistant receives the newest {{sent}}. {{omitted}} older messages stay saved and are not sent. Circle records remain the current facts."
+  },
+  "errors": {
+    "generic": "I could not answer right now. Please try again.",
+    "historyLoad": "Could not load earlier messages. You can still ask a new question.",
+    "historyLoadContinue": "Could not load earlier messages. Your next question still continues this chat.",
+    "rateLimited": "Too many questions right now. Please wait and try again.",
+    "allowanceDaily": "You have used all of today's SuSu AI questions. They reset tomorrow.",
+    "allowanceMonthly": "You have used this month's SuSu AI allowance. It resets next month.",
+    "throttled": "Too many attempts failed in a short time. Please wait a few minutes, then retry.",
+    "stillWorking": "This question is still being answered. Retrying will not ask it twice.",
+    "unavailable": "SuSu AI is temporarily unavailable. Try again.",
+    "allowanceDailyAt": "You have used all of today's SuSu AI questions. They reset on {{when}}.",
+    "allowanceMonthlyAt": "You have used this month's SuSu AI allowance. It resets on {{when}}."
+  },
+  "send": {
+    "retry": "Retry",
+    "retryA11y": "Retry sending this question",
+    "notSent": "Not sent",
+    "sending": "Sending…"
+  },
+  "history": {
+    "loading": "Loading conversation…",
+    "newChat": "New chat",
+    "newChatA11y": "Start a new assistant conversation"
+  },
+  "nav": {
+    "view_circle_setup": "Circle setup",
+    "view_pending_requests": "Pending requests",
+    "view_hand_details": "Hand details",
+    "view_round_status": "Round status",
+    "view_contribution_status": "Contributions",
+    "view_payout_order": "Payout order",
+    "view_activity": "Activity",
+    "upgrade_to_premium": "View plan"
+  },
+  "fab": {
+    "open": "Open the CircuSave assistant",
+    "hint": "Drag to move this button out of the way.",
+    "resetAction": "Reset position",
+    "resetDone": "The assistant button is back in its default place."
+  },
+  "picker": {
+    "title": "Ask about which circle?",
+    "note": "Private and read-only. Answers use current records, and the assistant cannot move money.",
+    "loading": "Loading your circles…",
+    "error": "Could not load your circles.",
+    "retry": "Try again",
+    "empty": "Create or join a circle to ask about it.",
+    "close": "Close the assistant",
+    "pickA11y": "Ask about {{name}}"
+  }
+}

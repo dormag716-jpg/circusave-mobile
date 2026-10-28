@@ -1,0 +1,56 @@
+{
+  "channel": "Actualizaciones de CircuSave",
+  "fallback": {
+    "title": "Actualización de CircuSave",
+    "body": "Abre CircuSave para ver la actualización más reciente."
+  },
+  "contribution_due": {
+    "title": "Contribución pendiente",
+    "body": "Tu contribución para la ronda {{round}} vence pronto."
+  },
+  "contribution_overdue": {
+    "title": "Contribución vencida",
+    "body": "Tu contribución para la ronda {{round}} está vencida."
+  },
+  "payment_submitted": {
+    "title": "Pago por verificar",
+    "body": "{{name}} informó un pago para verificar."
+  },
+  "payment_confirmed": {
+    "title": "Pago recibido",
+    "body": "El organizador confirmó que recibió tu pago."
+  },
+  "payment_rejected": {
+    "title": "El pago necesita atención",
+    "body": "El organizador no recibió este pago.",
+    "bodyWithReason": "El organizador no recibió este pago. Motivo: {{reason}}"
+  },
+  "payment_instructions_updated": {
+    "title": "Instrucciones de pago actualizadas",
+    "body": "{{circle}} actualizó dónde enviar tu contribución."
+  },
+  "organizer_review_required": {
+    "title": "Pago por verificar",
+    "body": "{{name}} informó un pago para verificar."
+  },
+  "payout_ready": {
+    "title": "Pago listo",
+    "body": "El pago de la ronda {{round}} está listo para entregarse."
+  },
+  "payout_completed": {
+    "title": "Pago completado",
+    "body": "El pago de la ronda {{round}} se completó."
+  },
+  "round_started": {
+    "title": "Ronda iniciada",
+    "body": "La ronda {{round}} está activa."
+  },
+  "next_round_started": {
+    "title": "Siguiente ronda iniciada",
+    "body": "La ronda {{round}} está activa."
+  },
+  "circle_completed": {
+    "title": "Círculo completado",
+    "body": "{{circle}} completó todas las rondas."
+  }
+}

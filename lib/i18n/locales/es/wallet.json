@@ -1,0 +1,25 @@
+{
+  "title": "Billetera",
+  "history": "Historial de transacciones",
+  "incoming": "Entrante",
+  "outgoing": "Saliente",
+  "empty": "No hay transacciones",
+  "loading": "Cargando la billetera…",
+  "error": "Billetera no disponible",
+  "rowUnavailable": "Transacción no disponible",
+  "types": {
+    "contribution": "Pago de contribución",
+    "payout": "Pago recibido",
+    "refund": "Reembolso",
+    "fee": "Cargo",
+    "unknown": "Transacción de billetera"
+  },
+  "statuses": {
+    "pending": "Pendiente",
+    "posted": "Completada",
+    "completed": "Completada",
+    "failed": "Fallida",
+    "unknown": "Estado no disponible"
+  },
+  "transactionA11y": "{{type}}, {{status}}, {{amount}}"
+}

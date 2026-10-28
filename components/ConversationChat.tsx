@@ -1,0 +1,814 @@
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type KeyboardEvent,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import type { BackendCircleMember } from '@/lib/api';
+import {
+  FLOATING_COMPOSER_RESTING_HEIGHT,
+  floatingComposerBottomOffset,
+  floatingComposerDockOffset,
+  floatingComposerListPadding,
+} from '@/lib/circles/chatKeyboard';
+import {
+  shouldApplyKeyboardGeometry,
+  workspaceChromeLayoutStyle,
+} from '@/lib/shared/workspaceKeyboardChrome';
+import { colors, radii } from '@/lib/shared/theme';
+import { useConversations } from '@/lib/circles/useConversations';
+
+import { Avatar } from './Avatar';
+import ChatFeed from './ChatFeed';
+import ChatInput from './ChatInput';
+
+type ConversationChatProps = {
+  circleId: string;
+  token: string;
+  currentUserId: string;
+  members: BackendCircleMember[];
+  initialConversationId?: string;
+  focused?: boolean;
+  /** Workspace-owned keyboard chrome collapse. Geometry stays local. */
+  chromeCollapsed?: boolean;
+};
+
+/**
+ * Group + private chat share this surface.
+ *
+ * Layout contract:
+ * - Parent gives a bounded flex height (not nested in an outer ScrollView).
+ * - Message list scrolls inside the thread card.
+ * - Composer is a floating dock that lifts by measured keyboard overlap so
+ *   typed text always stays visible above the software keyboard.
+ * - Conversation chips switch threads without hiding the chat surface.
+ */
+
+export default function ConversationChat({
+  circleId,
+  token,
+  currentUserId,
+  members,
+  initialConversationId,
+  focused = true,
+  chromeCollapsed = false,
+}: ConversationChatProps) {
+  const { t } = useTranslation('circleWorkspace');
+  const rootRef = useRef<View>(null);
+  /** Last keyboard metrics. Used to re-measure after chrome collapses. */
+  const keyboardMetricsRef = useRef<{ topY: number; height: number } | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  /** Extra bottom offset so the floating dock sits above the keyboard. */
+  const [composerLift, setComposerLift] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(
+    FLOATING_COMPOSER_RESTING_HEIGHT,
+  );
+  const [sendScrollNonce, setSendScrollNonce] = useState(0);
+
+  const {
+    conversations,
+    selectedConversation,
+    messages,
+    loading,
+    threadLoading,
+    sending,
+    deletingMessageId,
+    error,
+    selectConversation,
+    createDirectConversation,
+    sendMessage,
+    deleteMessage,
+    refresh,
+  } = useConversations(circleId, token, initialConversationId, {
+    focused,
+  });
+
+  const availableMembers = useMemo(() => {
+    const seenUserIds = new Set<string>();
+    return members.filter((member) => {
+      const userId = String(member.userId || '').trim();
+      if (!userId || userId === currentUserId || seenUserIds.has(userId)) {
+        return false;
+      }
+      seenUserIds.add(userId);
+      return true;
+    });
+  }, [currentUserId, members]);
+
+  const remeasureComposerLift = useCallback(() => {
+    const metrics = keyboardMetricsRef.current;
+    if (metrics == null) {
+      setComposerLift(0);
+      return;
+    }
+    rootRef.current?.measureInWindow((_x, y, _w, h) => {
+      const containerBottomY = y + h;
+      setComposerLift(
+        floatingComposerBottomOffset(
+          containerBottomY,
+          metrics.topY,
+          metrics.height,
+          Platform.OS,
+        ),
+      );
+    });
+  }, []);
+
+  const applyKeyboardFrame = useCallback(
+    (event: KeyboardEvent | null) => {
+      const height = event?.endCoordinates.height;
+      if (!event || !shouldApplyKeyboardGeometry(height)) {
+        keyboardMetricsRef.current = null;
+        setComposerLift(0);
+        setKeyboardVisible(false);
+        return;
+      }
+
+      keyboardMetricsRef.current = {
+        topY: event.endCoordinates.screenY,
+        height: event.endCoordinates.height,
+      };
+      setKeyboardVisible(true);
+
+      // Measure after layout so we know how much of *this* chat root is covered.
+      requestAnimationFrame(() => {
+        remeasureComposerLift();
+      });
+    },
+    [remeasureComposerLift],
+  );
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const changeEvent =
+      Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+
+    const showSub = Keyboard.addListener(showEvent, applyKeyboardFrame);
+    const changeSub = Keyboard.addListener(changeEvent, applyKeyboardFrame);
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      applyKeyboardFrame(null);
+    });
+
+    return () => {
+      showSub.remove();
+      changeSub.remove();
+      hideSub.remove();
+    };
+  }, [applyKeyboardFrame]);
+
+  // Workspace chrome collapse changes this root's height — re-measure lift only.
+  useEffect(() => {
+    if (!chromeCollapsed) return;
+    const handle = requestAnimationFrame(() => {
+      remeasureComposerLift();
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [chromeCollapsed, remeasureComposerLift]);
+
+  async function startDirectChat(member: BackendCircleMember) {
+    setCreatingMemberId(member.id);
+    setPickerError(null);
+    try {
+      await createDirectConversation(member.id);
+      setPickerVisible(false);
+    } catch (createError) {
+      setPickerError(
+        createError instanceof Error
+          ? createError.message
+          : t('chat.createError'),
+      );
+    } finally {
+      setCreatingMemberId(null);
+    }
+  }
+
+  const dockBottom = floatingComposerDockOffset(
+    composerLift,
+    keyboardVisible,
+  );
+  const cardBottomInset =
+    selectedConversation
+      ? floatingComposerListPadding(composerHeight, dockBottom)
+      : 0;
+
+  if (loading && conversations.length === 0) {
+    return (
+      <View style={styles.loadingCard}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={styles.loadingText}>{t('chat.loading')}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      ref={rootRef}
+      style={styles.container}
+      collapsable={false}
+      onLayout={() => {
+        if (keyboardMetricsRef.current != null) {
+          remeasureComposerLift();
+        }
+      }}
+    >
+      <View
+        style={workspaceChromeLayoutStyle(chromeCollapsed)}
+        collapsable={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>{t('chat.title')}</Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.newChatButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => setPickerVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.newPrivateA11y')}
+          >
+            <FontAwesome name="pencil" size={15} color={colors.primary} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View collapsable={false}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          style={styles.conversationStripScroll}
+          contentContainerStyle={styles.conversationStrip}
+        >
+          {conversations.map((conversation) => {
+            const selected = conversation.id === selectedConversation?.id;
+            return (
+              <Pressable
+                key={conversation.id}
+                style={({ pressed }) => [
+                  styles.conversationChip,
+                  selected && styles.conversationChipSelected,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => selectConversation(conversation.id)}
+                accessibilityRole="button"
+                accessibilityLabel={t('chat.openConversationA11y', {
+                  name: conversation.title,
+                  count: conversation.unreadCount,
+                })}
+              >
+                <View style={styles.chipAvatar}>
+                  {conversation.type === 'group' ? (
+                    <View style={styles.groupAvatar}>
+                      <FontAwesome name="users" size={15} color={colors.primary} />
+                    </View>
+                  ) : (
+                    <Avatar name={conversation.title} size={34} />
+                  )}
+                  {conversation.unreadCount > 0 ? (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>
+                        {conversation.unreadCount > 99
+                          ? '99+'
+                          : conversation.unreadCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.chipCopy}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.chipTitle,
+                      selected && styles.chipTitleSelected,
+                    ]}
+                  >
+                    {conversation.type === 'group'
+                      ? t('chat.group')
+                      : conversation.title}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {error ? (
+        <Pressable
+          style={styles.errorCard}
+          onPress={() => void refresh()}
+          accessibilityRole="button"
+          accessibilityLabel={t('chat.retryA11y')}
+        >
+          <FontAwesome name="warning" size={16} color={colors.danger} />
+          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.retryText}>{t('chat.retry')}</Text>
+        </Pressable>
+      ) : null}
+
+      {selectedConversation ? (
+        <View
+          style={styles.conversationPanel}
+          collapsable={false}
+        >
+        <View style={[styles.threadCard, { marginBottom: cardBottomInset }]}>
+          <View
+            style={workspaceChromeLayoutStyle(chromeCollapsed)}
+            collapsable={false}
+          >
+            <View style={styles.threadHeader}>
+              <View style={styles.threadIdentity}>
+                {selectedConversation.type === 'group' ? (
+                  <View style={styles.groupAvatarLarge}>
+                    <FontAwesome
+                      name="users"
+                      size={18}
+                      color={colors.primary}
+                    />
+                  </View>
+                ) : (
+                  <Avatar name={selectedConversation.title} size={42} />
+                )}
+                <View style={styles.threadHeaderCopy}>
+                  <Text style={styles.threadTitle} numberOfLines={1}>
+                    {selectedConversation.type === 'group'
+                      ? t('chat.groupTitle')
+                      : selectedConversation.title}
+                  </Text>
+                  <Text style={styles.threadMeta}>
+                    {selectedConversation.type === 'group'
+                      ? t('chat.groupMeta', {
+                          count: selectedConversation.participants.length,
+                        })
+                      : t('chat.privateMeta')}
+                  </Text>
+                </View>
+              </View>
+              {threadLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : null}
+            </View>
+          </View>
+
+          {messages.length > 0 ? (
+            <ChatFeed
+              key={selectedConversation.id}
+              messages={messages}
+              currentUserId={currentUserId}
+              pinToBottomNonce={sendScrollNonce}
+              deletingMessageId={deletingMessageId}
+              onDeleteMessage={(message) => {
+                Alert.alert(
+                  t('chat.deleteTitle'),
+                  t('chat.deleteBody'),
+                  [
+                    { text: t('chat.deleteCancel'), style: 'cancel' },
+                    {
+                      text: t('chat.deleteConfirm'),
+                      style: 'destructive',
+                      onPress: () => {
+                        void deleteMessage(message.id).catch(() => undefined);
+                      },
+                    },
+                  ],
+                );
+              }}
+            />
+          ) : (
+            <View style={styles.emptyThread}>
+              <FontAwesome
+                name={
+                  selectedConversation.type === 'group'
+                    ? 'comments-o'
+                    : 'comment-o'
+                }
+                size={30}
+                color={colors.primary}
+              />
+              <Text style={styles.emptyTitle}>{t('chat.emptyTitle')}</Text>
+              <Text style={styles.emptyText}>
+                {selectedConversation.type === 'group'
+                  ? t('chat.emptyGroup')
+                  : t('chat.emptyPrivate', {
+                      name: selectedConversation.title,
+                    })}
+              </Text>
+            </View>
+          )}
+        </View>
+
+          <View
+            style={[styles.composerDock, { bottom: dockBottom }]}
+            onLayout={(e) => {
+              const next = Math.ceil(e.nativeEvent.layout.height);
+              if (next > 0 && next !== composerHeight) {
+                setComposerHeight(next);
+              }
+            }}
+          >
+            <ChatInput
+              onSend={async (text) => {
+                await sendMessage(text);
+                setSendScrollNonce((current) => current + 1);
+              }}
+              isLoading={sending}
+              placeholder={t('chat.placeholder')}
+              applyBottomInset={!keyboardVisible}
+              floating
+            />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.emptyThread}>
+          <Text style={styles.emptyTitle}>{t('chat.noConversationTitle')}</Text>
+          <Text style={styles.emptyText}>{t('chat.noConversationBody')}</Text>
+        </View>
+      )}
+
+      <Modal
+        visible={pickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <SafeAreaView style={styles.modalScreen} edges={['top', 'bottom']}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>{t('chat.chooseMember')}</Text>
+              <Text style={styles.modalSubtitle}>
+                {t('chat.chooseMemberBody')}
+              </Text>
+            </View>
+            <Pressable
+              style={styles.closeButton}
+              onPress={() => setPickerVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat.closePickerA11y')}
+            >
+              <FontAwesome name="close" size={20} color={colors.textStrong} />
+            </Pressable>
+          </View>
+          <ScrollView
+            contentContainerStyle={styles.memberList}
+            keyboardShouldPersistTaps="handled"
+          >
+            {pickerError ? (
+              <View style={styles.errorCard}>
+                <FontAwesome name="warning" size={16} color={colors.danger} />
+                <Text style={styles.errorText}>{pickerError}</Text>
+              </View>
+            ) : null}
+            {availableMembers.length > 0 ? (
+              availableMembers.map((member) => {
+                const name = displayMemberName(member);
+                const creating = creatingMemberId === member.id;
+                return (
+                  <Pressable
+                    key={member.id}
+                    style={({ pressed }) => [
+                      styles.memberRow,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => void startDirectChat(member)}
+                    disabled={creatingMemberId !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('chat.messageMemberA11y', { name })}
+                  >
+                    <Avatar name={name} size={44} />
+                    <View style={styles.memberCopy}>
+                      <Text style={styles.memberName}>{name}</Text>
+                      <Text style={styles.memberHint}>
+                        {t('chat.privateHint')}
+                      </Text>
+                    </View>
+                    {creating ? (
+                      <ActivityIndicator color={colors.primary} />
+                    ) : (
+                      <FontAwesome
+                        name="chevron-right"
+                        size={14}
+                        color={colors.muted}
+                      />
+                    )}
+                  </Pressable>
+                );
+              })
+            ) : (
+              <View style={styles.noMembers}>
+                <FontAwesome name="user-o" size={30} color={colors.muted} />
+                <Text style={styles.emptyTitle}>{t('chat.noMembersTitle')}</Text>
+                <Text style={styles.emptyText}>{t('chat.noMembersBody')}</Text>
+              </View>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </View>
+  );
+}
+
+function displayMemberName(member: BackendCircleMember) {
+  return (
+    member.full_name ||
+    member.name ||
+    member.displayLabel ||
+    member.handLabel ||
+    'Member'
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    minHeight: 0,
+    gap: 8,
+  },
+  header: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 40,
+  },
+  title: {
+    color: colors.textStrong,
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  newChatButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  conversationStripScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  conversationStrip: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 1,
+  },
+  conversationChip: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    maxWidth: 156,
+    paddingHorizontal: 7,
+    paddingRight: 12,
+    paddingVertical: 6,
+  },
+  conversationChipSelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+  },
+  chipAvatar: {
+    position: 'relative',
+  },
+  groupAvatar: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 17,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  unreadBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    borderColor: colors.onColor,
+    borderRadius: 9,
+    borderWidth: 2,
+    justifyContent: 'center',
+    minHeight: 18,
+    minWidth: 18,
+    paddingHorizontal: 3,
+    position: 'absolute',
+    right: -6,
+    top: -6,
+  },
+  unreadBadgeText: {
+    color: colors.onColor,
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  chipCopy: {
+    flexShrink: 1,
+    maxWidth: 96,
+  },
+  chipTitle: {
+    color: colors.textStrong,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  chipTitleSelected: {
+    color: colors.primaryDark,
+  },
+  threadCard: {
+    backgroundColor: colors.background,
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  threadHeader: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+  },
+  threadIdentity: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minWidth: 0,
+  },
+  groupAvatarLarge: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  threadHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  threadTitle: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  threadMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  conversationPanel: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
+  },
+  emptyThread: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+  },
+  emptyTitle: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  emptyText: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  /** Absolute floating console docked to the chat root bottom. */
+  composerDock: {
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 20,
+    elevation: 12,
+  },
+  errorCard: {
+    alignItems: 'center',
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    padding: 11,
+  },
+  errorText: {
+    color: colors.danger,
+    flex: 1,
+    fontSize: 12,
+  },
+  retryText: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  loadingCard: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+    padding: 18,
+  },
+  loadingText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalScreen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  modalHeader: {
+    alignItems: 'flex-start',
+    borderBottomColor: colors.cardBorder,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+  },
+  modalTitle: {
+    color: colors.textStrong,
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  modalSubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  closeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 20,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  memberList: {
+    gap: 10,
+    padding: 18,
+  },
+  memberRow: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+  },
+  memberCopy: {
+    flex: 1,
+  },
+  memberName: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  memberHint: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  noMembers: {
+    alignItems: 'center',
+    gap: 8,
+    padding: 30,
+  },
+  pressed: {
+    opacity: 0.8,
+  },
+});

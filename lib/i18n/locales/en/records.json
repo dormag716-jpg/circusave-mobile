@@ -1,0 +1,166 @@
+{
+  "title": "Records",
+  "disclaimer": "Records are for CircuSave activity tracking only and are not bank, tax, legal, or income documents.",
+  "segments": {
+    "overview": "Overview",
+    "contributions": "Contributions",
+    "payouts": "Payouts",
+    "rounds": "Rounds",
+    "documents": "Documents"
+  },
+  "overview": {
+    "totalsTitle": "Circle totals",
+    "expected": "Expected so far",
+    "confirmed": "Confirmed",
+    "remainingDue": "Remaining due",
+    "paidOut": "Paid out",
+    "currentRound": "Current round",
+    "roundNumber": "Round {{number}}",
+    "dueOn": "Due {{date}}",
+    "needsReview_one": "{{count}} payment is waiting for your review",
+    "needsReview_other": "{{count}} payments are waiting for your review",
+    "needsReviewNone": "No payments are waiting for review",
+    "reviewInRound": "Review in Round",
+    "reviewInRoundA11y": "Open the Round tab to review payments",
+    "yourRecords": "Your records",
+    "nextContribution": "Next contribution",
+    "lastConfirmed": "Last confirmed",
+    "nothingYet": "Nothing yet",
+    "openRecordA11y": "Open record {{reference}}"
+  },
+  "list": {
+    "loading": "Loading records",
+    "loadError": "Records could not be loaded.",
+    "retry": "Try again",
+    "loadMore": "Show more",
+    "roundHeading": "Round {{number}}",
+    "all": "All",
+    "filterA11y": "Show {{status}} records",
+    "emptyContributions": "No contribution records yet.",
+    "emptyPayouts": "No payout records yet.",
+    "emptyRounds": "No round records yet.",
+    "emptyFiltered": "No records match this filter.",
+    "openRecordA11y": "Open record {{reference}}"
+  },
+  "status": {
+    "contribution": {
+      "due": "Due",
+      "submitted": "Submitted",
+      "confirmed": "Confirmed",
+      "rejected": "Rejected",
+      "late": "Late",
+      "missed": "Missed",
+      "unknown": "Recorded"
+    },
+    "payout": {
+      "scheduled": "Scheduled",
+      "released": "Released",
+      "unknown": "Recorded"
+    },
+    "round": {
+      "open": "Open",
+      "closed": "Closed",
+      "unknown": "Recorded",
+      "upcoming": "Upcoming"
+    }
+  },
+  "verification": {
+    "title": "Verification",
+    "verified": "Verified by Organizer",
+    "rejected": "Rejected by Organizer",
+    "pending": "Waiting for organizer review",
+    "unverified": "Not verified",
+    "reopened": "Reopened for a new report",
+    "verifiedOn": "Verified on",
+    "rejectedOn": "Rejected on",
+    "reason": "Reason"
+  },
+  "position": "Position {{number}}",
+  "memberFallback": "Member",
+  "row": {
+    "recipient": "Recipient: {{name}}",
+    "confirmedOf": "{{confirmed}} of {{total}} confirmed",
+    "scheduledOn": "Scheduled {{date}}",
+    "releasedOn": "Released {{date}}",
+    "dueOn": "Due {{date}}"
+  },
+  "detail": {
+    "kind": {
+      "contribution": "Contribution record",
+      "payout": "Payout record",
+      "round": "Round record"
+    },
+    "close": "Close",
+    "loading": "Loading record",
+    "loadError": "This record could not be loaded.",
+    "retry": "Try again",
+    "recordNumber": "Record number",
+    "detailsTitle": "Details",
+    "round": "Round",
+    "member": "Position",
+    "recipient": "Recipient",
+    "expected": "Expected amount",
+    "netPaid": "Net paid",
+    "refunded": "Refunded",
+    "remainingDue": "Remaining due",
+    "method": "Payment method",
+    "reference": "Payment reference",
+    "note": "Note",
+    "dueDate": "Due date",
+    "scheduledDate": "Scheduled date",
+    "released": "Released",
+    "opened": "Opened",
+    "closed": "Closed",
+    "expectedPot": "Expected pot",
+    "funded": "Confirmed funding",
+    "contributionsTitle": "Contributions",
+    "summaryOnly": "Only the position, amount, status and date of this payout are shown.",
+    "relatedTitle": "Related records",
+    "relatedPayout": "Payout record",
+    "relatedRound": "Round record",
+    "reviewInRound": "Review in Round",
+    "amount": "Amount",
+    "download": "Download record",
+    "downloadPreparing": "Preparing document",
+    "downloadError": "The document could not be prepared. Please try again."
+  },
+  "history": {
+    "title": "Record history",
+    "empty": "No history is recorded for this record.",
+    "event": {
+      "submitted": "Submitted",
+      "confirmed": "Confirmed",
+      "rejected": "Rejected",
+      "reopened": "Reopened",
+      "late": "Marked late",
+      "missed": "Marked missed",
+      "payoutReleased": "Payout released",
+      "roundStarted": "Round started",
+      "roundClosed": "Round closed",
+      "cycleCompleted": "Circle completed",
+      "recorded": "Recorded"
+    },
+    "actor": {
+      "organizer": "Organizer",
+      "member": "Member",
+      "system": "CircuSave"
+    },
+    "by": "by {{actor}}",
+    "showAll": "Show all {{count}}",
+    "showLess": "Show less"
+  },
+  "document": {
+    "shareTitle": "Share record document",
+    "savedTitle": "Document saved",
+    "savedBody": "Sharing is not available on this device. {{filename}} was saved."
+  },
+  "documents": {
+    "type": {
+      "statement": "Member statement",
+      "contribution": "Contribution record",
+      "payout": "Payout record",
+      "round": "Round record"
+    },
+    "superseded": "Superseded"
+  }
+}

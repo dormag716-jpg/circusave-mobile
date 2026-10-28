@@ -1,0 +1,78 @@
+{
+  "entry": {
+    "title": "Pregunta a CircuSave",
+    "subtitle": "Orientación según tu círculo",
+    "openA11y": "Abrir el asistente de CircuSave para este círculo"
+  },
+  "title": "SuSu AI",
+  "subtitle": "Tu asistente de CircuSave",
+  "contextTitle": "Respuestas basadas en tu círculo",
+  "contextCopy": "Puedo explicar registros y sugerir dónde mirar, pero no puedo mover dinero ni cambiar datos del círculo.",
+  "welcome": {
+    "premium": "Estoy listo. Pregúntame sobre este círculo, su configuración, contribuciones, preparación de pagos o qué hacer a continuación."
+  },
+  "prompts": {
+    "attention": "¿Qué necesita mi atención hoy?",
+    "ready": "¿Este círculo está listo para el siguiente paso?",
+    "explainRound": "Explica la ronda actual en términos simples."
+  },
+  "thinking": "Leyendo los datos más recientes del círculo…",
+  "composerPlaceholder": "Pregunta sobre este círculo…",
+  "sendA11y": "Enviar mensaje al asistente",
+  "backA11y": "Volver",
+  "refusalBadge": "SOLO LECTURA · SIN ACCIÓN",
+  "memory": {
+    "within": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. Una pregunta larga puede dejar fuera más mensajes. Los mensajes guardados no son montos, estados ni orden de pago actuales.",
+    "beyond": "Guardados en este chat: {{saved}}. El asistente recibe los {{sent}} más recientes. {{omitted}} mensajes más antiguos siguen guardados y no se envían. Los registros del círculo siguen siendo los datos actuales."
+  },
+  "errors": {
+    "generic": "No pude responder ahora. Inténtalo de nuevo.",
+    "historyLoad": "No se pudieron cargar mensajes anteriores. Aún puedes hacer una pregunta nueva.",
+    "historyLoadContinue": "No se pudieron cargar los mensajes anteriores. Tu próxima pregunta sigue en esta conversación.",
+    "rateLimited": "Demasiadas preguntas ahora. Espera e inténtalo de nuevo.",
+    "allowanceDaily": "Ya usaste todas las preguntas de hoy a SuSu AI. Se restablecen mañana.",
+    "allowanceMonthly": "Ya usaste el límite de SuSu AI de este mes. Se restablece el mes próximo.",
+    "throttled": "Fallaron demasiados intentos en poco tiempo. Espera unos minutos y vuelve a intentarlo.",
+    "stillWorking": "Esta pregunta aún se está respondiendo. Reintentar no la enviará dos veces.",
+    "unavailable": "SuSu AI no está disponible por ahora. Inténtalo de nuevo.",
+    "allowanceDailyAt": "Ya usaste todas las preguntas de hoy a SuSu AI. Se restablecen el {{when}}.",
+    "allowanceMonthlyAt": "Ya usaste el límite de SuSu AI de este mes. Se restablece el {{when}}."
+  },
+  "send": {
+    "retry": "Reintentar",
+    "retryA11y": "Reintentar el envío de esta pregunta",
+    "notSent": "No enviado",
+    "sending": "Enviando…"
+  },
+  "history": {
+    "loading": "Cargando conversación…",
+    "newChat": "Chat nuevo",
+    "newChatA11y": "Iniciar una nueva conversación con el asistente"
+  },
+  "nav": {
+    "view_circle_setup": "Configuración del círculo",
+    "view_pending_requests": "Solicitudes pendientes",
+    "view_hand_details": "Detalles de la mano",
+    "view_round_status": "Estado de la ronda",
+    "view_contribution_status": "Contribuciones",
+    "view_payout_order": "Orden de pago",
+    "view_activity": "Actividad",
+    "upgrade_to_premium": "Ver plan"
+  },
+  "fab": {
+    "open": "Abrir el asistente de CircuSave",
+    "hint": "Arrastra para mover este botón a otro lugar de la pantalla.",
+    "resetAction": "Restablecer posición",
+    "resetDone": "El botón del asistente volvió a su lugar predeterminado."
+  },
+  "picker": {
+    "title": "¿Sobre qué círculo quieres preguntar?",
+    "note": "Privado y de solo lectura. Las respuestas usan los registros actuales y el asistente no puede mover dinero.",
+    "loading": "Cargando tus círculos…",
+    "error": "No se pudieron cargar tus círculos.",
+    "retry": "Intentar de nuevo",
+    "empty": "Crea o únete a un círculo para preguntar sobre él.",
+    "close": "Cerrar el asistente",
+    "pickA11y": "Preguntar sobre {{name}}"
+  }
+}

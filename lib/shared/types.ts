@@ -1,0 +1,195 @@
+export type UserIdentity = {
+  id: string;
+  displayName: string;
+  email: string;
+};
+
+export type MembershipStatus = 'invited' | 'active' | 'removed';
+
+export type MembershipRole = 'organizer' | 'participant';
+export type CircleRole = MembershipRole | 'admin';
+
+export type CirclePermissions = {
+  canViewCircle: boolean;
+  canViewRound: boolean;
+  canViewMembers: boolean;
+  canViewSchedule: boolean;
+  canViewLedger: boolean;
+  canPayContribution: boolean;
+  canInviteMembers: boolean;
+  canManageMembers: boolean;
+  canConfirmContributions: boolean;
+  canManageSchedule: boolean;
+  canReorderPayout: boolean;
+  canEndRound: boolean;
+  // Compatibility keys used by existing routes and backend contracts.
+  canConfirmContribution: boolean;
+  canReleasePayout: boolean;
+  canEditPayoutOrder: boolean;
+  canEditCircleSettings: boolean;
+  canAcceptInvite: boolean;
+  canDeclineInvite: boolean;
+};
+
+export type CirclePermissionKey = keyof CirclePermissions;
+
+export type CircleMembershipContext = {
+  membershipId: string;
+  circleId: string;
+  circleName: string;
+  user: UserIdentity;
+  role: MembershipRole | null;
+  status: MembershipStatus;
+  permissions: CirclePermissions;
+};
+
+// Compatibility aliases for the first API prototype.
+export type UserRole = MembershipRole;
+export type CircleMembershipStatus = MembershipStatus;
+export type CirclePermission = CirclePermissionKey;
+export type CircleExperience = MembershipRole | 'invited';
+
+export type CircleMembership = {
+  id: string;
+  circleId: string;
+  userId: string;
+  role: MembershipRole | null;
+  status: MembershipStatus;
+};
+
+export type LocalTestUser = UserIdentity;
+
+/**
+ * Mobile circle lifecycle statuses.
+ * Includes draft/closed for backend parity; setup aliases map via helpers.
+ * Do not invent cancelled unless the backend supports it.
+ */
+export type CircleStatus =
+  | 'draft'
+  | 'forming'
+  | 'setup'
+  | 'active'
+  | 'paused'
+  | 'closed'
+  | 'completed';
+
+export type ContributionStatus = 'due' | 'pending' | 'confirmed' | 'missed';
+
+export type PayoutStatus = 'scheduled' | 'processing' | 'paid';
+
+export type MobileSession = {
+  userId: string;
+  displayName: string;
+  role: UserRole;
+  token: string;
+};
+
+export type CircleSummary = {
+  id: string;
+  name: string;
+  role: CircleRole;
+  status: CircleStatus;
+  memberCount: number;
+  contributionAmount: string;
+  contributionCadence: string;
+  nextContributionDueAt: string | null;
+};
+
+export type DashboardSummary = {
+  activeSaved?: number;
+  lifetimeSaved?: number;
+  totalSaved: number;
+  activeCircles: number;
+  completedCircles?: number;
+  personalFinancials: {
+    myContributions: number;
+    myPayoutsReceived: number;
+  };
+  upcomingPayout: {
+    circleId: string;
+    circleName: string;
+    round: number;
+    payoutDate: string;
+    recipientMemberId: string | null;
+    recipientName: string | null;
+    amount: number;
+  } | null;
+  pendingContributions: number;
+  recentActivity: BackendActivity[];
+};
+
+export type BackendActivity = {
+  id: string;
+  circleId: string;
+  circleName: string;
+  type: string;
+  title: string;
+  message: string;
+  amount: number | null;
+  createdAt: string;
+  round: number | null;
+  memberId: string | null;
+  metadata: Record<string, unknown>;
+  verificationStatus?: string | null;
+  paymentOrigin?: string | null;
+};
+
+export type ActivityResponse = {
+  items: BackendActivity[];
+  limit: number;
+  hasMore?: boolean;
+  has_more?: boolean;
+  nextCursor?: string | null;
+  next_cursor?: string | null;
+};
+
+export type BackendCircleSummary = {
+  id: string;
+  name: string;
+  circleCode?: string;
+  status: string;
+  pot_status: string;
+  contributionAmount: number;
+  frequency: string;
+  startDate: string;
+  currentRound: number;
+  /** Participating hands (capacity / rounds). Not unique people. */
+  memberCount: number;
+  handCount?: number;
+  participatingHandCount?: number;
+  totalRounds?: number;
+  /** Distinct claimed users (userId set). */
+  uniqueMemberCount?: number;
+  uniquePeopleCount?: number;
+  organizerId: string;
+  userRole: MembershipRole | null;
+  nextPayout: {
+    round: number;
+    memberId: string;
+    payoutDate: string;
+    status: string;
+  } | null;
+  currentRoundProgress: {
+    roundNumber: number;
+    submittedCount: number;
+    confirmedCount: number;
+    expectedContributionCount: number;
+    percentConfirmed: number;
+    /** Money for the current round, supplied by the backend (dollars and cents). */
+    expectedPot?: number;
+    expectedPotCents?: number;
+    /** Organizer-confirmed contributions only. */
+    confirmedContributions?: number;
+    confirmedCents?: number;
+    /** Reported by members but not yet confirmed by the organizer. */
+    reportedUnconfirmedContributions?: number;
+    reportedUnconfirmedCents?: number;
+  };
+};
+
+export type LedgerActivity = BackendActivity;
+
+export type ApiState<T> =
+  | { status: 'idle' | 'loading' }
+  | { status: 'ready'; data: T }
+  | { status: 'error'; message: string };

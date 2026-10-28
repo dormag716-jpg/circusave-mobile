@@ -1,8 +1,8 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -17,20 +17,33 @@ import {
   requestJoin,
   type BackendInvitePreview,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { circleWorkspaceHref, inviteJoinHref } from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
-
-function capitalizeFrequency(f: string | undefined) {
-  return f ? f.charAt(0).toUpperCase() + f.slice(1) : '';
-}
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { formatCurrency } from '@/lib/i18n/formatters';
+import {
+  shouldShowInvitePreviewSkeleton,
+  shouldShowInviteUnavailable,
+} from '@/lib/shared/invitePaint';
+import { resolveJoinOutcome } from '@/lib/circles/joinOutcome';
+import { circleWorkspaceHref, inviteJoinHref } from '@/lib/platform/navigation';
+import {
+  buildPlannedHandClaimAcknowledgment,
+  canSubmitPlannedHandClaim,
+} from '@/lib/circles/plannedHandClaim';
+import {
+  createRequestGeneration,
+  shouldReplaceFinancialStateOnError,
+} from '@/lib/shared/requestGeneration';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
 export default function JoinInviteScreen() {
+  const { t, i18n } = useTranslation(['invite', 'joinCircle']);
   const { session, setPostAuthTarget } = useAuthSession();
   const params = useLocalSearchParams<{ id?: string | string[], claimToken?: string | string[] }>();
   const circleId = Array.isArray(params.id) ? params.id[0] : params.id;
   const claimToken = Array.isArray(params.claimToken) ? params.claimToken[0] : params.claimToken;
   const token = session?.session.token;
+  const [claimAckChecked, setClaimAckChecked] = useState(false);
 
   function continueAuth(path: '/login' | '/create-account') {
     if (circleId) {
@@ -43,98 +56,119 @@ export default function JoinInviteScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
+  const requestGeneration = useRef(createRequestGeneration());
+  const hasPreviewRef = useRef(false);
 
-  async function loadPreview() {
+  const loadPreview = useCallback(async () => {
+    const generation = requestGeneration.current.next();
     if (!circleId) {
-      setError('Invalid invite link.');
-      setLoading(false);
+      if (requestGeneration.current.isCurrent(generation)) {
+        setError(t('invite:unavailableMessage'));
+        setLoading(false);
+      }
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!hasPreviewRef.current) {
+      setLoading(true);
+    }
+    if (requestGeneration.current.isCurrent(generation)) {
+      setError(null);
+    }
 
     try {
       const data = await getPublicInvitePreview(circleId);
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      hasPreviewRef.current = true;
       setPreview(data);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load invite details.',
-      );
+      logClientError('Unable to load public invite preview', loadError, { circleId });
+      if (!requestGeneration.current.isCurrent(generation)) {
+        return;
+      }
+      setError(t('invite:unavailableMessage'));
+      if (shouldReplaceFinancialStateOnError(hasPreviewRef.current)) {
+        setPreview(null);
+      }
     } finally {
-      setLoading(false);
+      if (requestGeneration.current.isCurrent(generation)) {
+        setLoading(false);
+      }
     }
-  }
+  }, [circleId, t]);
+
+  useEffect(() => {
+    requestGeneration.current.next();
+    hasPreviewRef.current = false;
+    setPreview(null);
+    setError(null);
+    setLoading(true);
+  }, [circleId]);
 
   useEffect(() => {
     void loadPreview();
-  }, [circleId]);
+  }, [loadPreview]);
 
   async function handleJoin() {
     if (!token || !circleId || !preview) return;
+    if (!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })) {
+      return;
+    }
+    const ack = buildPlannedHandClaimAcknowledgment({
+      language: i18n.resolvedLanguage || i18n.language,
+      checked: claimAckChecked,
+    });
+    if (!ack) return;
 
     setJoining(true);
     try {
-      await requestJoin(token, circleId, claimToken);
+      const result = await requestJoin(token, circleId, {
+        claimToken,
+        ...ack,
+      });
+      const outcome = resolveJoinOutcome(result, session?.user?.id);
+      const goWorkspace = outcome === 'claimed';
       Alert.alert(
-        'Success!',
-        'You have joined this circle.',
+        t(`joinCircle:outcome.${outcome}Title`),
+        t(`joinCircle:outcome.${outcome}Message`, {
+          circleName:
+            preview.name || t('joinCircle:outcome.circleFallback'),
+        }),
         [
-          { text: 'OK', onPress: () => router.replace(circleWorkspaceHref(circleId)) }
-        ]
+          {
+            text: t('invite:ok'),
+            onPress: () =>
+              router.replace(
+                goWorkspace
+                  ? circleWorkspaceHref(circleId)
+                  : '/(tabs)/dashboard',
+              ),
+          },
+        ],
       );
     } catch (joinError) {
-      Alert.alert(
-        'Unable to join',
-        joinError instanceof Error
-          ? joinError.message
-          : 'An unexpected error occurred.',
-      );
+      logClientError('Unable to accept circle invitation', joinError, { circleId });
+      Alert.alert(t('invite:joinErrorTitle'), t('invite:genericError'));
     } finally {
       setJoining(false);
     }
   }
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-        <View style={styles.statusCard}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.statusText}>Loading invite details...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (error || !preview) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.replace('/(tabs)/dashboard')}
-          >
-            <FontAwesome name="home" size={24} color={colors.primaryDark} />
-          </Pressable>
-        </View>
-        <View style={styles.statusCard}>
-          <FontAwesome name="warning" size={32} color={colors.warning} />
-          <Text style={styles.statusTitle}>Invite unavailable</Text>
-          <Text style={styles.statusText}>
-            {error ?? 'This invite link is invalid or has expired.'}
-          </Text>
-          <Pressable
-            style={styles.primaryButton}
-            onPress={() => router.replace('/(tabs)/dashboard')}
-          >
-            <Text style={styles.primaryButtonText}>Go home</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const hasPreview = preview != null;
+  const showPreviewSkeleton = shouldShowInvitePreviewSkeleton({
+    loading,
+    hasPreview,
+  });
+  const showUnavailable = shouldShowInviteUnavailable({
+    loading,
+    hasPreview,
+    error,
+  });
+  const acceptDisabled =
+    !preview ||
+    !canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining });
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -147,7 +181,7 @@ export default function JoinInviteScreen() {
             style={styles.backButton}
             onPress={() => router.replace('/(tabs)/dashboard')}
             accessibilityRole="button"
-            accessibilityLabel="Back to dashboard"
+            accessibilityLabel={t('invite:backDashboard')}
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
@@ -157,65 +191,143 @@ export default function JoinInviteScreen() {
           <View style={styles.iconCircle}>
             <FontAwesome name="group" size={32} color={colors.primary} />
           </View>
-          <Text style={styles.heroTitle}>You've been invited!</Text>
-          <Text style={styles.heroSubtitle}>
-            Join {preview.organizerName}'s savings circle
-          </Text>
+          <Text style={styles.heroTitle}>{t('invite:invitedTitle')}</Text>
+          {preview ? (
+            <Text style={styles.heroSubtitle}>
+              {t('invite:invitedBy', {
+                organizerName:
+                  preview.organizerName ||
+                  t('joinCircle:organizerFallback'),
+              })}
+            </Text>
+          ) : showPreviewSkeleton ? (
+            <View style={styles.skeletonLine} />
+          ) : null}
         </View>
 
-        <View style={styles.detailsCard}>
-          <Text style={styles.circleName}>{preview.name}</Text>
-          
-          <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Contribution</Text>
-              <Text style={styles.detailValue}>
-                ${preview.contributionAmount}
+        {showUnavailable ? (
+          <View style={styles.unavailableCard}>
+            <FontAwesome name="warning" size={32} color={colors.warning} />
+            <Text style={styles.statusTitle}>{t('invite:unavailableTitle')}</Text>
+            <Text style={styles.statusText}>
+              {error ?? t('invite:unavailableMessage')}
+            </Text>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => void loadPreview()}
+              accessibilityRole="button"
+              accessibilityLabel={t('invite:retryAccessibility')}
+            >
+              <Text style={styles.primaryButtonText}>{t('invite:retry')}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.primaryButton, styles.secondaryAuthButton]}
+              onPress={() => router.replace('/(tabs)/dashboard')}
+              accessibilityRole="button"
+              accessibilityLabel={t('invite:goHome')}
+            >
+              <Text style={styles.secondaryAuthButtonText}>
+                {t('invite:goHome')}
               </Text>
-            </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Frequency</Text>
-              <Text style={styles.detailValue}>
-                {capitalizeFrequency(preview.frequency)}
-              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.detailsCard}>
+            {preview ? (
+              <Text style={styles.circleName}>{preview.name}</Text>
+            ) : (
+              <View style={[styles.skeletonLine, styles.skeletonTitle]} />
+            )}
+
+            <View style={styles.detailRow}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>{t('invite:contribution')}</Text>
+                {preview ? (
+                  <Text style={styles.detailValue}>
+                    {formatInviteAmount(
+                      preview.contributionAmount,
+                      i18n.resolvedLanguage || i18n.language,
+                    )}
+                  </Text>
+                ) : (
+                  <View style={styles.skeletonValue} />
+                )}
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>{t('invite:frequency')}</Text>
+                {preview ? (
+                  <Text style={styles.detailValue}>
+                    {t(`invite:frequencyValue.${String(preview.frequency).toLowerCase()}`, {
+                      defaultValue: preview.frequency,
+                    })}
+                  </Text>
+                ) : (
+                  <View style={styles.skeletonValue} />
+                )}
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.actionContainer}>
           {token ? (
-            <Pressable
-              style={[styles.primaryButton, joining && styles.disabledButton]}
-              disabled={joining}
-              onPress={() => void handleJoin()}
-              accessibilityRole="button"
-            >
-              <Text style={styles.primaryButtonText}>
-                {joining ? 'Joining...' : 'Accept Invite'}
-              </Text>
-            </Pressable>
+            <>
+              <Text style={styles.disclosureBody}>{t('invite:claimDisclosureBody')}</Text>
+              {claimToken ? null : (
+                <Text style={styles.disclosureHint}>{t('invite:claimDisclosureConditional')}</Text>
+              )}
+              <Pressable
+                style={styles.ackRow}
+                onPress={() => setClaimAckChecked((value) => !value)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: claimAckChecked }}
+                accessibilityLabel={t('invite:claimAckLabel')}
+              >
+                <View style={[styles.checkbox, claimAckChecked && styles.checkboxChecked]}>
+                  {claimAckChecked ? (
+                    <FontAwesome name="check" size={12} color={colors.onColor} />
+                  ) : null}
+                </View>
+                <Text style={styles.ackLabel}>{t('invite:claimAckLabel')}</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  acceptDisabled && styles.disabledButton,
+                ]}
+                disabled={acceptDisabled}
+                onPress={() => void handleJoin()}
+                accessibilityRole="button"
+                accessibilityLabel={t('invite:acceptAccessibility', {
+                  circleName: preview?.name || t('joinCircle:outcome.circleFallback'),
+                })}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {joining ? t('invite:accepting') : t('invite:accept')}
+                </Text>
+              </Pressable>
+            </>
           ) : (
             <View style={styles.loginCard}>
               <Text style={styles.loginText}>
-                Sign in or create an account to join this circle. We'll bring
-                you right back here.
+                {t('invite:loginPrompt')}
               </Text>
               <Pressable
                 style={styles.primaryButton}
                 onPress={() => continueAuth('/login')}
                 accessibilityRole="button"
-                accessibilityLabel="Log in to join"
+                accessibilityLabel={t('invite:loginAccessibility')}
               >
-                <Text style={styles.primaryButtonText}>Log In</Text>
+                <Text style={styles.primaryButtonText}>{t('invite:login')}</Text>
               </Pressable>
               <Pressable
                 style={[styles.primaryButton, styles.secondaryAuthButton]}
                 onPress={() => continueAuth('/create-account')}
                 accessibilityRole="button"
-                accessibilityLabel="Create account to join"
+                accessibilityLabel={t('invite:createAccessibility')}
               >
                 <Text style={styles.secondaryAuthButtonText}>
-                  Create account
+                  {t('invite:createAccount')}
                 </Text>
               </Pressable>
             </View>
@@ -224,6 +336,14 @@ export default function JoinInviteScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatInviteAmount(
+  value: number | string | null | undefined,
+  language: string,
+): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? formatCurrency(amount, language) : '\u2014';
 }
 
 const styles = StyleSheet.create({
@@ -245,11 +365,35 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: -8,
   },
-  statusCard: {
-    flex: 1,
+  unavailableCard: {
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    gap: 4,
+    marginBottom: 32,
+    padding: 24,
+  },
+  skeletonLine: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 8,
+    height: 16,
+    marginTop: 8,
+    width: 180,
+  },
+  skeletonTitle: {
+    alignSelf: 'center',
+    height: 22,
+    marginBottom: 24,
+    width: 160,
+  },
+  skeletonValue: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 8,
+    height: 20,
+    marginTop: 4,
+    width: 88,
   },
   statusTitle: {
     fontSize: 20,
@@ -292,10 +436,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   detailsCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: radii.card,
     padding: 24,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -332,6 +476,40 @@ const styles = StyleSheet.create({
   },
   actionContainer: {
     marginTop: 'auto',
+    gap: 12,
+  },
+  disclosureBody: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 21,
+  },
+  disclosureHint: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 19,
+  },
+  ackRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: { backgroundColor: colors.primary },
+  ackLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textStrong,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   primaryButton: {
     backgroundColor: colors.primary,
@@ -342,7 +520,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 17,
     fontWeight: '800',
   },

@@ -1,0 +1,2009 @@
+/**
+ * Member statements and saved statement documents (the Documents segment of Records).
+ * Financial values come only from backend list/snapshot/PDF endpoints.
+ */
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import {
+  ApiError,
+  downloadMemberStatementPdfForHand,
+  downloadMemberStatementPdfForUser,
+  downloadStatementDocumentPdf,
+  getMemberStatementSnapshotForHand,
+  getMemberStatementSnapshotForUser,
+  getMemberStatementsIndex,
+  getStatementDocuments,
+  type MemberStatementIndexRow,
+  type MemberStatementSnapshot,
+  type MemberStatementsIndex,
+  type StatementDocumentSummary,
+  type StatementPeriodInput,
+} from '@/lib/api';
+import { documentTypeKey } from '@/lib/records/recordsPresentation';
+import { saveAndSharePdf } from './saveAndSharePdf';
+import { externalContributionProvenanceText } from '@/lib/records/provenanceText';
+import { getInitials } from '@/lib/shared/initials';
+import { colors, radii, spacing } from '@/lib/shared/theme';
+import {
+  displayMoney,
+  formatDisplayDate,
+  formatDisplayDateTime,
+  humanizeEventType,
+  humanizeStatementLabel,
+  humanizeStatus,
+  nextContributionDue,
+  nextScheduledPayout,
+  shortStatementId,
+} from '@/lib/shared/statementPresentation';
+
+type Props = {
+  circleId: string;
+  token: string;
+  circleName?: string;
+  /** Organizers read statements for the whole circle; members only their own. */
+  isOrganizer: boolean;
+};
+
+type SubjectTarget =
+  | { kind: 'user'; userId: string; displayName: string }
+  | { kind: 'hand'; handId: string; displayName: string };
+
+type StatementLedgerPreviewEntry = MemberStatementSnapshot['ledger'][number];
+
+function memberContextLabel(
+  row: MemberStatementIndexRow,
+  unclaimed: boolean,
+  t: TFunction,
+): string {
+  const hands = t('center.handsCount', { count: row.handCount });
+  if (unclaimed) {
+    return t('center.contextUnclaimed', { hands });
+  }
+  const role = String(row.roleSummary || '').toLowerCase();
+  if (role.includes('organizer')) {
+    return t('center.contextOrganizer', { hands });
+  }
+  const status = String(row.membershipStatus || '').toLowerCase();
+  if (status === 'active' || !status) {
+    return t('center.contextActive', { hands });
+  }
+  return t('center.contextStatus', {
+    status: humanizeStatementLabel(row.membershipStatus) || String(row.membershipStatus || ''),
+    hands,
+  });
+}
+
+function formatRelativeDays(
+  value: string | null | undefined,
+  language: string,
+  t: TFunction,
+): string {
+  if (!value) return '\u2014';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '\u2014';
+  const diffMs = Date.now() - date.getTime();
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (days <= 0) return t('center.today');
+  if (days === 1) return t('center.yesterday');
+  if (days < 30) return t('center.daysAgo', { count: days });
+  return formatDisplayDate(value, language);
+}
+
+function dedupeById<T extends { id: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const entry of entries) {
+    const id = String(entry.id || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(entry);
+  }
+  return unique;
+}
+
+function statementLedgerRenderKey(
+  entry: Pick<StatementLedgerPreviewEntry, 'id' | 'at' | 'reference'>,
+  index: number,
+): string {
+  return `${entry.id}:${entry.at || entry.reference || 'no-time'}:${index}`;
+}
+
+function friendlyError(message: string, fallback: string): string {
+  const trimmed = String(message || '').trim();
+  if (!trimmed) return fallback;
+  if (trimmed.length > 160) return fallback;
+  return trimmed;
+}
+
+/**
+ * Documents segment of Records: member statements (preview, PDF) and saved statement documents.
+ * Financial values come only from backend list/snapshot/PDF endpoints.
+ */
+export function StatementDocumentsSection({
+  circleId,
+  token,
+  circleName,
+  isOrganizer,
+}: Props) {
+  const { t } = useTranslation('ledger');
+  const genericError = t('center.genericError');
+  const [index, setIndex] = useState<MemberStatementsIndex | null>(null);
+  const [indexLoading, setIndexLoading] = useState(false);
+  const [indexError, setIndexError] = useState<string | null>(null);
+
+  const [periodMode, setPeriodMode] = useState<'full_circle' | 'custom'>('full_circle');
+  const [periodFrom, setPeriodFrom] = useState('');
+  const [periodTo, setPeriodTo] = useState('');
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<MemberStatementSnapshot | null>(null);
+  const [activeSubject, setActiveSubject] = useState<SubjectTarget | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [documents, setDocuments] = useState<StatementDocumentSummary[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
+  const [sharingDocId, setSharingDocId] = useState<string | null>(null);
+
+  const resolvedCircleName =
+    index?.circle.name || circleName || t('center.thisCircle');
+  const displayCircleName =
+    resolvedCircleName === t('center.thisCircle')
+      ? t('center.circleFallback')
+      : resolvedCircleName;
+  const pdfShareCopy = (filename: string) => ({
+    dialogTitle: t('center.shareDialogTitle'),
+    savedTitle: t('center.statementSaved'),
+    savedBody: t('center.statementSavedBody', { filename }),
+  });
+
+  const periodInput: StatementPeriodInput = useMemo(() => {
+    if (periodMode === 'custom') {
+      return { period: 'custom', from: periodFrom.trim(), to: periodTo.trim() };
+    }
+    return { period: 'full_circle' };
+  }, [periodMode, periodFrom, periodTo]);
+
+  const loadIndex = useCallback(async () => {
+    if (!token || !circleId) return;
+    setIndexLoading(true);
+    setIndexError(null);
+    try {
+      const payload = await getMemberStatementsIndex(token, circleId);
+      setIndex(payload);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : t('center.loadStatementsError');
+      setIndexError(message);
+      setIndex(null);
+    } finally {
+      setIndexLoading(false);
+    }
+  }, [token, circleId, t]);
+
+  const loadDocuments = useCallback(async () => {
+    if (!token || !circleId) return;
+    setDocumentsLoading(true);
+    setDocumentsError(null);
+    try {
+      const payload = await getStatementDocuments(token, circleId);
+      setDocuments(payload.documents || []);
+    } catch (err) {
+      setDocumentsError(
+        err instanceof Error ? err.message : t('center.loadDocumentsGeneric'),
+      );
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [token, circleId, t]);
+
+  useEffect(() => {
+    void loadIndex();
+    void loadDocuments();
+  }, [loadIndex, loadDocuments]);
+
+  const openPreview = async (subject: SubjectTarget) => {
+    if (periodMode === 'custom' && (!periodFrom.trim() || !periodTo.trim())) {
+      Alert.alert(t('center.dateRangeRequired'), t('center.dateRangeRequiredBody'));
+      return;
+    }
+    setActiveSubject(subject);
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setSnapshot(null);
+    try {
+      const data =
+        subject.kind === 'user'
+          ? await getMemberStatementSnapshotForUser(
+              token,
+              circleId,
+              subject.userId,
+              periodInput,
+            )
+          : await getMemberStatementSnapshotForHand(
+              token,
+              circleId,
+              subject.handId,
+              periodInput,
+            );
+      setSnapshot(data);
+    } catch (err) {
+      setPreviewError(
+        err instanceof Error ? err.message : t('center.loadPreviewGeneric'),
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const downloadSharePdf = async () => {
+    if (!activeSubject) return;
+    setPdfLoading(true);
+    try {
+      const pdf =
+        activeSubject.kind === 'user'
+          ? await downloadMemberStatementPdfForUser(
+              token,
+              circleId,
+              activeSubject.userId,
+              periodInput,
+            )
+          : await downloadMemberStatementPdfForHand(
+              token,
+              circleId,
+              activeSubject.handId,
+              periodInput,
+            );
+      await saveAndSharePdf(pdf.bytes, pdf.filename, pdfShareCopy(pdf.filename));
+      void loadDocuments();
+    } catch (err) {
+      Alert.alert(
+        t('center.pdfUnavailable'),
+        err instanceof Error ? err.message : t('center.downloadPdfGeneric'),
+      );
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const reShareDocument = async (doc: StatementDocumentSummary) => {
+    setSharingDocId(doc.id);
+    try {
+      const pdf = await downloadStatementDocumentPdf(token, circleId, doc.id);
+      await saveAndSharePdf(pdf.bytes, pdf.filename, pdfShareCopy(pdf.filename));
+    } catch (err) {
+      Alert.alert(
+        t('center.shareFailed'),
+        err instanceof Error ? err.message : t('center.downloadDocGeneric'),
+      );
+    } finally {
+      setSharingDocId(null);
+    }
+  };
+
+  return (
+    <View style={styles.root}>
+      <MemberStatementsPanel
+          circleName={resolvedCircleName}
+          isOrganizer={isOrganizer}
+          index={index}
+          loading={indexLoading}
+          error={indexError}
+          onRetry={() => void loadIndex()}
+          periodMode={periodMode}
+          periodFrom={periodFrom}
+          periodTo={periodTo}
+          onPeriodMode={setPeriodMode}
+          onPeriodFrom={setPeriodFrom}
+          onPeriodTo={setPeriodTo}
+          onOpenPreview={(row) => {
+            if (row.userId) {
+              void openPreview({
+                kind: 'user',
+                userId: row.userId,
+                displayName: row.displayName,
+              });
+            } else if (row.handId) {
+              void openPreview({
+                kind: 'hand',
+                handId: row.handId,
+                displayName: row.displayName,
+              });
+            }
+          }}
+        />
+
+      <DocumentsPanel
+          documents={documents}
+          loading={documentsLoading}
+          error={documentsError}
+          sharingDocId={sharingDocId}
+          onRefresh={() => void loadDocuments()}
+          onShare={(doc) => void reShareDocument(doc)}
+        />
+
+      <Modal
+        visible={previewOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPreviewOpen(false)}
+      >
+        <SafeAreaView style={styles.modalRoot} edges={['top', 'left', 'right', 'bottom']}>
+          <View style={styles.modalHeader}>
+            <Pressable
+              onPress={() => setPreviewOpen(false)}
+              style={styles.modalClose}
+              accessibilityRole="button"
+              accessibilityLabel={t('center.closePreview')}
+            >
+              <FontAwesome name="close" size={18} color={colors.textStrong} />
+            </Pressable>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.modalKicker}>{t('center.previewKicker')}</Text>
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {activeSubject?.displayName || t('center.memberFallback')}
+              </Text>
+              <Text style={styles.modalSubtitle} numberOfLines={1}>
+                {displayCircleName}
+              </Text>
+            </View>
+          </View>
+
+          {previewLoading ? (
+            <View style={styles.stateCard}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.stateTitle}>{t('center.loadingStatement')}</Text>
+              <Text style={styles.stateBody}>{t('center.loadingStatementBody')}</Text>
+            </View>
+          ) : previewError ? (
+            <View style={styles.stateCard}>
+              <View style={styles.stateIconWrap}>
+                <FontAwesome name="exclamation" size={18} color={colors.warning} />
+              </View>
+              <Text style={styles.stateTitle}>{t('center.previewError')}</Text>
+              <Text style={styles.stateBody}>
+                {friendlyError(previewError, genericError)}
+              </Text>
+              <Pressable
+                style={styles.primaryBtn}
+                onPress={() => activeSubject && void openPreview(activeSubject)}
+                accessibilityRole="button"
+                accessibilityLabel={t('center.retryStatementA11y')}
+              >
+                <Text style={styles.primaryBtnText}>{t('center.tryAgain')}</Text>
+              </Pressable>
+            </View>
+          ) : snapshot ? (
+            <>
+              <ScrollView
+                contentContainerStyle={styles.previewScroll}
+                showsVerticalScrollIndicator={false}
+              >
+                <PreviewBody snapshot={snapshot} />
+              </ScrollView>
+              <View style={styles.modalFooter}>
+                <Pressable
+                  style={[styles.primaryBtn, pdfLoading && styles.btnDisabled]}
+                  onPress={() => void downloadSharePdf()}
+                  disabled={pdfLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('center.downloadPdfA11y')}
+                  accessibilityState={{ busy: pdfLoading, disabled: pdfLoading }}
+                >
+                  {pdfLoading ? (
+                    <ActivityIndicator color={colors.onColor} />
+                  ) : (
+                    <>
+                      <FontAwesome name="download" size={14} color={colors.onColor} />
+                      <Text style={styles.primaryBtnText}>{t('center.downloadPdf')}</Text>
+                    </>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={[styles.secondaryBtn, pdfLoading && styles.btnDisabled]}
+                  onPress={() => void downloadSharePdf()}
+                  disabled={pdfLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('center.sharePdfA11y')}
+                  accessibilityState={{ busy: pdfLoading, disabled: pdfLoading }}
+                >
+                  <FontAwesome name="share" size={14} color={colors.primary} />
+                  <Text style={styles.secondaryBtnText}>{t('center.sharePdf')}</Text>
+                </Pressable>
+                <Text style={styles.footerHint}>{t('center.footerHint')}</Text>
+              </View>
+            </>
+          ) : null}
+        </SafeAreaView>
+      </Modal>
+    </View>
+  );
+}
+
+function MemberStatementsPanel({
+  circleName,
+  isOrganizer,
+  index,
+  loading,
+  error,
+  onRetry,
+  periodMode,
+  periodFrom,
+  periodTo,
+  onPeriodMode,
+  onPeriodFrom,
+  onPeriodTo,
+  onOpenPreview,
+}: {
+  circleName: string;
+  isOrganizer: boolean;
+  index: MemberStatementsIndex | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  periodMode: 'full_circle' | 'custom';
+  periodFrom: string;
+  periodTo: string;
+  onPeriodMode: (mode: 'full_circle' | 'custom') => void;
+  onPeriodFrom: (value: string) => void;
+  onPeriodTo: (value: string) => void;
+  onOpenPreview: (row: MemberStatementIndexRow) => void;
+}) {
+  const { t } = useTranslation('ledger');
+  const customIncomplete =
+    periodMode === 'custom' && (!periodFrom.trim() || !periodTo.trim());
+
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelHeader}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.panelTitle}>{t('center.segmentStatements')}</Text>
+          <Text style={styles.panelSub}>
+            {t(
+              isOrganizer ? 'center.statementsSub' : 'center.statementsSubMember',
+              { circle: circleName },
+            )}
+          </Text>
+          <Text style={styles.panelHint}>
+            {t(isOrganizer ? 'center.statementsHint' : 'center.statementsHintMember')}
+          </Text>
+        </View>
+        <Pressable
+          onPress={onRetry}
+          style={styles.refreshBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t('center.refreshStatementsA11y')}
+        >
+          <FontAwesome name="refresh" size={14} color={colors.primary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.periodCard}>
+        <Text style={styles.periodLabel}>{t('center.period')}</Text>
+        <View style={styles.periodToggleRow}>
+          <Pressable
+            style={[
+              styles.periodToggle,
+              periodMode === 'full_circle' && styles.periodToggleActive,
+            ]}
+            onPress={() => onPeriodMode('full_circle')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: periodMode === 'full_circle' }}
+            accessibilityLabel={t('center.fullCircleA11y')}
+          >
+            <Text
+              style={[
+                styles.periodToggleText,
+                periodMode === 'full_circle' && styles.periodToggleTextActive,
+              ]}
+            >
+              {t('center.fullCircle')}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.periodToggle,
+              periodMode === 'custom' && styles.periodToggleActive,
+            ]}
+            onPress={() => onPeriodMode('custom')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: periodMode === 'custom' }}
+            accessibilityLabel={t('center.customRangeA11y')}
+          >
+            <Text
+              style={[
+                styles.periodToggleText,
+                periodMode === 'custom' && styles.periodToggleTextActive,
+              ]}
+            >
+              {t('center.customRange')}
+            </Text>
+          </Pressable>
+        </View>
+        {periodMode === 'full_circle' ? (
+          <Text style={styles.periodHelper}>{t('center.fullCircleHelper')}</Text>
+        ) : (
+          <>
+            <View style={styles.dateRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>{t('center.dateFrom')}</Text>
+                <TextInput
+                  value={periodFrom}
+                  onChangeText={onPeriodFrom}
+                  placeholder={t('center.datePlaceholder')}
+                  placeholderTextColor={colors.subtle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.dateInput}
+                  accessibilityLabel={t('center.periodFromA11y')}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>{t('center.dateTo')}</Text>
+                <TextInput
+                  value={periodTo}
+                  onChangeText={onPeriodTo}
+                  placeholder={t('center.datePlaceholder')}
+                  placeholderTextColor={colors.subtle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.dateInput}
+                  accessibilityLabel={t('center.periodToA11y')}
+                />
+              </View>
+            </View>
+            {customIncomplete ? (
+              <Text style={styles.periodWarning}>{t('center.customIncomplete')}</Text>
+            ) : (
+              <Text style={styles.periodHelper}>{t('center.customHelper')}</Text>
+            )}
+          </>
+        )}
+      </View>
+
+      {loading ? (
+        <View style={styles.stateCardCompact}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.stateTitle}>{t('center.loadingMembers')}</Text>
+          <Text style={styles.stateBody}>{t('center.loadingMembersBody')}</Text>
+          <View style={styles.skeletonList}>
+            <View style={styles.skeletonRow} />
+            <View style={styles.skeletonRow} />
+            <View style={[styles.skeletonRow, { width: '78%' }]} />
+          </View>
+        </View>
+      ) : error ? (
+        <View style={styles.stateCardCompact}>
+          <View style={styles.stateIconWrap}>
+            <FontAwesome name="exclamation" size={16} color={colors.warning} />
+          </View>
+          <Text style={styles.stateTitle}>{t('center.loadMembersError')}</Text>
+          <Text style={styles.stateBody}>
+            {friendlyError(error, t('center.genericError'))}
+          </Text>
+          <Pressable
+            style={styles.primaryBtn}
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel={t('center.retryMembersA11y')}
+          >
+            <Text style={styles.primaryBtnText}>{t('center.retry')}</Text>
+          </Pressable>
+        </View>
+      ) : !index || (index.members.length === 0 && index.unclaimedHands.length === 0) ? (
+        <View style={styles.emptyBlock}>
+          <View style={styles.emptyIcon}>
+            <FontAwesome name="users" size={22} color={colors.subtle} />
+          </View>
+          <Text style={styles.emptyTitle}>{t('center.emptyMembersTitle')}</Text>
+          <Text style={styles.emptyBody}>{t('center.emptyMembersBody')}</Text>
+        </View>
+      ) : (
+        <View style={styles.memberList}>
+          {index.members.map((row) => (
+            <MemberRow key={row.subjectKey} row={row} onPress={() => onOpenPreview(row)} />
+          ))}
+
+          {index.unclaimedHands.length > 0 ? (
+            <View style={styles.unclaimedSection}>
+              <Text style={styles.unclaimedTitle}>{t('center.unclaimedHands')}</Text>
+              <Text style={styles.unclaimedSub}>{t('center.unclaimedSub')}</Text>
+              {index.unclaimedHands.map((row) => (
+                <MemberRow
+                  key={row.subjectKey}
+                  row={row}
+                  onPress={() => onOpenPreview(row)}
+                  unclaimed
+                />
+              ))}
+            </View>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function MemberRow({
+  row,
+  onPress,
+  unclaimed,
+}: {
+  row: MemberStatementIndexRow;
+  onPress: () => void;
+  unclaimed?: boolean;
+}) {
+  const { t } = useTranslation('ledger');
+  const initials = getInitials(row.displayName);
+  const contextLabel = memberContextLabel(row, Boolean(unclaimed), t);
+  return (
+    <Pressable
+      style={[styles.memberRow, unclaimed && styles.memberRowUnclaimed]}
+      onPress={onPress}
+      disabled={!row.canRequestStatement}
+      accessibilityRole="button"
+      accessibilityLabel={t('center.openStatementA11y', { name: row.displayName })}
+      accessibilityHint={t('center.openStatementHint')}
+      accessibilityState={{ disabled: !row.canRequestStatement }}
+    >
+      <View style={[styles.avatar, unclaimed && styles.avatarUnclaimed]}>
+        <Text style={styles.avatarText}>{initials}</Text>
+      </View>
+      <View style={styles.memberBody}>
+        <View style={styles.memberHeadingRow}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.memberName} numberOfLines={1}>
+              {row.displayName}
+            </Text>
+            <Text style={styles.rowMeta}>{contextLabel}</Text>
+          </View>
+          <View style={styles.rowChevron}>
+            <FontAwesome name="chevron-right" size={13} color={colors.subtle} />
+          </View>
+        </View>
+        <View style={styles.totalsList}>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>{t('center.contributed')}</Text>
+            <Text style={styles.totalValue}>
+              {displayMoney(row.totals.contributedDisplay)}
+            </Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>{t('center.received')}</Text>
+            <Text style={styles.totalValue}>
+              {displayMoney(row.totals.receivedDisplay)}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function DocumentsPanel({
+  documents,
+  loading,
+  error,
+  sharingDocId,
+  onRefresh,
+  onShare,
+}: {
+  documents: StatementDocumentSummary[];
+  loading: boolean;
+  error: string | null;
+  sharingDocId: string | null;
+  onRefresh: () => void;
+  onShare: (doc: StatementDocumentSummary) => void;
+}) {
+  const { t, i18n } = useTranslation(['ledger', 'records']);
+  const language = i18n.resolvedLanguage || i18n.language;
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.panelTitle}>{t('center.segmentDocuments')}</Text>
+          <Text style={styles.panelSub}>{t('center.documentsSub')}</Text>
+        </View>
+        <Pressable
+          onPress={onRefresh}
+          style={styles.refreshBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t('center.refreshDocumentsA11y')}
+        >
+          <FontAwesome name="refresh" size={14} color={colors.primary} />
+        </Pressable>
+      </View>
+
+      {loading ? (
+        <View style={styles.stateCardCompact}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.stateTitle}>{t('center.loadingDocuments')}</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.stateCardCompact}>
+          <Text style={styles.stateTitle}>{t('center.loadDocumentsError')}</Text>
+          <Text style={styles.stateBody}>
+            {friendlyError(error, t('center.genericError'))}
+          </Text>
+          <Pressable style={styles.primaryBtn} onPress={onRefresh}>
+            <Text style={styles.primaryBtnText}>{t('center.retry')}</Text>
+          </Pressable>
+        </View>
+      ) : documents.length === 0 ? (
+        <View style={styles.emptyBlock}>
+          <View style={styles.emptyIcon}>
+            <FontAwesome name="folder-open-o" size={22} color={colors.subtle} />
+          </View>
+          <Text style={styles.emptyTitle}>{t('center.emptyDocumentsTitle')}</Text>
+          <Text style={styles.emptyBody}>{t('center.emptyDocumentsBody')}</Text>
+        </View>
+      ) : (
+        documents.map((doc) => (
+          <View key={doc.id} style={styles.docRow}>
+            <View style={styles.docIcon}>
+              <FontAwesome name="file-pdf-o" size={16} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.docKind} numberOfLines={1}>
+                {t(`records:documents.type.${documentTypeKey(doc.documentType)}`)}
+                {doc.superseded ? ` \u00B7 ${t('records:documents.superseded')}` : ''}
+              </Text>
+              <Text style={styles.memberName} numberOfLines={1}>
+                {doc.memberDisplayName || t('center.memberFallback')}
+              </Text>
+              <Text style={styles.rowMeta} numberOfLines={2}>
+                {doc.period?.label || '\u2014'}
+                {' \u00B7 '}
+                {formatRelativeDays(doc.generatedAt, language, t)}
+              </Text>
+              <Text style={styles.docReference} numberOfLines={1}>
+                {doc.statementReference}
+              </Text>
+            </View>
+            <Pressable
+              style={[
+                styles.docShareBtn,
+                sharingDocId === doc.id && styles.btnDisabled,
+              ]}
+              onPress={() => onShare(doc)}
+              disabled={sharingDocId === doc.id}
+              accessibilityRole="button"
+              accessibilityLabel={t('center.shareStatementA11y', {
+                name: doc.memberDisplayName || t('center.memberFallback'),
+              })}
+            >
+              {sharingDocId === doc.id ? (
+                <ActivityIndicator color={colors.primary} size="small" />
+              ) : (
+                <FontAwesome name="share" size={14} color={colors.primary} />
+              )}
+            </Pressable>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+function ExpandableSection({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={styles.expandCard}>
+      <Pressable
+        style={styles.expandHeader}
+        onPress={() => setOpen((value) => !value)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={title}
+      >
+        <Text style={styles.expandTitle}>{title}</Text>
+        <FontAwesome
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={12}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open ? <View style={styles.expandBody}>{children}</View> : null}
+    </View>
+  );
+}
+
+function PreviewBody({ snapshot }: { snapshot: MemberStatementSnapshot }) {
+  const { t, i18n } = useTranslation(['ledger']);
+  const language = i18n.resolvedLanguage || i18n.language;
+  const uniqueLedgerEntries = useMemo(
+    () => dedupeById(snapshot.ledger || []),
+    [snapshot.ledger],
+  );
+
+  const memberName = snapshot.member.displayName || t('center.memberFallback');
+  const circleLabel = snapshot.circle.name || t('center.circleFallback');
+  const periodLabel = snapshot.period.label || '\u2014';
+  const handCount = snapshot.circleParticipation.memberHandCount;
+  const statementId = shortStatementId(snapshot.statementReference);
+
+  const allReceivedPayouts = useMemo(
+    () =>
+      snapshot.hands.flatMap((hand) =>
+        (hand.payouts.received || []).map((payout) => ({
+          ...payout,
+          handLabel: hand.displayLabel,
+        })),
+      ),
+    [snapshot.hands],
+  );
+
+  return (
+    <View style={styles.previewRoot}>
+      <View style={styles.previewHero}>
+        <Text style={styles.previewBrand}>CircuSave</Text>
+        <Text style={styles.previewTitle}>{t('center.previewTitle')}</Text>
+        <Text style={styles.previewMember}>{memberName}</Text>
+        <Text style={styles.previewMetaLine}>{circleLabel}</Text>
+        <Text style={styles.previewDisclaimer}>
+          {snapshot.verification.disclaimer || t('center.previewDisclaimerFallback')}
+        </Text>
+      </View>
+
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryCardTitle}>{t('center.summary')}</Text>
+        <View style={styles.summaryMetrics}>
+          <View style={styles.summaryMetric}>
+            <Text style={styles.summaryMetricLabel}>{t('center.contributed')}</Text>
+            <Text style={styles.summaryMetricValue}>
+              {displayMoney(snapshot.memberTotals.totalContributedDisplay)}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryMetric}>
+            <Text style={styles.summaryMetricLabel}>{t('center.received')}</Text>
+            <Text style={styles.summaryMetricValue}>
+              {displayMoney(snapshot.memberTotals.totalReceivedDisplay)}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryMetric}>
+            {/* Outstanding = remainingObligations* presentation label only */}
+            <Text style={styles.summaryMetricLabel}>{t('center.outstanding')}</Text>
+            <Text style={styles.summaryMetricValue}>
+              {displayMoney(snapshot.memberTotals.remainingObligationsDisplay)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.metaCard}>
+        <MetaLine label={t('center.circleFallback')} value={circleLabel} />
+        <MetaLine label={t('center.memberFallback')} value={memberName} />
+        <MetaLine label={t('center.statementPeriod')} value={periodLabel} />
+        <MetaLine
+          label={t('center.membershipStatus')}
+          value={humanizeStatus(snapshot.member.membershipStatus, t)}
+        />
+        <MetaLine
+          label={t('center.hands')}
+          value={t('center.handsCount', { count: handCount })}
+          last
+        />
+      </View>
+
+      <Text style={styles.sectionLabel}>{t('center.hands')}</Text>
+      <Text style={styles.sectionHint}>{t('center.handsHint')}</Text>
+      {snapshot.hands.map((hand, handIndex) => {
+        const nextDue = nextContributionDue(hand.contributions.byRound);
+        const nextPayout = nextScheduledPayout(hand.payouts.scheduled);
+        return (
+          <View key={hand.handId} style={styles.handCard}>
+            <View style={styles.handHeader}>
+              <Text style={styles.handTitle} numberOfLines={2}>
+                {t('center.handTitle', { number: hand.handNumber || handIndex + 1 })}
+              </Text>
+              <View style={styles.positionBadge}>
+                <Text style={styles.positionBadgeText}>
+                  {t('center.payoutPosition', {
+                    position:
+                      hand.payoutPosition === 'Unavailable'
+                        ? '\u2014'
+                        : String(hand.payoutPosition),
+                  })}
+                </Text>
+              </View>
+            </View>
+            {hand.displayLabel ? (
+              <Text style={styles.rowMeta} numberOfLines={1}>
+                {hand.displayLabel}
+              </Text>
+            ) : null}
+            {!hand.isParticipating ? (
+              <Text style={styles.rowMeta}>{t('center.notParticipating')}</Text>
+            ) : null}
+
+            <View style={styles.handMetrics}>
+              <Metric
+                label={t('center.confirmedContributions')}
+                value={displayMoney(hand.contributions.confirmedDisplay)}
+              />
+              <Metric
+                label={t('center.pendingContributions')}
+                value={displayMoney(hand.contributions.pendingDisplay)}
+              />
+              <Metric
+                label={t('center.missed')}
+                value={displayMoney(hand.contributions.missedDisplay)}
+              />
+              <Metric
+                label={t('center.rejected')}
+                value={displayMoney(hand.contributions.rejectedDisplay)}
+              />
+              <Metric
+                label={t('center.payoutsReceived')}
+                value={displayMoney(hand.payouts.receivedDisplay)}
+              />
+              <Metric
+                label={t('center.outstanding')}
+                value={displayMoney(hand.remainingObligationsDisplay)}
+              />
+            </View>
+
+            {nextPayout ? (
+              <Text style={styles.nextLine}>
+                {t('center.nextPayout', { round: nextPayout.roundNumber })}
+                {' \u00B7 '}
+                {displayMoney(nextPayout.amountDisplay)}
+                {nextPayout.dueDate
+                  ? ` \u00B7 ${formatDisplayDate(nextPayout.dueDate, language)}`
+                  : ''}
+              </Text>
+            ) : null}
+            {nextDue ? (
+              <Text style={styles.nextLine}>
+                {t('center.nextContribution', { round: nextDue.roundNumber })}
+                {' \u00B7 '}
+                {displayMoney(nextDue.expectedDisplay)}
+                {nextDue.dueDate
+                  ? ` \u00B7 ${formatDisplayDate(nextDue.dueDate, language)}`
+                  : ''}
+              </Text>
+            ) : null}
+
+            {(hand.contributions.byRound || []).length > 0 ? (
+              <>
+                <Text style={styles.miniLabel}>{t('center.contributionHistory')}</Text>
+                {hand.contributions.byRound.map((r) => {
+                  const provenanceText = externalContributionProvenanceText(
+                    r,
+                    t,
+                    language,
+                  );
+                  const awaitingConfirmation =
+                    r.verificationStatus === 'pending_organizer_confirmation';
+                  return (
+                  <View key={r.contributionId} style={styles.roundRow}>
+                    <Text style={styles.roundTitle}>
+                      {t('center.roundTitle', { number: r.roundNumber })}
+                    </Text>
+                    <Text style={styles.roundMeta}>
+                      {humanizeStatus(r.status, t)}
+                    </Text>
+                    <Text style={styles.roundAmount}>
+                      {awaitingConfirmation || r.status === 'confirmed'
+                        ? displayMoney(
+                            awaitingConfirmation ? r.expectedDisplay : r.paidDisplay,
+                          )
+                        : t('center.ofAmount', {
+                            paid: displayMoney(r.paidDisplay),
+                            expected: displayMoney(r.expectedDisplay),
+                          })}
+                    </Text>
+                    <Text style={styles.roundMeta}>
+                      {formatDisplayDate(
+                        r.confirmedAt || r.submittedAt || r.dueDate,
+                        language,
+                      )}
+                    </Text>
+                    {provenanceText ? (
+                      <Text style={styles.roundMeta}>{provenanceText}</Text>
+                    ) : null}
+                  </View>
+                  );
+                })}
+              </>
+            ) : null}
+          </View>
+        );
+      })}
+
+      <Text style={styles.sectionLabel}>{t('center.payoutHistory')}</Text>
+      {allReceivedPayouts.length === 0 ? (
+        <View style={styles.emptyInline}>
+          <Text style={styles.emptyTitle}>{t('center.noPayoutsTitle')}</Text>
+          <Text style={styles.emptyBody}>{t('center.noPayoutsBody')}</Text>
+        </View>
+      ) : (
+        allReceivedPayouts.map((payout) => (
+          <View key={payout.payoutId} style={styles.roundRow}>
+            <Text style={styles.roundTitle}>
+              {payout.roundNumber != null
+                ? t('center.roundTitle', { number: payout.roundNumber })
+                : t('center.payout')}
+            </Text>
+            <Text style={styles.roundMeta}>
+              {humanizeStatus(payout.status, t)}
+              {' \u00B7 '}
+              {payout.handLabel}
+            </Text>
+            <Text style={styles.roundAmount}>
+              {displayMoney(payout.amountDisplay)}
+            </Text>
+            <Text style={styles.roundMeta}>
+              {formatDisplayDate(payout.paidAt, language)}
+            </Text>
+          </View>
+        ))
+      )}
+
+      <ExpandableSection title={t('center.activityDetails')}>
+        {uniqueLedgerEntries.length === 0 ? (
+          <Text style={styles.sectionHint}>{t('center.noRelatedActivity')}</Text>
+        ) : (
+          uniqueLedgerEntries.slice(0, 50).map((entry, index) => {
+            const provenanceText = externalContributionProvenanceText(
+              entry,
+              t,
+              language,
+            );
+            return (
+            <View
+              key={statementLedgerRenderKey(entry, index)}
+              style={styles.ledgerPreviewRow}
+            >
+              <Text style={styles.rowTitle}>
+                {humanizeEventType(entry.eventType, t)}
+              </Text>
+              <Text style={styles.rowMeta}>
+                {formatDisplayDateTime(entry.at, language)}
+                {entry.roundNumber != null
+                  ? ` \u00B7 ${t('center.roundTitle', { number: entry.roundNumber })}`
+                  : ''}
+                {' \u00B7 '}
+                {displayMoney(entry.amountDisplay)}
+              </Text>
+              {provenanceText ? (
+                <Text style={styles.rowMeta}>{provenanceText}</Text>
+              ) : null}
+            </View>
+            );
+          })
+        )}
+      </ExpandableSection>
+
+      <ExpandableSection title={t('center.statementVerification')}>
+        <Text style={styles.sectionHint}>
+          {t('center.statementId', { id: statementId })}
+        </Text>
+        <Text style={styles.sectionHint}>
+          {t('center.generated', {
+            date: formatDisplayDateTime(snapshot.generatedAt, language),
+          })}
+        </Text>
+        <Text style={styles.sectionHint}>
+          {t('center.source', {
+            source: snapshot.verification.dataSource || 'backend_snapshot',
+          })}
+        </Text>
+        {snapshot.verification.contentFingerprint ? (
+          <Text style={styles.sectionHint}>
+            {t('center.fingerprint', {
+              fingerprint: snapshot.verification.contentFingerprint,
+            })}
+          </Text>
+        ) : null}
+        <Text style={styles.sectionHint}>
+          {t('center.fullReference', {
+            reference: snapshot.statementReference || '\u2014',
+          })}
+        </Text>
+        <Text style={styles.sectionHint}>
+          {snapshot.verification.footerText || t('center.previewDisclaimerFallback')}
+        </Text>
+      </ExpandableSection>
+    </View>
+  );
+}
+
+function MetaLine({
+  label,
+  value,
+  last,
+}: {
+  label: string;
+  value: string;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.metaLine, last && styles.metaLineLast]}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metricCell}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    gap: 16,
+  },
+  pageHeader: {
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 4,
+  },
+  pageTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: colors.textStrong,
+    letterSpacing: -0.4,
+  },
+  pageCircleName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    marginTop: 2,
+  },
+  pageSubtitle: {
+    fontSize: 14,
+    color: colors.muted,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  pageDisclaimer: {
+    fontSize: 11,
+    color: colors.subtle,
+    marginTop: 10,
+    lineHeight: 16,
+  },
+  segmentControl: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    padding: 4,
+    gap: 2,
+  },
+  segmentItem: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  segmentItemActive: {
+    backgroundColor: colors.card,
+    shadowColor: colors.textStrong,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  segmentLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.muted,
+    textAlign: 'center',
+  },
+  segmentLabelActive: {
+    color: colors.textStrong,
+  },
+  panel: {
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 16,
+    gap: 12,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  refreshBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panelTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.textStrong,
+    letterSpacing: -0.2,
+  },
+  panelSub: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 4,
+    lineHeight: 19,
+  },
+  panelHint: {
+    fontSize: 12,
+    color: colors.subtle,
+    marginTop: 8,
+    lineHeight: 17,
+  },
+  periodCard: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    gap: 10,
+  },
+  periodLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textStrong,
+    letterSpacing: 0.2,
+  },
+  periodToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  periodToggle: {
+    flex: 1,
+    minHeight: 42,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  periodToggleActive: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+  },
+  periodToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.muted,
+  },
+  periodToggleTextActive: {
+    color: colors.primaryDark,
+  },
+  periodHelper: {
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 17,
+  },
+  periodWarning: {
+    fontSize: 12,
+    color: colors.warning,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  dateLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.muted,
+    marginBottom: 6,
+  },
+  dateInput: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: colors.textStrong,
+    minHeight: 46,
+  },
+  memberList: {
+    gap: 10,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    minHeight: 48,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 16,
+    backgroundColor: colors.card,
+  },
+  memberRowUnclaimed: {
+    backgroundColor: colors.background,
+    borderStyle: 'dashed',
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarUnclaimed: {
+    backgroundColor: colors.subtle,
+  },
+  avatarText: {
+    color: colors.onColor,
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  memberBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  memberHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  rowChevron: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -2,
+    marginRight: -4,
+  },
+  memberName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  rowMeta: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  totalsList: {
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceMuted,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+  },
+  totalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  totalValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+    textAlign: 'right',
+  },
+  unclaimedSection: {
+    marginTop: 8,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+    gap: 10,
+  },
+  unclaimedTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  unclaimedSub: {
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 17,
+    marginBottom: 2,
+  },
+  ledgerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+  },
+  ledgerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.surfaceMuted,
+    marginLeft: 44,
+  },
+  upgradeBox: {
+    marginTop: 8,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    gap: 8,
+  },
+  upgradeTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  upgradeBody: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+  },
+  emptyBlock: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    gap: 8,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  emptyBody: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 19,
+    paddingHorizontal: 12,
+  },
+  stateCard: {
+    margin: spacing.screenX,
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
+  },
+  stateCardCompact: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  stateIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.warningSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stateTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textStrong,
+    textAlign: 'center',
+  },
+  stateBody: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  skeletonList: {
+    width: '100%',
+    gap: 8,
+    marginTop: 8,
+  },
+  skeletonRow: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.cardBorder,
+    width: '100%',
+  },
+  primaryBtn: {
+    marginTop: 4,
+    minHeight: 48,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryBtnText: {
+    color: colors.onColor,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  btnDisabled: {
+    opacity: 0.55,
+  },
+  docRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceMuted,
+  },
+  docIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docKind: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  docReference: {
+    fontSize: 11,
+    color: colors.subtle,
+    marginTop: 2,
+  },
+  docShareBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: spacing.screenX,
+    paddingTop: 18,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+    backgroundColor: colors.card,
+  },
+  modalClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalKicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.3,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+    marginTop: 1,
+  },
+  secondaryBtn: {
+    minHeight: 48,
+    borderRadius: radii.pill,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  secondaryBtnText: {
+    color: colors.primaryDark,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  expandCard: {
+    marginTop: 12,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    overflow: 'hidden',
+  },
+  expandHeader: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  expandTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  expandBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceMuted,
+  },
+  nextLine: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryDark,
+    lineHeight: 17,
+  },
+  roundAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+    marginTop: 2,
+  },
+  emptyInline: {
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 16,
+    gap: 6,
+    marginBottom: 8,
+  },
+  previewScroll: {
+    padding: spacing.screenX,
+    paddingBottom: 40,
+  },
+  modalFooter: {
+    padding: spacing.screenX,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+    backgroundColor: colors.card,
+    gap: 8,
+  },
+  footerHint: {
+    fontSize: 11,
+    color: colors.muted,
+    textAlign: 'center',
+  },
+  previewRoot: {
+    gap: 4,
+  },
+  previewHero: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 18,
+    marginBottom: 12,
+  },
+  previewBrand: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  previewTitle: {
+    color: colors.textStrong,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  previewMember: {
+    color: colors.textStrong,
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 4,
+    letterSpacing: -0.3,
+  },
+  previewMetaLine: {
+    color: colors.muted,
+    fontSize: 13,
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  previewDisclaimer: {
+    color: colors.subtle,
+    fontSize: 11,
+    marginTop: 12,
+    lineHeight: 16,
+  },
+  summaryCard: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  summaryCardTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primaryDark,
+    marginBottom: 12,
+    letterSpacing: 0.3,
+  },
+  summaryMetrics: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  summaryMetric: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryMetricLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  summaryMetricValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  summaryDivider: {
+    width: 1,
+    backgroundColor: colors.primaryBorder,
+    marginVertical: 2,
+  },
+  summaryFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.primaryBorder,
+  },
+  summaryFooterLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryDark,
+  },
+  metaCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  metaLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surfaceMuted,
+  },
+  metaLineLast: {
+    borderBottomWidth: 0,
+  },
+  metaLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.muted,
+    flex: 0.4,
+  },
+  metaValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textStrong,
+    flex: 0.6,
+    textAlign: 'right',
+  },
+  sectionLabel: {
+    marginTop: 16,
+    marginBottom: 4,
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.textStrong,
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  handCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 14,
+    marginBottom: 10,
+  },
+  handHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 10,
+  },
+  handTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  positionBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  positionBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primaryDark,
+  },
+  handMetrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metricCell: {
+    width: '47%',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  metricLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  metricValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textStrong,
+    marginTop: 2,
+  },
+  miniLabel: {
+    marginTop: 14,
+    marginBottom: 6,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.muted,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  roundRow: {
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceMuted,
+  },
+  roundTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textStrong,
+  },
+  roundMeta: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  ledgerPreviewRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surfaceMuted,
+  },
+  verificationCard: {
+    marginTop: 16,
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+});

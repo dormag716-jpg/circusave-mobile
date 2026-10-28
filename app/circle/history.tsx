@@ -2,15 +2,29 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
-import { circleWorkspaceHref, myCirclesHref } from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
+import { circleWorkspaceHref, myCirclesHref } from '@/lib/platform/navigation';
+import { colors, radii, spacing } from '@/lib/shared/theme';
 
+/**
+ * Legacy route: circle history now lives in the Records statement center.
+ * This screen redirects users into the workspace Records tab.
+ */
 export default function CircleHistoryScreen() {
+  const { t } = useTranslation('circleWorkspace');
   const params = useLocalSearchParams<{ circleId?: string | string[] }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
     : params.circleId;
+
+  function openRecords() {
+    if (circleId) {
+      router.replace(circleWorkspaceHref(circleId, 'records'));
+      return;
+    }
+    router.replace(myCirclesHref);
+  }
 
   function handleBack() {
     if (circleId) {
@@ -20,6 +34,16 @@ export default function CircleHistoryScreen() {
     router.replace(myCirclesHref);
   }
 
+  const backLabel = circleId
+    ? t('history.backToWorkspace')
+    : t('history.backToCircles');
+  const actionLabel = circleId
+    ? t('history.openRecords')
+    : t('history.backToCirclesAction');
+  const actionA11y = circleId
+    ? t('history.openRecordsA11y')
+    : t('history.backToCircles');
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -28,35 +52,27 @@ export default function CircleHistoryScreen() {
             style={styles.backButton}
             onPress={handleBack}
             accessibilityRole="button"
-            accessibilityLabel={
-              circleId ? 'Back to circle workspace' : 'Back to My Circles'
-            }
+            accessibilityLabel={backLabel}
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
           <View style={styles.headerCopy}>
-            <Text style={styles.kicker}>Circle records</Text>
-            <Text style={styles.title}>Circle History</Text>
+            <Text style={styles.kicker}>{t('history.kicker')}</Text>
+            <Text style={styles.title}>{t('history.title')}</Text>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.eyebrow}>Coming soon</Text>
-          <Text style={styles.cardTitle}>Circle history is not available yet.</Text>
-          <Text style={styles.body}>
-            Completed circle history and export will appear here after the
-            backend history endpoint is connected. Use Records in the workspace
-            for recent ledger activity.
-          </Text>
+          <Text style={styles.eyebrow}>{t('history.moved')}</Text>
+          <Text style={styles.cardTitle}>{t('history.cardTitle')}</Text>
+          <Text style={styles.body}>{t('history.body')}</Text>
           <Pressable
             style={styles.primaryButton}
-            onPress={handleBack}
+            onPress={openRecords}
             accessibilityRole="button"
-            accessibilityLabel="Go back"
+            accessibilityLabel={actionA11y}
           >
-            <Text style={styles.primaryButtonText}>
-              {circleId ? 'Back to workspace' : 'Back to My Circles'}
-            </Text>
+            <Text style={styles.primaryButtonText}>{actionLabel}</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -78,69 +94,69 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
+    marginBottom: 18,
   },
   backButton: {
-    alignItems: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.card,
-    borderColor: colors.cardBorder,
-    borderRadius: 18,
-    borderWidth: 1,
-    height: 48,
+    alignItems: 'center',
     justifyContent: 'center',
-    width: 48,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   headerCopy: {
     flex: 1,
   },
   kicker: {
-    color: colors.muted,
-    fontSize: 13,
+    color: colors.primary,
+    fontSize: 12,
     fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   title: {
     color: colors.textStrong,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '900',
     marginTop: 2,
   },
   card: {
     backgroundColor: colors.card,
-    borderColor: colors.cardBorder,
     borderRadius: radii.card,
     borderWidth: 1,
-    marginTop: 20,
+    borderColor: colors.cardBorder,
     padding: spacing.card,
   },
   eyebrow: {
     color: colors.primary,
     fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0,
-    textTransform: 'uppercase',
+    marginBottom: 8,
   },
   cardTitle: {
     color: colors.textStrong,
     fontSize: 18,
     fontWeight: '900',
-    marginTop: 6,
+    marginBottom: 8,
   },
   body: {
     color: colors.muted,
     fontSize: 14,
     lineHeight: 21,
-    marginTop: 8,
+    marginBottom: 18,
   },
   primaryButton: {
-    alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: radii.control,
+    borderRadius: radii.pill,
+    paddingVertical: 14,
+    alignItems: 'center',
+    minHeight: 44,
     justifyContent: 'center',
-    marginTop: 18,
-    minHeight: 48,
-    paddingHorizontal: 16,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: colors.onColor,
     fontSize: 15,
     fontWeight: '800',
   },

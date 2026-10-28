@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -9,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   TextInput,
   View,
@@ -20,27 +22,40 @@ import {
   requestJoin,
   type BackendInvitePreview,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { dashboardHref } from '@/lib/navigation';
-import { colors, spacing } from '@/lib/theme';
-
-function cap(s: string) {
-  return s ? s[0].toUpperCase() + s.slice(1) : '';
-}
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
+import { ApiError } from '@/lib/api';
+import { describeNetworkError } from '@/lib/platform/networkErrors';
+import { formatCurrency } from '@/lib/i18n/formatters';
+import {
+  shouldKeepJoinPreviewDuringLookup,
+} from '@/lib/shared/joinCirclePaint';
+import { resolveJoinOutcome, type JoinOutcome } from '@/lib/circles/joinOutcome';
+import { dashboardHref } from '@/lib/platform/navigation';
+import {
+  buildPlannedHandClaimAcknowledgment,
+  canSubmitPlannedHandClaim,
+  plannedHandClaimStage,
+  resolveJoinPreviewCounts,
+} from '@/lib/circles/plannedHandClaim';
+import { colors, spacing } from '@/lib/shared/theme';
 
 export default function JoinCircleScreen() {
+  const { t, i18n } = useTranslation(['joinCircle', 'common', 'auth']);
   const { session, setPostAuthTarget } = useAuthSession();
   const token = session?.session.token;
+  const viewerUserId = session?.user?.id;
   const [code, setCode] = useState('');
   const [resolving, setResolving] = useState(false);
   const [joining, setJoining] = useState(false);
   const [preview, setPreview] = useState<BackendInvitePreview | null>(null);
   const [resolvedId, setResolvedId] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [joinOutcome, setJoinOutcome] = useState<JoinOutcome | null>(null);
+  const [claimAckChecked, setClaimAckChecked] = useState(false);
 
   async function lookup() {
     if (!code.trim()) {
-      Alert.alert('Enter a code', 'Type the code you received from the organizer.');
+      Alert.alert(t('enterCodeTitle'), t('enterCodeMessage'));
       return;
     }
     if (!token) {
@@ -49,18 +64,23 @@ export default function JoinCircleScreen() {
       return;
     }
     setResolving(true);
-    setPreview(null);
-    setResolvedId(null);
-    setSent(false);
+    setJoinOutcome(null);
+    if (!shouldKeepJoinPreviewDuringLookup(preview != null)) {
+      setPreview(null);
+      setResolvedId(null);
+    }
     try {
       const { circleId, preview: p } = await resolveCircleCode(token, code);
       setPreview(p);
       setResolvedId(circleId);
-    } catch (e) {
-      Alert.alert(
-        'Circle not found',
-        e instanceof Error ? e.message : 'Check the code and try again.',
-      );
+    } catch (error) {
+      logClientError('Unable to resolve circle code', error);
+      if (error instanceof ApiError && error.category === 'http_4xx') {
+        Alert.alert(t('notFoundTitle'), t('notFoundMessage'));
+      } else {
+        const copy = describeNetworkError(error);
+        Alert.alert(t(copy.titleKey), t(copy.bodyKey, copy.params));
+      }
     } finally {
       setResolving(false);
     }
@@ -68,29 +88,50 @@ export default function JoinCircleScreen() {
 
   async function join() {
     if (!token || !resolvedId) return;
+    if (!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })) {
+      return;
+    }
+    const ack = buildPlannedHandClaimAcknowledgment({
+      language: i18n.resolvedLanguage || i18n.language,
+      checked: claimAckChecked,
+    });
+    if (!ack) return;
     setJoining(true);
     try {
-      await requestJoin(token, resolvedId);
-      setSent(true);
-    } catch (e) {
+      const result = await requestJoin(token, resolvedId, ack);
+      setJoinOutcome(resolveJoinOutcome(result, viewerUserId));
+    } catch (error) {
+      logClientError('Unable to request circle membership', error);
+      const copy = describeNetworkError(error);
       Alert.alert(
-        'Could not request to join',
-        e instanceof Error ? e.message : 'An error occurred.',
+        error instanceof ApiError && error.category === 'http_429'
+          ? t(copy.titleKey)
+          : t('joinErrorTitle'),
+        t(copy.bodyKey, copy.params),
       );
     } finally {
       setJoining(false);
     }
   }
 
-  function onCode(t: string) {
-    const u = t.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  function onCode(next: string) {
+    const u = next.toUpperCase().replace(/[^A-Z0-9-]/g, '');
     setCode(u);
-    if (preview) {
+    if (preview || joinOutcome) {
       setPreview(null);
       setResolvedId(null);
-      setSent(false);
+      setJoinOutcome(null);
+      setClaimAckChecked(false);
     }
   }
+
+  const { fontScale, width: windowWidth } = useWindowDimensions();
+  // Large text or a narrow screen: stack the stats so labels never break mid-word.
+  const stackStats = fontScale > 1.15 || windowWidth < 340;
+  const afterStart = preview ? plannedHandClaimStage(preview.status) === 'afterStart' : false;
+  const previewCounts = preview
+    ? resolveJoinPreviewCounts(preview)
+    : ({ kind: 'legacy', total: null } as const);
 
   return (
     <SafeAreaView style={sty.screen} edges={['top', 'left', 'right']}>
@@ -108,7 +149,7 @@ export default function JoinCircleScreen() {
             style={sty.back}
             onPress={() => router.replace(dashboardHref)}
             accessibilityRole="button"
-            accessibilityLabel="Back to dashboard"
+            accessibilityLabel={t('backDashboard')}
           >
             <FontAwesome name="angle-left" size={26} color={colors.primary} />
           </Pressable>
@@ -118,28 +159,28 @@ export default function JoinCircleScreen() {
             <View style={sty.heroIcon}>
               <FontAwesome name="key" size={34} color={colors.primary} />
             </View>
-            <Text style={sty.heroTitle}>Join a Circle</Text>
+            <Text style={sty.heroTitle}>{t('title')}</Text>
             <Text style={sty.heroSub}>
-              Enter the unique code shared by the organizer to request access.
+              {t('subtitle')}
             </Text>
           </View>
 
           {/* Code input */}
           <View style={sty.card}>
-            <Text style={sty.lbl}>CIRCLE CODE</Text>
+            <Text style={sty.lbl}>{t('codeLabel')}</Text>
             <View style={sty.row}>
               <TextInput
                 style={sty.input}
                 value={code}
                 onChangeText={onCode}
-                placeholder="CSX-XXXXXXXX"
+                placeholder={t('codePlaceholder')}
                 placeholderTextColor={colors.subtle}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 returnKeyType="search"
                 onSubmitEditing={lookup}
                 maxLength={16}
-                accessibilityLabel="Circle code"
+                accessibilityLabel={t('codeLabel')}
               />
               <Pressable
                 style={({ pressed }) => [
@@ -150,25 +191,22 @@ export default function JoinCircleScreen() {
                 onPress={lookup}
                 disabled={resolving || !code.trim()}
                 accessibilityRole="button"
-                accessibilityLabel="Look up circle"
+                accessibilityLabel={t('lookup')}
               >
                 {resolving ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={colors.onColor} size="small" />
                 ) : (
-                  <FontAwesome name="search" size={18} color="#fff" />
+                  <FontAwesome name="search" size={18} color={colors.onColor} />
                 )}
               </Pressable>
             </View>
             <Text style={sty.hint}>
-              Codes look like{' '}
-              <Text style={{ fontWeight: '800', color: colors.primaryDark }}>
-                CSX-A1B2C3D4
-              </Text>
+              {t('codeHint', { example: 'CSX-A1B2C3D4' })}
             </Text>
           </View>
 
           {/* Preview card */}
-          {preview && !sent ? (
+          {preview && !joinOutcome ? (
             <View style={sty.previewCard}>
               {/* Header */}
               <View style={sty.previewHead}>
@@ -178,96 +216,157 @@ export default function JoinCircleScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={sty.previewName}>{preview.name}</Text>
                   <Text style={sty.previewOrg}>
-                    by {preview.organizerName ?? preview.organizer_name ?? 'Organizer'}
+                    {t('organizerBy', {
+                      name:
+                        preview.organizerName ??
+                        preview.organizer_name ??
+                        t('organizerFallback'),
+                    })}
                   </Text>
                 </View>
                 <View style={sty.badge}>
-                  <Text style={sty.badgeTxt}>{cap(preview.status ?? 'Active')}</Text>
+                  <Text style={sty.badgeTxt}>
+                    {t(`status.${String(preview.status ?? 'active').toLowerCase()}`, {
+                      defaultValue: String(preview.status ?? 'active'),
+                    })}
+                  </Text>
                 </View>
               </View>
 
               {/* Stats row */}
-              <View style={sty.stats}>
+              <View style={[sty.stats, stackStats && sty.statsStacked]}>
                 <View style={sty.stat}>
                   <FontAwesome name="dollar" size={13} color={colors.primary} />
-                  <View style={{ marginLeft: 8 }}>
-                    <Text style={sty.statLbl}>Contribution</Text>
+                  <View style={sty.statBody}>
+                    <Text style={sty.statLbl}>{t('contribution')}</Text>
                     <Text style={sty.statVal}>
-                      ${preview.contributionAmount ?? preview.contribution_amount ?? '\u2014'}
+                      {formatPreviewAmount(
+                        preview.contributionAmount ?? preview.contribution_amount,
+                        i18n.resolvedLanguage || i18n.language,
+                      )}
                     </Text>
                   </View>
                 </View>
-                <View style={sty.divider} />
+                {stackStats ? null : <View style={sty.divider} />}
                 <View style={sty.stat}>
                   <FontAwesome name="refresh" size={13} color={colors.primary} />
-                  <View style={{ marginLeft: 8 }}>
-                    <Text style={sty.statLbl}>Frequency</Text>
-                    <Text style={sty.statVal}>{cap(preview.frequency)}</Text>
+                  <View style={sty.statBody}>
+                    <Text style={sty.statLbl}>{t('frequency')}</Text>
+                    <Text style={sty.statVal}>
+                      {t(`frequencyValue.${String(preview.frequency).toLowerCase()}`, {
+                        defaultValue: preview.frequency,
+                      })}
+                    </Text>
                   </View>
                 </View>
-                <View style={sty.divider} />
+                {stackStats ? null : <View style={sty.divider} />}
                 <View style={sty.stat}>
                   <FontAwesome name="users" size={13} color={colors.primary} />
-                  <View style={{ marginLeft: 8 }}>
-                    <Text style={sty.statLbl}>Members</Text>
+                  <View style={sty.statBody}>
+                    <Text style={sty.statLbl}>
+                      {previewCounts.kind === 'split' ? t('joined') : t('members')}
+                    </Text>
                     <Text style={sty.statVal}>
-                      {preview.membersCount ?? preview.members_count ?? '\u2014'}
+                      {previewCounts.kind === 'split'
+                        ? previewCounts.joined
+                        : previewCounts.total ?? '—'}
                     </Text>
                   </View>
                 </View>
               </View>
 
-              {/* Info */}
-              <View style={sty.infoBanner}>
-                <FontAwesome name="info-circle" size={14} color="#2563eb" />
-                <Text style={sty.infoTxt}>
-                  Your request goes to the organizer for approval. You'll be notified once accepted.
+              {previewCounts.kind === 'split' ? (
+                <Text style={sty.handsSummary}>
+                  {t('handsSummary', {
+                    count: previewCounts.hands,
+                    unclaimed: previewCounts.unclaimed,
+                  })}
                 </Text>
-              </View>
+              ) : null}
 
-              {/* Join button */}
+              {/* Conditional claim disclosure — backend decides claim vs pending */}
+              <View style={sty.infoBanner}>
+                <FontAwesome name="info-circle" size={14} color={colors.info} />
+                <Text style={sty.infoTxt}>{t('claimDisclosureConditional')}</Text>
+              </View>
+              <Text style={sty.disclosureBody}>
+                {t(afterStart ? 'claimDisclosureBodyStarted' : 'claimDisclosureBody')}
+              </Text>
+              <Pressable
+                style={sty.ackRow}
+                onPress={() => setClaimAckChecked((value) => !value)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: claimAckChecked }}
+                accessibilityLabel={t(afterStart ? 'claimAckLabelStarted' : 'claimAckLabel')}
+              >
+                <View style={[sty.checkbox, claimAckChecked && sty.checkboxChecked]}>
+                  {claimAckChecked ? (
+                    <FontAwesome name="check" size={12} color={colors.onColor} />
+                  ) : null}
+                </View>
+                <Text style={sty.ackLabel}>
+                  {t(afterStart ? 'claimAckLabelStarted' : 'claimAckLabel')}
+                </Text>
+              </Pressable>
+
+              {/* Join button — disabled until provisional claim acknowledgment */}
               <Pressable
                 style={({ pressed }) => [
                   sty.joinBtn,
-                  joining && sty.dim,
+                  (!claimAckChecked || joining) && sty.dim,
                   pressed && { opacity: 0.85 },
                 ]}
                 onPress={join}
-                disabled={joining}
+                disabled={!canSubmitPlannedHandClaim({ checked: claimAckChecked, busy: joining })}
                 accessibilityRole="button"
-                accessibilityLabel="Request to join this circle"
+                accessibilityLabel={t('requestAccessibility')}
               >
                 {joining ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={colors.onColor} />
                 ) : (
                   <>
-                    <FontAwesome name="hand-o-up" size={18} color="#fff" />
-                    <Text style={sty.joinTxt}>Request to Join</Text>
+                    <FontAwesome name="hand-o-up" size={18} color={colors.onColor} />
+                    <Text style={sty.joinTxt}>{t('joinCircle')}</Text>
                   </>
                 )}
               </Pressable>
             </View>
           ) : null}
 
-          {/* Success state */}
-          {sent ? (
+          {/* Outcome: claimed vs pending (rejection uses the error alert) */}
+          {joinOutcome ? (
             <View style={sty.success}>
-              <View style={sty.checkCircle}>
-                <FontAwesome name="check" size={32} color="#059669" />
+              <View
+                style={[
+                  sty.checkCircle,
+                  joinOutcome === 'pending' && sty.pendingCircle,
+                ]}
+              >
+                <FontAwesome
+                  name={joinOutcome === 'claimed' ? 'check' : 'clock-o'}
+                  size={32}
+                  color={joinOutcome === 'claimed' ? colors.successText : colors.warningText}
+                />
               </View>
-              <Text style={sty.sucTitle}>Request Sent!</Text>
+              <Text
+                style={[
+                  sty.sucTitle,
+                  joinOutcome === 'pending' && sty.pendingTitle,
+                ]}
+              >
+                {t(`outcome.${joinOutcome}Title`)}
+              </Text>
               <Text style={sty.sucTxt}>
-                Your request to join{' '}
-                <Text style={{ fontWeight: '800' }}>{preview?.name}</Text> has
-                been sent. The organizer will review it and you'll be notified
-                once approved.
+                {t(`outcome.${joinOutcome}Message`, {
+                  circleName: preview?.name || t('outcome.circleFallback'),
+                })}
               </Text>
               <Pressable
                 style={sty.doneBtn}
                 onPress={() => router.replace(dashboardHref)}
                 accessibilityRole="button"
               >
-                <Text style={sty.doneTxt}>Back to Dashboard</Text>
+                <Text style={sty.doneTxt}>{t('backDashboardAction')}</Text>
               </Pressable>
               <Pressable
                 style={sty.anotherBtn}
@@ -275,10 +374,10 @@ export default function JoinCircleScreen() {
                   setCode('');
                   setPreview(null);
                   setResolvedId(null);
-                  setSent(false);
+                  setJoinOutcome(null);
                 }}
               >
-                <Text style={sty.anotherTxt}>Join another circle</Text>
+                <Text style={sty.anotherTxt}>{t('joinAnother')}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -287,7 +386,7 @@ export default function JoinCircleScreen() {
           {!token ? (
             <View style={sty.authNudge}>
               <Text style={sty.authTxt}>
-                You need to be signed in to join a circle.
+                {t('signInRequired')}
               </Text>
               <Pressable
                 style={sty.joinBtn}
@@ -297,7 +396,7 @@ export default function JoinCircleScreen() {
                 }}
                 accessibilityRole="button"
               >
-                <Text style={sty.joinTxt}>Sign In</Text>
+                <Text style={sty.joinTxt}>{t('signIn')}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -305,6 +404,14 @@ export default function JoinCircleScreen() {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function formatPreviewAmount(
+  value: number | string | null | undefined,
+  language: string,
+): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? formatCurrency(amount, language) : '\u2014';
 }
 
 const sty = StyleSheet.create({
@@ -340,13 +447,13 @@ const sty = StyleSheet.create({
     paddingHorizontal: 16,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
     borderColor: `${colors.primary}20`,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -385,13 +492,13 @@ const sty = StyleSheet.create({
   dim: { opacity: 0.55 },
   hint: { fontSize: 13, color: colors.muted, marginTop: 10 },
   previewCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
     borderColor: `${colors.primary}20`,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 12,
@@ -414,12 +521,12 @@ const sty = StyleSheet.create({
   previewName: { fontSize: 18, fontWeight: '900', color: colors.textStrong },
   previewOrg: { fontSize: 13, color: colors.muted, marginTop: 2 },
   badge: {
-    backgroundColor: '#d1fae5',
+    backgroundColor: colors.successSoft,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  badgeTxt: { fontSize: 12, fontWeight: '800', color: '#059669' },
+  badgeTxt: { fontSize: 12, fontWeight: '800', color: colors.successText },
   stats: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -428,7 +535,9 @@ const sty = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  statsStacked: { flexDirection: 'column', alignItems: 'stretch', gap: 12 },
   stat: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  statBody: { marginLeft: 8, flex: 1, flexShrink: 1 },
   divider: {
     width: 1,
     height: 36,
@@ -447,16 +556,47 @@ const sty = StyleSheet.create({
     color: colors.textStrong,
     marginTop: 2,
   },
+  handsSummary: {
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: '600',
+    marginTop: -6,
+    marginBottom: 14,
+  },
   infoBanner: {
     flexDirection: 'row',
     gap: 8,
     alignItems: 'flex-start',
-    backgroundColor: '#eff6ff',
+    backgroundColor: colors.infoSoft,
     borderRadius: 12,
     padding: 12,
+    marginBottom: 12,
+  },
+  infoTxt: { flex: 1, fontSize: 13, color: colors.infoText, lineHeight: 19 },
+  disclosureBody: {
+    fontSize: 13,
+    color: colors.text,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  ackRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
     marginBottom: 16,
   },
-  infoTxt: { flex: 1, fontSize: 13, color: '#1e40af', lineHeight: 19 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: { backgroundColor: colors.primary },
+  ackLabel: { flex: 1, fontSize: 14, color: colors.textStrong, lineHeight: 20, fontWeight: '600' },
   joinBtn: {
     backgroundColor: colors.primary,
     borderRadius: 16,
@@ -466,13 +606,13 @@ const sty = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  joinTxt: { color: '#fff', fontSize: 17, fontWeight: '900' },
+  joinTxt: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
   success: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 28,
     borderWidth: 1,
-    borderColor: '#d1fae5',
+    borderColor: colors.successBorder,
     alignItems: 'center',
     marginBottom: 20,
   },
@@ -480,20 +620,26 @@ const sty = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#d1fae5',
+    backgroundColor: colors.successSoft,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
   },
+  pendingCircle: {
+    backgroundColor: colors.warningSoft,
+  },
   sucTitle: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#065f46',
+    color: colors.successText,
     marginBottom: 8,
+  },
+  pendingTitle: {
+    color: colors.warningText,
   },
   sucTxt: {
     fontSize: 15,
-    color: '#374151',
+    color: colors.text,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
@@ -507,7 +653,7 @@ const sty = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  doneTxt: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  doneTxt: { color: colors.onColor, fontSize: 16, fontWeight: '900' },
   anotherBtn: { paddingVertical: 12 },
   anotherTxt: { color: colors.primary, fontSize: 15, fontWeight: '700' },
   authNudge: { alignItems: 'center', gap: 12, paddingTop: 16 },

@@ -1,8 +1,54 @@
+import { currentEmailLanguage } from './i18n/emailLanguage';
 import type {
   ActivityResponse,
   BackendCircleSummary,
   DashboardSummary,
-} from './types';
+} from './shared/types';
+import {
+  freeEntitlements,
+  normalizeEntitlements,
+  type Entitlements,
+} from './billing/entitlements';
+import {
+  HTTP_JSON_TIMEOUT_MS,
+  HTTP_PDF_TIMEOUT_MS,
+  runWithTimeout,
+} from './platform/httpTimeout';
+import {
+  invalidateCachedGets,
+  runDedupedGet,
+  shouldInvalidateCachedGetsOnMutation,
+  shouldUseHttpGetCache,
+} from './platform/httpGetCache';
+import {
+  federatedRequestBody,
+  interpretFederatedPayload,
+  type FederatedIdentityProof,
+  type FederatedSignInResult,
+} from './auth/federatedSignIn';
+import {
+  ApiError,
+  classifyFetchFailure,
+  classifyHttpStatus,
+  fallbackNetworkMessage,
+  parseRetryAfterHeader,
+  readBackendErrorText,
+  sanitizeUserFacingMessage,
+} from './platform/networkErrors';
+import {
+  readVerificationRequired,
+  type RegistrationVerificationRequired,
+} from './auth/registrationVerification';
+import {
+  notifyUnauthorizedSession,
+  shouldHandleUnauthorizedSession,
+} from './auth/sessionExpiry';
+
+export { ApiError, type NetworkErrorCategory } from './platform/networkErrors';
+export {
+  HTTP_JSON_TIMEOUT_MS,
+  HTTP_PDF_TIMEOUT_MS,
+} from './platform/httpTimeout';
 
 export type AuthUser = {
   id: string;
@@ -33,11 +79,10 @@ export type AuthResponse = {
 };
 
 export type PasswordResetRequestResult = {
-  sent: boolean;
-  challengeId?: string;
-  expiresIn?: number;
-  deliveryStatus?: string;
-  message?: string;
+  accepted: true;
+  challengeId: string;
+  expiresIn: number;
+  message: string;
   devCode?: string;
 };
 
@@ -103,6 +148,29 @@ export type BackendCircleMember = {
   reliabilityScore?: number;
 };
 
+export type BackendJoinRequest = {
+  id: string;
+  requestId: string;
+  handNumber?: number;
+  hand_number?: number;
+  handLabel?: string;
+  displayLabel?: string;
+  isAdditionalHand?: boolean;
+  is_additional_hand?: boolean;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  name?: string;
+  phone?: string | null;
+  email?: string | null;
+  userId?: string | null;
+  /** True when the request asked to claim an existing planned hand. */
+  claimsPlannedHand?: boolean;
+  matchedMembershipId?: string | null;
+  matchedMemberName?: string | null;
+  matchedHandNumber?: number | null;
+};
+
 export type BackendViewerHand = {
   handId: string;
   memberId?: string;
@@ -150,21 +218,62 @@ export type BackendCircleDetail = {
   /** Active hands (participating memberships) — drives pot and rounds. */
   handCount?: number;
   totalHands?: number;
+  participatingHandCount?: number;
   memberCount?: number;
   uniqueMemberCount?: number;
+  uniquePeopleCount?: number;
   viewerHands?: BackendCircleMember[];
   viewerHandCount?: number;
   viewerContributionSummary?: BackendViewerContributionSummary | null;
   totalRounds?: number;
   organizerId: string;
   paymentInstructions?: string | null;
+  paymentDestinations?: Array<{
+    method: string;
+    destination: string;
+    memo?: string;
+  }> | null;
+  paymentInstructionAudit?: Array<{
+    at?: string;
+    actorUserId?: string;
+    previousInstructions?: string | null;
+    nextInstructions?: string | null;
+    previousDestinations?: unknown;
+    nextDestinations?: unknown;
+  }> | null;
   pot_status?: string;
   startDate: string;
+  /** Null/absent before Start Circle; set when the circle starts. */
   startedAt?: string | null;
+  /**
+   * Lifecycle status: draft (setup) | active | completed.
+   * Authoritative with startedAt; mobile must not re-infer from schedule/rounds.
+   */
   status: string;
-  waitlist?: BackendCircleMember[];
+  /**
+   * Convenience flag derived by backend from status + startedAt only.
+   * Not a separately mutable field.
+   */
+  isStarted?: boolean;
+  is_started?: boolean;
+  waitlist?: BackendJoinRequest[];
   turnOrder: string[];
   userRole?: 'organizer' | 'participant' | null;
+  /**
+   * Plan capacity for roster growth and AI Susu.
+   * Free: 20 participating hands; Premium: 50.
+   */
+  rosterCapacity?: {
+    tier?: 'free' | 'premium' | string;
+    maxHands?: number;
+    maxMembers?: number;
+    usedHands?: number;
+    remainingHands?: number;
+    atCapacity?: boolean;
+    unit?: string;
+    freeMaxHands?: number;
+    premiumMaxHands?: number;
+  };
 };
 
 export type BackendInvitePreview = {
@@ -176,6 +285,12 @@ export type BackendInvitePreview = {
   id: string;
   membersCount?: number;
   members_count?: number;
+  /** People who joined (claimed a hand). Absent on older backends. */
+  joinedMembersCount?: number;
+  /** Participating hands, claimed or not. Absent on older backends. */
+  plannedHandsCount?: number;
+  /** Planned hands nobody has claimed yet. Absent on older backends. */
+  unclaimedHandsCount?: number;
   name: string;
   circleCode?: string;
   organizerName?: string;
@@ -187,11 +302,135 @@ export type BackendInvitePreview = {
   status?: string;
 };
 
+export type BackendWaitlistPreview = BackendInvitePreview & {
+  userRole: 'waitlist';
+  requestStatus: 'pending';
+  requestId: string;
+  handNumber: number;
+  isAdditionalHand: boolean;
+};
+
+export type BackendJoinResult = BackendCircleDetail | BackendWaitlistPreview;
+
+export type AgreementLanguage = 'en' | 'es' | 'ht';
+
+export type CircleAgreementHand = {
+  handId: string;
+  handNumber: number;
+  userId: string | null;
+  payoutPosition: number;
+  expectedPayoutDate: string | null;
+};
+
+export type CircleAgreementSnapshot = {
+  id: string;
+  circleId: string;
+  snapshotVersion: number;
+  snapshotHash: string;
+  status: 'active' | 'superseded';
+  contributionAmountCents: number;
+  frequency: string;
+  totalRounds: number;
+  organizerUserId: string;
+  organizerParticipates: boolean;
+  currency: string;
+  fees: { serviceFeeCents?: number; otherFees?: unknown[] };
+  roster: Array<{ userId: string; handIds: string[] }>;
+  hands: CircleAgreementHand[];
+  payoutOrder: string[];
+  payoutDates: string[];
+  agreementVersions: Record<string, string>;
+  generatedAt: string;
+  structureCurrent: boolean;
+  memberReview: {
+    handIds: string[];
+    hands: CircleAgreementHand[];
+    contributionPerHandCents: number;
+    currentRecurringObligationCents: number;
+    estimatedTotalObligationCents: number;
+    frequency: string;
+    totalRounds: number;
+  };
+  alreadyAccepted: {
+    circleParticipationAgreement: boolean;
+    finalCircleSnapshot: boolean;
+    organizerAgreement: boolean;
+  };
+};
+
+export type CircleAgreementReadiness = {
+  circleId: string;
+  snapshotId: string | null;
+  snapshotHash: string | null;
+  /** Preferred structural readiness fields. */
+  structureComplete?: boolean;
+  payoutOrderComplete?: boolean;
+  pendingStructureRequests?: boolean;
+  canStartCircle?: boolean;
+  structuralBlockers?: string[];
+  /**
+   * Legacy full-gate signal including unresolved start-confirmation requirements.
+   * Prefer canStartCircle / canOpenStartFlow for Start-button eligibility.
+   */
+  readyToStart: boolean;
+  /** Full list (structural + confirmation) for compatibility. */
+  blockers: string[];
+  /** Legacy agreement blockers (always empty under structural-only start). */
+  agreementBlockers: string[];
+  /** Start-confirmation codes only (submitted in the start request). */
+  confirmationRequirements: string[];
+  missingMemberAcceptances: Array<{
+    userId: string;
+    handIds: string[];
+    missingDocuments: string[];
+  }>;
+  snapshotPresent: boolean;
+  snapshotCurrent: boolean;
+  memberAcceptancesComplete: boolean;
+  organizerAgreementComplete: boolean;
+  agreementsComplete: boolean;
+  requiresOrganizerStartConfirmation: boolean;
+  requiresUnclaimedHandConfirmation: boolean;
+  canOpenStartFlow: boolean;
+};
+
+export type CircleAgreementContent = {
+  draftStatus: string;
+  notLegalAdvice: boolean;
+  versions: Record<string, string>;
+  documents: Record<string, {
+    version: string;
+    topics: string[];
+    body: Record<AgreementLanguage, string>;
+  }>;
+};
+
+export type AdditionalHandPreview = {
+  currentHandCount: number;
+  proposedHandCount: number;
+  contributionPerHandCents: number;
+  currentRecurringObligationCents: number;
+  additionalRecurringObligationCents: number;
+  newRecurringObligationCents: number;
+  remainingRounds: number;
+  currentRemainingObligationCents: number;
+  additionalRemainingObligationCents: number;
+  newTotalRemainingObligationCents: number;
+  frequency: string;
+  currency: string;
+  consentTextVersion: string;
+  previewHash: string;
+  expiresAt: string;
+};
+
 export type BackendRoundContribution = {
   confirmedAt?: string | null;
   memberId: string;
   note?: string | null;
   paymentMethod?: string | null;
+  paymentReference?: string | null;
+  rejectReason?: string | null;
+  rejectReasonCode?: string | null;
   round: number;
   status: string;
   submittedAt?: string | null;
@@ -281,6 +520,19 @@ export type BackendLedgerEntry = {
   note?: string | null;
   round?: number;
   type?: string;
+  title?: string;
+  message?: string;
+  createdAt?: string;
+  paymentOrigin?: 'external' | string | null;
+  paymentOriginLabel?: string | null;
+  verificationStatus?:
+    | 'pending_organizer_confirmation'
+    | 'organizer_confirmed'
+    | 'organizer_rejected'
+    | string
+    | null;
+  verificationLabel?: string | null;
+  performedBy?: StatementActor | null;
 };
 
 export type BackendLedgerPage = {
@@ -289,22 +541,265 @@ export type BackendLedgerPage = {
   next_cursor?: string | null;
 };
 
-export class ApiError extends Error {
-  status: number;
+/** Backend money field: cents number or the literal "Unavailable". */
+export type StatementMoney = number | 'Unavailable';
 
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-  }
-}
+export type StatementActor = {
+  /** Null when the viewer may only see the actor by role (e.g. the organizer in a member's view). */
+  userId: string | null;
+  displayName: string | null;
+};
+
+export type MemberStatementIndexRow = {
+  subjectKey: string;
+  userId: string | null;
+  handId: string | null;
+  displayName: string;
+  membershipStatus: string;
+  roleSummary?: string;
+  handCount: number;
+  handIds: string[];
+  totals: {
+    contributedCents: StatementMoney;
+    contributedDisplay: string;
+    receivedCents: StatementMoney;
+    receivedDisplay: string;
+  };
+  canRequestStatement: boolean;
+  unclaimed?: boolean;
+};
+
+export type MemberStatementsIndex = {
+  documentType: string;
+  circle: {
+    id: string;
+    name: string;
+    status: string;
+    contributionAmountCents: number;
+    contributionAmountDisplay: string;
+    frequency: string | null;
+  };
+  viewer: {
+    userId: string;
+    role: string;
+    canViewAllMembers: boolean;
+  };
+  members: MemberStatementIndexRow[];
+  unclaimedHands: MemberStatementIndexRow[];
+};
+
+export type MemberStatementSnapshot = {
+  documentType: string;
+  version: number;
+  statementReference: string;
+  generatedAt: string;
+  generatedByUserId: string;
+  title: string;
+  circle: {
+    id: string;
+    name: string;
+    status: string;
+    contributionAmountCents: number | StatementMoney;
+    contributionAmountDisplay: string;
+    frequency: string | null;
+  };
+  member: {
+    userId: string | null;
+    displayName: string;
+    membershipStatus: string;
+    roleSummary?: string | null;
+    unclaimed?: boolean;
+  };
+  period: {
+    mode: 'full_circle' | 'custom' | string;
+    from: string | null;
+    to: string | null;
+    label: string;
+  };
+  circleParticipation: {
+    totalParticipatingHands: number | 'Unavailable';
+    totalRounds: number | 'Unavailable';
+    memberHandCount: number;
+  };
+  hands: Array<{
+    handId: string;
+    handNumber: number;
+    displayLabel: string;
+    isParticipating: boolean;
+    payoutPosition: number | 'Unavailable';
+    contributions: {
+      expectedCents: StatementMoney;
+      expectedDisplay: string;
+      confirmedCents: StatementMoney;
+      confirmedDisplay: string;
+      pendingCents: StatementMoney;
+      pendingDisplay: string;
+      missedCents: StatementMoney;
+      missedDisplay: string;
+      rejectedCents: StatementMoney;
+      rejectedDisplay: string;
+      byRound: Array<{
+        contributionId: string;
+        handId?: string;
+        roundNumber: number;
+        dueDate: string | null;
+        status: string;
+        expectedCents: number;
+        expectedDisplay: string;
+        paidCents: number;
+        paidDisplay: string;
+        amountCents?: number;
+        amountDisplay?: string;
+        grossPaidCents?: number;
+        grossPaidDisplay?: string;
+        refundedCents?: number;
+        refundedDisplay?: string;
+        netPaidCents?: number;
+        netPaidDisplay?: string;
+        recognizedFundingCents?: number;
+        recognizedFundingDisplay?: string;
+        remainingDueCents?: number;
+        remainingDueDisplay?: string;
+        paymentOrigin?: 'external' | string | null;
+        paymentOriginLabel?: string | null;
+        verificationStatus?:
+          | 'pending_organizer_confirmation'
+          | 'organizer_confirmed'
+          | 'organizer_rejected'
+          | string
+          | null;
+        verificationLabel?: string | null;
+        reportedBy?: StatementActor | null;
+        reportedAt?: string | null;
+        confirmedBy?: StatementActor | null;
+        rejectedBy?: StatementActor | null;
+        rejectedAt?: string | null;
+        paymentMethod?: string | null;
+        submittedAt?: string | null;
+        confirmedAt?: string | null;
+      }>;
+    };
+    payouts: {
+      receivedCents: StatementMoney;
+      receivedDisplay: string;
+      received: Array<{
+        payoutId: string;
+        roundNumber: number | null;
+        amountCents: number;
+        amountDisplay: string;
+        status: string;
+        paidAt: string | null;
+      }>;
+      scheduled: Array<{
+        roundNumber: number;
+        dueDate: string | null;
+        amountCents: StatementMoney;
+        amountDisplay: string;
+        status: string;
+        roundStatus?: string;
+      }>;
+    };
+    remainingObligationsCents: StatementMoney;
+    remainingObligationsDisplay: string;
+  }>;
+  memberTotals: {
+    totalContributedCents: StatementMoney;
+    totalContributedDisplay: string;
+    totalReceivedCents: StatementMoney;
+    totalReceivedDisplay: string;
+    remainingObligationsCents: StatementMoney;
+    remainingObligationsDisplay: string;
+  };
+  ledger: Array<{
+    id: string;
+    at: string | null;
+    eventType: string;
+    amountCents: number | null;
+    amountDisplay: string;
+    roundNumber: number | null;
+    handId: string | null;
+    reference: string;
+    statusOrNote: string | null;
+    description: string | null;
+    paymentOrigin?: 'external' | string | null;
+    paymentOriginLabel?: string | null;
+    verificationStatus?:
+      | 'pending_organizer_confirmation'
+      | 'organizer_confirmed'
+      | 'organizer_rejected'
+      | string
+      | null;
+    verificationLabel?: string | null;
+    reportedBy?: StatementActor | null;
+    reportedAt?: string | null;
+    confirmedBy?: StatementActor | null;
+    confirmedAt?: string | null;
+    rejectedBy?: StatementActor | null;
+    rejectedAt?: string | null;
+  }>;
+  verification: {
+    footerText: string;
+    disclaimer?: string;
+    dataSource: string;
+    contentFingerprint?: string;
+  };
+};
+
+export type StatementPeriodInput = {
+  period?: 'full_circle' | 'custom';
+  from?: string;
+  to?: string;
+};
+
+export type MemberStatementPdfResult = {
+  bytes: Uint8Array;
+  statementReference: string;
+  generatedAt: string;
+  filename: string;
+  documentId?: string;
+};
+
+export type StatementDocumentSummary = {
+  id: string;
+  circleId: string;
+  statementReference: string;
+  documentType: string;
+  subjectUserId: string | null;
+  handId: string | null;
+  memberDisplayName: string;
+  membershipStatus?: string | null;
+  period: {
+    mode: string;
+    from: string | null;
+    to: string | null;
+    label: string;
+  };
+  generatedAt: string | null;
+  generatedByUserId: string;
+  contentFingerprint?: string | null;
+  /** Record documents only: the Records reference the document is about. */
+  recordReference?: string | null;
+  issueNumber?: number | null;
+  fingerprintAlgorithm?: string | null;
+  /** True once a later issued document replaced this one. It still downloads as issued. */
+  superseded?: boolean;
+};
+
+export type StatementDocumentsPage = {
+  documentType: string;
+  circleId: string;
+  documents: StatementDocumentSummary[];
+};
 
 function getApiBaseUrl() {
   const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, '');
 
   if (!configured) {
-    throw new Error(
-      'Set EXPO_PUBLIC_API_BASE_URL to the Flask server URL. On a phone, use the computer LAN IP instead of localhost.',
+    throw new ApiError(
+      fallbackNetworkMessage('unknown'),
+      0,
+      undefined,
+      { category: 'unknown' },
     );
   }
 
@@ -319,26 +814,143 @@ function readString(value: unknown) {
   return String(value ?? '').trim();
 }
 
-function errorMessage(payload: unknown, status: number) {
-  if (typeof payload === 'string' && payload.trim()) {
-    return payload.trim();
+/**
+ * Copy optional nullable string fields from a backend user payload without
+ * inventing empty strings. Absent keys stay undefined; explicit null stays null.
+ */
+function readOptionalNullableString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null | undefined {
+  if (!(key in record)) {
+    return undefined;
   }
-
-  if (isRecord(payload)) {
-    const message = readString(payload.error ?? payload.message);
-    if (message) {
-      return message;
-    }
+  const value = record[key];
+  if (value === null) {
+    return null;
   }
-
-  return `Backend request failed with status ${status}.`;
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return undefined;
 }
 
-async function requestJson<T>(
+function errorMessage(
+  payload: unknown,
+  status: number,
+  retryAfterSeconds?: number | null,
+) {
+  const category = classifyHttpStatus(status);
+  if (category === 'http_429') {
+    return fallbackNetworkMessage(category, retryAfterSeconds);
+  }
+  return sanitizeUserFacingMessage(
+    readBackendErrorText(payload),
+    category,
+    retryAfterSeconds,
+  );
+}
+
+function readRetryAfter(response: Response): number | null {
+  const headers = response.headers;
+  if (!headers || typeof headers.get !== 'function') {
+    return null;
+  }
+  return parseRetryAfterHeader(
+    headers.get('Retry-After') ?? headers.get('retry-after'),
+  );
+}
+
+function throwIfUnauthorized(path: string, hasToken: boolean, status: number) {
+  if (shouldHandleUnauthorizedSession({ path, hasToken, status })) {
+    void notifyUnauthorizedSession();
+  }
+}
+
+const DEV_API_LOG_REDACTED = '[redacted]';
+// Shared with lib/platform/errorLogging.ts so any place that logs API-shaped data
+// redacts the same set of PII / financial / auth-ish key names.
+export const SENSITIVE_LOG_KEY_PATTERN =
+  /token|auth|session|password|secret|email|phone|name|user|member|recipient|payment|contribution|wallet|stripe|bank|card|account|circle/i;
+
+const SENSITIVE_LOG_VALUE_PATTERN =
+  /(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|pi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+|Bearer\s+[A-Za-z0-9._\-]+/i;
+
+function redactSensitiveLogValue(value: string): string {
+  if (!value) {
+    return value;
+  }
+  if (SENSITIVE_LOG_VALUE_PATTERN.test(value)) {
+    return DEV_API_LOG_REDACTED;
+  }
+  return value;
+}
+
+function redactDevApiLogValue(value: unknown, isRoot: boolean): unknown {
+  if (typeof value === 'string') {
+    return isRoot ? DEV_API_LOG_REDACTED : redactSensitiveLogValue(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactDevApiLogValue(entry, false));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => [
+        key,
+        SENSITIVE_LOG_KEY_PATTERN.test(key)
+          ? DEV_API_LOG_REDACTED
+          : redactDevApiLogValue(entryValue, false),
+      ]),
+    );
+  }
+  return value;
+}
+
+/** Never emit raw response text. Objects are key-redacted; string bodies are dropped. */
+export function redactDevApiLogBody(value: unknown): unknown {
+  return redactDevApiLogValue(value, true);
+}
+
+function logDevApiResponse(method: string, url: string, status: number, body: unknown) {
+  if (!__DEV__) {
+    return;
+  }
+  console.log('[CircuSave API]', {
+    method,
+    url,
+    status,
+    body: url.includes('/billing/google-play/')
+      ? DEV_API_LOG_REDACTED
+      : redactDevApiLogBody(body),
+  });
+}
+
+export type ApiGetOptions = {
+  /** Skip persist hit; fetch fresh; write persist if policy allows. */
+  revalidate?: boolean;
+};
+
+type JsonRequestOptions = RequestInit & {
+  token?: string;
+  revalidate?: boolean;
+  timeoutMs?: number;
+};
+
+async function requestJsonUncached<T>(
   path: string,
-  options: RequestInit & { token?: string } = {},
+  options: JsonRequestOptions = {},
 ): Promise<T> {
-  const { token, headers: providedHeaders, ...requestOptions } = options;
+  const {
+    token,
+    headers: providedHeaders,
+    revalidate: _revalidate,
+    timeoutMs,
+    signal,
+    ...requestOptions
+  } = options;
   const headers = new Headers(providedHeaders);
   headers.set('Accept', 'application/json');
   headers.set('X-CircuSave-Client', 'mobile');
@@ -351,16 +963,27 @@ async function requestJson<T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
+  const method = (requestOptions.method ?? 'GET').toUpperCase();
+  const url = `${getApiBaseUrl()}${path}`;
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}${path}`, {
-      ...requestOptions,
-      headers,
-    });
-  } catch {
-    throw new Error(
-      'Could not reach the CircuSave backend. Confirm EXPO_PUBLIC_API_BASE_URL and that Flask is reachable from this device.',
+    response = await runWithTimeout(
+      (timedSignal) =>
+        fetch(url, {
+          ...requestOptions,
+          signal: timedSignal,
+          headers,
+        }),
+      {
+        timeoutMs: timeoutMs ?? HTTP_JSON_TIMEOUT_MS,
+        signal,
+      },
     );
+  } catch (error) {
+    const category = classifyFetchFailure(error);
+    throw new ApiError(fallbackNetworkMessage(category), 0, undefined, {
+      category,
+    });
   }
 
   const text = await response.text();
@@ -371,11 +994,42 @@ async function requestJson<T>(
     payload = text;
   }
 
+  logDevApiResponse(method, url, response.status, payload ?? text);
+
   if (!response.ok) {
-    throw new ApiError(errorMessage(payload, response.status), response.status);
+    const retryAfterSeconds = readRetryAfter(response);
+    throwIfUnauthorized(path, Boolean(token), response.status);
+    throw new ApiError(
+      errorMessage(payload, response.status, retryAfterSeconds),
+      response.status,
+      payload,
+      {
+        retryAfterSeconds,
+      },
+    );
   }
 
   return payload as T;
+}
+
+export async function requestJson<T>(
+  path: string,
+  options: JsonRequestOptions = {},
+): Promise<T> {
+  const method = (options.method ?? 'GET').toUpperCase();
+  if (shouldUseHttpGetCache(method, path)) {
+    return runDedupedGet({
+      path,
+      token: options.token,
+      fetcher: () => requestJsonUncached<T>(path, options),
+      revalidate: options.revalidate === true,
+    });
+  }
+  const payload = await requestJsonUncached<T>(path, options);
+  if (shouldInvalidateCachedGetsOnMutation(method, path)) {
+    invalidateCachedGets();
+  }
+  return payload;
 }
 
 function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthResponse {
@@ -385,6 +1039,9 @@ function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthRes
 
   const user = payload.user;
   const session = payload.session;
+  const cashtag = readOptionalNullableString(user, 'cashtag');
+  const venmoHandle = readOptionalNullableString(user, 'venmoHandle');
+  const paypalEmail = readOptionalNullableString(user, 'paypalEmail');
   const normalized: AuthResponse = {
     user: {
       id: readString(user.id),
@@ -396,6 +1053,9 @@ function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthRes
       preferredMarket: readString(
         user.preferredMarket ?? user.preferred_market ?? user.market,
       ) || undefined,
+      ...(cashtag !== undefined ? { cashtag } : {}),
+      ...(venmoHandle !== undefined ? { venmoHandle } : {}),
+      ...(paypalEmail !== undefined ? { paypalEmail } : {}),
     },
     session: {
       id: readString(session.id),
@@ -437,12 +1097,30 @@ export async function login(input: {
   return normalizeAuthResponse(payload, true);
 }
 
+export type RegistrationLegalAcceptance = {
+  acceptedLegal: true;
+  termsVersion: string;
+  privacyVersion: string;
+  fundsDisclosureVersion: string;
+  electronicConsentVersion: string;
+};
+
+export type RegisterResult =
+  | { status: 'authenticated'; auth: AuthResponse }
+  | RegistrationVerificationRequired;
+
+/**
+ * Starts a sign-up. The Backend emails a code and returns `verification_required`
+ * (no account and no session yet). An older Backend still returns a session, which is
+ * accepted so a new app keeps working until the Backend is updated.
+ */
 export async function register(input: {
   name: string;
   email: string;
   phone?: string;
   password: string;
-}): Promise<AuthResponse> {
+  legalAcceptance: RegistrationLegalAcceptance;
+}): Promise<RegisterResult> {
   const payload = await requestJson<unknown>('/auth/mobile/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -450,9 +1128,84 @@ export async function register(input: {
       email: input.email.trim().toLowerCase(),
       phone: input.phone?.trim() || undefined,
       password: input.password,
+      acceptedLegal: input.legalAcceptance.acceptedLegal,
+      termsVersion: input.legalAcceptance.termsVersion,
+      privacyVersion: input.legalAcceptance.privacyVersion,
+      fundsDisclosureVersion: input.legalAcceptance.fundsDisclosureVersion,
+      electronicConsentVersion: input.legalAcceptance.electronicConsentVersion,
+      language: currentEmailLanguage(),
+    }),
+  });
+  const pending = readVerificationRequired(payload);
+  if (pending) {
+    return pending;
+  }
+  return { status: 'authenticated', auth: normalizeAuthResponse(payload, true) };
+}
+
+/** Completes a sign-up with the emailed code; returns the new session. */
+export async function verifyRegistration(input: {
+  signupId: string;
+  email: string;
+  code: string;
+}): Promise<AuthResponse> {
+  const payload = await requestJson<unknown>('/auth/mobile/register/verify', {
+    method: 'POST',
+    body: JSON.stringify({
+      signupId: input.signupId,
+      email: input.email.trim().toLowerCase(),
+      code: input.code.trim(),
     }),
   });
   return normalizeAuthResponse(payload, true);
+}
+
+/** Asks for another code for a sign-up that is still waiting. */
+export async function resendRegistrationCode(input: {
+  signupId: string;
+  email: string;
+}): Promise<RegistrationVerificationRequired> {
+  const payload = await requestJson<unknown>('/auth/mobile/register/resend', {
+    method: 'POST',
+    body: JSON.stringify({
+      signupId: input.signupId,
+      email: input.email.trim().toLowerCase(),
+      language: currentEmailLanguage(),
+    }),
+  });
+  const pending = readVerificationRequired(payload);
+  if (!pending) {
+    throw new ApiError('The server response was not understood.', 500, payload);
+  }
+  return pending;
+}
+
+export async function signInWithFederatedProvider(input: {
+  proof: FederatedIdentityProof;
+  password?: string;
+  name?: string;
+  phone?: string;
+  legalAcceptance?: RegistrationLegalAcceptance;
+}): Promise<FederatedSignInResult> {
+  const path =
+    input.proof.provider === 'apple' ? '/auth/mobile/apple' : '/auth/mobile/google';
+  const payload = await requestJson<unknown>(path, {
+    method: 'POST',
+    body: JSON.stringify(
+      federatedRequestBody({
+        proof: input.proof,
+        password: input.password,
+        name: input.name,
+        phone: input.phone,
+        legalAcceptance: input.legalAcceptance,
+      }),
+    ),
+  });
+  const result = interpretFederatedPayload(payload);
+  if (result.status === 'authenticated') {
+    return { status: 'authenticated', auth: normalizeAuthResponse(payload, true) };
+  }
+  return result;
 }
 
 export function requestPasswordReset(input: {
@@ -460,7 +1213,10 @@ export function requestPasswordReset(input: {
 }): Promise<PasswordResetRequestResult> {
   return requestJson<PasswordResetRequestResult>('/auth/forgot-password/request', {
     method: 'POST',
-    body: JSON.stringify({ email: input.email.trim().toLowerCase() }),
+    body: JSON.stringify({
+      email: input.email.trim().toLowerCase(),
+      language: currentEmailLanguage(),
+    }),
   });
 }
 
@@ -523,10 +1279,49 @@ export function getCurrentUser(token: string): Promise<AuthUser> {
   return requestJson<AuthUser>('/auth/me', { token });
 }
 
-export async function logout(token: string): Promise<void> {
+/**
+ * Backend-authoritative Premium entitlements.
+ * Prefer this over users.role for plan and feature gates.
+ * Fail closed to free on network/API errors (never invent Premium).
+ */
+export async function getAuthoritativeEntitlements(
+  token: string,
+): Promise<Entitlements> {
+  const payload = await requestJson<unknown>('/auth/me/entitlements', {
+    token,
+    revalidate: true,
+  });
+  return normalizeEntitlements(payload);
+}
+
+export async function getEntitlements(token: string): Promise<Entitlements> {
+  try {
+    return await getAuthoritativeEntitlements(token);
+  } catch {
+    return freeEntitlements();
+  }
+}
+
+export async function getFreshContributionPaymentsCapability(
+  token: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const payload = await requestJson<unknown>('/auth/me/entitlements', {
+    token,
+    revalidate: true,
+    signal,
+  });
+  if (!isRecord(payload) || !isRecord(payload.capabilities)) {
+    return false;
+  }
+  return payload.capabilities.contributionPaymentsEnabled === true;
+}
+
+export async function logout(token: string, signal?: AbortSignal): Promise<void> {
   await requestJson<unknown>('/auth/logout', {
     method: 'POST',
     token,
+    signal,
   });
 }
 
@@ -538,37 +1333,102 @@ export async function logout(token: string): Promise<void> {
 export function registerPushToken(
   token: string,
   pushToken: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   return requestJson<unknown>('/auth/device/push-token', {
     method: 'POST',
     token,
-    body: JSON.stringify({ pushToken, platform: 'expo' }),
+    signal,
+    body: JSON.stringify({ pushToken, platform: 'expo', timezone: deviceTimeZone() }),
   });
 }
 
-export function getDashboardSummary(token: string): Promise<DashboardSummary> {
-  return requestJson<DashboardSummary>('/dashboard/summary', { token });
+/** IANA zone name (e.g. "America/New_York") so the server can skip the user's night. */
+function deviceTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-export function getActivity(token: string): Promise<ActivityResponse> {
-  return requestJson<ActivityResponse>('/activity', { token });
+export function unregisterPushToken(
+  token: string,
+  pushToken: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return requestJson<unknown>('/auth/device/push-token', {
+    method: 'DELETE',
+    token,
+    signal,
+    body: JSON.stringify({ pushToken }),
+  });
 }
 
-export function getCircles(token: string): Promise<BackendCircleSummary[]> {
-  return requestJson<BackendCircleSummary[]>('/groups', { token });
+export function getDashboardSummary(
+  token: string,
+  options?: ApiGetOptions,
+): Promise<DashboardSummary> {
+  return requestJson<DashboardSummary>('/dashboard/summary', {
+    token,
+    revalidate: options?.revalidate,
+  });
+}
+
+export type ActivityGetOptions = ApiGetOptions & {
+  limit?: number;
+  cursor?: string | null;
+};
+
+export function getActivity(
+  token: string,
+  options?: ActivityGetOptions,
+): Promise<ActivityResponse> {
+  const params = new URLSearchParams();
+  if (typeof options?.limit === 'number' && Number.isFinite(options.limit)) {
+    params.set('limit', String(Math.max(1, Math.floor(options.limit))));
+  }
+  const cursor = String(options?.cursor || '').trim();
+  if (cursor) params.set('cursor', cursor);
+  const qs = params.toString();
+  return requestJson<ActivityResponse>(`/activity${qs ? `?${qs}` : ''}`, {
+    token,
+    revalidate: options?.revalidate,
+  });
+}
+
+export function getCircles(
+  token: string,
+  options?: ApiGetOptions,
+): Promise<BackendCircleSummary[]> {
+  return requestJson<BackendCircleSummary[]>('/groups', {
+    token,
+    revalidate: options?.revalidate,
+  });
 }
 
 export function getCircleDetail(
   token: string,
   circleId: string,
+  options?: ApiGetOptions,
 ): Promise<BackendCircleDetail> {
-  return requestJson<BackendCircleDetail>(`/groups/${circleId}`, { token });
+  return requestJson<BackendCircleDetail>(`/groups/${circleId}`, {
+    token,
+    revalidate: options?.revalidate,
+  });
 }
 
 export function updateCircleSettings(
   token: string,
   circleId: string,
-  settings: { paymentInstructions?: string },
+  settings: {
+    paymentInstructions?: string;
+    paymentDestinations?: Array<{
+      method: string;
+      destination: string;
+      memo?: string;
+    }>;
+  },
 ): Promise<unknown> {
   return requestJson<unknown>(`/groups/${circleId}`, {
     method: 'PATCH',
@@ -580,9 +1440,11 @@ export function updateCircleSettings(
 export function getCircleSchedule(
   token: string,
   circleId: string,
+  options?: ApiGetOptions,
 ): Promise<BackendRoundSnapshot> {
   return requestJson<BackendRoundSnapshot>(`/groups/${circleId}/schedule`, {
     token,
+    revalidate: options?.revalidate,
   });
 }
 
@@ -591,6 +1453,494 @@ export function getLedgerEntries(
   circleId: string,
 ): Promise<BackendLedgerPage> {
   return requestJson<BackendLedgerPage>(`/ledger/${circleId}`, { token });
+}
+
+function buildStatementPeriodQuery(period?: StatementPeriodInput): string {
+  const params = new URLSearchParams();
+  const mode = period?.period || 'full_circle';
+  params.set('period', mode);
+  if (mode === 'custom') {
+    if (period?.from) params.set('from', period.from);
+    if (period?.to) params.set('to', period.to);
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export function getMemberStatementsIndex(
+  token: string,
+  circleId: string,
+): Promise<MemberStatementsIndex> {
+  return requestJson<MemberStatementsIndex>(
+    `/groups/${circleId}/member-statements`,
+    { token },
+  );
+}
+
+export function getMemberStatementSnapshotForUser(
+  token: string,
+  circleId: string,
+  subjectUserId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementSnapshot> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestJson<MemberStatementSnapshot>(
+    `/groups/${circleId}/member-statements/users/${encodeURIComponent(subjectUserId)}${qs}`,
+    { token },
+  );
+}
+
+export function getMemberStatementSnapshotForHand(
+  token: string,
+  circleId: string,
+  handId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementSnapshot> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestJson<MemberStatementSnapshot>(
+    `/groups/${circleId}/member-statements/hands/${encodeURIComponent(handId)}${qs}`,
+    { token },
+  );
+}
+
+/**
+ * File name for a downloaded PDF. A record document number (CSC-/CSP-/CSR-...-Dnn) names the
+ * file after itself; everything else is a member statement.
+ */
+export function pdfFilenameForReference(reference: string): string {
+  const safeRef = reference.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return /^CS[CPR]-/i.test(reference)
+    ? `CircuSave_${safeRef}.pdf`
+    : `CircuSave_Member_Circle_Statement_${safeRef}.pdf`;
+}
+
+async function requestPdf(
+  path: string,
+  token: string,
+): Promise<MemberStatementPdfResult> {
+  const headers = new Headers();
+  headers.set('Accept', 'application/pdf');
+  headers.set('X-CircuSave-Client', 'mobile');
+  headers.set('Origin', 'circusave-mobile');
+  headers.set('Authorization', `Bearer ${token}`);
+
+  let response: Response;
+  try {
+    response = await runWithTimeout(
+      (timedSignal) =>
+        fetch(`${getApiBaseUrl()}${path}`, {
+          headers,
+          signal: timedSignal,
+        }),
+      { timeoutMs: HTTP_PDF_TIMEOUT_MS },
+    );
+  } catch (error) {
+    const category = classifyFetchFailure(error);
+    throw new ApiError(fallbackNetworkMessage(category), 0, undefined, {
+      category,
+    });
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let payload: unknown = text;
+    try {
+      payload = text ? JSON.parse(text) : undefined;
+    } catch {
+      payload = text;
+    }
+    const retryAfterSeconds = readRetryAfter(response);
+    throwIfUnauthorized(path, Boolean(token), response.status);
+    throw new ApiError(
+      errorMessage(payload, response.status, retryAfterSeconds),
+      response.status,
+      payload,
+      { retryAfterSeconds },
+    );
+  }
+
+  const buffer = await response.arrayBuffer();
+  const statementReference =
+    response.headers.get('X-Statement-Reference') ||
+    response.headers.get('x-statement-reference') ||
+    'statement';
+  const generatedAt =
+    response.headers.get('X-Statement-Generated-At') ||
+    response.headers.get('x-statement-generated-at') ||
+    '';
+  const documentId =
+    response.headers.get('X-Statement-Document-Id') ||
+    response.headers.get('x-statement-document-id') ||
+    undefined;
+  return {
+    bytes: new Uint8Array(buffer),
+    statementReference,
+    generatedAt,
+    filename: pdfFilenameForReference(statementReference),
+    documentId: documentId || undefined,
+  };
+}
+
+export function downloadMemberStatementPdfForUser(
+  token: string,
+  circleId: string,
+  subjectUserId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementPdfResult> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestPdf(
+    `/groups/${circleId}/member-statements/users/${encodeURIComponent(subjectUserId)}/pdf${qs}`,
+    token,
+  );
+}
+
+export function downloadMemberStatementPdfForHand(
+  token: string,
+  circleId: string,
+  handId: string,
+  period?: StatementPeriodInput,
+): Promise<MemberStatementPdfResult> {
+  const qs = buildStatementPeriodQuery(period);
+  return requestPdf(
+    `/groups/${circleId}/member-statements/hands/${encodeURIComponent(handId)}/pdf${qs}`,
+    token,
+  );
+}
+
+export function getStatementDocuments(
+  token: string,
+  circleId: string,
+): Promise<StatementDocumentsPage> {
+  return requestJson<StatementDocumentsPage>(
+    `/groups/${circleId}/statement-documents`,
+    { token },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Records: formal contribution, payout and round records (read-only).
+// The backend decides what each viewer may see; the app only renders it. Money is
+// integer cents plus backend display strings.
+// ---------------------------------------------------------------------------
+
+export type RecordActor = {
+  role: 'organizer' | 'member' | 'system';
+  /** Present only when the viewer may see the person's name (the organizer's view). */
+  displayName?: string | null;
+};
+
+export type RecordHistoryItem = {
+  seq: number;
+  id: string;
+  type: string;
+  at: string | null;
+  actor: RecordActor;
+  amountCents: number | null;
+  paymentMethod: string | null;
+  note: string | null;
+  paymentReference?: string | null;
+  rejectionReasonCode?: string | null;
+};
+
+export type RecordPosition = {
+  id: string;
+  number: number;
+  /** A name only when the viewer may see it; otherwise a generic "Position N". */
+  label: string;
+  handNumber: number | null;
+};
+
+export type RecordRoundRef = {
+  number: number;
+  id: string;
+  dueDate: string | null;
+  reference: string;
+};
+
+export type RecordVerificationStatus =
+  | 'unverified'
+  | 'pending'
+  | 'verified'
+  | 'rejected'
+  | 'reopened';
+
+export type RecordVerification = {
+  status: RecordVerificationStatus | string;
+  verifiedByRole: 'organizer' | null;
+  verifiedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  rejectionReasonCode: string | null;
+  verifiedBy?: string | null;
+};
+
+export type ContributionRecord = {
+  id: string;
+  recordType: 'contribution';
+  reference: string;
+  circle: { id: string; name: string };
+  round: RecordRoundRef;
+  member: RecordPosition;
+  amount: {
+    expectedCents: number;
+    expectedDisplay: string;
+    grossPaidCents: number;
+    refundedCents: number;
+    netPaidCents: number;
+    recognizedFundingCents: number;
+    remainingDueCents: number;
+  };
+  status: string;
+  paymentLifecycle: string | null;
+  paymentMethod: string | null;
+  paymentReference: string | null;
+  note: string | null;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+  verification: RecordVerification;
+  relatedPayoutReference: string | null;
+  history?: RecordHistoryItem[];
+};
+
+export type PayoutRecord = {
+  id: string | null;
+  recordType: 'payout';
+  reference: string;
+  circle: { id: string; name: string };
+  round: RecordRoundRef;
+  recipient: RecordPosition;
+  amount: { cents: number; display: string; isExpected: boolean };
+  /** Backend vocabulary: `pending` or `released`. */
+  status: 'pending' | 'released' | string;
+  scheduledDate: string | null;
+  paidAt: string | null;
+  /** `summary` for another member's payout: position, amount, status and date only. */
+  detailLevel: 'full' | 'summary';
+  note?: string | null;
+  releasedBy?: RecordActor | null;
+  history?: RecordHistoryItem[];
+};
+
+export type RoundRecord = {
+  id: string;
+  recordType: 'round';
+  reference: string;
+  circle: { id: string; name: string };
+  round: {
+    number: number;
+    status: string;
+    dueDate: string | null;
+    openedAt: string | null;
+    closedAt: string | null;
+  };
+  recipient: RecordPosition;
+  totals: {
+    expectedPotCents: number;
+    expectedPotDisplay: string;
+    recognizedFundingCents: number;
+    remainingDueCents: number;
+  };
+  contributionCounts: { total: number; byStatus: Record<string, number> };
+  payout: { status: string; reference: string; paidAt: string | null };
+  contributions: Array<{
+    reference: string;
+    member: RecordPosition;
+    status: string;
+    expectedCents: number;
+  }>;
+  history?: RecordHistoryItem[];
+};
+
+export type RecordsPage<T> = {
+  records: T[];
+  /** Rows on this page. */
+  count: number;
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  filters: Record<string, string | number | null>;
+};
+
+export type RecordBrief = {
+  reference: string;
+  round: number;
+  status: string;
+  expectedCents: number;
+  expectedDisplay: string;
+};
+
+export type RecordsOverview = {
+  circle: { id: string; name: string; status: string };
+  viewerRole: 'organizer' | 'member';
+  currentRound: {
+    number: number;
+    status: string;
+    dueDate: string | null;
+    reference: string;
+  } | null;
+  totals: {
+    expectedCents: number;
+    expectedDisplay: string;
+    confirmedCents: number;
+    confirmedDisplay: string;
+    remainingDueCents: number;
+    remainingDueDisplay: string;
+    paidOutCents: number;
+    paidOutDisplay: string;
+  };
+  roundCounts: { total: number; closed: number; payoutsReleased: number };
+  /** Organizer only; null for members. */
+  needsVerification: { count: number } | null;
+  yourRecords: {
+    nextContribution: RecordBrief | null;
+    lastConfirmed: RecordBrief | null;
+  } | null;
+  latest: { roundReference: string | null; payoutReference: string | null };
+};
+
+export type RecordsListQuery = {
+  round?: number;
+  member?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export function buildRecordsListQuery(query: RecordsListQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.round != null && Number.isFinite(query.round)) {
+    params.set('round', String(Math.trunc(query.round)));
+  }
+  if (query.member) params.set('member', query.member);
+  if (query.status) params.set('status', query.status);
+  if (query.limit != null && Number.isFinite(query.limit)) {
+    params.set('limit', String(Math.trunc(query.limit)));
+  }
+  if (query.offset != null && Number.isFinite(query.offset)) {
+    params.set('offset', String(Math.trunc(query.offset)));
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function recordsPath(circleId: string, suffix: string): string {
+  return `/groups/${encodeURIComponent(circleId)}/records/${suffix}`;
+}
+
+// Formal records must be current, so every Records read revalidates.
+export function getRecordsOverview(
+  token: string,
+  circleId: string,
+): Promise<RecordsOverview> {
+  return requestJson<RecordsOverview>(recordsPath(circleId, 'overview'), {
+    token,
+    revalidate: true,
+  });
+}
+
+export function getContributionRecords(
+  token: string,
+  circleId: string,
+  query?: RecordsListQuery,
+): Promise<RecordsPage<ContributionRecord>> {
+  return requestJson<RecordsPage<ContributionRecord>>(
+    recordsPath(circleId, `contributions${buildRecordsListQuery(query)}`),
+    { token, revalidate: true },
+  );
+}
+
+export function getContributionRecord(
+  token: string,
+  circleId: string,
+  reference: string,
+): Promise<ContributionRecord> {
+  return requestJson<ContributionRecord>(
+    recordsPath(circleId, `contributions/${encodeURIComponent(reference)}`),
+    { token, revalidate: true },
+  );
+}
+
+export function getPayoutRecords(
+  token: string,
+  circleId: string,
+  query?: RecordsListQuery,
+): Promise<RecordsPage<PayoutRecord>> {
+  return requestJson<RecordsPage<PayoutRecord>>(
+    recordsPath(circleId, `payouts${buildRecordsListQuery(query)}`),
+    { token, revalidate: true },
+  );
+}
+
+export function getPayoutRecord(
+  token: string,
+  circleId: string,
+  reference: string,
+): Promise<PayoutRecord> {
+  return requestJson<PayoutRecord>(
+    recordsPath(circleId, `payouts/${encodeURIComponent(reference)}`),
+    { token, revalidate: true },
+  );
+}
+
+export function getRoundRecords(
+  token: string,
+  circleId: string,
+  query?: RecordsListQuery,
+): Promise<RecordsPage<RoundRecord>> {
+  return requestJson<RecordsPage<RoundRecord>>(
+    recordsPath(circleId, `rounds${buildRecordsListQuery(query)}`),
+    { token, revalidate: true },
+  );
+}
+
+export type RecordDocumentKind = 'contribution' | 'payout' | 'round';
+
+const RECORD_DOCUMENT_ROUTE: Record<RecordDocumentKind, string> = {
+  contribution: 'contributions',
+  payout: 'payouts',
+  round: 'rounds',
+};
+
+/**
+ * Issue (or re-serve, when nothing changed) the PDF document for one record. The backend stores
+ * it, so it also appears in saved documents. Reads only: no financial state changes.
+ */
+export function downloadRecordPdf(
+  token: string,
+  circleId: string,
+  kind: RecordDocumentKind,
+  reference: string,
+): Promise<MemberStatementPdfResult> {
+  return requestPdf(
+    recordsPath(
+      circleId,
+      `${RECORD_DOCUMENT_ROUTE[kind]}/${encodeURIComponent(reference)}/pdf`,
+    ),
+    token,
+  );
+}
+
+export function getRoundRecord(
+  token: string,
+  circleId: string,
+  reference: string,
+): Promise<RoundRecord> {
+  return requestJson<RoundRecord>(
+    recordsPath(circleId, `rounds/${encodeURIComponent(reference)}`),
+    { token, revalidate: true },
+  );
+}
+
+export function downloadStatementDocumentPdf(
+  token: string,
+  circleId: string,
+  documentId: string,
+): Promise<MemberStatementPdfResult> {
+  return requestPdf(
+    `/groups/${circleId}/statement-documents/${encodeURIComponent(documentId)}/pdf`,
+    token,
+  );
 }
 
 export function approveContribution(
@@ -608,7 +1958,7 @@ export function rejectContribution(
   token: string,
   circleId: string,
   memberId: string,
-  input: { reason?: string } = {},
+  input: { reason?: string; reasonCode?: string } = {},
 ): Promise<unknown> {
   return requestJson<unknown>(`/contributions/${circleId}/${memberId}/reject`, {
     method: 'POST',
@@ -622,7 +1972,7 @@ export function submitContribution(
   token: string,
   circleId: string,
   memberId: string,
-  input: { note?: string; paymentMethod?: string } = {},
+  input: { note?: string; paymentMethod?: string; paymentReference?: string } = {},
 ): Promise<unknown> {
   return requestJson<unknown>(`/contributions/${circleId}/${memberId}/submit`, {
     method: 'POST',
@@ -643,6 +1993,395 @@ export function sendContributionReminder(
   });
 }
 
+export type BillingPlan = {
+  id: 'free' | 'premium';
+  name: string;
+  tagline: string;
+  monthlyPriceCents: number;
+  annualPriceCents: number;
+  annualSavingsCents?: number;
+  trialDays: number;
+  features: string[];
+};
+
+export type BillingPlansResponse = {
+  currency: string;
+  recommendedPlan: 'premium';
+  plans: BillingPlan[];
+};
+
+export type GooglePlayPlanConfig = {
+  productId: string;
+  basePlanId: string;
+  offerId: string | null;
+};
+
+export type GooglePlayBillingStatus =
+  | {
+      provider: 'google_play';
+      enabled: false;
+    }
+  | {
+      provider: 'google_play';
+      enabled: true;
+      packageName: string;
+      obfuscatedAccountId: string;
+      monthly: GooglePlayPlanConfig;
+      annual: GooglePlayPlanConfig;
+      trialEligible: boolean;
+    };
+
+export type GooglePlayVerificationResponse = {
+  provider: 'google_play';
+  restored: boolean;
+  status: string;
+  productId: string;
+  basePlanId: string;
+  offerId: string | null;
+  currentPeriodEnd: string | null;
+  acknowledgementState: string;
+  entitlements: Entitlements;
+};
+
+function invalidGooglePlayResponse(message: string): never {
+  throw new ApiError(message, 500);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function normalizeGooglePlayPlanConfig(
+  value: unknown,
+): GooglePlayPlanConfig {
+  if (
+    !isRecord(value) ||
+    !readString(value.productId) ||
+    !readString(value.basePlanId) ||
+    !isNullableString(value.offerId)
+  ) {
+    return invalidGooglePlayResponse(
+      'Google Play billing status response was invalid.',
+    );
+  }
+  return {
+    productId: readString(value.productId),
+    basePlanId: readString(value.basePlanId),
+    offerId: value.offerId,
+  };
+}
+
+function normalizeGooglePlayBillingStatus(
+  value: unknown,
+): GooglePlayBillingStatus {
+  if (
+    !isRecord(value) ||
+    value.provider !== 'google_play' ||
+    typeof value.enabled !== 'boolean'
+  ) {
+    return invalidGooglePlayResponse(
+      'Google Play billing status response was invalid.',
+    );
+  }
+  if (value.enabled === false) {
+    return { provider: 'google_play', enabled: false };
+  }
+  if (
+    !readString(value.packageName) ||
+    !readString(value.obfuscatedAccountId) ||
+    typeof value.trialEligible !== 'boolean'
+  ) {
+    return invalidGooglePlayResponse(
+      'Google Play billing status response was invalid.',
+    );
+  }
+  return {
+    provider: 'google_play',
+    enabled: true,
+    packageName: readString(value.packageName),
+    obfuscatedAccountId: readString(value.obfuscatedAccountId),
+    monthly: normalizeGooglePlayPlanConfig(value.monthly),
+    annual: normalizeGooglePlayPlanConfig(value.annual),
+    trialEligible: value.trialEligible,
+  };
+}
+
+function normalizeGooglePlayVerificationResponse(
+  value: unknown,
+): GooglePlayVerificationResponse {
+  if (
+    !isRecord(value) ||
+    value.provider !== 'google_play' ||
+    typeof value.restored !== 'boolean' ||
+    !readString(value.status) ||
+    !readString(value.productId) ||
+    !readString(value.basePlanId) ||
+    !isNullableString(value.offerId) ||
+    !isNullableString(value.currentPeriodEnd) ||
+    !readString(value.acknowledgementState) ||
+    !isRecord(value.entitlements)
+  ) {
+    return invalidGooglePlayResponse(
+      'Google Play verification response was invalid.',
+    );
+  }
+  return {
+    provider: 'google_play',
+    restored: value.restored,
+    status: readString(value.status),
+    productId: readString(value.productId),
+    basePlanId: readString(value.basePlanId),
+    offerId: value.offerId,
+    currentPeriodEnd: value.currentPeriodEnd,
+    acknowledgementState: readString(value.acknowledgementState),
+    entitlements: normalizeEntitlements(value.entitlements),
+  };
+}
+
+function sanitizeGooglePlayFailure(error: unknown): never {
+  if (error instanceof ApiError) {
+    throw new ApiError(
+      'Google Play billing request failed.',
+      error.status,
+      undefined,
+      {
+        category: error.category,
+        retryAfterSeconds: error.retryAfterSeconds,
+      },
+    );
+  }
+  throw new ApiError('Google Play billing request failed.', 0);
+}
+
+export type ReminderSchedule = {
+  circleId: string;
+  enabled: boolean;
+  repeatHours: number;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastResult: {
+    status?: string;
+    remindedCount?: number;
+    error?: string;
+  } | null;
+};
+
+/**
+ * Production assistant-response.v2 shape (AiAssistantService).
+ * Older shells used { mode, actions }; those fields are no longer returned.
+ */
+export type AiAssistantNavigationSuggestion = {
+  actionId: string;
+  reason: string;
+  assistantExecutable: false;
+};
+
+export type AiAssistantResponse = {
+  schemaVersion: 'assistant-response.v2' | string;
+  conversationId: string;
+  messageId: string;
+  status: 'completed' | 'refused';
+  locale: string;
+  responseType: 'answer' | 'refusal' | 'clarification';
+  message: string;
+  explanationCodes: string[];
+  factRefs: string[];
+  navigationSuggestions: AiAssistantNavigationSuggestion[];
+  generatedFromContextAt: string;
+  actionsExecutable: false;
+  /** Present only on some entitlement/error payloads — not on v2 success body. */
+  mode?: 'premium' | 'free_introduction';
+};
+
+export function getBillingPlans(): Promise<BillingPlansResponse> {
+  return requestJson<BillingPlansResponse>('/billing/plans');
+}
+
+export async function getGooglePlayBillingStatus(
+  token: string,
+): Promise<GooglePlayBillingStatus> {
+  try {
+    const payload = await requestJson<unknown>(
+      '/billing/google-play/status',
+      {
+        token,
+        revalidate: true,
+      },
+    );
+    return normalizeGooglePlayBillingStatus(payload);
+  } catch (error) {
+    return sanitizeGooglePlayFailure(error);
+  }
+}
+
+export async function verifyGooglePlayPurchase(
+  token: string,
+  purchaseToken: string,
+): Promise<GooglePlayVerificationResponse> {
+  try {
+    const payload = await requestJson<unknown>(
+      '/billing/google-play/verify',
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ purchaseToken }),
+      },
+    );
+    return normalizeGooglePlayVerificationResponse(payload);
+  } catch (error) {
+    return sanitizeGooglePlayFailure(error);
+  }
+}
+
+export async function restoreGooglePlayPurchase(
+  token: string,
+  purchaseToken: string,
+): Promise<GooglePlayVerificationResponse> {
+  try {
+    const payload = await requestJson<unknown>(
+      '/billing/google-play/restore',
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ purchaseToken }),
+      },
+    );
+    return normalizeGooglePlayVerificationResponse(payload);
+  } catch (error) {
+    return sanitizeGooglePlayFailure(error);
+  }
+}
+
+export function getPremiumReminderSchedule(
+  token: string,
+  circleId: string,
+): Promise<ReminderSchedule> {
+  return requestJson<ReminderSchedule>(
+    `/premium/circles/${circleId}/reminder-schedule`,
+    { token },
+  );
+}
+
+export function updatePremiumReminderSchedule(
+  token: string,
+  circleId: string,
+  input: {
+    enabled: boolean;
+    repeatHours: number;
+    nextRunAt?: string;
+  },
+): Promise<ReminderSchedule> {
+  return requestJson<ReminderSchedule>(
+    `/premium/circles/${circleId}/reminder-schedule`,
+    {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+/**
+ * Send a circle assistant message (production v2).
+ * Requires Idempotency-Key (8–128 chars). Prefer createAssistantIdempotencyKey().
+ */
+export function sendAiAssistantMessage(
+  token: string,
+  circleId: string,
+  message: string,
+  locale: string,
+  options?: {
+    conversationId?: string | null;
+    idempotencyKey?: string;
+    /**
+     * Assistant requests may legitimately outlast the 20s JSON timeout (one or
+     * two provider attempts). Callers pass assistantRequestTimeoutMs().
+     */
+    timeoutMs?: number;
+  },
+): Promise<AiAssistantResponse> {
+  const conversationId = String(options?.conversationId || '').trim();
+  const idempotencyKey = String(
+    options?.idempotencyKey ||
+      `m-ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+  ).trim();
+  const path = conversationId
+    ? `/assistant/circles/${circleId}/conversations/${encodeURIComponent(conversationId)}/messages`
+    : `/assistant/circles/${circleId}/messages`;
+  return requestJson<AiAssistantResponse>(path, {
+    method: 'POST',
+    token,
+    timeoutMs: options?.timeoutMs,
+    headers: {
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify({
+      message,
+      locale,
+      idempotencyKey,
+    }),
+  });
+}
+
+export type AssistantConversationSummary = {
+  id: string;
+  circleId: string;
+  locale: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AssistantStoredMessage = {
+  id: string;
+  conversationId: string;
+  role: string;
+  status: string;
+  locale: string;
+  message: string;
+  responseType?: string | null;
+  explanationCodes?: string[];
+  factRefs?: string[];
+  navigationSuggestions?: AiAssistantNavigationSuggestion[];
+  errorCode?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+};
+
+export function listAssistantConversations(
+  token: string,
+  circleId: string,
+): Promise<{
+  conversations: AssistantConversationSummary[];
+  /** Backend's total request budget in seconds (provider attempts + overhead). */
+  requestBudgetSeconds?: number;
+}> {
+  return requestJson(`/assistant/circles/${circleId}/conversations`, { token });
+}
+
+export function listAssistantMessages(
+  token: string,
+  circleId: string,
+  conversationId: string,
+): Promise<{
+  conversation: AssistantConversationSummary;
+  messages: AssistantStoredMessage[];
+  conversationMemory?: {
+    savedMessageCount: number;
+    modelMessageCap: number;
+    messagesIncludedAtCap: number;
+    messagesSavedButNotSent: number;
+    tokenBudgetMayOmitMore?: boolean;
+    authoritativeFacts?: string;
+    promptVersion?: string;
+  };
+  promptVersion?: string;
+}> {
+  return requestJson(
+    `/assistant/circles/${circleId}/conversations/${encodeURIComponent(conversationId)}/messages`,
+    { token },
+  );
+}
+
 export function createCircle(
   token: string,
   input: CreateCircleInput,
@@ -651,6 +2390,39 @@ export function createCircle(
     method: 'POST',
     token,
     body: JSON.stringify(input),
+  });
+}
+
+/** Archive evidence-backed circles; hard-delete only empty drafts. */
+export function deleteCircle(
+  token: string,
+  circleId: string,
+): Promise<{
+  id: string;
+  action: 'archived' | 'deleted';
+  mode?: string;
+  status: string;
+  message?: string;
+  circle?: unknown;
+}> {
+  return requestJson(`/groups/${circleId}`, {
+    method: 'DELETE',
+    token,
+  });
+}
+
+/** Archive or delete all setup/draft/forming circles you organize. */
+export function deleteAllSetupDrafts(token: string): Promise<{
+  deletedCount: number;
+  deleted: Array<{ id: string; name: string; status: string; action?: string }>;
+  archivedCount?: number;
+  archived?: Array<{ id: string; name: string; status: string; action?: string }>;
+  skippedCount: number;
+  skipped: Array<{ id: string; reason: string }>;
+}> {
+  return requestJson(`/groups/setup-drafts`, {
+    method: 'DELETE',
+    token,
   });
 }
 
@@ -672,25 +2444,59 @@ export function getPublicInvitePreview(
   return requestJson<BackendInvitePreview>(`/groups/${circleId}/invite`);
 }
 
+export type PlannedHandClaimJoinOptions = {
+  claimToken?: string;
+  /** Required when the action may claim a planned hand (CS-006). */
+  acknowledgmentAccepted?: boolean;
+  acknowledgmentVersion?: string;
+  language?: string;
+  clientIdentifier?: string;
+};
+
 export function requestJoin(
   token: string,
   circleId: string,
-  claimToken?: string,
-): Promise<BackendCircleDetail> {
-  return requestJson<BackendCircleDetail>(`/groups/${circleId}/join`, {
+  claimTokenOrOptions?: string | PlannedHandClaimJoinOptions,
+): Promise<BackendJoinResult> {
+  const options: PlannedHandClaimJoinOptions =
+    typeof claimTokenOrOptions === 'string'
+      ? { claimToken: claimTokenOrOptions }
+      : claimTokenOrOptions || {};
+  const body: Record<string, unknown> = {};
+  if (options.claimToken) {
+    body.claimToken = options.claimToken;
+  }
+  if (options.acknowledgmentAccepted === true) {
+    body.acknowledgmentAccepted = true;
+    body.acknowledgmentVersion = options.acknowledgmentVersion;
+    body.language = options.language;
+    body.clientIdentifier = options.clientIdentifier;
+  }
+  return requestJson<BackendJoinResult>(`/groups/${circleId}/join`, {
     method: 'POST',
     token,
-    body: claimToken ? JSON.stringify({ claimToken }) : undefined,
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
   });
 }
 
 export function approveJoinRequest(
   token: string,
   circleId: string,
-  memberId: string,
+  requestId: string,
 ): Promise<unknown> {
-  return requestJson<unknown>(`/groups/${circleId}/members/${memberId}/approve`, {
+  return requestJson<unknown>(`/groups/${circleId}/join-requests/${requestId}/approve`, {
     method: 'POST',
+    token,
+  });
+}
+
+export function declineJoinRequest(
+  token: string,
+  circleId: string,
+  requestId: string,
+): Promise<unknown> {
+  return requestJson<unknown>(`/groups/${circleId}/join-requests/${requestId}`, {
+    method: 'DELETE',
     token,
   });
 }
@@ -706,13 +2512,35 @@ export function removeCircleMember(
   });
 }
 
+export type StartCircleOptions = {
+  /** Organizer reviewed payout order before start. */
+  confirmPayoutOrder?: boolean;
+  /** Organizer accepts managing unclaimed hands (cash path) or has none. */
+  confirmUnclaimedHands?: boolean;
+  snapshotId?: string;
+  snapshotHash?: string;
+  language?: AgreementLanguage;
+};
+
 export function startCircle(
   token: string,
   circleId: string,
+  options: StartCircleOptions = {},
 ): Promise<CreatedCircleResponse> {
+  const body: Record<string, unknown> = {};
+  if (typeof options.confirmPayoutOrder === 'boolean') {
+    body.confirmPayoutOrder = options.confirmPayoutOrder;
+  }
+  if (typeof options.confirmUnclaimedHands === 'boolean') {
+    body.confirmUnclaimedHands = options.confirmUnclaimedHands;
+  }
+  if (options.snapshotId) body.snapshotId = options.snapshotId;
+  if (options.snapshotHash) body.snapshotHash = options.snapshotHash;
+  if (options.language) body.language = options.language;
   return requestJson<CreatedCircleResponse>(`/groups/${circleId}/start`, {
     method: 'POST',
     token,
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
   });
 }
 
@@ -774,7 +2602,6 @@ export async function createPaymentIntent(
   token: string,
   circleId: string,
   roundNumber: number,
-  amount: number,
   memberId?: string,
 ): Promise<{
   clientSecret: string;
@@ -783,6 +2610,7 @@ export async function createPaymentIntent(
   handId?: string;
   handNumber?: number;
   amountCents?: number;
+  reused?: boolean;
 }> {
   return requestJson<{
     clientSecret: string;
@@ -791,13 +2619,12 @@ export async function createPaymentIntent(
     handId?: string;
     handNumber?: number;
     amountCents?: number;
+    reused?: boolean;
   }>('/wallet/stripe/payment-intent', {
     method: 'POST',
     body: JSON.stringify({
       circleId,
       roundNumber,
-      // Server derives authoritative amount; amount kept for older backends.
-      amount: Math.round(amount * 100),
       memberId: memberId || undefined,
       handId: memberId || undefined,
     }),
@@ -815,9 +2642,9 @@ export async function getLinkedAccounts(token: string): Promise<BackendLinkedAcc
 export function updateUserProfile(
   token: string,
   payload: { name?: string; cashtag?: string; venmoHandle?: string; paypalEmail?: string }
-): Promise<{ user: AuthUser; session: AuthSession }> {
-  return requestJson<{ user: AuthUser; session: AuthSession }>('/auth/me', {
-    method: 'PUT',
+): Promise<AuthUser> {
+  return requestJson<AuthUser>('/auth/me', {
+    method: 'PATCH',
     token,
     body: JSON.stringify(payload),
   });
@@ -825,11 +2652,44 @@ export function updateUserProfile(
 
 export type BackendChatMessage = {
   id: string;
+  circleId?: string;
+  conversationId?: string | null;
   senderName: string;
   senderId: string;
+  senderUserId?: string | null;
   text: string;
   timestamp: string;
+  createdAt?: string | null;
   isSystem?: boolean;
+};
+
+export type BackendChatParticipant = {
+  userId: string;
+  memberId: string;
+  name: string;
+};
+
+export type BackendChatConversation = {
+  id: string;
+  circleId: string;
+  type: 'group' | 'direct';
+  title: string;
+  participants: BackendChatParticipant[];
+  lastMessage: BackendChatMessage | null;
+  unreadCount: number;
+  lastReadAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type BackendChatConversationList = {
+  conversations: BackendChatConversation[];
+  unreadCount: number;
+};
+
+export type BackendChatThread = {
+  conversation: BackendChatConversation;
+  messages: BackendChatMessage[];
 };
 
 export interface BackendLinkedAccount {
@@ -844,7 +2704,7 @@ export async function getChatMessages(circleId: string, token: string): Promise<
   });
 }
 
-export async function sendChatMessage(circleId: string, token: string, text: string, senderName: string, senderId: string): Promise<void> {
+export async function sendChatMessage(circleId: string, token: string, text: string): Promise<void> {
   return requestJson<void>(`/groups/${circleId}/chat`, {
     method: 'POST',
     token,
@@ -852,12 +2712,94 @@ export async function sendChatMessage(circleId: string, token: string, text: str
   });
 }
 
-export async function requestPositionSwap(circleId: string, token: string, targetMemberId: string): Promise<void> {
-  return requestJson<void>(`/groups/${circleId}/swaps`, {
-    method: 'POST',
-    token,
-    body: JSON.stringify({ targetMemberId }),
-  });
+export function getChatConversations(
+  circleId: string,
+  token: string,
+): Promise<BackendChatConversationList> {
+  return requestJson<BackendChatConversationList>(
+    `/groups/${circleId}/conversations`,
+    { token },
+  );
+}
+
+export function createDirectChatConversation(
+  circleId: string,
+  token: string,
+  memberId: string,
+): Promise<BackendChatConversation> {
+  return requestJson<BackendChatConversation>(
+    `/groups/${circleId}/conversations/direct`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ memberId }),
+    },
+  );
+}
+
+export function getConversationMessages(
+  circleId: string,
+  conversationId: string,
+  token: string,
+): Promise<BackendChatThread> {
+  return requestJson<BackendChatThread>(
+    `/groups/${circleId}/conversations/${conversationId}/messages`,
+    { token },
+  );
+}
+
+export function sendConversationMessage(
+  circleId: string,
+  conversationId: string,
+  token: string,
+  text: string,
+): Promise<BackendChatMessage> {
+  return requestJson<BackendChatMessage>(
+    `/groups/${circleId}/conversations/${conversationId}/messages`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ text }),
+    },
+  );
+}
+
+export function deleteConversationMessage(
+  circleId: string,
+  conversationId: string,
+  messageId: string,
+  token: string,
+): Promise<{
+  messageId: string;
+  deleted: boolean;
+  notificationsDeleted: number;
+}> {
+  return requestJson(
+    `/groups/${circleId}/conversations/${conversationId}/messages/${messageId}`,
+    {
+      method: 'DELETE',
+      token,
+    },
+  );
+}
+
+export function markConversationRead(
+  circleId: string,
+  conversationId: string,
+  token: string,
+): Promise<{
+  conversationId: string;
+  readAt: string | null;
+  unreadCount: number;
+  notificationsUpdated: number;
+}> {
+  return requestJson(
+    `/groups/${circleId}/conversations/${conversationId}/read`,
+    {
+      method: 'POST',
+      token,
+    },
+  );
 }
 
 export async function getMemberAccessToken(circleId: string, memberId: string, token: string): Promise<{ claimToken: string }> {
@@ -940,12 +2882,99 @@ export async function resolveCircleCode(
 export function requestAdditionalHand(
   token: string,
   circleId: string,
+  input: {
+    previewHash: string;
+    acceptedAdditionalHandObligation: true;
+    consentTextVersion: string;
+    language: AgreementLanguage;
+    clientIdentifier: string;
+  },
 ): Promise<unknown> {
   return requestJson<unknown>(`/groups/${circleId}/join`, {
     method: 'POST',
     token,
-    body: JSON.stringify({ additionalHand: true }),
+    body: JSON.stringify({ additionalHand: true, ...input }),
   });
 }
 
+export function finalizeCircleAgreementSnapshot(
+  token: string,
+  circleId: string,
+): Promise<CircleAgreementSnapshot> {
+  return requestJson<CircleAgreementSnapshot>(`/groups/${circleId}/agreement-snapshot/finalize`, {
+    method: 'POST',
+    token,
+  });
+}
 
+export function getCircleAgreementContent(
+  token: string,
+): Promise<CircleAgreementContent> {
+  return requestJson<CircleAgreementContent>('/groups/agreements/content', { token });
+}
+
+export function getCircleAgreementSnapshot(
+  token: string,
+  circleId: string,
+): Promise<CircleAgreementSnapshot> {
+  return requestJson<CircleAgreementSnapshot>(`/groups/${circleId}/agreement-snapshot`, { token });
+}
+
+export function getCircleAgreementReadiness(
+  token: string,
+  circleId: string,
+): Promise<CircleAgreementReadiness> {
+  return requestJson<CircleAgreementReadiness>(`/groups/${circleId}/agreement-readiness`, { token });
+}
+
+export function acceptCircleAgreement(
+  token: string,
+  circleId: string,
+  input: {
+    snapshotId: string;
+    snapshotHash: string;
+    documentType: 'circle_participation_agreement' | 'organizer_agreement' | 'final_circle_snapshot';
+    documentVersion: string;
+    accepted: true;
+    language: AgreementLanguage;
+    clientIdentifier: string;
+  },
+): Promise<{ acceptanceId: string; idempotent: boolean; acceptedAt: string }> {
+  return requestJson(`/groups/${circleId}/agreement-acceptances`, {
+    method: 'POST', token, body: JSON.stringify(input),
+  });
+}
+
+export function getAdditionalHandPreview(
+  token: string,
+  circleId: string,
+): Promise<AdditionalHandPreview> {
+  return requestJson<AdditionalHandPreview>(`/groups/${circleId}/additional-hand-preview`, {
+    method: 'POST', token,
+  });
+}
+
+export function downloadPayoutOrderPdf(
+  token: string,
+  circleId: string,
+): Promise<MemberStatementPdfResult> {
+  return requestPdf(
+    `/groups/${encodeURIComponent(circleId)}/payout-order/pdf`,
+    token,
+  );
+}
+
+export async function exportUserData(token: string): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>('/auth/me/export', { token });
+}
+
+export async function deleteAccount(
+  token: string,
+  password: string,
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>('/auth/me/delete', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ password }),
+  });
+}

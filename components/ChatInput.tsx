@@ -1,98 +1,206 @@
-import React, { useState } from 'react';
-import { StyleSheet, TextInput, View, Pressable, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { colors } from '@/lib/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import React, { useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useTranslation } from 'react-i18next';
+
+import { composerDraftAfterSend } from '@/lib/circles/circleChatState';
+import { colors, shadows } from '@/lib/shared/theme';
 
 type ChatInputProps = {
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | Promise<void>;
   isLoading?: boolean;
+  placeholder?: string;
+  /** When false, skip extra bottom inset (parent already handles SafeArea). */
+  applyBottomInset?: boolean;
+  /**
+   * Floating dock look: elevated bar that sits above the keyboard.
+   * Parent owns bottom offset via absolute positioning.
+   */
+  floating?: boolean;
+  style?: StyleProp<ViewStyle>;
 };
 
-export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
+/**
+ * Composer only — keyboard lift is owned by the parent chat surface
+ * (ConversationChat floating dock). Do not nest KeyboardAvoidingView here.
+ */
+export default function ChatInput({
+  onSend,
+  isLoading,
+  placeholder,
+  applyBottomInset = true,
+  floating = false,
+  style,
+}: ChatInputProps) {
+  const { t } = useTranslation('circleWorkspace');
+  const resolvedPlaceholder = placeholder ?? t('chat.placeholder');
   const [text, setText] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  const draftRef = useRef('');
+  const inputFocusedRef = useRef(false);
+  const sendAfterEndEditingRef = useRef(false);
+  const insets = useSafeAreaInsets();
+  const bottomPad = applyBottomInset
+    ? Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0)
+    : 8;
 
-  const handleSend = () => {
-    if (!text.trim() || isLoading) return;
-    onSend(text);
-    setText('');
+  const sendDraft = async (draft: string) => {
+    if (!draft.trim() || isLoading) return;
+    try {
+      await onSend(draft);
+      setText((current) => {
+        const next = composerDraftAfterSend(current, true, draft);
+        draftRef.current = next;
+        return next;
+      });
+    } catch {
+      setText((current) => {
+        const next = composerDraftAfterSend(current, false, draft);
+        draftRef.current = next;
+        return next;
+      });
+    }
+  };
+
+  const handleSendPress = () => {
+    if (isLoading || !draftRef.current.trim()) return;
+    if (inputFocusedRef.current) {
+      sendAfterEndEditingRef.current = true;
+      inputRef.current?.blur();
+      return;
+    }
+    void sendDraft(draftRef.current);
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={100}
+    <View
+      style={[
+        styles.container,
+        { paddingBottom: bottomPad },
+        style,
+      ]}
     >
-      <View style={styles.container}>
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.input}
-            placeholder="Send a message..."
-            placeholderTextColor={colors.muted}
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={500}
-          />
-        </View>
+      <View
+        style={[
+          styles.composerPill,
+          floating && styles.composerPillFloating,
+        ]}
+      >
+        <TextInput
+          ref={inputRef}
+          style={styles.input}
+          placeholder={resolvedPlaceholder}
+          placeholderTextColor={colors.muted}
+          value={text}
+          onChangeText={(next) => {
+            draftRef.current = next;
+            setText(next);
+          }}
+          onFocus={() => {
+            inputFocusedRef.current = true;
+          }}
+          onEndEditing={(event) => {
+            inputFocusedRef.current = false;
+            const committedText = event.nativeEvent.text;
+            draftRef.current = committedText;
+            setText(committedText);
+            if (!sendAfterEndEditingRef.current) return;
+
+            sendAfterEndEditingRef.current = false;
+            requestAnimationFrame(() => inputRef.current?.focus());
+            void sendDraft(committedText);
+          }}
+          multiline
+          maxLength={4000}
+          editable={!isLoading}
+          textAlignVertical="top"
+          scrollEnabled
+          blurOnSubmit={false}
+        />
+
         <Pressable
           style={({ pressed }) => [
             styles.sendButton,
             !text.trim() && styles.sendButtonDisabled,
-            pressed && styles.sendButtonPressed
+            pressed && styles.sendButtonPressed,
           ]}
           disabled={!text.trim() || isLoading}
-          onPress={handleSend}
+          onPress={handleSendPress}
           accessibilityRole="button"
+          accessibilityLabel={t('chat.sendA11y')}
         >
           {isLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={colors.onColor} />
           ) : (
-            <FontAwesome name="send" size={16} color={text.trim() ? '#fff' : colors.muted} />
+            <FontAwesome
+              name="send"
+              size={16}
+              color={text.trim() ? colors.onColor : colors.muted}
+            />
           )}
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    backgroundColor: 'transparent',
+  },
+  composerPill: {
+    minHeight: 54,
+    maxHeight: 132,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
-    borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
-    gap: 12,
-  },
-  inputWrapper: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 24,
+    gap: 8,
+    paddingLeft: 16,
+    paddingRight: 5,
+    paddingVertical: 5,
+    backgroundColor: colors.card,
+    borderRadius: 25,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 48,
-    maxHeight: 120,
-    justifyContent: 'center',
+  },
+  composerPillFloating: {
+    ...shadows.small,
   },
   input: {
+    flex: 1,
+    minHeight: 42,
+    maxHeight: 120,
+    minWidth: 0,
     fontSize: 16,
+    lineHeight: 22,
     color: colors.textStrong,
-    padding: 0, // Reset default padding
+    paddingHorizontal: 0,
+    paddingTop: 10,
+    paddingBottom: 10,
+    margin: 0,
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: colors.cardBorder,
+    backgroundColor: colors.primarySoft,
   },
   sendButtonPressed: {
     opacity: 0.8,

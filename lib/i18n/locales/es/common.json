@@ -1,0 +1,31 @@
+{
+  "back": "Atrás",
+  "save": "Guardar",
+  "cancel": "Cancelar",
+  "done": "Listo",
+  "loading": "Cargando…",
+  "retry": "Reintentar",
+  "goBack": "Volver",
+  "unknown": "Desconocido",
+  "closeDialog": "Cerrar diálogo",
+  "unavailable": "No disponible",
+  "avatarA11y": "Avatar de {{name}}",
+  "ok": "OK",
+  "error": "Error",
+  "saved": "Guardado",
+  "pleaseTryAgain": "Inténtalo de nuevo.",
+  "network": {
+    "offlineTitle": "Sin conexión",
+    "offline": "Estás sin conexión. Revisa tu red e inténtalo de nuevo.",
+    "timeoutTitle": "Tiempo de espera agotado",
+    "timeout": "La solicitud tardó demasiado. Inténtalo de nuevo.",
+    "serverTitle": "Algo salió mal",
+    "server": "Algo salió mal. Inténtalo de nuevo.",
+    "rateLimitedTitle": "Demasiados intentos",
+    "rateLimited": "Demasiados intentos. Espera e inténtalo de nuevo.",
+    "rateLimitedWait": "Demasiados intentos. Inténtalo de nuevo en {{count}} segundos."
+  },
+  "notFoundTitle": "¡Uy!",
+  "notFoundBody": "Esta pantalla no existe.",
+  "notFoundHome": "Ir a la pantalla de inicio"
+}

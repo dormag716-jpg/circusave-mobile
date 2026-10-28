@@ -1,0 +1,164 @@
+import type { Href } from 'expo-router';
+import * as Linking from 'expo-linking';
+
+import type { CirclePermissionKey, CirclePermissions } from '../shared/types';
+
+export const dashboardHref = '/(tabs)/dashboard' as const;
+export const myCirclesHref = '/(tabs)/circles' as const;
+export const createCircleHref = '/(tabs)/create-circle' as const;
+export const joinCircleHref = '/join-circle' as const;
+
+export function circleWorkspaceHref(
+  circleId: string,
+  tab?: string,
+  conversationId?: string,
+): Href {
+  const params: Record<string, string> = { circleId };
+  if (tab) params.tab = tab;
+  if (conversationId) params.conversationId = conversationId;
+  return {
+    pathname: '/circle/workspace',
+    params,
+  };
+}
+
+export function circleInviteHref(circleId: string): Href {
+  return {
+    pathname: '/circle/invite',
+    params: { circleId },
+  };
+}
+
+export function contributionHref(circleId: string, handId?: string): Href {
+  const params: Record<string, string> = { circleId };
+  const safeHandId = String(handId || '').trim();
+  if (safeHandId) {
+    params.handId = safeHandId;
+  }
+  return {
+    pathname: '/payment/contribution',
+    params,
+  };
+}
+
+export function circlePaymentSetupHref(
+  circleId: string,
+  returnTo?: 'payment-preferences',
+): Href {
+  return {
+    pathname: '/circle/payment-setup',
+    params: returnTo ? { circleId, returnTo } : { circleId },
+  };
+}
+
+/** Post-create destinations: set contribution instructions or continue setup. */
+export function createCircleSuccessDestinations(circleId: string): {
+  contributionPaymentSetup: Href;
+  continueSetup: Href;
+} {
+  return {
+    contributionPaymentSetup: circlePaymentSetupHref(circleId),
+    continueSetup: circleWorkspaceHref(circleId, 'people'),
+  };
+}
+
+export function circleAgreementReviewHref(circleId: string): Href {
+  return { pathname: '/circle/agreement-review', params: { circleId } };
+}
+
+export function additionalHandConsentHref(circleId: string): Href {
+  return { pathname: '/circle/additional-hand', params: { circleId } };
+}
+
+export function inviteJoinHref(circleId: string, claimToken?: string | null): Href {
+  return {
+    pathname: '/invite/[id]',
+    params: claimToken
+      ? { id: circleId, claimToken }
+      : { id: circleId },
+  } as Href;
+}
+
+export function circleHistoryHref(circleId: string): Href {
+  return {
+    pathname: '/circle/history',
+    params: { circleId },
+  };
+}
+
+export const completedCirclesHref = '/completed-circles' as const;
+
+export function canAccessCircleRoute(input: {
+  requestedCircleId: string | null;
+  authoritativeCircleId: string;
+  membershipCircleId: string;
+  membershipStatus: string;
+  permissions: CirclePermissions;
+  requiredPermission: CirclePermissionKey;
+}) {
+  return (
+    Boolean(input.requestedCircleId) &&
+    input.requestedCircleId === input.authoritativeCircleId &&
+    input.requestedCircleId === input.membershipCircleId &&
+    input.membershipStatus === 'active' &&
+    input.permissions[input.requiredPermission]
+  );
+}
+
+export function postAuthHrefFromUrl(url: string | null): Href {
+  if (!url) {
+    return dashboardHref;
+  }
+
+  const parsed = Linking.parse(url);
+  const path = normalizeParsedPath(parsed);
+  const circleId = readQueryString(parsed.queryParams?.circleId);
+
+  if (path.startsWith('workspace/')) {
+    const id = path.split('/')[1];
+    if (id) return circleWorkspaceHref(id);
+  }
+  if (path === 'circle/workspace' && circleId) {
+    return circleWorkspaceHref(circleId);
+  }
+
+  if (path.startsWith('invite/')) {
+    const id = path.split('/')[1];
+    const claimToken = readQueryString(parsed.queryParams?.claimToken);
+    if (id) {
+      return {
+        pathname: '/invite/[id]',
+        params: claimToken ? { id, claimToken } : { id },
+      } as Href;
+    }
+  }
+  if (path === 'circle/invite' && circleId) {
+    return circleInviteHref(circleId);
+  }
+  if (path === 'payment/contribution' && circleId) {
+    return contributionHref(circleId);
+  }
+  if (path === '(tabs)/circles' || path === 'circles') {
+    return myCirclesHref;
+  }
+
+  return dashboardHref;
+}
+
+function normalizePath(path: string | null) {
+  return String(path ?? '')
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '');
+}
+
+function normalizeParsedPath(parsed: Linking.ParsedURL) {
+  const path = normalizePath(parsed.path);
+  const hostname = normalizePath(parsed.hostname);
+  const customScheme = parsed.scheme !== 'http' && parsed.scheme !== 'https';
+
+  return customScheme && hostname ? normalizePath(`${hostname}/${path}`) : path;
+}
+
+function readQueryString(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0]?.trim() || null : value?.trim() || null;
+}

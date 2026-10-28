@@ -1,4 +1,4 @@
-import { getInitials } from '../initials';
+import { getInitials } from '../shared/initials';
 
 describe('getInitials', () => {
   it('returns JD for John Doe', () => {

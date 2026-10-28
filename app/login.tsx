@@ -1,10 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Linking from 'expo-linking';
-import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -15,20 +17,43 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FederatedAuthButtons } from '@/components/FederatedAuthButtons';
+import { loginHardwareBackAction } from '@/lib/auth/authBoundary';
+import {
+  acknowledgePasswordResetCodeEntry,
+  openExistingRecoveryCode,
+  passwordResetPhase,
+  passwordResetRequestsReplacementCode,
+  readFreshPasswordResetCodeEntry,
+} from '@/lib/auth/passwordResetEntry';
 import {
   login,
+  signInWithFederatedProvider,
   requestPasswordReset,
   resetPassword,
   verifyPasswordReset,
+  type AuthResponse,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { postAuthHrefFromUrl } from '@/lib/navigation';
-import { colors, shadows, spacing } from '@/lib/theme';
+import { useAuthSession } from '@/lib/auth/authContext';
+import {
+  clearFederatedCredential,
+  holdFederatedCredential,
+  type FederatedIdentityProof,
+} from '@/lib/auth/federatedSignIn';
+import { googleSignInMessageKey } from '@/lib/auth/googleSignInOutcome';
+import { backendAuthMessage, describeNetworkError } from '@/lib/platform/networkErrors';
+import { postAuthHrefFromUrl } from '@/lib/platform/navigation';
+import { colors, shadows, spacing } from '@/lib/shared/theme';
+import { useKeyboardReveal } from '@/lib/shared/useKeyboardReveal';
 
 export default function LoginScreen() {
+  const { t } = useTranslation(['auth', 'common']);
   const passwordInputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
+  const { scrollRef, viewportRef, onScroll, keyboardInset, onFieldFocus } =
+    useKeyboardReveal(insets.top);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -37,9 +62,30 @@ export default function LoginScreen() {
   const [otpRequested, setOtpRequested] = useState(false);
   const [resetVerified, setResetVerified] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [linkChallenge, setLinkChallenge] = useState<
+    (FederatedIdentityProof & { email: string }) | null
+  >(null);
   const { setAuthenticatedSession, setPostAuthTarget, postAuthTarget } =
     useAuthSession();
   const incomingUrl = Linking.useURL();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') {
+        return undefined;
+      }
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (loginHardwareBackAction() !== 'exit_app') {
+          return false;
+        }
+        BackHandler.exitApp();
+        return true;
+      });
+      return () => {
+        subscription.remove();
+      };
+    }, []),
+  );
 
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -50,6 +96,66 @@ export default function LoginScreen() {
     setResetToken('');
     setOtpCode('');
     setPassword('');
+    setLinkChallenge(null);
+  }
+
+  useFocusEffect(
+    useCallback(() => {
+      const staged = readFreshPasswordResetCodeEntry();
+      if (!staged) {
+        return undefined;
+      }
+      setEmail(staged.email);
+      setRecoveryMode(true);
+      setOtpRequested(true);
+      setResetVerified(false);
+      setResetToken('');
+      setOtpCode('');
+      setPassword('');
+      setLinkChallenge(null);
+      const timer = setTimeout(() => acknowledgePasswordResetCodeEntry(), 0);
+      return () => clearTimeout(timer);
+    }, []),
+  );
+
+  function openExistingCode() {
+    const existing = openExistingRecoveryCode({ email: normalizedEmail });
+    if ('error' in existing) {
+      Alert.alert(t('login.missingEmailTitle'), t('login.missingEmailMessage'));
+      return;
+    }
+    setOtpRequested(true);
+  }
+
+  async function finishAuthenticated(result: AuthResponse) {
+    clearFederatedCredential();
+    setLinkChallenge(null);
+    if (!postAuthTarget) {
+      setPostAuthTarget(postAuthHrefFromUrl(incomingUrl));
+    }
+    await setAuthenticatedSession(result);
+  }
+
+  async function onFederatedIdentity(proof: FederatedIdentityProof) {
+    const result = await signInWithFederatedProvider({
+      proof,
+      name: proof.name,
+    });
+    if (result.status === 'authenticated') {
+      await finishAuthenticated(result.auth);
+      return;
+    }
+    if (result.status === 'link_required') {
+      setLinkChallenge({ ...proof, email: result.email });
+      setPassword('');
+      return;
+    }
+    holdFederatedCredential({
+      ...proof,
+      email: result.email,
+      name: result.name || proof.name || '',
+    });
+    router.push('/create-account');
   }
 
   async function handleSubmit() {
@@ -57,29 +163,42 @@ export default function LoginScreen() {
 
     Keyboard.dismiss();
 
-    if (!normalizedEmail) {
-      Alert.alert('Missing email', 'Email is required.');
+    if (!linkChallenge && !normalizedEmail) {
+      Alert.alert(t('login.missingEmailTitle'), t('login.missingEmailMessage'));
       return;
     }
 
     if (!recoveryMode && !password) {
-      Alert.alert('Missing password', 'Password is required.');
+      Alert.alert(t('login.missingPasswordTitle'), t('login.missingPasswordMessage'));
       return;
     }
 
     if (recoveryMode && otpRequested && !resetVerified && otpCode.length < 6) {
-      Alert.alert('Missing code', 'Enter the 6-digit recovery code.');
+      Alert.alert(t('login.missingCodeTitle'), t('login.missingCodeMessage'));
       return;
     }
 
     if (recoveryMode && resetVerified && password.length < 8) {
-      Alert.alert('Weak password', 'New password must be at least 8 characters.');
+      Alert.alert(t('login.weakPasswordTitle'), t('login.weakPasswordMessage'));
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      if (linkChallenge) {
+        const linked = await signInWithFederatedProvider({
+          proof: linkChallenge,
+          password,
+        });
+        if (linked.status !== 'authenticated') {
+          Alert.alert(t('federated.rejectedTitle'), t('federated.rejectedBody'));
+          return;
+        }
+        await finishAuthenticated(linked.auth);
+        return;
+      }
+
       if (!recoveryMode) {
         const result = await login({ email: normalizedEmail, password });
         // Keep an explicit target (e.g. invite return) over the raw deep link.
@@ -90,19 +209,26 @@ export default function LoginScreen() {
         return;
       }
 
-      if (!otpRequested) {
+      const phase = passwordResetPhase({
+        codeEntryReady: otpRequested,
+        codeVerified: resetVerified,
+      });
+
+      if (passwordResetRequestsReplacementCode(phase)) {
         const result = await requestPasswordReset({ email: normalizedEmail });
-        if (!result.sent) throw new Error('Unable to send a password reset code.');
+        if (!result.accepted) {
+          throw new Error('Unable to initialize password recovery.');
+        }
 
         setOtpRequested(true);
         Alert.alert(
-          'Recovery code sent',
-          'If the account exists, check your email for the reset code.',
+          t('login.recoveryRequestedTitle'),
+          t('login.recoveryRequestedMessage'),
         );
         return;
       }
 
-      if (!resetVerified) {
+      if (phase === 'code') {
         const result = await verifyPasswordReset({
           email: normalizedEmail,
           code: otpCode,
@@ -110,7 +236,7 @@ export default function LoginScreen() {
         setResetToken(result.resetToken);
         setResetVerified(true);
         setPassword('');
-        Alert.alert('Code verified', 'Now choose a new password.');
+        Alert.alert(t('login.codeVerifiedTitle'), t('login.codeVerifiedMessage'));
         return;
       }
 
@@ -120,11 +246,12 @@ export default function LoginScreen() {
 
       await resetPassword({ resetToken, newPassword: password });
       setRecovery(false);
-      Alert.alert('Password reset', 'Sign in with your new password.');
+      Alert.alert(t('login.passwordResetTitle'), t('login.passwordResetMessage'));
     } catch (error) {
+      const copy = describeNetworkError(error);
       Alert.alert(
-        'Unable to continue',
-        error instanceof Error ? error.message : 'The request could not be completed.',
+        t(copy.titleKey),
+        backendAuthMessage(error) ?? t(copy.bodyKey, copy.params),
       );
     } finally {
       setIsSubmitting(false);
@@ -133,57 +260,100 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      {/*
+        Android resizes the window for the keyboard (softwareKeyboardLayoutMode
+        "resize"), so a second 'height' avoidance here double-shrank the view and
+        left the focused field flush against the keyboard. iOS still needs
+        'padding'. Scrolling the focused field into view is handled by
+        useKeyboardReveal on both.
+      */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
+        <View ref={viewportRef} collapsable={false} style={styles.keyboardView}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          ref={scrollRef}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={[
+            styles.scrollContent,
+            // Only while the keyboard covers the form; zero otherwise.
+            keyboardInset > 0 && { paddingBottom: 48 + keyboardInset },
+          ]}
+          // Android 'on-drag' closed the keyboard on any scroll, so the form
+          // could not be scrolled to Sign In while typing.
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.branding}>
             <View style={styles.logo}>
-              <FontAwesome name="users" size={42} color="#ffffff" />
+              <FontAwesome name="users" size={42} color={colors.onColor} />
             </View>
             <Text style={styles.appName}>CircuSave</Text>
-            <Text style={styles.tagline}>Save together. Get paid faster.</Text>
+            <Text style={styles.tagline}>{t('login.tagline')}</Text>
           </View>
 
           <View style={styles.card}>
             <Text style={styles.welcome}>
-              {recoveryMode ? 'Recover access' : 'Welcome back'}
+              {recoveryMode ? t('login.recoverAccess') : t('login.welcomeBack')}
             </Text>
             <Text style={styles.subtitle}>
-              {recoveryMode
-                ? 'Verify your email to choose a new password.'
-                : 'Sign in to access your circles.'}
+              {linkChallenge
+                ? t('federated.linkBody')
+                : recoveryMode
+                  ? t('login.recoverySubtitle')
+                  : t('login.signInSubtitle')}
             </Text>
 
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="you@example.com"
-              placeholderTextColor={colors.subtle}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              returnKeyType={recoveryMode ? 'done' : 'next'}
-              onSubmitEditing={() =>
-                recoveryMode ? void handleSubmit() : passwordInputRef.current?.focus()
-              }
-            />
+            {!recoveryMode && !linkChallenge ? (
+              <FederatedAuthButtons
+                disabled={isSubmitting}
+                onIdentity={onFederatedIdentity}
+                onGoogleStatus={(status) => {
+                  const message = googleSignInMessageKey(status);
+                  if (!message) {
+                    return;
+                  }
+                  Alert.alert(t(message.title), t(message.body));
+                }}
+              />
+            ) : null}
+
+            {linkChallenge ? (
+              <Text style={styles.label}>{linkChallenge.email}</Text>
+            ) : (
+              <>
+                <Text style={styles.label}>{t('common.email')}</Text>
+                <TextInput
+                  onFocus={onFieldFocus}
+                  style={styles.input}
+                  placeholder={t('login.emailPlaceholder')}
+                  accessibilityLabel={t('common.email')}
+                  placeholderTextColor={colors.subtle}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  returnKeyType={recoveryMode ? 'done' : 'next'}
+                  onSubmitEditing={() =>
+                    recoveryMode ? void handleSubmit() : passwordInputRef.current?.focus()
+                  }
+                />
+              </>
+            )}
 
             {!recoveryMode && (
               <>
-                <Text style={styles.label}>Password</Text>
+                <Text style={styles.label}>{t('common.password')}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   ref={passwordInputRef}
                   style={styles.input}
-                  placeholder="Your password"
+                  placeholder={t('login.passwordPlaceholder')}
+                  accessibilityLabel={t('common.password')}
                   placeholderTextColor={colors.subtle}
                   value={password}
                   onChangeText={setPassword}
@@ -197,10 +367,12 @@ export default function LoginScreen() {
 
             {recoveryMode && otpRequested && !resetVerified && (
               <>
-                <Text style={styles.label}>6-digit recovery code</Text>
+                <Text style={styles.label}>{t('login.recoveryCode')}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   style={styles.input}
-                  placeholder="123456"
+                  placeholder={t('login.recoveryCodePlaceholder')}
+                  accessibilityLabel={t('login.recoveryCode')}
                   placeholderTextColor={colors.subtle}
                   value={otpCode}
                   onChangeText={(text) => setOtpCode(text.replace(/\D/g, '').slice(0, 6))}
@@ -213,11 +385,13 @@ export default function LoginScreen() {
 
             {recoveryMode && resetVerified && (
               <>
-                <Text style={styles.label}>New password</Text>
+                <Text style={styles.label}>{t('login.newPassword')}</Text>
                 <TextInput
+                  onFocus={onFieldFocus}
                   ref={passwordInputRef}
                   style={styles.input}
-                  placeholder="8+ characters"
+                  placeholder={t('login.newPasswordPlaceholder')}
+                  accessibilityLabel={t('login.newPassword')}
                   placeholderTextColor={colors.subtle}
                   value={password}
                   onChangeText={setPassword}
@@ -231,7 +405,7 @@ export default function LoginScreen() {
 
             <Pressable style={styles.forgotPassword} onPress={() => setRecovery(!recoveryMode)}>
               <Text style={styles.forgotText}>
-                {recoveryMode ? 'Back to sign in' : 'Forgot password?'}
+                {recoveryMode ? t('login.backToSignIn') : t('login.forgotPassword')}
               </Text>
             </Pressable>
 
@@ -241,21 +415,45 @@ export default function LoginScreen() {
               disabled={isSubmitting}
               accessibilityRole="button"
               accessibilityState={{ busy: isSubmitting, disabled: isSubmitting }}
+              accessibilityLabel={
+                linkChallenge
+                  ? t('federated.linkAction')
+                  : !recoveryMode
+                  ? t('login.signIn')
+                  : !otpRequested
+                    ? t('login.sendRecoveryCode')
+                    : resetVerified
+                      ? t('login.resetPassword')
+                      : t('login.verifyRecoveryCode')
+              }
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={colors.onColor} />
               ) : (
                 <Text style={styles.signInText}>
-                  {!recoveryMode
-                    ? 'Sign In'
+                  {linkChallenge
+                    ? t('federated.linkAction')
+                    : !recoveryMode
+                    ? t('login.signIn')
                     : !otpRequested
-                      ? 'Send Recovery Code'
+                      ? t('login.sendRecoveryCode')
                       : resetVerified
-                        ? 'Reset Password'
-                        : 'Verify Recovery Code'}
+                        ? t('login.resetPassword')
+                        : t('login.verifyRecoveryCode')}
                 </Text>
               )}
             </Pressable>
+
+            {recoveryMode && !otpRequested && !linkChallenge ? (
+              <Pressable
+                onPress={openExistingCode}
+                style={styles.existingCode}
+                accessibilityRole="button"
+                accessibilityLabel={t('login.enterExistingCode')}
+              >
+                <Text style={styles.forgotText}>{t('login.enterExistingCode')}</Text>
+              </Pressable>
+            ) : null}
 
             {!recoveryMode && (
               <Pressable
@@ -263,18 +461,19 @@ export default function LoginScreen() {
                 style={styles.createAccount}
               >
                 <Text style={styles.createAccountText}>
-                  Don&apos;t have an account?{' '}
-                  <Text style={styles.link}>Create one</Text>
+                  {t('login.noAccount')}{' '}
+                  <Text style={styles.link}>{t('login.createOne')}</Text>
                 </Text>
               </Pressable>
             )}
           </View>
 
           <View style={styles.trustRow}>
-            <TrustBadge icon="lock" label="Secure ledger" />
-            <TrustBadge icon="users" label="Invite-only" />
+            <TrustBadge icon="lock" label={t('login.secureLedger')} />
+            <TrustBadge icon="users" label={t('login.inviteOnly')} />
           </View>
         </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -349,6 +548,7 @@ const styles = StyleSheet.create({
   },
   forgotPassword: { alignSelf: 'flex-end', marginVertical: 16 },
   forgotText: { color: colors.primary, fontWeight: '700' },
+  existingCode: { alignItems: 'center', marginTop: 16, minHeight: 44, justifyContent: 'center' },
   signInButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -357,7 +557,7 @@ const styles = StyleSheet.create({
     minHeight: 58,
   },
   disabledButton: { opacity: 0.65 },
-  signInText: { color: '#ffffff', fontSize: 17, fontWeight: '900' },
+  signInText: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
   createAccount: { marginTop: 24, alignItems: 'center' },
   createAccountText: { fontSize: 15, color: colors.muted },
   link: { color: colors.primary, fontWeight: '800' },

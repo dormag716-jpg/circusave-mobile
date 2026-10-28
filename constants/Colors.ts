@@ -1,10 +1,10 @@
-import { colors as themeColors } from '@/lib/theme';
+import { colors as themeColors } from '@/lib/shared/theme';
 
 export default {
   light: {
     ...themeColors,
     tint: themeColors.primary,
-    tabIconDefault: themeColors.subtle,
+    tabIconDefault: themeColors.muted,
     tabIconSelected: themeColors.primary,
   },
   dark: {

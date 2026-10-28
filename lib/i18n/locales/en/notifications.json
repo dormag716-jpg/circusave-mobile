@@ -1,0 +1,56 @@
+{
+  "channel": "CircuSave updates",
+  "fallback": {
+    "title": "CircuSave update",
+    "body": "Open CircuSave to view the latest update."
+  },
+  "contribution_due": {
+    "title": "Contribution due",
+    "body": "Your contribution for Round {{round}} is due."
+  },
+  "contribution_overdue": {
+    "title": "Contribution overdue",
+    "body": "Your contribution for Round {{round}} is overdue."
+  },
+  "payment_submitted": {
+    "title": "Payment to verify",
+    "body": "{{name}} reported a payment to verify."
+  },
+  "payment_confirmed": {
+    "title": "Payment received",
+    "body": "The organizer confirmed they received your payment."
+  },
+  "payment_rejected": {
+    "title": "Payment needs attention",
+    "body": "The organizer did not receive this payment.",
+    "bodyWithReason": "The organizer did not receive this payment. Reason: {{reason}}"
+  },
+  "payment_instructions_updated": {
+    "title": "Payment instructions updated",
+    "body": "{{circle}} updated where to send your contribution."
+  },
+  "organizer_review_required": {
+    "title": "Payment to verify",
+    "body": "{{name}} reported a payment to verify."
+  },
+  "payout_ready": {
+    "title": "Payout ready",
+    "body": "The Round {{round}} payout is ready for release."
+  },
+  "payout_completed": {
+    "title": "Payout completed",
+    "body": "The Round {{round}} payout was completed."
+  },
+  "round_started": {
+    "title": "Round started",
+    "body": "Round {{round}} is now active."
+  },
+  "next_round_started": {
+    "title": "Next round started",
+    "body": "Round {{round}} is now active."
+  },
+  "circle_completed": {
+    "title": "Circle completed",
+    "body": "{{circle}} has completed all rounds."
+  }
+}

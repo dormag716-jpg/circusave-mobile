@@ -1,0 +1,166 @@
+{
+  "title": "Registros",
+  "disclaimer": "Los registros son solo para el seguimiento de actividad de CircuSave y no son documentos bancarios, fiscales, legales ni de ingresos.",
+  "segments": {
+    "overview": "Resumen",
+    "contributions": "Aportes",
+    "payouts": "Pagos",
+    "rounds": "Rondas",
+    "documents": "Documentos"
+  },
+  "overview": {
+    "totalsTitle": "Totales del círculo",
+    "expected": "Esperado hasta ahora",
+    "confirmed": "Confirmado",
+    "remainingDue": "Pendiente",
+    "paidOut": "Pagado",
+    "currentRound": "Ronda actual",
+    "roundNumber": "Ronda {{number}}",
+    "dueOn": "Vence {{date}}",
+    "needsReview_one": "{{count}} pago espera tu revisión",
+    "needsReview_other": "{{count}} pagos esperan tu revisión",
+    "needsReviewNone": "No hay pagos en espera de revisión",
+    "reviewInRound": "Revisar en Ronda",
+    "reviewInRoundA11y": "Abrir la pestaña Ronda para revisar pagos",
+    "yourRecords": "Tus registros",
+    "nextContribution": "Próximo aporte",
+    "lastConfirmed": "Último confirmado",
+    "nothingYet": "Aún nada",
+    "openRecordA11y": "Abrir el registro {{reference}}"
+  },
+  "list": {
+    "loading": "Cargando registros",
+    "loadError": "No se pudieron cargar los registros.",
+    "retry": "Intentar de nuevo",
+    "loadMore": "Mostrar más",
+    "roundHeading": "Ronda {{number}}",
+    "all": "Todos",
+    "filterA11y": "Mostrar registros: {{status}}",
+    "emptyContributions": "Aún no hay registros de aportes.",
+    "emptyPayouts": "Aún no hay registros de pagos.",
+    "emptyRounds": "Aún no hay registros de rondas.",
+    "emptyFiltered": "Ningún registro coincide con este filtro.",
+    "openRecordA11y": "Abrir el registro {{reference}}"
+  },
+  "status": {
+    "contribution": {
+      "due": "Pendiente",
+      "submitted": "Enviado",
+      "confirmed": "Confirmado",
+      "rejected": "Rechazado",
+      "late": "Tardío",
+      "missed": "No pagado",
+      "unknown": "Registrado"
+    },
+    "payout": {
+      "scheduled": "Programado",
+      "released": "Pagado",
+      "unknown": "Registrado"
+    },
+    "round": {
+      "open": "Abierta",
+      "closed": "Cerrada",
+      "unknown": "Registrada",
+      "upcoming": "Próxima"
+    }
+  },
+  "verification": {
+    "title": "Verificación",
+    "verified": "Verificado por el organizador",
+    "rejected": "Rechazado por el organizador",
+    "pending": "En espera de la revisión del organizador",
+    "unverified": "Sin verificar",
+    "reopened": "Reabierto para un nuevo informe",
+    "verifiedOn": "Verificado el",
+    "rejectedOn": "Rechazado el",
+    "reason": "Motivo"
+  },
+  "position": "Posición {{number}}",
+  "memberFallback": "Miembro",
+  "row": {
+    "recipient": "Destinatario: {{name}}",
+    "confirmedOf": "{{confirmed}} de {{total}} confirmados",
+    "scheduledOn": "Programado {{date}}",
+    "releasedOn": "Pagado {{date}}",
+    "dueOn": "Vence {{date}}"
+  },
+  "detail": {
+    "kind": {
+      "contribution": "Registro de aporte",
+      "payout": "Registro de pago",
+      "round": "Registro de ronda"
+    },
+    "close": "Cerrar",
+    "loading": "Cargando registro",
+    "loadError": "No se pudo cargar este registro.",
+    "retry": "Intentar de nuevo",
+    "recordNumber": "Número de registro",
+    "detailsTitle": "Detalles",
+    "round": "Ronda",
+    "member": "Posición",
+    "recipient": "Destinatario",
+    "expected": "Monto esperado",
+    "netPaid": "Pagado neto",
+    "refunded": "Reembolsado",
+    "remainingDue": "Pendiente",
+    "method": "Método de pago",
+    "reference": "Referencia de pago",
+    "note": "Nota",
+    "dueDate": "Fecha de vencimiento",
+    "scheduledDate": "Fecha programada",
+    "released": "Pagado",
+    "opened": "Abierta",
+    "closed": "Cerrada",
+    "expectedPot": "Bolsa esperada",
+    "funded": "Fondos confirmados",
+    "contributionsTitle": "Aportes",
+    "summaryOnly": "Solo se muestran la posición, el monto, el estado y la fecha de este pago.",
+    "relatedTitle": "Registros relacionados",
+    "relatedPayout": "Registro de pago",
+    "relatedRound": "Registro de ronda",
+    "reviewInRound": "Revisar en Ronda",
+    "amount": "Monto",
+    "download": "Descargar registro",
+    "downloadPreparing": "Preparando el documento",
+    "downloadError": "No se pudo preparar el documento. Inténtalo de nuevo."
+  },
+  "history": {
+    "title": "Historial del registro",
+    "empty": "No hay historial registrado para este registro.",
+    "event": {
+      "submitted": "Enviado",
+      "confirmed": "Confirmado",
+      "rejected": "Rechazado",
+      "reopened": "Reabierto",
+      "late": "Marcado como tardío",
+      "missed": "Marcado como no pagado",
+      "payoutReleased": "Pago realizado",
+      "roundStarted": "Ronda iniciada",
+      "roundClosed": "Ronda cerrada",
+      "cycleCompleted": "Círculo completado",
+      "recorded": "Registrado"
+    },
+    "actor": {
+      "organizer": "Organizador",
+      "member": "Miembro",
+      "system": "CircuSave"
+    },
+    "by": "por {{actor}}",
+    "showAll": "Mostrar los {{count}}",
+    "showLess": "Mostrar menos"
+  },
+  "document": {
+    "shareTitle": "Compartir documento del registro",
+    "savedTitle": "Documento guardado",
+    "savedBody": "Compartir no está disponible en este dispositivo. Se guardó {{filename}}."
+  },
+  "documents": {
+    "type": {
+      "statement": "Estado de cuenta",
+      "contribution": "Registro de aporte",
+      "payout": "Registro de pago",
+      "round": "Registro de ronda"
+    },
+    "superseded": "Reemplazado"
+  }
+}

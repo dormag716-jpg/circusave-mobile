@@ -1,42 +1,85 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
-import { useStripe } from '@stripe/stripe-react-native';
-
-const isStripeSupported = Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import {
-  createPaymentIntent,
+  ApiError,
   getCircleDetail,
   getCircleSchedule,
   submitContribution,
   type BackendCircleDetail,
   type BackendCircleMember,
-  type BackendRoundContribution,
   type BackendRoundSnapshot,
 } from '@/lib/api';
-import { useAuthSession } from '@/lib/authContext';
-import { circleWorkspaceHref } from '@/lib/navigation';
-import { colors, radii, spacing } from '@/lib/theme';
+import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { useAuthSession } from '@/lib/auth/authContext';
+import { logClientError } from '@/lib/platform/errorLogging';
+import {
+  applyContributionLoadResult,
+  createContributionRequestStreams,
+} from '@/lib/payments/contributionRequestStreams';
+import { circleWorkspaceHref } from '@/lib/platform/navigation';
+import { canShowBackendGatedAction } from '@/lib/circles/startCircleReadiness';
+import {
+  nextContributionReviewExpanded,
+  shouldStartContributionReviewExpanded,
+} from '@/lib/payments/contributionReview';
+import {
+  sanitizePaymentUserMessage,
+  shouldBlockContributionPayActions,
+} from '@/lib/payments/stripeContributionPayment';
+import { isRoundPayoutLocked } from '@/lib/circles/roundPayoutLock';
+import { colors, radii, spacing } from '@/lib/shared/theme';
+import { DecisionSheet } from '@/components/DecisionSheet';
+import { PaymentDestinationList } from '@/components/PaymentDestinationList';
+import {
+  buildManualContributionSubmitPayload,
+  MAX_PAYMENT_REFERENCE_LENGTH,
+} from '@/lib/payments/contributionClaim';
+import { buildContributionPaymentRails } from '@/lib/payments/contributionPaymentRails';
+import { contributionCopy } from '@/lib/i18n/contributionCopy';
+import {
+  contributionStatusLabel,
+  contributionTotal,
+} from '@/lib/i18n/financial-presentation';
+import { formatCurrency } from '@/lib/i18n/formatters';
+import {
+  extractAuthoritativeMoneyState,
+  runMoneyMutation,
+} from '@/lib/payments/moneyMutationRecovery';
 
 export default function ContributionPaymentScreen() {
-  const { session } = useAuthSession();
-  const params = useLocalSearchParams<{ circleId?: string | string[] }>();
+  const { t, i18n } = useTranslation([
+    'contributions',
+    'financialErrors',
+    'createCircle',
+    'people',
+  ]);
+  const { session, status } = useAuthSession();
+  const params = useLocalSearchParams<{
+    circleId?: string | string[];
+    handId?: string | string[];
+  }>();
   const circleId = Array.isArray(params.circleId)
     ? params.circleId[0]
     : params.circleId;
+  const requestedHandId = Array.isArray(params.handId)
+    ? params.handId[0]
+    : params.handId;
   const token = session?.session.token;
   const userId = session?.user.id;
 
@@ -45,45 +88,124 @@ export default function ContributionPaymentScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [payingStripe, setPayingStripe] = useState(false);
-  const stripe = useStripe();
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedHandId, setSelectedHandId] = useState<string | null>(
+    requestedHandId ?? null,
+  );
+  const [reviewExpanded, setReviewExpanded] = useState<boolean>(
+    shouldStartContributionReviewExpanded(),
+  );
+  const [meaningExpanded, setMeaningExpanded] = useState(false);
+  const [selectedDestinationIndex, setSelectedDestinationIndex] = useState<
+    number | null
+  >(null);
+  const [paymentReferenceDraft, setPaymentReferenceDraft] = useState('');
+  const [confirmMarkAsSentVisible, setConfirmMarkAsSentVisible] = useState(false);
+  const requestStreams = useRef(createContributionRequestStreams());
+  const hasLastKnownStateRef = useRef(false);
 
-  async function loadContribution() {
-    if (!token || !circleId) {
-      setError('Missing token or circle ID.');
-      setLoading(false);
-      return;
-    }
+  const loadContribution = useCallback(
+    async (options?: { silent?: boolean; revalidate?: boolean }) => {
+      const loadGeneration = requestStreams.current.contributionLoad.next();
+      const accessToken = String(token ?? '').trim();
+      // Logout / unauthenticated: quiet no-op (no payment error).
+      if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+        applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            setLoading(false);
+          },
+        });
+        return null;
+      }
+      if (!circleId) {
+        applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            setError(t('contributions:unavailableBody'));
+            setLoading(false);
+          },
+        });
+        return null;
+      }
 
-    setLoading(true);
+      if (!options?.silent && !hasLastKnownStateRef.current) {
+        setLoading(true);
+      }
+      applyContributionLoadResult({
+        streams: requestStreams.current,
+        loadGeneration,
+        apply: () => {
+          setError(null);
+        },
+      });
+      try {
+        const getOptions = options?.revalidate ? { revalidate: true } : undefined;
+        const [circleResponse, scheduleResponse] = await Promise.all([
+          getCircleDetail(accessToken, circleId, getOptions),
+          getCircleSchedule(accessToken, circleId, getOptions),
+        ]);
+        const applied = applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            hasLastKnownStateRef.current = true;
+            setCircle(circleResponse);
+            setSnapshot(scheduleResponse);
+          },
+        });
+        return applied
+          ? { circle: circleResponse, snapshot: scheduleResponse }
+          : null;
+      } catch (loadError) {
+        logClientError('Unable to load contribution details', loadError);
+        applyContributionLoadResult({
+          streams: requestStreams.current,
+          loadGeneration,
+          apply: () => {
+            setError(t('financialErrors:loadContribution'));
+          },
+        });
+        return null;
+      } finally {
+        if (!options?.silent) {
+          applyContributionLoadResult({
+            streams: requestStreams.current,
+            loadGeneration,
+            apply: () => {
+              setLoading(false);
+            },
+          });
+        }
+      }
+    },
+    [circleId, status, t, token],
+  );
+
+  useEffect(() => {
+    requestStreams.current.contributionLoad.next();
+    hasLastKnownStateRef.current = false;
+    setCircle(null);
+    setSnapshot(null);
     setError(null);
-    try {
-      const [circleResponse, scheduleResponse] = await Promise.all([
-        getCircleDetail(token, circleId),
-        getCircleSchedule(token, circleId),
-      ]);
-      setCircle(circleResponse);
-      setSnapshot(scheduleResponse);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load contribution details.',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+    setLoading(true);
+    setSelectedHandId(requestedHandId ?? null);
+  }, [circleId, requestedHandId]);
 
   useEffect(() => {
     void loadContribution();
-  }, [circleId, token]);
+  }, [loadContribution]);
 
-  const viewerHands = findViewerHands(circle, userId, snapshot);
+  const viewerHands = findViewerHands(circle, userId, snapshot, t);
   const amountPerHand = circle?.contributionAmount ?? 0;
   const totalOwedPerRound =
-    circle?.viewerContributionSummary?.totalOwedPerRound ??
-    amountPerHand * viewerHands.length;
+    contributionTotal({
+      amountPerHand,
+      handCount: viewerHands.length,
+      serverTotal: circle?.viewerContributionSummary?.totalOwedPerRound,
+    });
   const recipient = findRecipient(circle, snapshot);
   const currentRound =
     snapshot?.currentRoundSummary?.roundNumber ??
@@ -94,119 +216,197 @@ export default function ContributionPaymentScreen() {
   const dueHands = viewerHands.filter((hand) =>
     ['due', 'missed', 'rejected'].includes(hand.status),
   );
-  const [selectedHandId, setSelectedHandId] = useState<string | null>(null);
+  // Hands already reported (awaiting the organizer) or confirmed are settled here:
+  // they are never offered Mark as sent again. Hands still due keep the pay flow.
+  const reportedHands = viewerHands.filter((hand) =>
+    ['submitted', 'late'].includes(hand.status),
+  );
+  const confirmedHands = viewerHands.filter((hand) => hand.status === 'confirmed');
+  const settledState: 'reported' | 'confirmed' | null =
+    dueHands.length > 0
+      ? null
+      : reportedHands.length > 0
+        ? 'reported'
+        : confirmedHands.length > 0
+          ? 'confirmed'
+          : null;
+  const settledHands = settledState === 'reported' ? reportedHands : confirmedHands;
   const activeHandId =
     selectedHandId && dueHands.some((h) => h.id === selectedHandId)
       ? selectedHandId
       : dueHands[0]?.id ?? viewerHands[0]?.id ?? null;
   const activeHand = viewerHands.find((h) => h.id === activeHandId);
-  const statusLabel = contributionStatusLabel(
-    activeHand
-      ? { memberId: activeHand.id, round: currentRound ?? 0, status: activeHand.status }
-      : undefined,
+  const statusLabel = contributionStatusLabel(activeHand?.status, t);
+  // Backend schedule/detail permissions are authoritative for financial submit.
+  // Missing flags default false — never invent allow from role or local status alone.
+  const backendCanSubmit = canShowBackendGatedAction(
+    snapshot?.roundWorkspace?.viewerPermissions?.canSubmitOwnContribution ??
+      (circle as BackendCircleDetail & {
+        viewerPermissions?: { canSubmitOwnContribution?: boolean };
+      } | null)?.viewerPermissions?.canSubmitOwnContribution,
   );
-  const canSubmit = Boolean(
-    activeHand && ['due', 'missed', 'rejected'].includes(activeHand.status),
+  const handDue =
+    Boolean(activeHand) &&
+    ['due', 'missed', 'rejected'].includes(String(activeHand?.status || ''));
+  // Pattern: backend true AND local hand-due condition (never reverse).
+  // A round with a recorded payout is closed to contribution changes.
+  const roundPayoutLocked = isRoundPayoutLocked(
+    circle?.currentRoundSummary,
+    snapshot?.currentRoundSummary,
+    snapshot?.roundWorkspace,
   );
+  const canSubmit = backendCanSubmit && handDue && !roundPayoutLocked;
+  const payActionsBlocked = shouldBlockContributionPayActions({
+    submitting,
+  });
+  const payDisabled = !canSubmit || payActionsBlocked;
+  const rails = buildContributionPaymentRails({
+    paymentInstructions: circle?.paymentInstructions,
+    paymentDestinations: circle?.paymentDestinations,
+  });
+  const selectedDestination =
+    rails.destinations.length === 1
+      ? rails.destinations[0]
+      : selectedDestinationIndex != null
+        ? rails.destinations[selectedDestinationIndex] ?? null
+        : null;
+
+  function promptMarkContributionSent() {
+    if (shouldBlockContributionPayActions({
+      submitting,
+    })) {
+      return;
+    }
+    if (payDisabled || !activeHand) {
+      return;
+    }
+    if (rails.destinations.length > 1 && !selectedDestination) {
+      Alert.alert(
+        contributionCopy(t, 'markAsSent.selectDestinationTitle'),
+        contributionCopy(t, 'markAsSent.selectDestinationBody'),
+      );
+      return;
+    }
+
+    setConfirmMarkAsSentVisible(true);
+  }
 
   async function handleSubmitContribution() {
-    if (!token || !circle || !activeHand) {
-      Alert.alert('Contribution unavailable', 'Unable to identify your hand.');
+    if (shouldBlockContributionPayActions({
+      submitting,
+    })) {
+      return;
+    }
+    const accessToken = String(token ?? '').trim();
+    if (!shouldLoadAuthenticatedScreen({ status, token: accessToken })) {
+      return;
+    }
+    if (!accessToken || !circle || !activeHand) {
+      Alert.alert(
+        t('contributions:alerts.unavailableTitle'),
+        t('contributions:alerts.handMissing'),
+      );
+      return;
+    }
+    if (!backendCanSubmit) {
+      Alert.alert(
+        t('contributions:alerts.unavailableTitle'),
+        t('contributions:alerts.handMissing'),
+      );
       return;
     }
 
     setSubmitting(true);
+    const frozenHandId = activeHand.id;
+    const frozenHandLabel = activeHand.label;
     try {
-      await submitContribution(token, circle.id, activeHand.id);
+      await runMoneyMutation({
+        mutate: () =>
+          submitContribution(
+            accessToken,
+            circle.id,
+            frozenHandId,
+            buildManualContributionSubmitPayload(
+              selectedDestination,
+              paymentReferenceDraft,
+            ),
+          ),
+        goal: 'submitted',
+        loadAuthoritativeState: async () => {
+          const schedule = await getCircleSchedule(accessToken, circle.id, {
+            revalidate: true,
+          });
+          setSnapshot(schedule);
+          return extractAuthoritativeMoneyState({
+            contributions: schedule.contributions,
+            memberId: frozenHandId,
+          });
+        },
+      });
       Alert.alert(
-        'Contribution submitted',
-        `${activeHand.label}: payment is waiting for organizer confirmation.`,
+        t('contributions:submittedTitle'),
+        t('contributions:submittedBody', { hand: frozenHandLabel }),
         [
           {
-            text: 'OK',
+            text: t('contributions:alerts.ok'),
             onPress: () => void loadContribution(),
           },
         ],
       );
     } catch (submitError) {
+      logClientError('Unable to submit contribution', submitError);
       Alert.alert(
-        'Unable to submit contribution',
-        submitError instanceof Error
-          ? submitError.message
-          : 'The backend rejected the contribution.',
+        t('contributions:alerts.submitFailedTitle'),
+        financialClientErrorMessage(
+          submitError,
+          t('financialErrors:submitContribution'),
+        ),
       );
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleStripePayment() {
-    if (!token || !circle || !activeHand || currentRound == null) return;
-    setPayingStripe(true);
+  async function onPullRefresh() {
+    setRefreshing(true);
     try {
-      const { clientSecret } = await createPaymentIntent(
-        token,
-        circle.id,
-        currentRound,
-        circle.contributionAmount,
-        activeHand.id,
-      );
-
-      const { error: initError } = await stripe.initPaymentSheet({
-        paymentIntentClientSecret: clientSecret,
-        merchantDisplayName: 'CircuSave',
-        returnURL: 'circusave://stripe-redirect',
-      });
-
-      if (initError) throw initError;
-
-      const { error: presentError } = await stripe.presentPaymentSheet();
-      if (presentError) {
-        if (presentError.code === 'Canceled') {
-          return;
-        }
-        throw presentError;
-      }
-
-      Alert.alert(
-        'Payment successful',
-        `${activeHand.label}: payment processed and awaits server confirmation.`,
-        [{ text: 'OK', onPress: () => void loadContribution() }],
-      );
-    } catch (err: any) {
-      Alert.alert('Payment Failed', err.message || 'Unable to complete Stripe payment.');
+      await loadContribution({ silent: true, revalidate: true });
     } finally {
-      setPayingStripe(false);
+      setRefreshing(false);
     }
   }
 
-  if (loading) {
+  if (loading && !circle) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.statusText}>Loading contribution details...</Text>
+          <Text style={styles.statusText}>{t('contributions:loading')}</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (error || !circle) {
+  if (!circle) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <View style={styles.statusCard}>
           <FontAwesome name="warning" size={32} color={colors.warning} />
-          <Text style={styles.statusTitle}>Contribution unavailable</Text>
+          <Text style={styles.statusTitle}>
+            {t('contributions:unavailableTitle')}
+          </Text>
           <Text style={styles.statusText}>
-            {error ?? 'The backend did not return this circle.'}
+            {error ?? t('contributions:unavailableBody')}
           </Text>
           <Pressable
             style={styles.primaryButton}
             onPress={() => void loadContribution()}
             accessibilityRole="button"
-            accessibilityLabel="Retry contribution"
+            accessibilityLabel={t('contributions:retry')}
           >
-            <Text style={styles.primaryButtonText}>Retry</Text>
+            <Text style={styles.primaryButtonText}>
+              {t('contributions:retry')}
+            </Text>
           </Pressable>
           {circleId ? (
             <Pressable
@@ -216,7 +416,7 @@ export default function ContributionPaymentScreen() {
               ]}
               onPress={() => router.replace(circleWorkspaceHref(circleId))}
               accessibilityRole="button"
-              accessibilityLabel="Back to workspace"
+              accessibilityLabel={t('contributions:backToWorkspace')}
             >
               <Text
                 style={[
@@ -224,7 +424,7 @@ export default function ContributionPaymentScreen() {
                   { color: colors.primaryDark },
                 ]}
               >
-                Back to workspace
+                {t('contributions:backToWorkspace')}
               </Text>
             </Pressable>
           ) : null}
@@ -235,43 +435,91 @@ export default function ContributionPaymentScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onPullRefresh()}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <View style={styles.header}>
           <Pressable
             style={styles.backButton}
             onPress={() => router.replace(circleWorkspaceHref(circle.id))}
             accessibilityRole="button"
-            accessibilityLabel="Back to circle workspace"
+            accessibilityLabel={t('contributions:backToWorkspace')}
           >
             <FontAwesome name="angle-left" size={24} color={colors.primaryDark} />
           </Pressable>
           <View>
-            <Text style={styles.kicker}>Pay Contribution</Text>
+            <Text style={styles.kicker}>{t('contributions:title')}</Text>
             <Text style={styles.title}>{circle.name}</Text>
           </View>
         </View>
 
+        {error ? (
+          <View style={styles.inlineErrorBanner}>
+            <FontAwesome name="warning" size={14} color={colors.warning} />
+            <Text style={styles.inlineErrorText}>{error}</Text>
+            <Pressable
+              onPress={() => void loadContribution({ silent: true })}
+              accessibilityRole="button"
+              accessibilityLabel={t('contributions:retry')}
+            >
+              <Text style={styles.inlineErrorRetry}>
+                {t('contributions:retry')}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.amountCard}>
           <Text style={styles.amountLabel}>
-            {viewerHands.length > 1 ? 'Total Due This Round' : 'Contribution Due'}
+            {settledState === 'reported'
+              ? t('contributions:manualPresentation.reported')
+              : settledState === 'confirmed'
+                ? t('contributions:manualPresentation.confirmed')
+                : viewerHands.length > 1
+                  ? t('contributions:totalDue')
+                  : t('contributions:contributionDue')}
           </Text>
           <Text style={styles.amountText}>
-            {formatMoney(
+            {formatCurrency(
               dueHands.length > 0
                 ? amountPerHand * dueHands.length
-                : totalOwedPerRound,
+                : settledState
+                  ? amountPerHand * settledHands.length
+                  : totalOwedPerRound,
+              i18n.resolvedLanguage || i18n.language,
             )}
           </Text>
           <Text style={styles.amountBody}>
             {viewerHands.length > 1
-              ? `${formatMoney(amountPerHand)} per hand · ${viewerHands.length} hands · Round ${formatRound(currentRound)}`
-              : `${capitalize(circle.frequency)} contribution for Round ${formatRound(currentRound)}`}
+              ? t('contributions:perHandSummary', {
+                  amount: formatCurrency(
+                    amountPerHand,
+                    i18n.resolvedLanguage || i18n.language,
+                  ),
+                  count: viewerHands.length,
+                  round: formatRound(currentRound),
+                })
+              : t('contributions:frequencySummary', {
+                  frequency: frequencyLabel(circle.frequency, t),
+                  round: formatRound(currentRound),
+                })}
           </Text>
         </View>
 
         {viewerHands.length > 0 ? (
           <View style={styles.reviewCard}>
-            <Text style={styles.reviewTitle}>Your hands</Text>
+            <Text style={styles.reviewTitle}>
+              {t('contributions:yourHands')}
+            </Text>
             {viewerHands.map((hand) => {
               const selected = hand.id === activeHandId;
               const due = ['due', 'missed', 'rejected'].includes(hand.status);
@@ -283,18 +531,26 @@ export default function ContributionPaymentScreen() {
                     selected && styles.handRowSelected,
                     !due && styles.handRowSettled,
                   ]}
-                  onPress={() => setSelectedHandId(hand.id)}
+                  onPress={() => {
+                    if (payActionsBlocked) {
+                      return;
+                    }
+                    setSelectedHandId(hand.id);
+                  }}
+                  disabled={payActionsBlocked}
                   accessibilityRole="button"
-                  accessibilityLabel={`Select ${hand.label}`}
+                  accessibilityLabel={t('contributions:selectHand', {
+                    name: hand.label,
+                  })}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.handTitle}>{hand.label}</Text>
                     <Text style={styles.handMeta}>
-                      {formatMoney(amountPerHand)} · {contributionStatusLabel({
-                        memberId: hand.id,
-                        round: currentRound ?? 0,
-                        status: hand.status,
-                      })}
+                      {formatCurrency(
+                        amountPerHand,
+                        i18n.resolvedLanguage || i18n.language,
+                      )}{' '}
+                      · {contributionStatusLabel(hand.status, t)}
                     </Text>
                   </View>
                   {selected ? (
@@ -304,7 +560,7 @@ export default function ContributionPaymentScreen() {
               );
             })}
             <Text style={styles.handHint}>
-              Pay one hand at a time. Paying one hand never covers another.
+              {t('contributions:handPaymentNotice')}
             </Text>
           </View>
         ) : null}
@@ -314,66 +570,263 @@ export default function ContributionPaymentScreen() {
             <FontAwesome name="user" size={18} color={colors.primary} />
           </View>
           <View style={styles.cardCopy}>
-            <Text style={styles.cardLabel}>Recipient</Text>
-            <Text style={styles.cardTitle}>{memberName(recipient)}</Text>
+            <Text style={styles.cardLabel}>
+              {t('contributions:recipient')}
+            </Text>
+            <Text style={styles.cardTitle}>
+              {memberName(recipient, t('contributions:statusLabels.unavailable'))}
+            </Text>
             <Text style={styles.cardBody}>
-              Round {formatRound(currentRound)} payout recipient
+              {t('contributions:recipientDescription', {
+                round: formatRound(currentRound),
+              })}
             </Text>
           </View>
         </View>
 
         <View style={styles.reviewCard}>
-          <Text style={styles.reviewTitle}>Review</Text>
-          <ReviewRow label="Circle" value={circle.name} />
-          <ReviewRow label="Round" value={formatRound(currentRound)} />
-          <ReviewRow
-            label="Selected hand"
-            value={activeHand?.label ?? '—'}
-          />
-          <ReviewRow
-            label="Amount for hand"
-            value={formatMoney(amountPerHand)}
-          />
-          <ReviewRow label="Status" value={statusLabel} />
+          <Pressable
+            style={styles.reviewHeader}
+            onPress={() =>
+              setReviewExpanded((open) => nextContributionReviewExpanded(open))
+            }
+            accessibilityRole="button"
+            accessibilityState={{ expanded: reviewExpanded }}
+            accessibilityLabel={
+              reviewExpanded
+                ? t('contributions:collapseReview')
+                : t('contributions:expandReview')
+            }
+          >
+            <Text style={styles.reviewTitle}>
+              {t('contributions:reviewPaymentDetails')}
+            </Text>
+            <FontAwesome
+              name={reviewExpanded ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={colors.subtle}
+            />
+          </Pressable>
+          {reviewExpanded ? (
+            <View>
+              <ReviewRow label={t('contributions:circle')} value={circle.name} />
+              <ReviewRow
+                label={t('contributions:round')}
+                value={formatRound(currentRound)}
+              />
+              <ReviewRow
+                label={t('contributions:selectedHand')}
+                value={activeHand?.label ?? '—'}
+              />
+              <ReviewRow
+                label={t('contributions:amountForHand')}
+                value={formatCurrency(
+                  amountPerHand,
+                  i18n.resolvedLanguage || i18n.language,
+                )}
+              />
+              <ReviewRow label={t('contributions:status')} value={statusLabel} />
+            </View>
+          ) : null}
         </View>
 
         {viewerHands.length === 0 ? (
           <Text style={styles.unavailableText}>
-            Your active hands were not found for this circle.
+            {t('contributions:handsUnavailable')}
           </Text>
         ) : null}
 
-        {isStripeSupported ? (
-          <Pressable
+        {settledState ? (
+          <View
             style={[
-              styles.primaryButton,
-              (!canSubmit || payingStripe || submitting) && styles.disabledButton,
+              styles.railCard,
+              settledState === 'reported' && styles.pendingNotice,
             ]}
-            disabled={!canSubmit || payingStripe || submitting}
-            onPress={() => void handleStripePayment()}
-            accessibilityRole="button"
+            accessibilityRole="summary"
           >
-            <Text style={styles.primaryButtonText}>
-              {payingStripe ? 'Processing...' : 'Pay with Stripe'}
+            <Text style={styles.railTitle}>
+              {settledState === 'reported'
+                ? contributionCopy(t, 'workspace.reportedBody')
+                : contributionCopy(t, 'workspace.confirmedBody')}
             </Text>
-          </Pressable>
+            {settledState === 'reported' ? (
+              <Text style={styles.railBody}>
+                {contributionCopy(t, 'workspace.reportedNotConfirmed')}
+              </Text>
+            ) : (
+              <Text style={styles.railBody}>
+                {contributionCopy(t, 'workspace.confirmedExplainer')}
+              </Text>
+            )}
+          </View>
         ) : null}
 
-        <Pressable
-          style={[
-            isStripeSupported ? styles.secondaryButton : styles.primaryButton,
-            (!canSubmit || payingStripe || submitting) && styles.disabledButton,
-          ]}
-          disabled={!canSubmit || payingStripe || submitting}
-          onPress={() => void handleSubmitContribution()}
-          accessibilityRole="button"
-          accessibilityLabel="Submit contribution"
-        >
-          <Text style={isStripeSupported ? styles.secondaryButtonText : styles.primaryButtonText}>
-            {submitting ? 'Submitting...' : isStripeSupported ? 'Confirm Manual Payment' : (canSubmit ? 'Submit Contribution' : statusLabel)}
-          </Text>
-        </Pressable>
+        {roundPayoutLocked && settledState ? (
+          <View style={styles.lockedNotice} accessibilityRole="alert">
+            <Text style={styles.lockedNoticeTitle}>
+              {t('contributions:roundPaidOut.title')}
+            </Text>
+            <Text style={styles.lockedNoticeBody}>
+              {t('contributions:roundPaidOut.body')}
+            </Text>
+          </View>
+        ) : null}
+
+        {rails.showManualRail && !settledState ? (
+          <View style={styles.railCard}>
+            <Text style={styles.railTitle}>
+              {contributionCopy(t, 'rails.payOutsideTitle')}
+            </Text>
+            <Text style={styles.railBody}>
+              {contributionCopy(t, 'rails.contributionPaymentsDisabledBody')}
+            </Text>
+            {rails.hasInstructions ? (
+              <View style={styles.instructionsBox}>
+                <Text style={styles.instructionsTitle}>
+                  {rails.destinations.length > 1
+                    ? contributionCopy(t, 'markAsSent.selectDestinationTitle')
+                    : contributionCopy(t, 'workspace.instructionsTitle')}
+                </Text>
+                {rails.destinations.length > 1 ? (
+                  <View style={styles.destinationChoices}>
+                    {rails.destinations.map((destination, index) => {
+                      const selected = selectedDestinationIndex === index;
+                      return (
+                        <Pressable
+                          key={`${destination.method}-${destination.destination}-${index}`}
+                          style={[
+                            styles.destinationChoice,
+                            selected && styles.destinationChoiceSelected,
+                          ]}
+                          onPress={() => setSelectedDestinationIndex(index)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                        >
+                          <Text style={styles.destinationChoiceMethod}>
+                            {contributionCopy(
+                              t,
+                              `paymentSetup.methods.${destination.method}`,
+                            )}
+                          </Text>
+                          {destination.destination ? (
+                            <Text style={styles.destinationChoiceHandle}>
+                              {destination.destination}
+                            </Text>
+                          ) : null}
+                          {destination.memo ? (
+                            <Text style={styles.destinationChoiceMemo}>
+                              {destination.memo}
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <PaymentDestinationList
+                    destinations={rails.destinations}
+                    fallbackText={rails.instructions}
+                  />
+                )}
+              </View>
+            ) : (
+              <View style={styles.instructionsBox}>
+                <Text style={styles.instructionsTitle}>
+                  {contributionCopy(t, 'workspace.instructionsMissingTitle')}
+                </Text>
+                <Text style={styles.instructionsText}>
+                  {contributionCopy(t, 'workspace.instructionsMissingBody')}
+                </Text>
+              </View>
+            )}
+            <Text style={styles.railBody}>
+              {contributionCopy(t, 'workspace.circuSaveDoesNotSend')}
+            </Text>
+            <Pressable
+              style={styles.meaningHeader}
+              onPress={() => setMeaningExpanded((open) => !open)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: meaningExpanded }}
+              accessibilityLabel={
+                meaningExpanded
+                  ? contributionCopy(t, 'rails.collapseMeaning')
+                  : contributionCopy(t, 'rails.expandMeaning')
+              }
+            >
+              <Text style={styles.meaningTitle}>
+                {contributionCopy(t, 'rails.markAsSentMeaningTitle')}
+              </Text>
+              <FontAwesome
+                name={meaningExpanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.subtle}
+              />
+            </Pressable>
+            {meaningExpanded ? (
+              <Text style={styles.railBody}>
+                {contributionCopy(t, 'rails.markAsSentMeaningBody')}
+              </Text>
+            ) : null}
+            {roundPayoutLocked ? (
+              <View style={styles.lockedNotice} accessibilityRole="alert">
+                <Text style={styles.lockedNoticeTitle}>
+                  {t('contributions:roundPaidOut.title')}
+                </Text>
+                <Text style={styles.lockedNoticeBody}>
+                  {t('contributions:roundPaidOut.body')}
+                </Text>
+              </View>
+            ) : null}
+            <Pressable
+              style={[
+                styles.primaryButton,
+                styles.railAction,
+                payDisabled && styles.disabledButton,
+              ]}
+              disabled={payDisabled}
+              onPress={promptMarkContributionSent}
+              accessibilityRole="button"
+              accessibilityLabel={t('contributions:submitA11y')}
+            >
+              <Text style={styles.primaryButtonText}>
+                {submitting
+                  ? t('contributions:submitting')
+                  : contributionCopy(t, 'workspace.markAsSent')}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
+      <DecisionSheet
+        visible={confirmMarkAsSentVisible}
+        onClose={() => setConfirmMarkAsSentVisible(false)}
+        icon="check-circle-o"
+        iconTone="primary"
+        title={contributionCopy(t, 'markAsSent.confirmTitle')}
+        body={contributionCopy(t, 'markAsSent.confirmBody', {
+          amount: formatCurrency(
+            amountPerHand,
+            i18n.resolvedLanguage || i18n.language,
+          ),
+        })}
+        primaryLabel={contributionCopy(t, 'workspace.markAsSent')}
+        secondaryLabel={contributionCopy(t, 'alerts.cancel')}
+        busy={submitting}
+        onPrimary={() => {
+          setConfirmMarkAsSentVisible(false);
+          void handleSubmitContribution();
+        }}
+      >
+        <TextInput
+          value={paymentReferenceDraft}
+          onChangeText={setPaymentReferenceDraft}
+          placeholder={contributionCopy(t, 'markAsSent.referencePlaceholder')}
+          accessibilityLabel={contributionCopy(t, 'markAsSent.referenceA11y')}
+          placeholderTextColor={colors.muted}
+          maxLength={MAX_PAYMENT_REFERENCE_LENGTH}
+          style={styles.referenceInput}
+        />
+      </DecisionSheet>
     </SafeAreaView>
   );
 }
@@ -389,6 +842,7 @@ function findViewerHands(
   circle: BackendCircleDetail | null,
   userId?: string,
   snapshot?: BackendRoundSnapshot | null,
+  t?: TFunction,
 ): ViewerHandRow[] {
   if (!circle || !userId) {
     return [];
@@ -397,7 +851,7 @@ function findViewerHands(
   const fromDetail =
     circle.viewerHands && circle.viewerHands.length > 0
       ? circle.viewerHands
-      : circle.members.filter((member) => member.userId === userId);
+      : (circle.members || []).filter((member) => member.userId === userId);
 
   const multi = fromDetail.length > 1;
   return fromDetail
@@ -406,12 +860,11 @@ function findViewerHands(
       const base =
         member.displayLabel ||
         member.full_name ||
-        member.name ||
-        'Your hand';
-      const label =
-        multi && !String(base).includes('Hand')
-          ? `${base} · Hand ${handNumber}`
-          : base;
+        member.name;
+      const handLabel =
+        t?.('people:hands.handLabel', { number: handNumber }) ||
+        String(handNumber);
+      const label = base ? (multi ? `${base} · ${handLabel}` : base) : handLabel;
       const contribution = snapshot?.contributions?.find(
         (entry) => entry.memberId === member.id,
       );
@@ -425,6 +878,14 @@ function findViewerHands(
     .sort((a, b) => a.handNumber - b.handNumber);
 }
 
+/** Prefer backend lifecycle messages (e.g. 409) over generic financial copy. */
+function financialClientErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.message.trim()) {
+    return sanitizePaymentUserMessage(error, fallback);
+  }
+  return sanitizePaymentUserMessage(error, fallback);
+}
+
 function findRecipient(
   circle: BackendCircleDetail | null,
   snapshot: BackendRoundSnapshot | null,
@@ -433,38 +894,26 @@ function findRecipient(
     snapshot?.currentRoundSummary?.recipientMemberId ??
     snapshot?.roundWorkspace?.currentRecipientMemberId ??
     circle?.currentRoundSummary?.recipientMemberId;
-  return circle?.members.find((member) => member.id === recipientId);
+  return (circle?.members || []).find((member) => member.id === recipientId);
 }
 
-function contributionStatusLabel(contribution?: BackendRoundContribution) {
-  const status = String(contribution?.status || 'unavailable').toLowerCase();
-  if (status === 'due') return 'Due';
-  if (status === 'submitted') return 'Pending organizer confirmation';
-  if (status === 'confirmed') return 'Confirmed';
-  if (status === 'late') return 'Submitted late';
-  if (status === 'missed') return 'Missed';
-  if (status === 'rejected') return 'Rejected';
-  return 'Unavailable';
-}
-
-function memberName(member: BackendCircleMember | undefined) {
-  return member?.full_name || member?.name || 'Unavailable';
-}
-
-function formatMoney(amount: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
+function memberName(member: BackendCircleMember | undefined, fallback: string) {
+  return member?.full_name || member?.name || fallback;
 }
 
 function formatRound(round?: number) {
   return typeof round === 'number' && Number.isFinite(round) ? String(round) : '-';
 }
 
-function capitalize(value: string) {
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+function frequencyLabel(value: string, t: TFunction) {
+  const normalized = value.toLowerCase().replace(/[-_\s]/g, '');
+  const key =
+    normalized === 'biweekly'
+      ? 'biweekly'
+      : normalized === 'monthly'
+        ? 'monthly'
+        : 'weekly';
+  return t(`createCircle:schedule.options.${key}`);
 }
 
 function ReviewRow({ label, value }: { label: string; value: string }) {
@@ -477,6 +926,30 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  inlineErrorBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inlineErrorText: {
+    color: colors.warningText,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  inlineErrorRetry: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
   handRow: {
     borderColor: colors.cardBorder,
     borderRadius: radii.control,
@@ -559,18 +1032,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   amountLabel: {
-    color: '#ddd6fe',
+    color: colors.primaryBorder,
     fontSize: 13,
     fontWeight: '900',
   },
   amountText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 46,
     fontWeight: '900',
     marginTop: 8,
   },
   amountBody: {
-    color: '#ede9fe',
+    color: colors.primarySoft,
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 21,
@@ -617,13 +1090,21 @@ const styles = StyleSheet.create({
     borderRadius: radii.card,
     borderWidth: 1,
     marginTop: 16,
-    padding: spacing.card,
+    paddingHorizontal: spacing.card,
+    paddingVertical: 6,
+  },
+  reviewHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 48,
+    paddingVertical: 10,
   },
   reviewTitle: {
     color: colors.text,
+    flex: 1,
     fontSize: 18,
     fontWeight: '900',
-    marginBottom: 4,
   },
   reviewRow: {
     borderBottomColor: colors.cardBorder,
@@ -641,6 +1122,104 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: 4,
   },
+  railCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 16,
+    paddingHorizontal: spacing.card,
+    paddingVertical: 16,
+  },
+  railTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  railBody: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  instructionsBox: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  instructionsTitle: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  instructionsText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 21,
+  },
+  destinationChoices: { gap: 8 },
+  destinationChoice: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  destinationChoiceSelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  destinationChoiceMethod: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  destinationChoiceHandle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  destinationChoiceMemo: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  referenceInput: {
+    borderColor: colors.cardBorder,
+    borderRadius: 14,
+    borderWidth: 1,
+    color: colors.textStrong,
+    fontSize: 15,
+    marginTop: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  meaningHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 40,
+  },
+  meaningTitle: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  railAction: {
+    marginTop: 8,
+  },
   primaryButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -651,26 +1230,25 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: colors.onColor,
     fontSize: 17,
     fontWeight: '800',
   },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    borderColor: colors.primary,
-    borderRadius: radii.control,
+  pendingNotice: {
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
+  },
+  lockedNotice: {
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
+    borderRadius: radii.card,
     borderWidth: 1,
-    height: 56,
-    justifyContent: 'center',
-    marginTop: 16,
-    width: '100%',
+    gap: 4,
+    marginTop: 12,
+    padding: 14,
   },
-  secondaryButtonText: {
-    color: colors.primary,
-    fontSize: 17,
-    fontWeight: '800',
-  },
+  lockedNoticeTitle: { color: colors.warningText, fontSize: 15, fontWeight: '800' },
+  lockedNoticeBody: { color: colors.warningText, fontSize: 13, lineHeight: 18 },
   disabledButton: {
     opacity: 0.55,
   },
