@@ -72,6 +72,8 @@ describe('ChatFeed keyboard contract', () => {
     expect(chat).toMatch(/showReadReceipts=\{!isGroup\}/);
     expect(chat).toMatch(/addParticipant\(member\.id\)/);
     expect(chat).toMatch(/removeParticipant\(userId\)/);
+    // Only the person who started a group chat sees Remove next to others.
+    expect(chat).toMatch(/ownerUserId === currentUserId/);
     // Deleting a chat is "remove myself", confirmed first.
     expect(chat).toMatch(/confirmRemove\(\s*currentUserId/);
   });

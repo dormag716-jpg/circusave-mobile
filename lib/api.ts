@@ -2677,6 +2677,8 @@ export type BackendChatConversation = {
   type: 'group' | 'direct';
   /** A private chat with more than two people. */
   multiPerson?: boolean;
+  /** Who started a multi-person chat; only they can remove others. */
+  ownerUserId?: string | null;
   title: string;
   participants: BackendChatParticipant[];
   lastMessage: BackendChatMessage | null;

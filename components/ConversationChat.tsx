@@ -485,7 +485,9 @@ export default function ConversationChat({
                       {isSelf ? t('chat.youLabel') : person.name}
                     </Text>
                   </View>
-                  {!isSelf && selectedConversation?.multiPerson ? (
+                  {!isSelf &&
+                  selectedConversation?.multiPerson &&
+                  selectedConversation.ownerUserId === currentUserId ? (
                     <Pressable
                       onPress={() => confirmRemove(person.userId, person.name)}
                       accessibilityRole="button"
