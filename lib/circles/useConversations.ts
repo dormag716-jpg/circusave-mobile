@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next';
 
 import {
   ApiError,
+  addChatParticipant,
   createDirectChatConversation,
+  removeChatParticipant,
   deleteConversationMessage,
   getChatConversations,
   getConversationMessages,
@@ -390,6 +392,52 @@ export function useConversations(
     ],
   );
 
+  /** Adds someone; from a two-person chat this opens a new chat with all three. */
+  const addParticipant = useCallback(
+    async (memberId: string) => {
+      if (!selectedConversationId) return;
+      try {
+        const conversation = await addChatParticipant(
+          circleId,
+          selectedConversationId,
+          token,
+          memberId,
+        );
+        await loadConversations();
+        activeConversationId.current = conversation.id;
+        setSelectedConversationId(conversation.id);
+        setError(null);
+      } catch (addError) {
+        logClientError('Failed to add chat participant', addError, { circleId });
+        throw addError;
+      }
+    },
+    [circleId, loadConversations, selectedConversationId, token],
+  );
+
+  /** Removes someone; removing yourself deletes the chat for you only. */
+  const removeParticipant = useCallback(
+    async (userId: string) => {
+      if (!selectedConversationId) return;
+      const conversationId = selectedConversationId;
+      try {
+        await removeChatParticipant(circleId, conversationId, userId, token);
+        setMessagesByConversationId((current) => {
+          const { [conversationId]: _removed, ...rest } = current;
+          return rest;
+        });
+        await loadConversations();
+        setError(null);
+      } catch (removeError) {
+        logClientError('Failed to remove chat participant', removeError, {
+          circleId,
+        });
+        throw removeError;
+      }
+    },
+    [circleId, loadConversations, selectedConversationId, token],
+  );
+
   return {
     conversations,
     selectedConversation,
@@ -403,6 +451,8 @@ export function useConversations(
     createDirectConversation,
     sendMessage,
     deleteMessage,
+    addParticipant,
+    removeParticipant,
     refresh: loadConversations,
   };
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   FlatList,
   Pressable,
@@ -19,8 +19,6 @@ import {
 } from '@/lib/circles/circleChatState';
 import { colors } from '@/lib/shared/theme';
 
-import { Avatar } from './Avatar';
-
 type ChatFeedProps = {
   messages: BackendChatMessage[];
   currentUserId?: string;
@@ -29,6 +27,10 @@ type ChatFeedProps = {
    * can stay pinned below a flex message list.
    */
   scrollEnabled?: boolean;
+  /** Show the sender's name above other people's bubbles (group chat only). */
+  showSenderName?: boolean;
+  /** Show "Seen" under my newest message once someone has read it. */
+  showReadReceipts?: boolean;
   /** Extra bottom inset so bubbles clear a floating composer / keyboard. */
   bottomPadding?: number;
   /** Increment after a successful send to pin the list to the newest message. */
@@ -42,6 +44,8 @@ export default function ChatFeed({
   messages,
   currentUserId,
   scrollEnabled = true,
+  showSenderName = true,
+  showReadReceipts = false,
   bottomPadding = 0,
   pinToBottomNonce = 0,
   deletingMessageId,
@@ -54,6 +58,21 @@ export default function ChatFeed({
   const lastTailIdRef = useRef<string | null>(null);
   const lastSendNonceRef = useRef(pinToBottomNonce);
   const didInitialScrollRef = useRef(false);
+
+  // Only the newest message I sent shows "Seen", like most chat apps.
+  const lastOwnMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (
+        !message.isSystem &&
+        message.senderId !== 'system' &&
+        (message.senderUserId === currentUserId || message.senderId === currentUserId)
+      ) {
+        return message.id;
+      }
+    }
+    return null;
+  }, [messages, currentUserId]);
 
   const scrollToEnd = (animated: boolean) => {
     listRef.current?.scrollToEnd({ animated });
@@ -118,6 +137,13 @@ export default function ChatFeed({
       showsVerticalScrollIndicator={false}
       onScroll={handleScroll}
       scrollEventThrottle={16}
+      onLayout={() => {
+        // The visible area shrinks when the keyboard opens; keep the newest
+        // message in view if the reader was already at the bottom.
+        if (scrollEnabled && messages.length > 0 && pinnedToBottomRef.current) {
+          scrollToEnd(false);
+        }
+      }}
       onContentSizeChange={() => {
         if (
           scrollEnabled &&
@@ -144,11 +170,6 @@ export default function ChatFeed({
 
         return (
           <View style={[styles.messageWrapper, isMe ? styles.messageWrapperMe : null]}>
-            {!isMe && (
-              <View style={styles.avatar}>
-                <Avatar name={item.senderName} size={28} />
-              </View>
-            )}
             <Pressable
               style={[
                 styles.bubble,
@@ -166,7 +187,9 @@ export default function ChatFeed({
                 isMe && onDeleteMessage ? t('chat.deleteA11yHint') : undefined
               }
             >
-              {!isMe && <Text style={styles.senderName}>{item.senderName}</Text>}
+              {!isMe && showSenderName ? (
+                <Text style={styles.senderName}>{item.senderName}</Text>
+              ) : null}
               <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
                 {item.text}
               </Text>
@@ -174,6 +197,16 @@ export default function ChatFeed({
                 {item.timestamp}
               </Text>
             </Pressable>
+            {showReadReceipts &&
+            isMe &&
+            item.id === lastOwnMessageId &&
+            (item.readBy?.length ?? 0) > 0 ? (
+              <Text style={styles.receipt}>
+                {item.readBy!.length > 1
+                  ? t('chat.seenBy', { count: item.readBy!.length })
+                  : t('chat.seen')}
+              </Text>
+            ) : null}
           </View>
         );
       }}
@@ -193,17 +226,12 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   messageWrapper: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignSelf: 'flex-start',
     marginBottom: 8,
-    maxWidth: '82%',
+    maxWidth: '80%',
   },
   messageWrapperMe: {
     alignSelf: 'flex-end',
-    width: '82%',
-  },
-  avatar: {
-    marginRight: 7,
   },
   bubble: {
     borderRadius: 17,
@@ -217,7 +245,6 @@ const styles = StyleSheet.create({
   bubbleMe: {
     backgroundColor: colors.primary,
     borderBottomRightRadius: 5,
-    width: '100%',
   },
   bubbleDeleting: {
     opacity: 0.5,
@@ -237,13 +264,21 @@ const styles = StyleSheet.create({
     color: colors.onColor,
   },
   timestamp: {
-    fontSize: 9,
+    fontSize: 11,
     color: colors.muted,
     marginTop: 3,
     alignSelf: 'flex-end',
   },
   timestampMe: {
     color: 'rgba(255,255,255,0.7)',
+  },
+  receipt: {
+    alignSelf: 'flex-end',
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginRight: 4,
+    marginTop: 3,
   },
   systemMessage: {
     alignSelf: 'center',

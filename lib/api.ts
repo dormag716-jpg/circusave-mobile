@@ -2661,6 +2661,8 @@ export type BackendChatMessage = {
   timestamp: string;
   createdAt?: string | null;
   isSystem?: boolean;
+  /** User ids of other participants who have read this message. */
+  readBy?: string[];
 };
 
 export type BackendChatParticipant = {
@@ -2673,6 +2675,10 @@ export type BackendChatConversation = {
   id: string;
   circleId: string;
   type: 'group' | 'direct';
+  /** A private chat with more than two people. */
+  multiPerson?: boolean;
+  /** Who started a multi-person chat; only they can remove others. */
+  ownerUserId?: string | null;
   title: string;
   participants: BackendChatParticipant[];
   lastMessage: BackendChatMessage | null;
@@ -2776,6 +2782,38 @@ export function deleteConversationMessage(
 }> {
   return requestJson(
     `/groups/${circleId}/conversations/${conversationId}/messages/${messageId}`,
+    {
+      method: 'DELETE',
+      token,
+    },
+  );
+}
+
+export function addChatParticipant(
+  circleId: string,
+  conversationId: string,
+  token: string,
+  memberId: string,
+): Promise<BackendChatConversation> {
+  return requestJson<BackendChatConversation>(
+    `/groups/${circleId}/conversations/${conversationId}/participants`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ memberId }),
+    },
+  );
+}
+
+/** Removes someone, or the signed-in user (which deletes the chat for them). */
+export function removeChatParticipant(
+  circleId: string,
+  conversationId: string,
+  userId: string,
+  token: string,
+): Promise<{ conversationId: string; removedUserId: string; removed: boolean }> {
+  return requestJson(
+    `/groups/${circleId}/conversations/${conversationId}/participants/${userId}`,
     {
       method: 'DELETE',
       token,
