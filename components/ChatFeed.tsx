@@ -119,6 +119,13 @@ export default function ChatFeed({
       showsVerticalScrollIndicator={false}
       onScroll={handleScroll}
       scrollEventThrottle={16}
+      onLayout={() => {
+        // The visible area shrinks when the keyboard opens; keep the newest
+        // message in view if the reader was already at the bottom.
+        if (scrollEnabled && messages.length > 0 && pinnedToBottomRef.current) {
+          scrollToEnd(false);
+        }
+      }}
       onContentSizeChange={() => {
         if (
           scrollEnabled &&

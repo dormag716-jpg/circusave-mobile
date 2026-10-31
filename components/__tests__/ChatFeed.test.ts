@@ -60,6 +60,12 @@ describe('ChatFeed keyboard contract', () => {
     expect(chat).toMatch(/showSenderName=\{isGroup\}/);
   });
 
+  test('list stays pinned to the newest message when the viewport shrinks', () => {
+    const feed = readFileSync(path.join(__dirname, '..', 'ChatFeed.tsx'), 'utf8');
+    expect(feed).toMatch(/onLayout=\{\(\) => \{/);
+    expect(feed).toMatch(/pinnedToBottomRef\.current\) \{\s*scrollToEnd\(false\)/);
+  });
+
   test('composer is lifted by the measured keyboard overlap', () => {
     const chat = readFileSync(
       path.join(__dirname, '..', 'ConversationChat.tsx'),
