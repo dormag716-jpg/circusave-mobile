@@ -48,4 +48,25 @@ describe('ChatFeed keyboard contract', () => {
     expect(source).toMatch(/onDeleteMessage/);
     expect(source).toMatch(/<ChatInput/);
   });
+
+  test('private chat hides sender names and bubbles size to their text', () => {
+    const feed = readFileSync(path.join(__dirname, '..', 'ChatFeed.tsx'), 'utf8');
+    const chat = readFileSync(
+      path.join(__dirname, '..', 'ConversationChat.tsx'),
+      'utf8',
+    );
+    expect(feed).toMatch(/showSenderName/);
+    expect(feed).not.toMatch(/width: '100%'/);
+    expect(chat).toMatch(/showSenderName=\{isGroup\}/);
+  });
+
+  test('composer is lifted by the measured keyboard overlap', () => {
+    const chat = readFileSync(
+      path.join(__dirname, '..', 'ConversationChat.tsx'),
+      'utf8',
+    );
+    expect(chat).toMatch(/measureInWindow/);
+    expect(chat).toMatch(/paddingBottom: keyboardOverlap/);
+    expect(chat).not.toMatch(/KeyboardAvoidingView/);
+  });
 });

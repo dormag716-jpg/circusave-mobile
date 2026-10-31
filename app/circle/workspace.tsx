@@ -1696,7 +1696,6 @@ function WorkspaceContent({
         members={circle.members || []}
         initialConversationId={initialConversationId}
         focused={activeTab === 'chat'}
-        chromeCollapsed={isWorkspaceChromeCollapsed(keyboardVisible)}
       />
     </View>
   ) : null;
