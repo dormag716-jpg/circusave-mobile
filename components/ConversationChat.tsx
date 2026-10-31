@@ -99,13 +99,13 @@ export default function ConversationChat({
       setKeyboardOverlap(0);
       return;
     }
-    rootRef.current?.measureInWindow((_x, y, _w, height) => {
-      const overlap = Math.round(y + height - keyboardTop);
-      // measureInWindow stops above the Android navigation bar, which the
-      // keyboard also covers. Add it back whenever the keyboard overlaps.
-      setKeyboardOverlap(overlap > 0 ? overlap + insets.bottom : 0);
+    // measureInWindow under-reports the top edge on edge-to-edge Android (it
+    // drops the status bar), so use the page position instead.
+    rootRef.current?.measure((_x, _y, _w, height, _pageX, pageY) => {
+      const overlap = Math.round(pageY + height - keyboardTop);
+      setKeyboardOverlap(overlap > 0 ? overlap : 0);
     });
-  }, [insets.bottom]);
+  }, []);
 
   useEffect(() => {
     const showEvent =
@@ -116,6 +116,13 @@ export default function ConversationChat({
       keyboardTopRef.current = event.endCoordinates.screenY;
       setKeyboardVisible(true);
       requestAnimationFrame(measureKeyboardOverlap);
+      // The workspace header collapses just after the keyboard opens, which
+      // moves this view; measure again once that layout has settled.
+      [120, 350, 700].forEach((delay) => {
+        setTimeout(() => {
+          if (keyboardTopRef.current != null) measureKeyboardOverlap();
+        }, delay);
+      });
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       keyboardTopRef.current = null;
