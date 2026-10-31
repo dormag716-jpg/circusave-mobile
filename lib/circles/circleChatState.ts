@@ -42,7 +42,7 @@ export function shouldRunUnreadConversationPoll(input: {
 }
 
 export function chatMessageRenderKey(message: BackendChatMessage): string {
-  return `${message.id}:${message.text}:${message.timestamp}`;
+  return `${message.id}:${message.text}:${message.timestamp}:${(message.readBy ?? []).join(',')}`;
 }
 
 export function areChatMessagesEquivalent(
@@ -131,6 +131,8 @@ export function areConversationsEquivalent(
     const b = right[index];
     if (
       a.id !== b.id ||
+      a.title !== b.title ||
+      a.participants.length !== b.participants.length ||
       a.unreadCount !== b.unreadCount ||
       a.lastMessage?.id !== b.lastMessage?.id ||
       a.lastMessage?.text !== b.lastMessage?.text

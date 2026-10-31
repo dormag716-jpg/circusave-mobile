@@ -54,6 +54,8 @@ export default function ConversationChat({
 }: ConversationChatProps) {
   const { t } = useTranslation('circleWorkspace');
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'new' | 'add'>('new');
+  const [menuVisible, setMenuVisible] = useState(false);
   const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -76,10 +78,20 @@ export default function ConversationChat({
     createDirectConversation,
     sendMessage,
     deleteMessage,
+    addParticipant,
+    removeParticipant,
     refresh,
   } = useConversations(circleId, token, initialConversationId, {
     focused,
   });
+
+  const participantUserIds = useMemo(
+    () =>
+      new Set(
+        (selectedConversation?.participants ?? []).map((item) => item.userId),
+      ),
+    [selectedConversation],
+  );
 
   const availableMembers = useMemo(() => {
     const seenUserIds = new Set<string>();
@@ -88,10 +100,14 @@ export default function ConversationChat({
       if (!userId || userId === currentUserId || seenUserIds.has(userId)) {
         return false;
       }
+      // When adding to the open chat, hide people who are already in it.
+      if (pickerMode === 'add' && participantUserIds.has(userId)) {
+        return false;
+      }
       seenUserIds.add(userId);
       return true;
     });
-  }, [currentUserId, members]);
+  }, [currentUserId, members, participantUserIds, pickerMode]);
 
   const measureKeyboardOverlap = useCallback(() => {
     const keyboardTop = keyboardTopRef.current;
@@ -139,7 +155,11 @@ export default function ConversationChat({
     setCreatingMemberId(member.id);
     setPickerError(null);
     try {
-      await createDirectConversation(member.id);
+      if (pickerMode === 'add') {
+        await addParticipant(member.id);
+      } else {
+        await createDirectConversation(member.id);
+      }
       setPickerVisible(false);
     } catch (createError) {
       setPickerError(
@@ -150,6 +170,32 @@ export default function ConversationChat({
     } finally {
       setCreatingMemberId(null);
     }
+  }
+
+  function openPicker(mode: 'new' | 'add') {
+    setPickerMode(mode);
+    setPickerError(null);
+    setMenuVisible(false);
+    setPickerVisible(true);
+  }
+
+  function confirmRemove(userId: string, name: string) {
+    const isSelf = userId === currentUserId;
+    Alert.alert(
+      isSelf ? t('chat.deleteChatTitle') : t('chat.removeTitle', { name }),
+      isSelf ? t('chat.deleteChatBody') : t('chat.removeBody'),
+      [
+        { text: t('chat.deleteCancel'), style: 'cancel' },
+        {
+          text: isSelf ? t('chat.deleteChat') : t('chat.removePerson'),
+          style: 'destructive',
+          onPress: () => {
+            setMenuVisible(false);
+            void removeParticipant(userId).catch(() => undefined);
+          },
+        },
+      ],
+    );
   }
 
   if (loading && conversations.length === 0) {
@@ -222,12 +268,25 @@ export default function ConversationChat({
         {threadLoading ? (
           <ActivityIndicator size="small" color={colors.primary} />
         ) : null}
+        {selectedConversation && !isGroup ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.newChatButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => setMenuVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.menuA11y')}
+          >
+            <FontAwesome name="ellipsis-h" size={16} color={colors.primary} />
+          </Pressable>
+        ) : null}
         <Pressable
           style={({ pressed }) => [
             styles.newChatButton,
             pressed && styles.pressed,
           ]}
-          onPress={() => setPickerVisible(true)}
+          onPress={() => openPicker('new')}
           accessibilityRole="button"
           accessibilityLabel={t('chat.newPrivateA11y')}
         >
@@ -255,7 +314,8 @@ export default function ConversationChat({
               key={selectedConversation.id}
               messages={messages}
               currentUserId={currentUserId}
-              showSenderName={isGroup}
+              showSenderName={isGroup || Boolean(selectedConversation.multiPerson)}
+              showReadReceipts={!isGroup}
               pinToBottomNonce={sendScrollNonce}
               deletingMessageId={deletingMessageId}
               onDeleteMessage={(message) => {
@@ -319,9 +379,15 @@ export default function ConversationChat({
         <SafeAreaView style={styles.modalScreen} edges={['top', 'bottom']}>
           <View style={styles.modalHeader}>
             <View>
-              <Text style={styles.modalTitle}>{t('chat.chooseMember')}</Text>
+              <Text style={styles.modalTitle}>
+                {pickerMode === 'add'
+                  ? t('chat.addPerson')
+                  : t('chat.chooseMember')}
+              </Text>
               <Text style={styles.modalSubtitle}>
-                {t('chat.chooseMemberBody')}
+                {pickerMode === 'add'
+                  ? t('chat.addPersonBody')
+                  : t('chat.chooseMemberBody')}
               </Text>
             </View>
             <Pressable
@@ -385,6 +451,79 @@ export default function ConversationChat({
                 <Text style={styles.emptyText}>{t('chat.noMembersBody')}</Text>
               </View>
             )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={menuVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <SafeAreaView style={styles.modalScreen} edges={['top', 'bottom']}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{t('chat.menuTitle')}</Text>
+            <Pressable
+              style={styles.closeButton}
+              onPress={() => setMenuVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat.close')}
+            >
+              <FontAwesome name="close" size={20} color={colors.textStrong} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.memberList}>
+            <Text style={styles.sectionLabel}>{t('chat.people')}</Text>
+            {(selectedConversation?.participants ?? []).map((person) => {
+              const isSelf = person.userId === currentUserId;
+              return (
+                <View key={person.userId} style={styles.memberRow}>
+                  <Avatar name={person.name} size={40} />
+                  <View style={styles.memberCopy}>
+                    <Text style={styles.memberName}>
+                      {isSelf ? t('chat.youLabel') : person.name}
+                    </Text>
+                  </View>
+                  {!isSelf && selectedConversation?.multiPerson ? (
+                    <Pressable
+                      onPress={() => confirmRemove(person.userId, person.name)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('chat.removeTitle', {
+                        name: person.name,
+                      })}
+                    >
+                      <Text style={styles.dangerLink}>
+                        {t('chat.removePerson')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            })}
+            <Pressable
+              style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
+              onPress={() => openPicker('add')}
+              accessibilityRole="button"
+            >
+              <FontAwesome name="user-plus" size={16} color={colors.primary} />
+              <Text style={styles.menuActionText}>{t('chat.addPerson')}</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
+              onPress={() =>
+                confirmRemove(
+                  currentUserId,
+                  t('chat.youLabel'),
+                )
+              }
+              accessibilityRole="button"
+            >
+              <FontAwesome name="trash-o" size={17} color={colors.danger} />
+              <Text style={[styles.menuActionText, styles.dangerText]}>
+                {t('chat.deleteChat')}
+              </Text>
+            </Pressable>
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -587,6 +726,35 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     marginTop: 3,
+  },
+  sectionLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  menuAction: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+  },
+  menuActionText: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  dangerText: {
+    color: colors.danger,
+  },
+  dangerLink: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '800',
   },
   noMembers: {
     alignItems: 'center',
