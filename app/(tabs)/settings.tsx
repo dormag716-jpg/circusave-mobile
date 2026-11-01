@@ -13,7 +13,8 @@ import { resetAssistantFabPlacement } from '@/lib/assistant/assistantFabStore';
 import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
-import { getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
+import { getCircles, getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
+import { isOpenOrganizerCircle } from '@/lib/payments/organizerCircles';
 import { logClientError } from '@/lib/platform/errorLogging';
 import { readLanguagePreference } from '@/lib/i18n/language-storage';
 import {
@@ -40,6 +41,8 @@ export default function SettingsScreen() {
   const [assistantResetDone, setAssistantResetDone] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
+  // null while unknown or if loading fails, so an organizer is never locked out.
+  const [organizesCircle, setOrganizesCircle] = useState<boolean | null>(null);
   const [languagePreference, setLanguagePreference] =
     useState<LanguagePreference>('system');
 
@@ -54,6 +57,28 @@ export default function SettingsScreen() {
         logClientError('Unable to load linked accounts', error);
       });
   }, [contributionPaymentsEnabled, session?.session.token]);
+
+  useEffect(() => {
+    const token = session?.session.token;
+    if (!token) {
+      setOrganizesCircle(null);
+      return;
+    }
+    let active = true;
+    getCircles(token)
+      .then((circles) => {
+        if (active) setOrganizesCircle(circles.some(isOpenOrganizerCircle));
+      })
+      .catch((error) => {
+        if (active) setOrganizesCircle(null);
+        logClientError('Unable to load circles for settings', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session?.session.token]);
+
+  const showContributionInstructions = organizesCircle !== false;
 
   useFocusEffect(
     useCallback(() => {
@@ -127,18 +152,21 @@ export default function SettingsScreen() {
               isFirst
             />
           ) : null}
-          <MenuItem
-            icon="credit-card"
-            title={t('settings:paymentPreferences')}
-            subtitle={t('settings:paymentPreferencesSubtitle')}
-            onPress={() => router.push('/payment-preferences')}
-            isFirst={!contributionPaymentsEnabled}
-          />
+          {showContributionInstructions ? (
+            <MenuItem
+              icon="credit-card"
+              title={t('settings:paymentPreferences')}
+              subtitle={t('settings:paymentPreferencesSubtitle')}
+              onPress={() => router.push('/payment-preferences')}
+              isFirst={!contributionPaymentsEnabled}
+            />
+          ) : null}
           <MenuItem
             icon="history"
             title={t('settings:completedCircles')}
             subtitle={t('settings:completedCirclesSubtitle')}
             onPress={() => router.push('/completed-circles')}
+            isFirst={!contributionPaymentsEnabled && !showContributionInstructions}
             isLast
           />
         </View>

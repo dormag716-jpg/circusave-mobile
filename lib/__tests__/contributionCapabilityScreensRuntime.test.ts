@@ -3,6 +3,7 @@ import React from 'react';
 let mockContributionPaymentsEnabled = false;
 let mockIsPremium = true;
 const mockGetLinkedAccounts = jest.fn();
+const mockGetCircles = jest.fn();
 const mockRouterPush = jest.fn();
 
 jest.mock('react-native', () => {
@@ -163,6 +164,8 @@ jest.mock('../api', () => ({
   createBillingPortal: jest.fn(),
   getBillingPlans: jest.fn(async () => ({ plans: [] })),
   getLinkedAccounts: mockGetLinkedAccounts,
+  getCircles: mockGetCircles,
+  ApiError: class ApiError extends Error {},
 }));
 
 jest.mock('../i18n/language-storage', () => ({
@@ -226,6 +229,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockContributionPaymentsEnabled = false;
   mockIsPremium = true;
+  mockGetCircles.mockResolvedValue([{ userRole: 'organizer', status: 'active' }]);
 });
 
 afterEach(() => {
@@ -252,6 +256,22 @@ test('settings hides contribution payment controls but keeps preferences and Pre
     .find((node: any) => textContent(node).includes('settings:subscription'));
   TestRenderer.act(() => subscription.props.onPress());
   expect(mockRouterPush).toHaveBeenCalledWith('/subscription');
+});
+
+test('settings hides contribution payment instructions for people who organize no circle', async () => {
+  mockGetCircles.mockResolvedValue([{ userRole: 'member', status: 'active' }]);
+  const renderer = await render(React.createElement(SettingsScreen));
+  const text = visibleText(renderer);
+
+  expect(text).not.toContain('settings:paymentPreferences');
+  expect(text).toContain('settings:completedCircles');
+});
+
+test('settings keeps contribution payment instructions when circles cannot be loaded', async () => {
+  mockGetCircles.mockRejectedValue(new Error('offline'));
+  const renderer = await render(React.createElement(SettingsScreen));
+
+  expect(visibleText(renderer)).toContain('settings:paymentPreferences');
 });
 
 test('direct automated-payment navigation renders only external guidance when disabled', async () => {

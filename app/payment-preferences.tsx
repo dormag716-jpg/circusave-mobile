@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthSession } from '../lib/auth/authContext';
 import { getCircles } from '../lib/api';
 import { circlePaymentSetupHref } from '../lib/platform/navigation';
-import { isOrganizer } from '../lib/platform/permissions';
+import { isOpenOrganizerCircle } from '../lib/payments/organizerCircles';
 import { colors, shadows } from '../lib/shared/theme';
 import type { BackendCircleSummary } from '../lib/shared/types';
 
@@ -32,13 +32,7 @@ export default function PaymentPreferencesScreen() {
       .then((circles) => {
         if (!active) return;
         setOrganizerCircles(
-          circles.filter(
-            (circle) =>
-              isOrganizer(circle.userRole) &&
-              !['completed', 'archived', 'closed'].includes(
-                String(circle.status || '').toLowerCase(),
-              ),
-          ),
+          circles.filter(isOpenOrganizerCircle),
         );
       })
       .catch((error: unknown) => {
