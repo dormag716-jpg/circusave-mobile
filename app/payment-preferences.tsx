@@ -1,37 +1,25 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthSession } from '../lib/auth/authContext';
-import { getCircles, updateUserProfile } from '../lib/api';
+import { getCircles } from '../lib/api';
 import { circlePaymentSetupHref } from '../lib/platform/navigation';
-import { isOrganizer } from '../lib/platform/permissions';
+import { isOpenOrganizerCircle } from '../lib/payments/organizerCircles';
 import { colors, shadows } from '../lib/shared/theme';
 import type { BackendCircleSummary } from '../lib/shared/types';
 
 export default function PaymentPreferencesScreen() {
   const router = useRouter();
   const { t } = useTranslation(['settings', 'common']);
-  const { session: authSession, refreshSession } = useAuthSession();
-  const user = authSession?.user;
+  const { session: authSession } = useAuthSession();
   const session = authSession?.session;
   
-  const [loading, setLoading] = useState(false);
-  const [cashtag, setCashtag] = useState(user?.cashtag || '');
-  const [venmoHandle, setVenmoHandle] = useState(user?.venmoHandle || '');
-  const [paypalEmail, setPaypalEmail] = useState(user?.paypalEmail || '');
   const [organizerCircles, setOrganizerCircles] = useState<BackendCircleSummary[]>([]);
   const [circlesLoading, setCirclesLoading] = useState(true);
   const [circlesError, setCirclesError] = useState<string | null>(null);
   
-  // Update state if user changes
-  useEffect(() => {
-    setCashtag(user?.cashtag || '');
-    setVenmoHandle(user?.venmoHandle || '');
-    setPaypalEmail(user?.paypalEmail || '');
-  }, [user]);
-
   useEffect(() => {
     let active = true;
     if (!session?.token) {
@@ -44,13 +32,7 @@ export default function PaymentPreferencesScreen() {
       .then((circles) => {
         if (!active) return;
         setOrganizerCircles(
-          circles.filter(
-            (circle) =>
-              isOrganizer(circle.userRole) &&
-              !['completed', 'archived', 'closed'].includes(
-                String(circle.status || '').toLowerCase(),
-              ),
-          ),
+          circles.filter(isOpenOrganizerCircle),
         );
       })
       .catch((error: unknown) => {
@@ -69,39 +51,6 @@ export default function PaymentPreferencesScreen() {
     };
   }, [session?.token, t]);
 
-  async function handleSave() {
-    if (!session?.token) return;
-    
-    // Simple validation (e.g., cashtag starts with $)
-    const cleanCashtag = cashtag.trim();
-    if (cleanCashtag && !cleanCashtag.startsWith('$')) {
-      Alert.alert(t('invalidCashtagTitle'), t('invalidCashtagBody'));
-      return;
-    }
-
-    const cleanVenmo = venmoHandle.trim();
-    if (cleanVenmo && !cleanVenmo.startsWith('@')) {
-      Alert.alert(t('invalidVenmoTitle'), t('invalidVenmoBody'));
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      await updateUserProfile(session.token, {
-        cashtag: cleanCashtag || undefined,
-        venmoHandle: cleanVenmo || undefined,
-        paypalEmail: paypalEmail.trim() || undefined
-      });
-      await refreshSession();
-      Alert.alert(t('common:saved'), t('paymentPrefsSaved'));
-      router.back();
-    } catch (e: any) {
-      Alert.alert(t('common:error'), e.message || t('paymentPrefsSaveError'));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -115,83 +64,15 @@ export default function PaymentPreferencesScreen() {
         >
           <FontAwesome name="angle-left" size={32} color={colors.textStrong} />
         </Pressable>
-        <Text style={styles.headerTitle}>{t('paymentPrefsTitle')}</Text>
+        <Text style={styles.headerTitle}>{t('contributionInstructions')}</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.description}>{t('paymentPrefsDescription')}</Text>
-        <Text style={styles.disclosure}>{t('externalPaymentDisclosure')}</Text>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>{t('cashtagLabel')}</Text>
-          <View style={styles.inputWrapper}>
-            <FontAwesome name="dollar" size={16} color={colors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="$cashtag"
-              placeholderTextColor={colors.muted}
-              value={cashtag}
-              onChangeText={setCashtag}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          <Text style={styles.helperText}>{t('cashtagHelper')}</Text>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>{t('venmoLabel')}</Text>
-          <View style={styles.inputWrapper}>
-            <FontAwesome name="vimeo" size={16} color={colors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="@username"
-              placeholderTextColor={colors.muted}
-              value={venmoHandle}
-              onChangeText={setVenmoHandle}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          <Text style={styles.helperText}>{t('venmoHelper')}</Text>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>{t('paypalLabel')}</Text>
-          <View style={styles.inputWrapper}>
-            <FontAwesome name="paypal" size={16} color={colors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="email@example.com or paypal.me/tag"
-              placeholderTextColor={colors.muted}
-              value={paypalEmail}
-              onChangeText={setPaypalEmail}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-            />
-          </View>
-          <Text style={styles.helperText}>{t('paypalHelper')}</Text>
-        </View>
-
-        <Pressable 
-          style={[styles.saveButton, loading && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color={colors.card} />
-          ) : (
-            <Text style={styles.saveButtonText}>{t('savePreferences')}</Text>
-          )}
-        </Pressable>
-
-        <View style={styles.sectionDivider} />
-        <Text style={styles.sectionTitle}>{t('contributionInstructions')}</Text>
-        <Text style={styles.sectionDescription}>
+        <Text style={styles.description}>
           {t('contributionInstructionsSubtitle')}
         </Text>
+        <Text style={styles.disclosure}>{t('externalPaymentDisclosure')}</Text>
 
         {circlesLoading ? (
           <View style={styles.circleState}>

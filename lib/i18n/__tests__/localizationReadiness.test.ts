@@ -288,7 +288,7 @@ describe('EN/ES/HT localization readiness', () => {
       'security:title',
       'legal:title',
       'common:notFoundBody',
-      'settings:paymentPrefsTitle',
+      'settings:contributionInstructions',
       'settings:automatedPaymentsTitle',
       'settings:reminderScheduleTitle',
       'subscription:cancelRenewal',
