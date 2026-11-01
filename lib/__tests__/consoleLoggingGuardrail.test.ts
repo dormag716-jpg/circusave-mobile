@@ -21,7 +21,7 @@ const SCAN_DIRS = ['app', 'lib'];
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx']);
 
 const ALLOWLISTED_FILES = new Set([
-  path.join(ROOT, 'lib', 'api.ts'),
+  path.join(ROOT, 'lib', 'api', 'http.ts'),
   path.join(ROOT, 'lib', 'platform', 'errorLogging.ts'),
 ]);
 
