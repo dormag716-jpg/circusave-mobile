@@ -58,9 +58,6 @@ export type AuthUser = {
   created_at: string;
   last_login_at?: string | null;
   preferredMarket?: string;
-  cashtag?: string | null;
-  venmoHandle?: string | null;
-  paypalEmail?: string | null;
   reliabilityScore?: number;
 };
 
@@ -142,9 +139,6 @@ export type BackendCircleMember = {
   name?: string;
   phone?: string | null;
   userId?: string | null;
-  cashtag?: string | null;
-  venmoHandle?: string | null;
-  paypalEmail?: string | null;
   reliabilityScore?: number;
 };
 
@@ -1039,9 +1033,6 @@ function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthRes
 
   const user = payload.user;
   const session = payload.session;
-  const cashtag = readOptionalNullableString(user, 'cashtag');
-  const venmoHandle = readOptionalNullableString(user, 'venmoHandle');
-  const paypalEmail = readOptionalNullableString(user, 'paypalEmail');
   const normalized: AuthResponse = {
     user: {
       id: readString(user.id),
@@ -1053,9 +1044,6 @@ function normalizeAuthResponse(payload: unknown, requireToken: boolean): AuthRes
       preferredMarket: readString(
         user.preferredMarket ?? user.preferred_market ?? user.market,
       ) || undefined,
-      ...(cashtag !== undefined ? { cashtag } : {}),
-      ...(venmoHandle !== undefined ? { venmoHandle } : {}),
-      ...(paypalEmail !== undefined ? { paypalEmail } : {}),
     },
     session: {
       id: readString(session.id),
@@ -2637,17 +2625,6 @@ export async function getLinkedAccounts(token: string): Promise<BackendLinkedAcc
     token,
   });
   return res.accounts;
-}
-
-export function updateUserProfile(
-  token: string,
-  payload: { name?: string; cashtag?: string; venmoHandle?: string; paypalEmail?: string }
-): Promise<AuthUser> {
-  return requestJson<AuthUser>('/auth/me', {
-    method: 'PATCH',
-    token,
-    body: JSON.stringify(payload),
-  });
 }
 
 export type BackendChatMessage = {

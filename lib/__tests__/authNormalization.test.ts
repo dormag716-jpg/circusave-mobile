@@ -55,77 +55,10 @@ describe('auth normalization preserves payment preferences (via getAuthSession)'
     }) as unknown as typeof fetch;
   }
 
-  test('preserves cashtag from backend user', async () => {
-    mockAuthSessionPayload({
-      user: { ...baseUser, cashtag: '$adaCash' },
-      session: baseSession,
-    });
-
-    const result = await getAuthSession('existing-token');
-    expect(result.user.cashtag).toBe('$adaCash');
-  });
-
-  test('preserves venmoHandle from backend user', async () => {
-    mockAuthSessionPayload({
-      user: { ...baseUser, venmoHandle: '@ada-venmo' },
-      session: baseSession,
-    });
-
-    const result = await getAuthSession('existing-token');
-    expect(result.user.venmoHandle).toBe('@ada-venmo');
-  });
-
-  test('preserves paypalEmail from backend user', async () => {
-    mockAuthSessionPayload({
-      user: { ...baseUser, paypalEmail: 'ada@paypal.example' },
-      session: baseSession,
-    });
-
-    const result = await getAuthSession('existing-token');
-    expect(result.user.paypalEmail).toBe('ada@paypal.example');
-  });
-
-  test('null payment-preference values remain null', async () => {
-    mockAuthSessionPayload({
-      user: {
-        ...baseUser,
-        cashtag: null,
-        venmoHandle: null,
-        paypalEmail: null,
-      },
-      session: baseSession,
-    });
-
-    const result = await getAuthSession('existing-token');
-    expect(result.user.cashtag).toBeNull();
-    expect(result.user.venmoHandle).toBeNull();
-    expect(result.user.paypalEmail).toBeNull();
-  });
-
-  test('omitted payment-preference values are not invented', async () => {
-    mockAuthSessionPayload({
-      user: { ...baseUser },
-      session: baseSession,
-    });
-
-    const result = await getAuthSession('existing-token');
-    expect(result.user).not.toHaveProperty('cashtag');
-    expect(result.user).not.toHaveProperty('venmoHandle');
-    expect(result.user).not.toHaveProperty('paypalEmail');
-    expect(result.user.cashtag).toBeUndefined();
-    expect(result.user.venmoHandle).toBeUndefined();
-    expect(result.user.paypalEmail).toBeUndefined();
-  });
-
   test('existing session token remains unchanged', async () => {
     const bearer = 'sess_token_keep_me';
     mockAuthSessionPayload({
-      user: {
-        ...baseUser,
-        cashtag: '$keep',
-        venmoHandle: '@keep',
-        paypalEmail: 'keep@example.com',
-      },
+      user: { ...baseUser },
       session: {
         ...baseSession,
         token: bearer,
@@ -134,19 +67,17 @@ describe('auth normalization preserves payment preferences (via getAuthSession)'
 
     const result = await getAuthSession(bearer);
     expect(result.session.token).toBe(bearer);
-    expect(result.user.cashtag).toBe('$keep');
   });
 
   test('session token is not invented when backend omits it', async () => {
     mockAuthSessionPayload({
-      user: { ...baseUser, cashtag: '$only-user' },
+      user: { ...baseUser },
       session: baseSession,
     });
 
     const result = await getAuthSession('caller-supplied-token');
     // getAuthSession does not re-attach the request token; bootstrapAuthSession does.
     expect(result.session.token).toBeUndefined();
-    expect(result.user.cashtag).toBe('$only-user');
   });
 
   test('password recovery accepts the generic backend acknowledgement', async () => {
