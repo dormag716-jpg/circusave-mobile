@@ -1351,43 +1351,6 @@ function WorkspaceContent({
     const buttons: any[] = [];
     const frozenAmount = frozen.amount;
     
-    if (recipient.cashtag) {
-      const cleanCashtag = recipient.cashtag.startsWith('$') ? recipient.cashtag : `$${recipient.cashtag}`;
-      buttons.push({
-        text: `CashApp (${cleanCashtag})`,
-        onPress: () => {
-          Linking.openURL(`https://cash.app/${cleanCashtag}/${frozenAmount}`);
-          setTimeout(promptConfirmRelease, 1000);
-        }
-      });
-    }
-    
-    if (recipient.venmoHandle) {
-      const cleanVenmo = recipient.venmoHandle.startsWith('@') ? recipient.venmoHandle.substring(1) : recipient.venmoHandle;
-      buttons.push({
-        text: `Venmo (@${cleanVenmo})`,
-        onPress: () => {
-          Linking.openURL(`venmo://paycharge?txn=pay&recipients=${cleanVenmo}&amount=${frozenAmount}&note=CircuSave%20Payout`);
-          setTimeout(promptConfirmRelease, 1000);
-        }
-      });
-    }
-    
-    const paypalEmail = recipient.paypalEmail;
-    if (paypalEmail) {
-      buttons.push({
-        text: `PayPal (${paypalEmail})`,
-        onPress: () => {
-          // If it's a paypal.me link or an email
-          const link = paypalEmail.includes('paypal.me')
-            ? `https://${paypalEmail}/${frozenAmount}`
-            : `https://paypal.com/myaccount/transfer/homepage?amount=${frozenAmount}&to=${paypalEmail}`;
-          Linking.openURL(link);
-          setTimeout(promptConfirmRelease, 1000);
-        }
-      });
-    }
-
     buttons.push({
       text: t('rounds:payout.markPaidManually'),
       onPress: promptConfirmRelease
