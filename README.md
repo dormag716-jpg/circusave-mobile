@@ -165,11 +165,9 @@ Contains shared test helpers and mocks.
 
 Contains tests for the mobile application's shared logic.
 
-#### api.ts
+#### api/
 
-Contains the main mobile API integration layer used to communicate with the CircuSave Backend.
-
-This file currently remains at the root of `lib/` and may be split into smaller API modules in a future refactor.
+Contains the mobile API integration layer used to communicate with the CircuSave Backend, split by area: `http.ts` (request core), `auth.ts`, `circles.ts`, `statements.ts`, `records.ts`, `payments.ts`, `billing.ts`, `assistant.ts` and `chat.ts`. `index.ts` re-exports everything, so screens import from `lib/api`.
 
 ### constants/
 
@@ -362,11 +360,7 @@ The Mobile app should not be treated as the source of truth for critical data.
 
 Important rules should be enforced by the Backend even if similar checks also exist in the Mobile app for user experience.
 
-The main Mobile API integration currently begins in:
-
-`lib/api.ts`
-
-As the project grows, this API layer may be divided into smaller feature-specific modules.
+The Mobile API integration lives in `lib/api/`, split into feature-specific modules and re-exported from `lib/api/index.ts`.
 
 ## Authentication and Security
 
