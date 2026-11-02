@@ -3,12 +3,12 @@
     "loading": "Cargando capacidad del círculo",
     "title": "Crear un círculo nuevo",
     "subtitle": "Crea un grupo de ahorro confiable con familiares o amistades.\nSimple, transparente y seguro.",
-    "planNote": "Plan gratis: 1 círculo abierto a la vez, en preparación o activo. Completa un círculo para liberar el espacio o mejora el plan para tener círculos ilimitados.",
+    "planNote": "Plan gratis: 1 círculo abierto a la vez, en preparación o activo. Completa un círculo para liberar el espacio. Organizer Pro, con círculos ilimitados, llegará pronto.",
     "ledger": "Registro financiero autoritativo",
     "trusted": "Solo miembros de confianza",
     "reminders": "Recordatorios automáticos",
     "limitTitle": "Límite del plan gratis",
-    "limitMessage": "El plan gratis permite un círculo abierto a la vez. Completa tu círculo abierto o mejora el plan para tener círculos ilimitados.",
+    "limitMessage": "El plan gratis permite un círculo abierto a la vez. Completa tu círculo abierto para empezar otro. Organizer Pro, con círculos ilimitados, llegará pronto.",
     "continueCircle": "Continuar “{{circleName}}”",
     "openCircle": "Abrir “{{circleName}}”",
     "circleFallback": "tu círculo",
@@ -153,7 +153,7 @@
     "signInTitle": "Debes iniciar sesión",
     "signInBody": "Tu sesión no tiene un token de acceso.",
     "openCircleLimitTitle": "Límite del plan gratis",
-    "openCircleLimitBody": "El plan gratis permite un círculo abierto a la vez. Continúa con tu círculo existente o cambia a Organizer Pro.",
+    "openCircleLimitBody": "El plan gratis permite un círculo abierto a la vez. Continúa con tu círculo existente. Organizer Pro, con círculos ilimitados, llegará pronto.",
     "createFailedTitle": "No se pudo crear el círculo",
     "createFailedBody": "No se pudo crear el círculo. Inténtalo de nuevo."
   },
@@ -161,6 +161,6 @@
     "minimumHandsParticipating": "Agrega al menos a otro miembro para que el círculo tenga 2 manos.",
     "minimumHandsOrganizingOnly": "Agrega al menos a 2 miembros (tú solo organizas).",
     "premiumCapacity": "Los círculos de Organizer Pro admiten hasta {{count}} manos participantes.",
-    "freeCapacity": "Los círculos gratis admiten hasta {{count}} manos participantes. Cambia a Organizer Pro para tener hasta {{premiumCount}}."
+    "freeCapacity": "Los círculos gratis admiten hasta {{count}} manos participantes. Organizer Pro, con hasta {{premiumCount}}, llegará pronto."
   }
 }

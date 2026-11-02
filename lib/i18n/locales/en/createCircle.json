@@ -3,12 +3,12 @@
     "loading": "Loading circle capacity",
     "title": "Start a new Circle",
     "subtitle": "Create a trusted savings group with family or friends.\nSimple, transparent, and secure.",
-    "planNote": "Free plan: 1 open circle at a time (setup or active). Complete a circle to free your slot, or upgrade for unlimited circles.",
+    "planNote": "Free plan: 1 open circle at a time (setup or active). Complete a circle to free your slot. Organizer Pro, with unlimited circles, is coming soon.",
     "ledger": "Authoritative ledger",
     "trusted": "Trusted members only",
     "reminders": "Automatic reminders",
     "limitTitle": "Free plan limit",
-    "limitMessage": "The free plan allows one open circle at a time. Complete your open circle or upgrade for unlimited circles.",
+    "limitMessage": "The free plan allows one open circle at a time. Complete your open circle to start another. Organizer Pro, with unlimited circles, is coming soon.",
     "continueCircle": "Continue “{{circleName}}”",
     "openCircle": "Open “{{circleName}}”",
     "circleFallback": "your circle",
@@ -153,7 +153,7 @@
     "signInTitle": "Sign in required",
     "signInBody": "Your session is missing an access token.",
     "openCircleLimitTitle": "Free plan limit",
-    "openCircleLimitBody": "The free plan allows one open circle at a time. Continue your existing circle or upgrade to Organizer Pro.",
+    "openCircleLimitBody": "The free plan allows one open circle at a time. Continue your existing circle. Organizer Pro, with unlimited circles, is coming soon.",
     "createFailedTitle": "Unable to create circle",
     "createFailedBody": "The circle could not be created. Please try again."
   },
@@ -161,6 +161,6 @@
     "minimumHandsParticipating": "Add at least 1 other member so the circle has 2 hands.",
     "minimumHandsOrganizingOnly": "Add at least 2 members (you are organizing only).",
     "premiumCapacity": "Organizer Pro circles support up to {{count}} participating hands.",
-    "freeCapacity": "Free circles support up to {{count}} participating hands. Upgrade to Organizer Pro for up to {{premiumCount}}."
+    "freeCapacity": "Free circles support up to {{count}} participating hands. Organizer Pro, with up to {{premiumCount}}, is coming soon."
   }
 }
