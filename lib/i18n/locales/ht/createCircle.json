@@ -3,12 +3,12 @@
     "loading": "N ap chaje kapasite gwoup la",
     "title": "Kreye yon nouvo gwoup",
     "subtitle": "Kreye yon gwoup epay ou fè konfyans ak fanmi oswa zanmi.\nSenp, transparan epi sekirize.",
-    "planNote": "Plan gratis: 1 gwoup ouvè alafwa, nan preparasyon oswa aktif. Fini yon gwoup pou libere plas la, oswa amelyore plan an pou gwoup san limit.",
+    "planNote": "Plan gratis: 1 gwoup ouvè alafwa, nan preparasyon oswa aktif. Fini yon gwoup pou libere plas la. Organizer Pro, ak gwoup san limit, ap vini byento.",
     "ledger": "Rejis finansye otoritatif",
     "trusted": "Sèlman manm ou fè konfyans",
     "reminders": "Rapèl otomatik",
     "limitTitle": "Limit plan gratis",
-    "limitMessage": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Fini gwoup ouvè ou a oswa amelyore plan an pou gwoup san limit.",
+    "limitMessage": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Fini gwoup ouvè ou a pou kòmanse yon lòt. Organizer Pro, ak gwoup san limit, ap vini byento.",
     "continueCircle": "Kontinye “{{circleName}}”",
     "openCircle": "Louvri “{{circleName}}”",
     "circleFallback": "gwoup ou a",
@@ -153,7 +153,7 @@
     "signInTitle": "Ou dwe konekte",
     "signInBody": "Sesyon ou pa gen yon jeton aksè.",
     "openCircleLimitTitle": "Limit plan gratis la",
-    "openCircleLimitBody": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Kontinye gwoup ou deja genyen an oswa pase nan Organizer Pro.",
+    "openCircleLimitBody": "Plan gratis la pèmèt yon sèl gwoup ouvè alafwa. Kontinye gwoup ou deja genyen an. Organizer Pro, ak gwoup san limit, ap vini byento.",
     "createFailedTitle": "Nou pa t kapab kreye gwoup la",
     "createFailedBody": "Nou pa t kapab kreye gwoup la. Tanpri eseye ankò."
   },
@@ -161,6 +161,6 @@
     "minimumHandsParticipating": "Ajoute omwen 1 lòt manm pou gwoup la gen 2 men.",
     "minimumHandsOrganizingOnly": "Ajoute omwen 2 manm (ou ap òganize sèlman).",
     "premiumCapacity": "Gwoup Organizer Pro yo kapab gen jiska {{count}} men k ap patisipe.",
-    "freeCapacity": "Gwoup gratis yo kapab gen jiska {{count}} men k ap patisipe. Pase nan Organizer Pro pou jwenn jiska {{premiumCount}}."
+    "freeCapacity": "Gwoup gratis yo kapab gen jiska {{count}} men k ap patisipe. Organizer Pro, ak jiska {{premiumCount}}, ap vini byento."
   }
 }
