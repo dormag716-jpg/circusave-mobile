@@ -17,6 +17,7 @@ import {
   isPinnedNearBottom,
   shouldAutoScrollChat,
 } from '@/lib/circles/circleChatState';
+import { formatChatTime } from '@/lib/circles/chatTime';
 import { colors } from '@/lib/shared/theme';
 
 type ChatFeedProps = {
@@ -194,7 +195,7 @@ export default function ChatFeed({
                 {item.text}
               </Text>
               <Text style={[styles.timestamp, isMe && styles.timestampMe]}>
-                {item.timestamp}
+                {formatChatTime(item.createdAt, item.timestamp)}
               </Text>
             </Pressable>
             {showReadReceipts &&
