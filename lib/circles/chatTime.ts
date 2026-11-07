@@ -11,6 +11,8 @@ export function formatChatTime(
   createdAt: string | null | undefined,
   fallback: string,
   locale?: string,
+  /** Normally left out so the phone's own timezone is used. Tests set it. */
+  timeZone?: string,
 ): string {
   if (createdAt) {
     const parsed = new Date(createdAt);
@@ -18,6 +20,7 @@ export function formatChatTime(
       return parsed.toLocaleTimeString(locale, {
         hour: 'numeric',
         minute: '2-digit',
+        ...(timeZone ? { timeZone } : {}),
       });
     }
   }
