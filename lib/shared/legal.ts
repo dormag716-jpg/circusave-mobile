@@ -81,7 +81,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '7. Records and communications',
         body:
-          'CircuSave stores records you and other members create through the app, including membership, contribution status, payout order, and related activity. You consent to receive service-related notices through the app, email, SMS, or other contact methods you provide, as described in the Electronic Consent and Privacy Policy.',
+          'CircuSave stores records you and other members create through the app, including membership, contribution status, payout order, and related activity. You consent to receive service-related notices through the app, by email, or by notifications on your device, as described in the Electronic Consent and Privacy Policy.',
       },
       {
         heading: '8. Subscriptions and platform fees',
@@ -263,7 +263,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '2. How we deliver electronic records',
         body:
-          'Electronic records may be delivered in the CircuSave app, by email, by SMS or similar messaging where you provide a phone number, or by other electronic methods reasonably designed to reach you. Some notices may require you to open the app or a linked screen to review the full content.',
+          'Electronic records may be delivered in the CircuSave app, by email, or by notifications on your device. CircuSave itself does not send text messages (SMS); an organizer may choose to send a reminder from their own messaging app on their own phone. Some notices may require you to open the app or a linked screen to review the full content.',
       },
       {
         heading: '3. Hardware and software requirements',
