@@ -59,6 +59,7 @@ import {
   isPausedCircleStatus,
   isSetupCircleStatus,
 } from '@/lib/circles/circleSummary';
+import { canOrganizerArchiveStartedCircle } from '@/lib/circles/circleArchive';
 
 type ListItem =
   | { type: 'header'; id: string; title: string; count: number }
@@ -351,6 +352,32 @@ export default function CirclesScreen() {
     );
   }
 
+  // A circle that already started: the same server call archives it (records are
+  // kept, nothing is erased). The warning is stronger because other members are
+  // in it and money may be moving.
+  async function confirmArchiveStarted(circle: BackendCircleSummary) {
+    if (!token) return;
+    Alert.alert(
+      t('archiveStartedTitle'),
+      t('archiveStartedMessage', { circleName: circle.name }),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('archive'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCircle(token, circle.id);
+              await loadCircles({ silent: true, revalidate: true });
+            } catch {
+              Alert.alert(t('deleteErrorTitle'), t('tryAgain'));
+            }
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <FlatList
@@ -481,6 +508,15 @@ export default function CirclesScreen() {
                 isSetupCircleStatus(item.circle.status) &&
                 isOrganizer(item.circle.userRole)
                   ? () => void confirmDeleteOneSetup(item.circle)
+                  : undefined
+              }
+              onArchiveStarted={
+                canOrganizerArchiveStartedCircle(
+                  isOrganizer(item.circle.userRole),
+                  item.circle.status,
+                  item.circle.pot_status,
+                )
+                  ? () => void confirmArchiveStarted(item.circle)
                   : undefined
               }
             />
@@ -620,11 +656,14 @@ function CircleCard({
   detail,
   userId,
   onDeleteSetup,
+  onArchiveStarted,
 }: {
   circle: BackendCircleSummary;
   detail?: BackendCircleDetail;
   userId?: string;
   onDeleteSetup?: () => void;
+  /** Set only for the organizer of a circle that already started. */
+  onArchiveStarted?: () => void;
 }) {
   const { t, i18n } = useTranslation('circles');
   const userIsOrganizer = isOrganizer(circle.userRole);
@@ -762,6 +801,19 @@ function CircleCard({
                 >
                   {t('yourPosition', { position: viewerPosition })}
                 </Text>
+              ) : null}
+              {onArchiveStarted ? (
+                <Pressable
+                  style={styles.cardDeleteBtn}
+                  onPress={onArchiveStarted}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('archiveStartedAccessibility', {
+                    circleName: circle.name,
+                  })}
+                >
+                  <FontAwesome name="archive" size={14} color={colors.danger} />
+                  <Text style={styles.cardDeleteBtnText}>{t('archive')}</Text>
+                </Pressable>
               ) : null}
             </>
           )}
