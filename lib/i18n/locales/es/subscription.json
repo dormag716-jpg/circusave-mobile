@@ -16,7 +16,7 @@
   "willNotRenew": "Tu plan no se renovará automáticamente.",
   "subscriptionReady": "Tu suscripción está activa y lista.",
   "freeTitle": "El plan gratis sigue siendo útil",
-  "freeCopy": "Dirige un círculo completo con hasta {{count}} manos. Mejora solo cuando tu organización crezca.",
+  "freeCopy": "Dirige un círculo completo con hasta {{count}} miembros. Mejora solo cuando tu organización crezca.",
   "footer": "Pago seguro con Stripe · Cancela cuando quieras · Los registros de tu círculo siguen siendo tuyos",
   "iosUnavailableTitle": "Las suscripciones de Organizer Pro aún no están disponibles en iPhone.",
   "iosUnavailableBody": "La facturación de Organizer Pro aún no se ofrece en iPhone. Tu acceso actual a CircuSave no cambia.",

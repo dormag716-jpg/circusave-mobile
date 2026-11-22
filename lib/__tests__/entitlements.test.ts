@@ -231,4 +231,72 @@ describe('entitlements foundation', () => {
     expect(hasCapability(expired, 'fullActivityHistory')).toBe(false);
     expect(planTierFromEntitlements(expired)).toBe('free');
   });
+
+  describe('plan tier fields', () => {
+    test('free defaults: one included hand, three at most, 20 members', () => {
+      const free = freeEntitlements();
+      expect(free.tier).toBe('free');
+      expect(free.capabilities).toMatchObject({
+        maxMembersPerCircle: 20,
+        handsIncluded: 1,
+        maxHandsPerPerson: 3,
+      });
+    });
+
+    test('an older backend without the new fields still parses', () => {
+      const premium = normalizeEntitlements({
+        plan: 'premium',
+        subscriptionStatus: 'active',
+        capabilities: { multiCircle: true, maxParticipatingHands: 50 },
+      });
+      expect(premium.plan).toBe('premium');
+      expect(premium.tier).toBe('organizer_pro');
+      expect(premium.capabilities).toMatchObject({
+        maxMembersPerCircle: 50,
+        handsIncluded: 3,
+        maxHandsPerPerson: 6,
+      });
+    });
+
+    test('reads the tier and limits a newer backend sends', () => {
+      const member = normalizeEntitlements({
+        plan: 'premium',
+        tier: 'member_pro',
+        subscriptionStatus: 'active',
+        capabilities: {
+          maxMembersPerCircle: 20,
+          handsIncluded: 3,
+          maxHandsPerPerson: 6,
+        },
+      });
+      expect(member.tier).toBe('member_pro');
+      expect(member.capabilities.maxMembersPerCircle).toBe(20);
+      expect(member.plan).toBe('premium');
+    });
+
+    test('ignores unreadable limits and unknown tiers', () => {
+      const premium = normalizeEntitlements({
+        plan: 'premium',
+        tier: 'business',
+        subscriptionStatus: 'active',
+        capabilities: { maxMembersPerCircle: 'lots', handsIncluded: 0, maxHandsPerPerson: -2 },
+      });
+      expect(premium.tier).toBe('organizer_pro');
+      expect(premium.capabilities).toMatchObject({
+        maxMembersPerCircle: 50,
+        handsIncluded: 3,
+        maxHandsPerPerson: 6,
+      });
+    });
+
+    test('a free account never gets a paid tier, even if one is sent', () => {
+      const free = normalizeEntitlements({
+        plan: 'free',
+        tier: 'organizer_pro',
+        capabilities: { maxMembersPerCircle: 50 },
+      });
+      expect(free.tier).toBe('free');
+      expect(isPremiumPlan(free)).toBe(false);
+    });
+  });
 });

@@ -78,6 +78,7 @@ let renderer: any;
 
 const free = {
   plan: 'free',
+  tier: 'free',
   subscriptionStatus: 'inactive',
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
@@ -95,6 +96,9 @@ const free = {
     premiumReminders: false,
     fullActivityHistory: false,
     contributionPaymentsEnabled: false,
+    maxMembersPerCircle: 20,
+    handsIncluded: 1,
+    maxHandsPerPerson: 3,
   },
 };
 
