@@ -65,7 +65,6 @@ const REQUIRED_KEYS = [
   'circles:peopleCount_zero',
   'circles:handCount_zero',
   'subscription:productName',
-  'subscription:cancelRenewal',
   'subscription:iosUnavailableTitle',
   'subscription:iosUnavailableBody',
   'subscription:iosFooter',
@@ -291,7 +290,7 @@ describe('EN/ES/HT localization readiness', () => {
       'settings:contributionInstructions',
       'settings:automatedPaymentsTitle',
       'settings:reminderScheduleTitle',
-      'subscription:cancelRenewal',
+      'subscription:willNotRenew',
     ];
     await changeLanguagePreference('en');
     const english = Object.fromEntries(
