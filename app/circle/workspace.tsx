@@ -66,6 +66,7 @@ import { RecordsCenter } from '@/components/records/RecordsCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
 import { memberLimitNotice } from '@/lib/circles/memberLimitNotice';
+import { circlePeopleCount } from '@/lib/circles/circlePeopleCount';
 import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/circles/workspaceAgreementLoad';
 import { ledgerActionForNavigation, navigationMayMutateMoney } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
@@ -2190,7 +2191,7 @@ function RoundTab({
         ? currentRoundMembers.map(({ member }) => member)
         : (circle.members || []).filter((m) => m.isParticipating !== false);
     const handCount = circle.handCount ?? plannedHands.length;
-    const peopleCount = circle.uniqueMemberCount;
+    const peopleCount = circlePeopleCount(circle);
     const handMetrics =
       typeof peopleCount === 'number'
         ? t('people:hands.metrics', {
@@ -4939,7 +4940,7 @@ function PeopleTab({
             <Text style={styles.peopleCardSub}>
               {formatLocalizedHandsPeople(t, {
                 handCount: circle.handCount ?? members.length,
-                uniqueMemberCount: circle.uniqueMemberCount,
+                uniqueMemberCount: circlePeopleCount(circle),
                 fallbackHandCount: members.length,
               })}
               {` · ${circleNotStarted ? t('hands.planned') : t('hands.live')}`}

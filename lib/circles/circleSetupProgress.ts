@@ -6,6 +6,7 @@
  */
 
 import { presentCirclePaymentInstructions } from '../payments/paymentDestinations';
+import { circlePeopleCount } from './circlePeopleCount';
 import {
   getParticipatingHands,
   getStartCircleBlockReason,
@@ -108,6 +109,7 @@ export type CircleSetupProgressInput = {
       tier?: string;
       maxHands?: number;
       usedHands?: number;
+      distinctMemberCount?: number | null;
     } | null;
     /**
      * Circle-level contribution destination text (how members pay outside the app).
@@ -264,9 +266,10 @@ export function buildStructureSummary(input: CircleSetupProgressInput): CircleSe
       .map((hand) => String(hand.userId || '').trim())
       .filter(Boolean),
   );
+  const rosterPeople = circlePeopleCount(input.circle);
   const peopleCount =
-    typeof input.circle.uniqueMemberCount === 'number'
-      ? input.circle.uniqueMemberCount
+    rosterPeople !== null
+      ? rosterPeople
       : claimedUserIds.size > 0
         ? claimedUserIds.size
         : hands.length;
