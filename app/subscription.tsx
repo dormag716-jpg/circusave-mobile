@@ -26,6 +26,9 @@ import {
   PREMIUM_MAX_PARTICIPATING_HANDS,
 } from '@/lib/billing/entitlements';
 import { logClientWarning } from '@/lib/platform/errorLogging';
+import { playFailureCopy } from '@/lib/billing/googlePlayStatusCopy';
+import { subscriptionDateLine } from '@/lib/billing/subscriptionDates';
+import { formatLongDate } from '@/lib/i18n/formatters';
 import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
 import { colors, radii, shadows } from '@/lib/shared/theme';
 import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
@@ -41,7 +44,7 @@ const PREMIUM_FEATURE_KEYS = [
 type BillingInterval = 'monthly' | 'annual';
 
 export default function SubscriptionScreen() {
-  const { t } = useTranslation(['subscription', 'common']);
+  const { t, i18n } = useTranslation(['subscription', 'common']);
   const layout = useLayoutMetrics();
   const compact = layout.compact;
   const { session, status: authStatus } = useAuthSession();
@@ -119,6 +122,7 @@ export default function SubscriptionScreen() {
     (playState.status === 'ready' ||
       playState.status === 'succeeded' ||
       playState.status === 'failed');
+  const dateLine = isPremium ? subscriptionDateLine(entitlements) : null;
   const isGooglePlayEntitlement =
     isAndroid && entitlements.source === 'google_play';
 
@@ -158,6 +162,17 @@ export default function SubscriptionScreen() {
       await runGooglePlayRestore();
     } catch {
       playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
+
+  async function reloadGooglePlay() {
+    if (playOperationLocked.current) {
+      return;
+    }
+    try {
+      await initializeGooglePlayBilling();
+    } catch {
       Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
     }
   }
@@ -264,15 +279,10 @@ export default function SubscriptionScreen() {
       };
     }
     if (playState.status === 'failed') {
+      const copy = playFailureCopy(playState);
       return {
-        title:
-          playState.code === 'transaction_completion_failed'
-            ? t('playCompletionPendingTitle')
-            : t('playUnavailableTitle'),
-        body:
-          playState.code === 'transaction_completion_failed'
-            ? t('playCompletionPendingBody')
-            : t('playUnavailableBody'),
+        title: t(copy.titleKey),
+        body: t(copy.bodyKey),
         tone: 'error' as const,
       };
     }
@@ -465,12 +475,12 @@ export default function SubscriptionScreen() {
               <View style={styles.planTitleBlock}>
                 <Text style={styles.planName}>
                   {isAndroid && selectedPlayPlan
-                    ? selectedPlayPlan.title
+                    ? selectedPlayPlan.title?.trim() || t('productName')
                     : t('productName')}
                 </Text>
                 <Text style={styles.planAudience}>
                   {isAndroid && selectedPlayPlan
-                    ? selectedPlayPlan.description
+                    ? selectedPlayPlan.description?.trim() || t('audience')
                     : t('audience')}
                 </Text>
               </View>
@@ -539,6 +549,16 @@ export default function SubscriptionScreen() {
                     ? t('willNotRenew')
                     : t('subscriptionReady')}
                 </Text>
+                {dateLine ? (
+                  <Text style={styles.activeSummaryDate}>
+                    {t(dateLine.key, {
+                      date: formatLongDate(
+                        dateLine.date,
+                        i18n.resolvedLanguage || i18n.language,
+                      ),
+                    })}
+                  </Text>
+                ) : null}
               </View>
             )}
 
@@ -647,6 +667,19 @@ export default function SubscriptionScreen() {
                   >
                     <Text style={styles.restoreButtonText}>
                       {t('playRestore')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {playState.status === 'failed' &&
+                playFailureCopy(playState).action === 'reload' ? (
+                  <Pressable
+                    style={styles.restoreButton}
+                    onPress={() => void reloadGooglePlay()}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('playTryAgain')}
+                  >
+                    <Text style={styles.restoreButtonText}>
+                      {t('playTryAgain')}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -1019,6 +1052,12 @@ const styles = StyleSheet.create({
     color: colors.successText,
     fontWeight: '900',
     fontSize: 15,
+  },
+  activeSummaryDate: {
+    color: colors.successText,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 6,
   },
   activeSummaryText: {
     color: colors.successText,

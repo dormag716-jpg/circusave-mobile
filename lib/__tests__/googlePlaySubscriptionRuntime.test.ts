@@ -399,7 +399,7 @@ describe('Android Google Play subscription UI', () => {
         code: 'verification_failed',
         retryable: true,
       },
-      'Google Play subscriptions are unavailable',
+      "We couldn't confirm your purchase yet",
     ],
   ])('renders a sanitized non-entitling operation state', async (state, copy) => {
     setInitialPlayState(readyState);
@@ -518,6 +518,52 @@ describe('Android Google Play subscription UI', () => {
     expect(screenText()).not.toContain('Secure checkout by Stripe');
     const api = require('../api');
     expect(api.createBillingCheckout).not.toHaveBeenCalled();
+  });
+
+  test('a rejected purchase shows plain copy and Try again reloads Play', async () => {
+    setInitialPlayState(readyState);
+    await renderScreen();
+    await emit({
+      status: 'failed',
+      operation: 'purchase',
+      code: 'purchase_failed',
+      retryable: true,
+    });
+
+    expect(screenText()).toContain("Purchase didn't go through");
+    mockInitialize.mockClear();
+    await TestRenderer.act(async () => {
+      await button('Try again').props.onPress();
+    });
+
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+  });
+
+  test('a Pro account sees when the plan renews', async () => {
+    mockIsPremium = true;
+    mockEntitlements = {
+      ...mockEntitlements,
+      plan: 'premium',
+      subscriptionStatus: 'active',
+      source: 'google_play',
+      currentPeriodEnd: '2027-11-21T12:00:00Z',
+    };
+    await renderScreen();
+
+    expect(screenText()).toContain('Renews on November 21, 2027.');
+  });
+
+  test('blank Play titles and descriptions fall back to app copy', async () => {
+    setInitialPlayState({
+      status: 'ready',
+      plans: {
+        monthly: { ...monthlyPlan, title: '', description: '' },
+        annual: { ...annualTrialPlan, title: '', description: '' },
+      },
+    });
+    await renderScreen();
+
+    expect(screenText()).toContain('Built for trusted organizers');
   });
 
   test('requests initialization from the centralized owner on focus', async () => {

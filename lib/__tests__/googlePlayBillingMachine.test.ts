@@ -609,6 +609,42 @@ describe('Google Play billing state machine', () => {
     expect(machine.getState().status).toBe('ready');
   });
 
+  test('dismissFailure returns a rejected purchase to ready so it can be retried', async () => {
+    const { machine, gateway } = await readyMachine();
+    await machine.purchase('monthly');
+    gateway.emitError({ kind: 'failed', message: 'Google Play purchase failed.' });
+    expect(machine.getState()).toMatchObject({ status: 'failed', code: 'purchase_failed' });
+
+    machine.dismissFailure();
+
+    expect(machine.getState().status).toBe('ready');
+    await expect(machine.purchase('monthly')).resolves.not.toThrow();
+  });
+
+  test('dismissFailure leaves verification failures alone', async () => {
+    const gateway = createGatewayHarness();
+    const api = createApiHarness();
+    api.verify.mockRejectedValueOnce(new Error('provider unavailable'));
+    const { machine } = await readyMachine({ gateway, api });
+    await machine.purchase('monthly');
+    const failed = waitForStatus(machine, 'failed');
+    gateway.emitPurchase(purchaseFixture('synthetic-dismiss-token'));
+    await failed;
+
+    machine.dismissFailure();
+
+    expect(machine.getState()).toMatchObject({ status: 'failed', code: 'verification_failed' });
+  });
+
+  test('dismissFailure does nothing when there is no failure', async () => {
+    const { machine } = await readyMachine();
+    const before = machine.getState();
+
+    machine.dismissFailure();
+
+    expect(machine.getState()).toEqual(before);
+  });
+
   test('pending purchases do not verify or finish', async () => {
     const { machine, gateway, api } = await readyMachine();
     await machine.purchase('monthly');

@@ -775,6 +775,25 @@ export function createGooglePlayBillingMachine(
     );
   }
 
+  /**
+   * Leaves a purchase that Google Play itself reported as failed, so the user
+   * can try again. Failures after payment (verification, entitlement) are not
+   * cleared here: those go through restore so nobody pays twice.
+   */
+  function dismissFailure(): void {
+    ensureUsable();
+    if (
+      activeOperation !== null ||
+      state.status !== 'failed' ||
+      state.operation !== 'purchase' ||
+      state.code !== 'purchase_failed' ||
+      !plans
+    ) {
+      return;
+    }
+    transition({ status: 'ready', plans: publicPlans() });
+  }
+
   async function restore(): Promise<void> {
     ensureUsable();
     ensureNoActiveOperation();
@@ -974,6 +993,7 @@ export function createGooglePlayBillingMachine(
     },
     initialize,
     purchase,
+    dismissFailure,
     restore,
     reconcile: restore,
     retryCompletion,

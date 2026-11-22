@@ -169,3 +169,17 @@ export function formatOrdinal(position: number, language: string): string {
             : 'th';
   return `${value}${suffix}`;
 }
+
+/** A full date such as "Nov 21, 2027" for an ISO timestamp, in the app language. */
+export function formatLongDate(value: string, language: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(getFormattingLocale(language), {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+}
