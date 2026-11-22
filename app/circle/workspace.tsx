@@ -121,6 +121,7 @@ import {
   requiresUnclaimedStartConfirmation,
   type StartCircleConfirmations,
 } from '@/lib/circles/startCircleReadiness';
+import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
 import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
 import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 import ConversationChat from '@/components/ConversationChat';
@@ -5733,6 +5734,13 @@ function frequencyDisplayLabel(value: string, t: TFunction) {
   return t(`createCircle:schedule.options.${key}`);
 }
 
+// On tablets the workspace keeps a readable column instead of stretching edge to edge.
+const readableWidth = {
+  alignSelf: 'center',
+  maxWidth: CONTENT_MAX_WIDTH,
+  width: '100%',
+} as const;
+
 const styles = StyleSheet.create({
   peopleSectionStack: {
     gap: 12,
@@ -6051,11 +6059,13 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   chatChrome: {
+    ...readableWidth,
     paddingHorizontal: spacing.screenX,
   },
   chatPanel: {
     flex: 1,
     minHeight: 0,
+    ...readableWidth,
     marginTop: 12,
     paddingHorizontal: spacing.screenX,
     paddingBottom: 4,
@@ -6073,6 +6083,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   contentUnderShell: {
+    ...readableWidth,
     paddingBottom: 100,
     paddingHorizontal: spacing.screenX,
     paddingTop: 8,

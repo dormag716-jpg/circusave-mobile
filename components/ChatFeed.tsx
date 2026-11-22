@@ -81,6 +81,9 @@ export default function ChatFeed({
   const lastTailIdRef = useRef<string | null>(null);
   const lastSendNonceRef = useRef(pinToBottomNonce);
   const didInitialScrollRef = useRef(false);
+  // Only the reader's own scrolling can unpin the list. Scroll events caused by the
+  // list growing while it loads must not, or the chat opens on old messages.
+  const readerScrolledRef = useRef(false);
 
   // Only the newest message I sent shows "Seen", like most chat apps.
   const lastOwnMessageId = useMemo(() => {
@@ -137,6 +140,7 @@ export default function ChatFeed({
   }, [messages, pinToBottomNonce, scrollEnabled]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!readerScrolledRef.current) return;
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     pinnedToBottomRef.current = isPinnedNearBottom({
       offsetFromEnd:
@@ -155,10 +159,16 @@ export default function ChatFeed({
         bottomPadding > 0 ? { paddingBottom: 16 + bottomPadding } : null,
       ]}
       scrollEnabled={scrollEnabled}
+      // Draw the loaded messages at once so "scroll to the newest" lands on the real end,
+      // not on the end of a half-rendered list.
+      initialNumToRender={Math.min(Math.max(messages.length, 10), 200)}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
       onScroll={handleScroll}
+      onScrollBeginDrag={() => {
+        readerScrolledRef.current = true;
+      }}
       scrollEventThrottle={16}
       onLayout={() => {
         // The visible area shrinks when the keyboard opens; keep the newest
