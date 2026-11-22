@@ -293,6 +293,11 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const initializeGooglePlayBilling = useCallback(async () => {
     const machine = await ensureGooglePlayBillingMachine();
     const current = machine.getState();
+    if (current.status === 'failed' && current.operation === 'purchase') {
+      // Back to a buyable state after Google Play reported a failed purchase.
+      machine.dismissFailure();
+      return;
+    }
     if (shouldInitializeGooglePlay(current)) {
       await machine.initialize();
     }
