@@ -21,7 +21,7 @@ import {
 import { useAuthSession } from '@/lib/auth/authContext';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import { formatDateTime } from '@/lib/i18n/formatters';
-import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
+import { colors, shadows, spacing } from '@/lib/shared/theme';
 
 export default function ReminderScheduleScreen() {
   const { t, i18n } = useTranslation(['settings', 'common']);

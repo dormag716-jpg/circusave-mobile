@@ -19,9 +19,8 @@ const SUPPORT_SECTIONS = [
 
 export default function SupportScreen() {
   const { t } = useTranslation('support');
-  const [expandedSection, setExpandedSection] = useState<string | null>(
-    'contributions',
-  );
+  // Every section starts collapsed; tapping a header opens it and closes the others.
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   const toggleSection = (id: string) => {
     setExpandedSection(expandedSection === id ? null : id);

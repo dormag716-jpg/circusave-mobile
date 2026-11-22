@@ -125,7 +125,7 @@ describe('calendarDaysFromToday / relativePayoutLabel', () => {
 describe('formatPayoutDateWithRelative', () => {
   const now = localNoon(2026, 7, 28);
   const short = (iso: string) => {
-    const [y, m, d] = iso.split('-').map(Number);
+    const [, m, d] = iso.split('-').map(Number);
     const months = [
       'Jan',
       'Feb',

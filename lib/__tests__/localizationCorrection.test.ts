@@ -93,10 +93,6 @@ describe('narrow localization correction', () => {
 
     const workspace = source('../../app/circle/workspace.tsx');
     expect(workspace).toContain("workspaceCopy('unknownMember'");
-    expect(workspace).toContain("workspaceCopy('confirmedOfTotal'");
-    expect(workspace).toContain("i18n.t('common:unavailable')");
-    expect(workspace).toContain("workspaceCopy('roundStatusUnavailable'");
-    expect(workspace).toContain("workspaceCopy('collectingContributions'");
     expect(workspace).toContain("workspaceCopy('frequency.biweekly', 'Bi-weekly')");
 
     for (const language of LANGUAGES) {

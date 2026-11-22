@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAssistantSheet } from '@/components/AssistantSheetContext';
 import { useDeviceLock } from '@/components/DeviceLock';
+import { useAssistantEnabled } from '@/components/useAssistantEnabled';
 import { useOpenAssistant } from '@/components/useOpenAssistant';
 import {
   ASSISTANT_FAB_SIZE,
@@ -60,6 +61,7 @@ export function AssistantFabLayer({ children }: { children: ReactNode }) {
   const { isLocked, isInitializing } = useDeviceLock();
   const { isOpen } = useAssistantSheet();
   const { open } = useOpenAssistant();
+  const { ready: assistantEnabled } = useAssistantEnabled();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -76,6 +78,7 @@ export function AssistantFabLayer({ children }: { children: ReactNode }) {
     pathname,
     keyboardOpen,
     sheetOpen: isOpen,
+    assistantEnabled,
   });
 
   const bounds = assistantFabBounds({ width, height, insets, pathname });

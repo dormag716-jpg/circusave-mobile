@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 
 import { composerDraftAfterSend } from '@/lib/circles/circleChatState';
 import { colors, shadows } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 
 type ChatInputProps = {
   onSend: (text: string) => void | Promise<void>;
@@ -45,6 +46,7 @@ export default function ChatInput({
 }: ChatInputProps) {
   const { t } = useTranslation('circleWorkspace');
   const resolvedPlaceholder = placeholder ?? t('chat.placeholder');
+  const compact = useLayoutMetrics().compact;
   const [text, setText] = useState('');
   const inputRef = useRef<TextInput>(null);
   const draftRef = useRef('');
@@ -95,11 +97,12 @@ export default function ChatInput({
         style={[
           styles.composerPill,
           floating && styles.composerPillFloating,
+          compact && styles.composerPillCompact,
         ]}
       >
         <TextInput
           ref={inputRef}
-          style={styles.input}
+          style={[styles.input, compact && styles.inputCompact]}
           placeholder={resolvedPlaceholder}
           placeholderTextColor={colors.muted}
           value={text}
@@ -178,6 +181,8 @@ const styles = StyleSheet.create({
   composerPillFloating: {
     ...shadows.small,
   },
+  composerPillCompact: { borderRadius: 22, minHeight: 48, paddingLeft: 14 },
+  inputCompact: { fontSize: 15, lineHeight: 20, minHeight: 38, paddingBottom: 9, paddingTop: 9 },
   input: {
     flex: 1,
     minHeight: 42,

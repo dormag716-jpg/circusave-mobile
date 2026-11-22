@@ -13,6 +13,7 @@ import {
 } from '@/lib/auth/googleSignInOutcome';
 import { logClientError } from '@/lib/platform/errorLogging';
 import { colors, radii } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 
 type Props = {
   disabled?: boolean;
@@ -26,6 +27,7 @@ export function FederatedAuthButtons({
   onGoogleStatus,
 }: Props) {
   const { t } = useTranslation('auth');
+  const compact = useLayoutMetrics().compact;
   const [busy, setBusy] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
@@ -103,9 +105,13 @@ export function FederatedAuthButtons({
   }
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
       <Pressable
-        style={[styles.googleButton, (disabled || busy) && styles.disabled]}
+        style={[
+          styles.googleButton,
+          compact && styles.googleButtonCompact,
+          (disabled || busy) && styles.disabled,
+        ]}
         onPress={() => {
           void startGoogle();
         }}
@@ -130,13 +136,14 @@ export function FederatedAuthButtons({
           }}
         />
       ) : null}
-      <Text style={styles.or}>{t('federated.or')}</Text>
+      <Text style={[styles.or, compact && styles.orCompact]}>{t('federated.or')}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: 8 },
+  wrapCompact: { marginBottom: 0 },
   googleButton: {
     alignItems: 'center',
     backgroundColor: colors.card,
@@ -146,6 +153,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 48,
   },
+  googleButtonCompact: { minHeight: 44 },
   googleText: { color: colors.textStrong, fontSize: 16, fontWeight: '700' },
   appleButton: { height: 48, marginTop: 12, width: '100%' },
   or: {
@@ -155,5 +163,6 @@ const styles = StyleSheet.create({
     marginVertical: 14,
     textAlign: 'center',
   },
+  orCompact: { fontSize: 12, marginVertical: 4 },
   disabled: { opacity: 0.6 },
 });

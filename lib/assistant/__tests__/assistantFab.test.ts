@@ -23,6 +23,7 @@ const ready: AssistantFabInput = {
   pathname: '/dashboard',
   keyboardOpen: false,
   sheetOpen: false,
+  assistantEnabled: true,
 };
 
 describe('assistant floating button: where it may appear', () => {
@@ -75,6 +76,10 @@ describe('assistant floating button: availability', () => {
     expect(assistantFabAvailable({ ...ready, authenticated: false })).toBe(false);
     expect(assistantFabAvailable({ ...ready, locked: true })).toBe(false);
     expect(assistantFabAvailable({ ...ready, lockReady: false })).toBe(false);
+  });
+
+  it('is gone when the user turned SuSu AI off, or the choice is not read yet', () => {
+    expect(assistantFabAvailable({ ...ready, assistantEnabled: false })).toBe(false);
   });
 
   it('steps aside for the keyboard and for the open sheet', () => {

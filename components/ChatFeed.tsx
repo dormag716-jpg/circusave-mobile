@@ -19,6 +19,27 @@ import {
 } from '@/lib/circles/circleChatState';
 import { formatChatTime } from '@/lib/circles/chatTime';
 import { colors } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
+
+import { Avatar } from './Avatar';
+
+function senderColor(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return colors.chatSenders[hash % colors.chatSenders.length];
+}
+
+function isSystemMessage(message: BackendChatMessage | undefined): boolean {
+  return !!message && (!!message.isSystem || message.senderId === 'system');
+}
+
+function sameSender(a: BackendChatMessage, b: BackendChatMessage): boolean {
+  const left = a.senderUserId ?? a.senderId;
+  const right = b.senderUserId ?? b.senderId;
+  return left != null && left === right;
+}
 
 type ChatFeedProps = {
   messages: BackendChatMessage[];
@@ -54,6 +75,7 @@ export default function ChatFeed({
   style,
 }: ChatFeedProps) {
   const { t } = useTranslation('circleWorkspace');
+  const compact = useLayoutMetrics().compact;
   const listRef = useRef<FlatList<BackendChatMessage>>(null);
   const pinnedToBottomRef = useRef(true);
   const lastTailIdRef = useRef<string | null>(null);
@@ -157,9 +179,17 @@ export default function ChatFeed({
           scrollToEnd(false);
         }
       }}
-      renderItem={({ item }) => {
+      renderItem={({ item, index }) => {
         const isMe =
           item.senderUserId === currentUserId || item.senderId === currentUserId;
+        // Consecutive messages from one person form a group: the avatar and name
+        // show once, the gap is tighter, and only the last bubble has a tail.
+        const previous = messages[index - 1];
+        const next = messages[index + 1];
+        const startsGroup =
+          !previous || isSystemMessage(previous) || !sameSender(previous, item);
+        const endsGroup =
+          !next || isSystemMessage(next) || !sameSender(next, item);
 
         if (item.isSystem || item.senderId === 'system') {
           return (
@@ -170,11 +200,28 @@ export default function ChatFeed({
         }
 
         return (
-          <View style={[styles.messageWrapper, isMe ? styles.messageWrapperMe : null]}>
+          <View
+            style={[
+              styles.messageWrapper,
+              isMe ? styles.messageWrapperMe : null,
+              { marginBottom: endsGroup ? 8 : 2 },
+            ]}
+          >
+            {!isMe && showSenderName ? (
+              <View style={[styles.avatar, { width: compact ? 24 : 28 }]}>
+                {endsGroup ? (
+                  <Avatar name={item.senderName} size={compact ? 24 : 28} />
+                ) : null}
+              </View>
+            ) : null}
+            <View style={styles.bubbleColumn}>
             <Pressable
               style={[
                 styles.bubble,
+                compact && styles.bubbleCompact,
                 isMe ? styles.bubbleMe : styles.bubbleThem,
+                isMe && !endsGroup ? styles.bubbleMeMid : null,
+                !isMe && !endsGroup ? styles.bubbleThemMid : null,
                 deletingMessageId === item.id ? styles.bubbleDeleting : null,
               ]}
               disabled={!isMe || !onDeleteMessage || deletingMessageId != null}
@@ -188,10 +235,24 @@ export default function ChatFeed({
                 isMe && onDeleteMessage ? t('chat.deleteA11yHint') : undefined
               }
             >
-              {!isMe && showSenderName ? (
-                <Text style={styles.senderName}>{item.senderName}</Text>
+              {!isMe && showSenderName && startsGroup ? (
+                <Text
+                  style={[
+                    styles.senderName,
+                    { color: senderColor(String(item.senderUserId ?? item.senderId ?? item.senderName)) },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.senderName}
+                </Text>
               ) : null}
-              <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
+              <Text
+                style={[
+                  styles.messageText,
+                  compact && styles.messageTextCompact,
+                  isMe && styles.messageTextMe,
+                ]}
+              >
                 {item.text}
               </Text>
               <Text style={[styles.timestamp, isMe && styles.timestampMe]}>
@@ -208,6 +269,7 @@ export default function ChatFeed({
                   : t('chat.seen')}
               </Text>
             ) : null}
+            </View>
           </View>
         );
       }}
@@ -227,12 +289,20 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   messageWrapper: {
+    alignItems: 'flex-end',
     alignSelf: 'flex-start',
+    flexDirection: 'row',
     marginBottom: 8,
-    maxWidth: '80%',
+    maxWidth: '84%',
   },
+  // Own bubbles hug their text instead of always filling 82% of the width.
+  // Holds the bubble and the "Seen" line under it.
+  bubbleColumn: { flexShrink: 1 },
   messageWrapperMe: {
     alignSelf: 'flex-end',
+  },
+  avatar: {
+    marginRight: 7,
   },
   bubble: {
     borderRadius: 17,
@@ -242,30 +312,34 @@ const styles = StyleSheet.create({
   bubbleThem: {
     backgroundColor: colors.surfaceMuted,
     borderBottomLeftRadius: 5,
+    flexShrink: 1,
   },
+  bubbleCompact: { paddingHorizontal: 10, paddingVertical: 6 },
   bubbleMe: {
     backgroundColor: colors.primary,
     borderBottomRightRadius: 5,
   },
+  bubbleMeMid: { borderBottomRightRadius: 17 },
+  bubbleThemMid: { borderBottomLeftRadius: 17 },
   bubbleDeleting: {
     opacity: 0.5,
   },
   senderName: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.primary,
-    marginBottom: 3,
+    marginBottom: 2,
   },
   messageText: {
     fontSize: 15,
     color: colors.textStrong,
     lineHeight: 21,
   },
+  messageTextCompact: { fontSize: 14, lineHeight: 20 },
   messageTextMe: {
     color: colors.onColor,
   },
   timestamp: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.muted,
     marginTop: 3,
     alignSelf: 'flex-end',

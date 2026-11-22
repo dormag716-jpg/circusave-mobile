@@ -99,6 +99,7 @@ jest.mock('react-native', () => {
     Pressable: host('Pressable'),
     ScrollView: host('ScrollView'),
     StyleSheet: { create: (styles: unknown) => styles },
+    useWindowDimensions: () => ({ width: 412, height: 915, fontScale: 1 }),
     Text: host('Text'),
     View: host('View'),
   };
@@ -327,6 +328,27 @@ describe('Android Google Play subscription UI', () => {
     expect(screenText()).toContain('Play Monthly');
     expect(screenText()).toContain('US$7.99');
     expect(screenText()).not.toContain('Eligible offer:');
+  });
+
+  test('best-value badge follows the selected billing interval', async () => {
+    setInitialPlayState(readyState);
+    await renderScreen();
+
+    expect(screenText()).toContain('BEST VALUE');
+
+    const monthly = renderer.root
+      .findAllByType('Pressable')
+      .find((node: any) => textContent(node) === 'Monthly');
+    await TestRenderer.act(async () => monthly.props.onPress());
+
+    expect(screenText()).not.toContain('BEST VALUE');
+
+    const annual = renderer.root
+      .findAllByType('Pressable')
+      .find((node: any) => textContent(node) === 'Annual');
+    await TestRenderer.act(async () => annual.props.onPress());
+
+    expect(screenText()).toContain('BEST VALUE');
   });
 
   test('failed offer matching keeps purchase unavailable with sanitized copy', async () => {

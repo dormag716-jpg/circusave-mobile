@@ -33,7 +33,6 @@ import { hrefForAssistantAction } from '@/lib/assistant/navigation';
 import {
   assistantConversationMemory,
   assistantTranscriptFailureKeepsConversation,
-  buildAssistantSendOptions,
   assistantAllowanceResetPhrase,
   readAssistantConversationMemory,
   type AssistantConversationMemory,

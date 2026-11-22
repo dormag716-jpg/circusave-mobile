@@ -46,12 +46,16 @@ import { googleSignInMessageKey } from '@/lib/auth/googleSignInOutcome';
 import { backendAuthMessage, describeNetworkError } from '@/lib/platform/networkErrors';
 import { postAuthHrefFromUrl } from '@/lib/platform/navigation';
 import { colors, shadows, spacing } from '@/lib/shared/theme';
+import { FORM_MAX_WIDTH } from '@/lib/shared/responsive';
 import { useKeyboardReveal } from '@/lib/shared/useKeyboardReveal';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 
 export default function LoginScreen() {
   const { t } = useTranslation(['auth', 'common']);
   const passwordInputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
+  const layout = useLayoutMetrics();
+  const compact = layout.compact;
   const { scrollRef, viewportRef, onScroll, keyboardInset, onFieldFocus } =
     useKeyboardReveal(insets.top);
   const [email, setEmail] = useState('');
@@ -278,8 +282,10 @@ export default function LoginScreen() {
           scrollEventThrottle={16}
           contentContainerStyle={[
             styles.scrollContent,
+            { maxWidth: layout.wide ? FORM_MAX_WIDTH : 520, padding: layout.gutter },
+            compact && styles.scrollContentCompact,
             // Only while the keyboard covers the form; zero otherwise.
-            keyboardInset > 0 && { paddingBottom: 48 + keyboardInset },
+            keyboardInset > 0 && { paddingBottom: (compact ? 24 : 48) + keyboardInset },
           ]}
           // Android 'on-drag' closed the keyboard on any scroll, so the form
           // could not be scrolled to Sign In while typing.
@@ -287,25 +293,31 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.branding}>
-            <View style={styles.logo}>
-              <FontAwesome name="users" size={42} color={colors.onColor} />
-            </View>
-            <Text style={styles.appName}>CircuSave</Text>
-            <Text style={styles.tagline}>{t('login.tagline')}</Text>
+          <View style={[styles.branding, compact && styles.brandingCompact]}>
+            {layout.height < 600 ? null : (
+              <View style={[styles.logo, compact && styles.logoCompact]}>
+                <FontAwesome name="users" size={compact ? 22 : 42} color={colors.onColor} />
+              </View>
+            )}
+            <Text style={[styles.appName, compact && styles.appNameCompact]}>CircuSave</Text>
+            <Text style={[styles.tagline, compact && styles.taglineCompact]}>
+              {t('login.tagline')}
+            </Text>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.welcome}>
+          <View style={[styles.card, compact && styles.cardCompact]}>
+            <Text style={[styles.welcome, compact && styles.welcomeCompact]}>
               {recoveryMode ? t('login.recoverAccess') : t('login.welcomeBack')}
             </Text>
-            <Text style={styles.subtitle}>
-              {linkChallenge
-                ? t('federated.linkBody')
-                : recoveryMode
-                  ? t('login.recoverySubtitle')
-                  : t('login.signInSubtitle')}
-            </Text>
+            {compact && !recoveryMode && !linkChallenge ? null : (
+              <Text style={[styles.subtitle, compact && styles.subtitleCompact]}>
+                {linkChallenge
+                  ? t('federated.linkBody')
+                  : recoveryMode
+                    ? t('login.recoverySubtitle')
+                    : t('login.signInSubtitle')}
+              </Text>
+            )}
 
             {!recoveryMode && !linkChallenge ? (
               <FederatedAuthButtons
@@ -322,13 +334,13 @@ export default function LoginScreen() {
             ) : null}
 
             {linkChallenge ? (
-              <Text style={styles.label}>{linkChallenge.email}</Text>
+              <Text style={[styles.label, compact && styles.labelCompact]}>{linkChallenge.email}</Text>
             ) : (
               <>
-                <Text style={styles.label}>{t('common.email')}</Text>
+                <Text style={[styles.label, compact && styles.labelCompact]}>{t('common.email')}</Text>
                 <TextInput
                   onFocus={onFieldFocus}
-                  style={styles.input}
+                  style={[styles.input, compact && styles.inputCompact]}
                   placeholder={t('login.emailPlaceholder')}
                   accessibilityLabel={t('common.email')}
                   placeholderTextColor={colors.subtle}
@@ -347,11 +359,11 @@ export default function LoginScreen() {
 
             {!recoveryMode && (
               <>
-                <Text style={styles.label}>{t('common.password')}</Text>
+                <Text style={[styles.label, compact && styles.labelCompact]}>{t('common.password')}</Text>
                 <TextInput
                   onFocus={onFieldFocus}
                   ref={passwordInputRef}
-                  style={styles.input}
+                  style={[styles.input, compact && styles.inputCompact]}
                   placeholder={t('login.passwordPlaceholder')}
                   accessibilityLabel={t('common.password')}
                   placeholderTextColor={colors.subtle}
@@ -367,10 +379,10 @@ export default function LoginScreen() {
 
             {recoveryMode && otpRequested && !resetVerified && (
               <>
-                <Text style={styles.label}>{t('login.recoveryCode')}</Text>
+                <Text style={[styles.label, compact && styles.labelCompact]}>{t('login.recoveryCode')}</Text>
                 <TextInput
                   onFocus={onFieldFocus}
-                  style={styles.input}
+                  style={[styles.input, compact && styles.inputCompact]}
                   placeholder={t('login.recoveryCodePlaceholder')}
                   accessibilityLabel={t('login.recoveryCode')}
                   placeholderTextColor={colors.subtle}
@@ -385,11 +397,11 @@ export default function LoginScreen() {
 
             {recoveryMode && resetVerified && (
               <>
-                <Text style={styles.label}>{t('login.newPassword')}</Text>
+                <Text style={[styles.label, compact && styles.labelCompact]}>{t('login.newPassword')}</Text>
                 <TextInput
                   onFocus={onFieldFocus}
                   ref={passwordInputRef}
-                  style={styles.input}
+                  style={[styles.input, compact && styles.inputCompact]}
                   placeholder={t('login.newPasswordPlaceholder')}
                   accessibilityLabel={t('login.newPassword')}
                   placeholderTextColor={colors.subtle}
@@ -403,14 +415,21 @@ export default function LoginScreen() {
               </>
             )}
 
-            <Pressable style={styles.forgotPassword} onPress={() => setRecovery(!recoveryMode)}>
+            <Pressable
+              style={[styles.forgotPassword, compact && styles.forgotPasswordCompact]}
+              accessibilityRole="button"
+              onPress={() => setRecovery(!recoveryMode)}>
               <Text style={styles.forgotText}>
                 {recoveryMode ? t('login.backToSignIn') : t('login.forgotPassword')}
               </Text>
             </Pressable>
 
             <Pressable
-              style={[styles.signInButton, isSubmitting && styles.disabledButton]}
+              style={[
+                styles.signInButton,
+                compact && styles.signInButtonCompact,
+                isSubmitting && styles.disabledButton,
+              ]}
               onPress={() => void handleSubmit()}
               disabled={isSubmitting}
               accessibilityRole="button"
@@ -458,7 +477,8 @@ export default function LoginScreen() {
             {!recoveryMode && (
               <Pressable
                 onPress={() => router.push('/create-account')}
-                style={styles.createAccount}
+                style={[styles.createAccount, compact && styles.createAccountCompact]}
+                accessibilityRole="button"
               >
                 <Text style={styles.createAccountText}>
                   {t('login.noAccount')}{' '}
@@ -468,7 +488,7 @@ export default function LoginScreen() {
             )}
           </View>
 
-          <View style={styles.trustRow}>
+          <View style={[styles.trustRow, compact && styles.trustRowCompact]}>
             <TrustBadge icon="lock" label={t('login.secureLedger')} />
             <TrustBadge icon="users" label={t('login.inviteOnly')} />
           </View>
@@ -546,7 +566,7 @@ const styles = StyleSheet.create({
     minHeight: 56,
     paddingHorizontal: 16,
   },
-  forgotPassword: { alignSelf: 'flex-end', marginVertical: 16 },
+  forgotPassword: { alignSelf: 'flex-end', marginVertical: 16, paddingLeft: 12 },
   forgotText: { color: colors.primary, fontWeight: '700' },
   existingCode: { alignItems: 'center', marginTop: 16, minHeight: 44, justifyContent: 'center' },
   signInButton: {
@@ -557,6 +577,22 @@ const styles = StyleSheet.create({
     minHeight: 58,
   },
   disabledButton: { opacity: 0.65 },
+  // Compact (short or narrow) windows: trim decoration so email, password and
+  // Sign in fit together at 360 x 640 dp. Tap targets stay at 44 dp or more.
+  scrollContentCompact: { paddingBottom: 16, paddingTop: 8 },
+  brandingCompact: { marginBottom: 10 },
+  logoCompact: { width: 40, height: 40, marginBottom: 6 },
+  appNameCompact: { fontSize: 26 },
+  taglineCompact: { fontSize: 13, marginTop: 0, textAlign: 'center' },
+  cardCompact: { borderRadius: 20, padding: 14 },
+  welcomeCompact: { fontSize: 20, marginBottom: 10 },
+  subtitleCompact: { fontSize: 14, marginBottom: 10, marginTop: 3 },
+  labelCompact: { fontSize: 13, marginBottom: 4, marginTop: 6 },
+  inputCompact: { borderRadius: 14, fontSize: 15, minHeight: 44 },
+  forgotPasswordCompact: { justifyContent: 'center', marginVertical: 0, minHeight: 44 },
+  signInButtonCompact: { minHeight: 48 },
+  createAccountCompact: { justifyContent: 'center', marginTop: 0, minHeight: 44 },
+  trustRowCompact: { gap: 8, marginTop: 16 },
   signInText: { color: colors.onColor, fontSize: 17, fontWeight: '900' },
   createAccount: { marginTop: 24, alignItems: 'center' },
   createAccountText: { fontSize: 15, color: colors.muted },

@@ -1,5 +1,5 @@
 ﻿import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, type Href, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   useCallback,
   useEffect,
@@ -11,7 +11,6 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Keyboard,
   Linking,
   Modal,
@@ -52,7 +51,6 @@ import {
   getCircleAgreementSnapshot,
   getMemberAccessToken,
   reorderPayoutTurn,
-  requestAdditionalHand,
   startCircle,
   type CircleAgreementSnapshot,
 } from '@/lib/api';
@@ -117,7 +115,6 @@ import {
   canShowStartCircleAction,
   getCircleLifecyclePhase,
   getStartCircleBlockReason,
-  getStartCircleReviewHints,
   isCircleCompleted,
   isCircleSetupState,
   isCircleStarted,
@@ -125,6 +122,7 @@ import {
   type StartCircleConfirmations,
 } from '@/lib/circles/startCircleReadiness';
 import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 import ConversationChat from '@/components/ConversationChat';
 import { Avatar } from '@/components/Avatar';
 import { DecisionSheet } from '@/components/DecisionSheet';
@@ -143,7 +141,6 @@ import {
 } from '@/lib/payments/contributionClaim';
 import {
   contributionStatusLabel,
-  presentManualContribution,
   roundStatusLabel,
 } from '@/lib/i18n/financial-presentation';
 import {
@@ -208,6 +205,7 @@ const tabs: {
 ];
 
 export default function CircleWorkspaceScreen() {
+  const compactLayout = useLayoutMetrics().compact;
   const { t } = useTranslation('circleWorkspace');
   const { session, status } = useAuthSession();
   const params = useLocalSearchParams<{
@@ -390,11 +388,20 @@ export default function CircleWorkspaceScreen() {
         accessibilityRole="button"
         accessibilityLabel={t('accessibility.backToCircles')}
       >
-        <FontAwesome name="chevron-left" size={28} color={colors.textStrong} />
+        <FontAwesome
+          name="chevron-left"
+          size={compactLayout ? 22 : 28}
+          color={colors.textStrong}
+        />
       </Pressable>
 
       <View style={styles.headerCenter}>
-        <Text style={styles.title}>{circle?.name || t('fallbackName')}</Text>
+        <Text
+          style={[styles.title, compactLayout && styles.titleCompact]}
+          numberOfLines={2}
+        >
+          {circle?.name || t('fallbackName')}
+        </Text>
         <Text style={styles.subtitle}>
           {circle
             ? t('headerSummary', {
@@ -411,7 +418,11 @@ export default function CircleWorkspaceScreen() {
         accessibilityRole="button"
         accessibilityLabel={t('accessibility.dashboard')}
       >
-        <FontAwesome name="home" size={28} color={colors.textStrong} />
+        <FontAwesome
+          name="home"
+          size={compactLayout ? 22 : 28}
+          color={colors.textStrong}
+        />
       </Pressable>
     </View>
   );
@@ -539,7 +550,7 @@ function WorkspaceContent({
   onRefresh: () => void;
   keyboardVisible: boolean;
 }) {
-  const isOrganizer = circle.userRole === 'organizer';
+  const compactLayout = useLayoutMetrics().compact;
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
     'contributions',
@@ -1478,7 +1489,7 @@ function WorkspaceContent({
 
   const chrome = (
     <>
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, compactLayout && styles.tabBarCompact]}>
         {visibleTabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
@@ -1503,7 +1514,12 @@ function WorkspaceContent({
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.tabText, selected && styles.activeTabText]}>
+              <Text
+                style={[styles.tabText, selected && styles.activeTabText]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 {t(`tabs.${tab.id}`)}
               </Text>
             </Pressable>
@@ -2127,9 +2143,7 @@ function RoundTab({
     'ledger',
   ]);
   const language = translation.resolvedLanguage || translation.language;
-  const [visibleActionCount, setVisibleActionCount] = useState(5);
   const [showAllPaid, setShowAllPaid] = useState(false);
-  const [actionSearch, setActionSearch] = useState('');
   // Always start collapsed; only open when the user taps (reference terms, not live status).
   const [roundDetailsExpanded, setRoundDetailsExpanded] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
@@ -3396,7 +3410,7 @@ function PeopleTab({
 }) {
   const { t, i18n: translation } = useTranslation(['people', 'payoutOrder']);
   const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [addingHand, setAddingHand] = useState(false);
+  const [addingHand] = useState(false);
   const [showHandModal, setShowHandModal] = useState(false);
   const [startingCircle, setStartingCircle] = useState(false);
   const [sharingClaimId, setSharingClaimId] = useState<string | null>(null);
@@ -3473,7 +3487,6 @@ function PeopleTab({
     members,
     waitlist,
   });
-  const startReviewHints = getStartCircleReviewHints({ members, waitlist });
   const needsUnclaimedConfirm = requiresUnclaimedStartConfirmation(members);
   const setupProgress = useMemo(
     () =>
@@ -3637,10 +3650,6 @@ function PeopleTab({
       return;
     }
     router.push(circleAgreementReviewHref(circle.id));
-  }
-
-  function promptPayoutOrderReview() {
-    setShowPayoutReview(true);
   }
 
   function promptUnclaimedHandsReview() {
@@ -4007,9 +4016,6 @@ function PeopleTab({
   if (circleNotStarted && isOrganizer && setupProgress) {
     const progress = setupProgress;
 
-    const unclaimedMembers = members.filter(
-      (m) => isUnclaimedHand(m) && m.isParticipating !== false,
-    );
     const participatingMembers = members.filter(
       (m) => m.isParticipating !== false,
     );
@@ -5351,40 +5357,6 @@ function StatusCard({
   );
 }
 
-function InfoRow({
-  label,
-  last,
-  value,
-}: {
-  label: string;
-  last?: boolean;
-  value: string;
-}) {
-  return (
-    <View style={[styles.infoRow, last && styles.lastInfoRow]}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
-function DetailRow({
-  label,
-  last,
-  value,
-}: {
-  label: string;
-  last?: boolean;
-  value: string;
-}) {
-  return (
-    <View style={[styles.detailRow, last && styles.lastDetailRow]}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  );
-}
-
 function setupStatusTone(status: SetupStepStatus): {
   bg: string;
   fg: string;
@@ -5720,63 +5692,6 @@ function memberName(member: BackendCircleMember | BackendJoinRequest | undefined
   );
 }
 
-function entryMemberName(entry: BackendLedgerEntry, members: BackendCircleMember[]) {
-  const metadata = entry.metadata || {};
-  const memberId = String(
-    entry.memberId ||
-    metadata.member_id ||
-    metadata.memberId ||
-    metadata.recipient_member_id ||
-    metadata.recipientMemberId ||
-    ''
-  ).trim();
-
-  if (!memberId) return '';
-  const member = members.find((m) => m.id === memberId || m.userId === memberId);
-  return member ? memberName(member) : '';
-}
-
-function ledgerTitle(entry: BackendLedgerEntry) {
-  if (entry.note) return entry.note;
-  const type = String(entry.event_type || entry.type || 'activity')
-    .replace(/_/g, ' ')
-    .trim();
-  return capitalizeFrequency(type || 'Activity updated');
-}
-
-function ledgerIcon(entry: BackendLedgerEntry): ComponentProps<typeof FontAwesome>['name'] {
-  const type = String(entry.event_type || entry.type || '').toLowerCase();
-  if (type.includes('payout')) return 'arrow-down';
-  if (type.includes('contribution')) return 'arrow-up';
-  return 'book';
-}
-
-function ledgerIconColor(entry: BackendLedgerEntry) {
-  const type = String(entry.event_type || entry.type || '').toLowerCase();
-  if (type.includes('payout')) return colors.success;
-  if (type.includes('contribution')) return colors.muted;
-  return colors.primary;
-}
-
-function ledgerAmountLabel(entry: BackendLedgerEntry, language: string) {
-  if (typeof entry.amount !== 'number') return null;
-  const type = String(entry.event_type || entry.type || '').toLowerCase();
-  const amountStr = formatWorkspaceMoney(entry.amount, language);
-  if (type.includes('payout')) return `+${amountStr}`;
-  if (type.includes('contribution')) return `-${amountStr}`;
-  return amountStr;
-}
-
-function formatWorkspaceMoney(amount: number, language: string) {
-  return formatCurrency(amount, language, 'USD', 0);
-}
-
-function formatOptionalMoney(amount?: number, language = 'en') {
-  return typeof amount === 'number' && Number.isFinite(amount)
-    ? formatWorkspaceMoney(amount, language)
-    : '\u2014';
-}
-
 function fromCents(amountCents?: number) {
   return typeof amountCents === 'number' && Number.isFinite(amountCents)
     ? amountCents / 100
@@ -5799,56 +5714,6 @@ function financialActionErrorMessage(
   return fallback;
 }
 
-function formatProgress(progress: number | null) {
-  return typeof progress === 'number' && Number.isFinite(progress)
-    ? `${Math.max(0, Math.min(100, progress))}%`
-    : '-';
-}
-
-function formatConfirmedStatusFromCounts(
-  confirmedCount?: number,
-  totalMembers?: number,
-) {
-  return typeof confirmedCount === 'number' &&
-    typeof totalMembers === 'number' &&
-    Number.isFinite(confirmedCount) &&
-    Number.isFinite(totalMembers) &&
-    totalMembers > 0
-    ? workspaceCopy('confirmedOfTotal', `${confirmedCount} of ${totalMembers} confirmed`, {
-        confirmed: confirmedCount,
-        total: totalMembers,
-      })
-    : i18n.isInitialized
-      ? i18n.t('common:unavailable')
-      : 'Unavailable';
-}
-
-function formatDate(value?: string | null, language = 'en') {
-  if (!value) return '\u2014';
-  return formatLocalizedDate(value, language);
-}
-
-function formatRelativeDays(value?: string | null, language = 'en') {
-  if (!value) return null;
-  const time = Date.parse(value);
-  if (!Number.isFinite(time)) return null;
-  return `(${formatRelativeDate(value, language)})`;
-}
-
-function formatDateTime(value?: string | null, language = 'en') {
-  if (!value) return '-';
-  return formatLocalizedDate(value, language);
-}
-
-function formatRoundStatus(value?: string | null) {
-  if (!value) return workspaceCopy('roundStatusUnavailable', 'Round status unavailable');
-  const status = String(value).toLowerCase();
-  if (status === 'collecting') {
-    return workspaceCopy('collectingContributions', 'Collecting contributions');
-  }
-  return capitalizeFrequency(String(value).replace(/_/g, ' ').trim());
-}
-
 function capitalizeFrequency(value: string) {
   if (!value) return '';
   if (value === 'biweekly') {
@@ -5866,14 +5731,6 @@ function frequencyDisplayLabel(value: string, t: TFunction) {
         ? 'monthly'
         : 'weekly';
   return t(`createCircle:schedule.options.${key}`);
-}
-
-function statusTone(raw: string): 'muted' | 'soft' | 'ready' | 'success' | 'warning' {
-  if (raw === 'confirmed') return 'success';
-  if (raw === 'submitted' || raw === 'late') return 'ready';
-  if (raw === 'missed' || raw === 'rejected') return 'warning';
-  if (raw === 'pending') return 'muted';
-  return 'muted';
 }
 
 const styles = StyleSheet.create({
@@ -6225,7 +6082,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 4,
   },
-  headerCenter: { alignItems: 'center', flex: 1 },
+  headerCenter: { alignItems: 'center', flex: 1, paddingHorizontal: 8 },
+  titleCompact: { fontSize: 22, textAlign: 'center' },
+  tabBarCompact: { gap: 2, marginTop: 12, padding: 4 },
   title: {
     color: colors.textStrong,
     fontSize: 28,
@@ -6324,6 +6183,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     minHeight: 48,
+    paddingHorizontal: 2,
   },
   tabIcon: {
     position: 'relative',

@@ -4,8 +4,6 @@ import { useFonts } from 'expo-font';
 import { router, Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import Constants from 'expo-constants';
-import { Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import 'react-native-reanimated';

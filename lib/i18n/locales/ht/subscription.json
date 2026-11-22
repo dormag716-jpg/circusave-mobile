@@ -3,6 +3,7 @@
   "plans": "Plan yo",
   "eyebrow": "CircuSave Organizer Pro",
   "heroTitle": "Mwens kouri dèyè.\nPlis konfyans.",
+  "heroTagline": "Jere plizyè gwoup ak mwens pouswit, dosye pi klè, ak prèv pwofesyonèl.",
   "trialActive": "Eseye gratis ou a aktif",
   "active": "Organizer Pro aktif",
   "trialCopy": "Eseye tout fonksyon yo gratis pandan {{days}} jou",
@@ -30,11 +31,14 @@
   "cancelRenewal": "Anile renouvèlman",
   "startTrial": "Kòmanse eseye gratis {{days}} jou mwen",
   "freeTitle": "Plan gratis la toujou itil",
-  "freeCopy": "Dirije yon gwoup konplè ak jiska 20 men. Amelyore sèlman lè òganizasyon ou grandi.",
+  "freeCopy": "Dirije yon gwoup konplè ak jiska {{count}} men. Amelyore sèlman lè òganizasyon ou grandi.",
   "footer": "Peman sekirize pa Stripe · Anile nenpòt lè · Dosye gwoup ou yo rete pou ou",
   "iosUnavailableTitle": "Abònman Organizer Pro yo poko disponib sou iPhone.",
   "iosUnavailableBody": "Faktirasyon Organizer Pro poko ofri sou iPhone. Aksè CircuSave ou genyen kounye a pa chanje.",
   "iosFooter": "Dosye gwoup ou yo rete pou ou. Abònman iPhone yo pral itilize faktirasyon Apple lè yo disponib.",
+  "webUnavailableTitle": "Abònman Organizer Pro yo pa disponib sou entènèt la.",
+  "webUnavailableBody": "Faktirasyon peye Organizer Pro disponib sèlman nan aplikasyon mobil la. Aksè CircuSave ou genyen kounye a pa chanje.",
+  "webFooter": "Dosye gwoup ou yo rete pou ou. Achte epi jere Organizer Pro nan aplikasyon mobil la.",
   "checkoutUnavailable": "Peman pa disponib",
   "billingUnavailable": "Faktirasyon pa disponib",
   "checkoutUrlMissing": "URL peman an pa t disponib.",
@@ -88,7 +92,7 @@
   "periodYears": "{{count}} ane",
   "features": {
     "unlimitedCircles": "Gwoup ouvè san limit",
-    "hands": "Jiska 50 men pa gwoup",
+    "hands": "Jiska {{count}} men pa gwoup",
     "history": "Istwa aktivite konplè"
   }
 }

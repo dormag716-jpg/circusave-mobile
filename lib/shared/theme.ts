@@ -43,6 +43,16 @@ export const colors = {
 
   gradientPrimary: ['#6B46C1', '#7C3AED'] as const,
 
+  // Sender-name colors in group chat. Each is 4.5:1 or better on surfaceMuted.
+  chatSenders: [
+    '#6B46C1',
+    '#0F766E',
+    '#B45309',
+    '#1D4ED8',
+    '#BE185D',
+    '#4D7C0F',
+  ] as const,
+
   premiumCanvas: '#F7F5FF',
   premiumGlow: '#E9DDFF',
   premiumMintGlow: '#DDF8EF',
