@@ -338,10 +338,6 @@ function pressableWithText(renderer: any, label: string): any {
     .find((node: any) => nodeText(node) === label);
 }
 
-function pressableWithAccessibilityLabel(renderer: any, label: string): any {
-  return renderer.root.findByProps({ accessibilityLabel: label });
-}
-
 function statementRows(renderer: any, displayName: string): any[] {
   return renderer.root.findAll(
     (node: any) =>

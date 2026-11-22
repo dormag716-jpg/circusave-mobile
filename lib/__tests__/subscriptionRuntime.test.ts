@@ -190,20 +190,6 @@ const SubscriptionScreen: typeof import('../../app/subscription').default =
 
 let renderer: any;
 
-const premiumPlan = {
-  id: 'premium',
-  name: 'Organizer Pro',
-  tagline: 'Premium organizer tools.',
-  monthlyPriceCents: 799,
-  annualPriceCents: 5999,
-  annualSavingsCents: 3589,
-  trialDays: 7,
-  features: [
-    'Unlimited open circles',
-    'Ongoing AI organizer assistance',
-  ],
-};
-
 function textContent(node: any): string {
   if (typeof node === 'string') return node;
   if (Array.isArray(node)) return node.map(textContent).join('');
@@ -217,14 +203,6 @@ function visibleText(): string {
     .join('\n');
 }
 
-function pressable(label: string): any {
-  const match = renderer.root
-    .findAll((node: any) => node.type === 'Pressable')
-    .find((node: any) => textContent(node).includes(label));
-  if (!match) throw new Error(`Pressable not found: ${label}`);
-  return match;
-}
-
 async function flush(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -233,13 +211,6 @@ async function flush(): Promise<void> {
 async function mount(): Promise<void> {
   await TestRenderer.act(async () => {
     renderer = TestRenderer.create(React.createElement(SubscriptionScreen));
-    await flush();
-  });
-}
-
-async function press(label: string): Promise<void> {
-  await TestRenderer.act(async () => {
-    pressable(label).props.onPress();
     await flush();
   });
 }

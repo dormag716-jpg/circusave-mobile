@@ -50,7 +50,7 @@ import {
   createCircleHref,
 } from '@/lib/platform/navigation';
 import { isOrganizer } from '@/lib/platform/permissions';
-import { colors, spacing } from '@/lib/shared/theme';
+import { colors } from '@/lib/shared/theme';
 import type { BackendCircleSummary } from '@/lib/shared/types';
 import {
   circleLifecycleBadgeLabel,

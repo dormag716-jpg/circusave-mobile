@@ -10,7 +10,6 @@ import {
   canSubmitAgreementAcceptance,
   getAgreementReadinessStatusKeys,
   getMemberAgreementPrompt,
-  memberCanOpenAgreementReview,
   memberHasAcceptedCurrentSnapshot,
   normalizeAgreementLanguage,
   orderedSnapshotHands,

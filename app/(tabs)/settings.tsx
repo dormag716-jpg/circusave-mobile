@@ -1,8 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, type Href, useFocusEffect } from 'expo-router';
 import { useCallback, useState, useEffect } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import Constants from 'expo-constants';
+import { AccessibilityInfo, Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
@@ -27,7 +26,7 @@ import {
   marketTerminologyKey,
   useMarket,
 } from '@/lib/circles/market';
-import { colors, radii, spacing } from '@/lib/shared/theme';
+import { colors, radii } from '@/lib/shared/theme';
 
 export default function SettingsScreen() {
   const { i18n, t } = useTranslation(['settings', 'navigation']);
