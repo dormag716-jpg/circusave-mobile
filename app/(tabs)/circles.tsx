@@ -40,6 +40,7 @@ import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
 import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 import { formatHandsPeopleMetrics } from '@/lib/circles/circleLifecycleCopy';
+import { circlePeopleCount } from '@/lib/circles/circlePeopleCount';
 import {
   ASSISTANT_FAB_MARGIN,
   ASSISTANT_FAB_SIZE,
@@ -697,12 +698,7 @@ function CircleCard({
     detail?.participatingHandCount ??
     circle.participatingHandCount ??
     circle.memberCount;
-  const peopleCount =
-    detail?.uniquePeopleCount ??
-    detail?.uniqueMemberCount ??
-    circle.uniquePeopleCount ??
-    circle.uniqueMemberCount ??
-    null;
+  const peopleCount = circlePeopleCount(detail, circle);
   const totalRounds =
     detail?.totalRounds ??
     circle.totalRounds ??
