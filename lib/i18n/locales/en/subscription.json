@@ -16,7 +16,7 @@
   "willNotRenew": "Your plan will not renew automatically.",
   "subscriptionReady": "Your subscription is active and ready.",
   "freeTitle": "Free stays genuinely useful",
-  "freeCopy": "Run one complete circle with up to {{count}} hands. Upgrade only when your organizing grows.",
+  "freeCopy": "Run one complete circle with up to {{count}} members. Upgrade only when your organizing grows.",
   "footer": "Secure checkout by Stripe · Cancel anytime · Your circle records remain yours",
   "iosUnavailableTitle": "Organizer Pro subscriptions are not yet available on iPhone.",
   "iosUnavailableBody": "Paid Organizer Pro billing is not offered on iPhone yet. Your current CircuSave access is unchanged.",

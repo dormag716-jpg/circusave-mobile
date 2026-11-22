@@ -176,6 +176,9 @@ export type BackendCircleDetail = {
     unit?: string;
     freeMaxHands?: number;
     premiumMaxHands?: number;
+    /** People, not hands. Sent by newer backends; not enforced yet. */
+    distinctMemberCount?: number;
+    maxMembersPerCircle?: number;
   };
 };
 

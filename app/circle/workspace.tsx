@@ -65,6 +65,7 @@ import { PaymentDestinationList } from '@/components/PaymentDestinationList';
 import { RecordsCenter } from '@/components/records/RecordsCenter';
 
 import { shouldLoadAuthenticatedScreen } from '@/lib/auth/activityAuthGate';
+import { memberLimitNotice } from '@/lib/circles/memberLimitNotice';
 import { shouldFetchWorkspaceAgreementSnapshot } from '@/lib/circles/workspaceAgreementLoad';
 import { ledgerActionForNavigation, navigationMayMutateMoney } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
@@ -3409,7 +3410,7 @@ function PeopleTab({
   agreementSnapshot: CircleAgreementSnapshot | null;
   agreementSnapshotLoaded: boolean;
 }) {
-  const { t, i18n: translation } = useTranslation(['people', 'payoutOrder']);
+  const { t, i18n: translation } = useTranslation(['people', 'payoutOrder', 'invite']);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [addingHand] = useState(false);
   const [showHandModal, setShowHandModal] = useState(false);
@@ -3534,6 +3535,32 @@ function PeopleTab({
         t('requests.structureLockedTitle'),
         t('requests.structureLockedBody'),
       );
+      return;
+    }
+    // A new person needs a free member slot. Extra hands and planned-hand claims
+    // add nobody, so they never get this message.
+    const request = waitlist.find((entry) => entry.requestId === requestId);
+    const addsNewPerson =
+      request !== undefined &&
+      !request.claimsPlannedHand &&
+      request.isAdditionalHand !== true &&
+      Number(request.handNumber ?? request.hand_number ?? 1) <= 1;
+    const limitNotice = addsNewPerson
+      ? memberLimitNotice(circle.rosterCapacity)
+      : null;
+    if (limitNotice) {
+      const body = t(`invite:${limitNotice.bodyKey}`, { count: limitNotice.count });
+      if (limitNotice.offerOrganizerPro) {
+        Alert.alert(t(`invite:${limitNotice.titleKey}`), body, [
+          { text: t('invite:organizer.notNow'), style: 'cancel' },
+          {
+            text: t('invite:organizer.viewPlans'),
+            onPress: () => router.push('/subscription'),
+          },
+        ]);
+      } else {
+        Alert.alert(t(`invite:${limitNotice.titleKey}`), body);
+      }
       return;
     }
     setApprovingId(requestId);

@@ -34,6 +34,7 @@ import {
   buildGenericCircleInviteShareMessage,
 } from '@/lib/circles/claimInvite';
 import { isUnclaimedHand } from '@/lib/circles/circleLifecycleCopy';
+import { memberLimitNotice } from '@/lib/circles/memberLimitNotice';
 import { circleWorkspaceHref } from '@/lib/platform/navigation';
 import {
   inviteFieldScrollOffsetFromWindow,
@@ -189,14 +190,17 @@ export default function InviteMemberScreen() {
       return;
     }
 
-    const capacity = circle.rosterCapacity;
-    if (capacity?.atCapacity || (capacity?.remainingHands ?? 1) <= 0) {
-      Alert.alert(
-        t('organizer.planLimitTitle'),
-        capacity?.tier === 'premium'
-          ? t('organizer.premiumLimit', { count: capacity.maxHands ?? 50 })
-          : t('organizer.freeLimit', { count: capacity?.maxHands ?? 20 }),
-      );
+    const limitNotice = memberLimitNotice(circle.rosterCapacity);
+    if (limitNotice) {
+      const body = t(limitNotice.bodyKey, { count: limitNotice.count });
+      if (limitNotice.offerOrganizerPro) {
+        Alert.alert(t(limitNotice.titleKey), body, [
+          { text: t('organizer.notNow'), style: 'cancel' },
+          { text: t('organizer.viewPlans'), onPress: () => router.push('/subscription') },
+        ]);
+      } else {
+        Alert.alert(t(limitNotice.titleKey), body);
+      }
       return;
     }
 
@@ -355,7 +359,7 @@ export default function InviteMemberScreen() {
     );
   }
 
-  const hasReachedLimit = (circle.members?.length || 0) >= 20;
+  const limitCard = memberLimitNotice(circle.rosterCapacity);
   // Authoritative: setup phase only (status/startedAt/isStarted) — never schedule.
   const structureUnlocked = isCircleSetupState(circle);
   const phase = getCircleLifecyclePhase(circle);
@@ -531,13 +535,13 @@ export default function InviteMemberScreen() {
           </View>
         )}
 
-        {hasReachedLimit ? (
+        {limitCard ? (
           <View style={[styles.formCard, { borderColor: colors.warning, borderWidth: 1 }]}>
             <View style={{ alignItems: 'center', marginBottom: 16 }}>
               <FontAwesome name="lock" size={32} color={colors.warning} />
             </View>
             <Text style={[styles.sectionTitle, { textAlign: 'center' }]}>
-              {t('organizer.handLimit')}
+              {t('organizer.memberLimit')}
             </Text>
             <Text
               style={[
@@ -545,14 +549,16 @@ export default function InviteMemberScreen() {
                 { textAlign: 'center', marginBottom: 24 },
               ]}
             >
-              {t('organizer.handLimitMessage')}
+              {t(limitCard.bodyKey, { count: limitCard.count })}
             </Text>
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => router.push('/subscription')}
-            >
-              <Text style={styles.primaryButtonText}>{t('organizer.viewPlans')}</Text>
-            </Pressable>
+            {limitCard.offerOrganizerPro ? (
+              <Pressable
+                style={styles.primaryButton}
+                onPress={() => router.push('/subscription')}
+              >
+                <Text style={styles.primaryButtonText}>{t('organizer.viewPlans')}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <>

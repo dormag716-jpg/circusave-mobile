@@ -713,7 +713,7 @@ export default function SubscriptionScreen() {
                 <Text style={styles.freeCopy}>
                   {t('freeCopy', {
                     count:
-                      entitlements.capabilities?.maxParticipatingHands ??
+                      entitlements.capabilities?.maxMembersPerCircle ??
                       FREE_MAX_PARTICIPATING_HANDS,
                   })}
                 </Text>
