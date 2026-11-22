@@ -87,9 +87,9 @@ Google sign-in uses `react-native-nitro-google-signin`. Apple sign-in uses `expo
 
 `EntitlementsProvider` / `useEntitlements` tracks subscription state. On Android it owns a `GooglePlayBillingMachine`. On iOS and web it polls the backend. Entitlements refresh on login and on every app foreground event. `getFreshContributionPaymentsCapability` re-reads `contributionPaymentsEnabled` from the backend and aborts after 5 seconds.
 
-### API Layer (`lib/api.ts`)
+### API Layer (`lib/api/`)
 
-Single file at the `lib/` root with the backend calls. Keep new calls there. Auth token is passed explicitly to each call. Errors are typed as `ApiError` (from `lib/platform/networkErrors.ts`) with a `category` field (`offline | timeout | http_401 | http_4xx | http_5xx | http_429 | cancelled`). The layer includes:
+Backend calls live in `lib/api/`, split by area: `http.ts` (request core, timeouts, caching), `auth.ts`, `circles.ts`, `statements.ts`, `records.ts`, `payments.ts`, `billing.ts`, `assistant.ts`, `chat.ts`. `lib/api/index.ts` re-exports the public surface, so import from `lib/api` as before. Put new calls in the matching area file and add them to `index.ts`. Auth token is passed explicitly to each call. Errors are typed as `ApiError` (from `lib/platform/networkErrors.ts`) with a `category` field (`offline | timeout | http_401 | http_4xx | http_5xx | http_429 | cancelled`). The layer includes:
 
 - `runWithTimeout` wraps every fetch with an abort timeout
 - `runDedupedGet` / `shouldUseHttpGetCache` cache GET responses and deduplicate in-flight requests

@@ -81,7 +81,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '7. Records and communications',
         body:
-          'CircuSave stores records you and other members create through the app, including membership, contribution status, payout order, and related activity. You consent to receive service-related notices through the app, email, SMS, or other contact methods you provide, as described in the Electronic Consent and Privacy Policy.',
+          'CircuSave stores records you and other members create through the app, including membership, contribution status, payout order, and related activity. You consent to receive service-related notices through the app, by email, or by notifications on your device, as described in the Electronic Consent and Privacy Policy.',
       },
       {
         heading: '8. Subscriptions and platform fees',
@@ -135,12 +135,12 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '2. Information we collect',
         body:
-          'We may collect account details you provide (such as name, email, phone number, and password credentials, and sign-in details if you use Google or Apple), profile preferences, circle membership and organizer roles, contribution and payout records entered or confirmed in the app, and payment handles you choose to enter (for example a Cash App tag, Venmo name, or PayPal email). We also collect chat messages inside circles and your conversations with the SuSu AI assistant; the agreements you accept, with the time and the IP address, device description, and app-install identifier recorded with the acceptance; device and app usage data needed for security and reliability, such as push-notification tokens and time zone; and communications you send through support.',
+          'We may collect account details you provide (such as name, email, phone number, and password credentials, and sign-in details if you use Google), profile preferences, circle membership and organizer roles, contribution and payout records entered or confirmed in the app, and payment handles you choose to enter (for example a Cash App tag, Venmo name, or PayPal email). We also collect chat messages inside circles and your conversations with the SuSu AI assistant; the agreements you accept, with the time and the IP address, device description, and app-install identifier recorded with the acceptance; device and app usage data needed for security and reliability, such as push-notification tokens and time zone; and communications you send through support. The CircuSave app does not include advertising or third-party analytics tools.',
       },
       {
         heading: '3. Payment-related information',
         body:
-          'When payments are processed through independent payment providers, those providers may collect payment method details directly under their own policies. CircuSave may receive limited payment status information (for example, success, failure, amount, or reference identifiers) needed to update circle records. CircuSave does not treat a displayed pot total as a CircuSave deposit account balance.',
+          'CircuSave does not process card or bank payments in the app and does not hold circle funds. At present, CircuSave does not collect or move contribution payments between members: members pay each other outside CircuSave, for example with Zelle, Cash App, Venmo, or PayPal, and those services handle payment details under their own policies. CircuSave stores the records and payment instructions you choose to enter. CircuSave does not treat a displayed pot total as a CircuSave deposit account balance. If we add paid features or in-app payments, we will update this Privacy Policy before they begin.',
       },
       {
         heading: '4. How we use information',
@@ -150,12 +150,12 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '5. How information is shared',
         body:
-          'Circle members and organizers may see information needed for circle operation, such as display names, contribution status, payout order, chat, and related activity. We share information with service providers that help us run the app: hosting and database (Railway), email delivery (Resend), push notifications (Expo and Google Firebase Cloud Messaging), optional Google or Apple sign-in, the AI providers that process the text you send to the SuSu AI assistant, and Google Play for Organizer Pro billing. If you ask for a text-message code, a text-message provider also handles your phone number. These providers handle information under their own policies. We do not sell personal information. We may disclose information if required by law or to protect users, the platform, or the public from harm or fraud.',
+          'Circle members and organizers may see information needed for circle operation, such as display names, contribution status, payout order, chat, and related activity. We share information with service providers that help us run the app: hosting and database (Railway), email delivery (Resend), push notifications (Expo and Google Firebase Cloud Messaging), Google sign-in if you choose it, the AI providers that process the text you send to the SuSu AI assistant (Google Gemini, with OpenAI as a backup), and encrypted backup storage (Cloudflare). These providers handle information under their own policies. We do not sell personal information. We may disclose information if required by law or to protect users, the platform, or the public from harm or fraud.',
       },
       {
         heading: '6. Retention',
         body:
-          "We keep personal information while your account is active. You can delete your account in the app (Settings > Security & Privacy > Delete Account) or through Support. When you do, we remove or anonymize your name, contact details, password, sign-in links, messages, payment handles, notes you wrote, notifications, and the network and device details saved with agreements. To keep other members' records accurate, we keep contribution, payout, and ledger amounts, dates, and statuses, signed agreement records, statements and documents already issued (which may still show your name), and notes other people wrote about you. Other members see these as \"Deleted User\". If you owed money when you deleted your account, the amount stays on the record. Backups of our database may keep deleted information for a limited time before they expire; if we restore a backup, we delete your information again. Our service providers, including AI and billing providers, may keep information under their own policies, and we cannot delete it from their systems. We also keep information as needed for security, dispute history, and legal compliance.",
+          "We keep personal information while your account is active. You can delete your account in the app (Settings > Security & Privacy > Delete Account) or through Support. When you do, we remove or anonymize your name, contact details, password, sign-in links, messages, payment handles, notes you wrote, notifications, and the network and device details saved with agreements. To keep other members' records accurate, we keep contribution, payout, and ledger amounts, dates, and statuses, signed agreement records, statements and documents already issued (which may still show your name), and notes other people wrote about you. Other members see these as \"Deleted User\". If you owed money when you deleted your account, the amount stays on the record. We keep weekly encrypted backups of our database for up to about 120 days, so deleted information may remain in backups until they expire; if we restore a backup, we delete deleted accounts again. Our service providers, including AI providers, may keep information under their own policies, and we cannot delete it from their systems. We also keep information as needed for security, dispute history, and legal compliance.",
       },
       {
         heading: '7. Security',
@@ -263,7 +263,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: '2. How we deliver electronic records',
         body:
-          'Electronic records may be delivered in the CircuSave app, by email, by SMS or similar messaging where you provide a phone number, or by other electronic methods reasonably designed to reach you. Some notices may require you to open the app or a linked screen to review the full content.',
+          'Electronic records may be delivered in the CircuSave app, by email, or by notifications on your device. CircuSave itself does not send text messages (SMS); an organizer may choose to send a reminder from their own messaging app on their own phone. Some notices may require you to open the app or a linked screen to review the full content.',
       },
       {
         heading: '3. Hardware and software requirements',

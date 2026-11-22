@@ -231,9 +231,6 @@ export default function PaymentSetupScreen() {
               <Text style={styles.explainerText}>
                 {t('contributions:paymentSetup.externalPaymentDisclosure')}
               </Text>
-              <Text style={styles.explainerText}>
-                {t('contributions:paymentSetup.notPayoutPreferences')}
-              </Text>
             </View>
           </View>
 

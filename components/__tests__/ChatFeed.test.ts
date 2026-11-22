@@ -48,4 +48,49 @@ describe('ChatFeed keyboard contract', () => {
     expect(source).toMatch(/onDeleteMessage/);
     expect(source).toMatch(/<ChatInput/);
   });
+
+  test('private chat hides sender names and bubbles size to their text', () => {
+    const feed = readFileSync(path.join(__dirname, '..', 'ChatFeed.tsx'), 'utf8');
+    const chat = readFileSync(
+      path.join(__dirname, '..', 'ConversationChat.tsx'),
+      'utf8',
+    );
+    expect(feed).toMatch(/showSenderName/);
+    expect(feed).not.toMatch(/width: '100%'/);
+    expect(chat).toMatch(/showSenderName=\{isGroup \|\|/);
+  });
+
+  test('private chats show Seen, and people can be added, removed or the chat deleted', () => {
+    const feed = readFileSync(path.join(__dirname, '..', 'ChatFeed.tsx'), 'utf8');
+    const chat = readFileSync(
+      path.join(__dirname, '..', 'ConversationChat.tsx'),
+      'utf8',
+    );
+    // Only my newest message carries the receipt.
+    expect(feed).toMatch(/lastOwnMessageId/);
+    expect(feed).toMatch(/chat\.seenBy/);
+    expect(chat).toMatch(/showReadReceipts=\{!isGroup\}/);
+    expect(chat).toMatch(/addParticipant\(member\.id\)/);
+    expect(chat).toMatch(/removeParticipant\(userId\)/);
+    // Only the person who started a group chat sees Remove next to others.
+    expect(chat).toMatch(/ownerUserId === currentUserId/);
+    // Deleting a chat is "remove myself", confirmed first.
+    expect(chat).toMatch(/confirmRemove\(\s*currentUserId/);
+  });
+
+  test('list stays pinned to the newest message when the viewport shrinks', () => {
+    const feed = readFileSync(path.join(__dirname, '..', 'ChatFeed.tsx'), 'utf8');
+    expect(feed).toMatch(/onLayout=\{\(\) => \{/);
+    expect(feed).toMatch(/pinnedToBottomRef\.current\) \{\s*scrollToEnd\(false\)/);
+  });
+
+  test('composer is lifted by the measured keyboard overlap', () => {
+    const chat = readFileSync(
+      path.join(__dirname, '..', 'ConversationChat.tsx'),
+      'utf8',
+    );
+    expect(chat).toMatch(/measureInWindow/);
+    expect(chat).toMatch(/paddingBottom: keyboardOverlap/);
+    expect(chat).not.toMatch(/KeyboardAvoidingView/);
+  });
 });
