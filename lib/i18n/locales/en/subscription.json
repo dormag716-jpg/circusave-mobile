@@ -3,6 +3,7 @@
   "plans": "Plans",
   "eyebrow": "CircuSave Organizer Pro",
   "heroTitle": "Less chasing.\nMore confidence.",
+  "heroTagline": "Run multiple circles with less chasing, clearer records, and professional proof.",
   "trialActive": "Your free trial is active",
   "active": "Organizer Pro is active",
   "trialCopy": "Try every feature free for {{days}} days",
@@ -30,11 +31,14 @@
   "cancelRenewal": "Cancel renewal",
   "startTrial": "Start my {{days}}-day free trial",
   "freeTitle": "Free stays genuinely useful",
-  "freeCopy": "Run one complete circle with up to 20 hands. Upgrade only when your organizing grows.",
+  "freeCopy": "Run one complete circle with up to {{count}} hands. Upgrade only when your organizing grows.",
   "footer": "Secure checkout by Stripe · Cancel anytime · Your circle records remain yours",
   "iosUnavailableTitle": "Organizer Pro subscriptions are not yet available on iPhone.",
   "iosUnavailableBody": "Paid Organizer Pro billing is not offered on iPhone yet. Your current CircuSave access is unchanged.",
   "iosFooter": "Your circle records remain yours. iPhone subscriptions will use Apple billing when they become available.",
+  "webUnavailableTitle": "Organizer Pro subscriptions are not available on the web.",
+  "webUnavailableBody": "Paid Organizer Pro billing is available only in the mobile app. Your current CircuSave access is unchanged.",
+  "webFooter": "Your circle records remain yours. Purchase and manage Organizer Pro from the mobile app.",
   "checkoutUnavailable": "Checkout unavailable",
   "billingUnavailable": "Billing unavailable",
   "checkoutUrlMissing": "Checkout URL was unavailable.",
@@ -88,7 +92,7 @@
   "periodYears": "{{count}} years",
   "features": {
     "unlimitedCircles": "Unlimited open circles",
-    "hands": "Up to 50 hands per circle",
+    "hands": "Up to {{count}} hands per circle",
     "history": "Complete activity history"
   }
 }

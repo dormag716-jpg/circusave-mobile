@@ -54,6 +54,7 @@ const mockCancelPremiumSubscription = jest.fn();
 const mockGetBillingPlans = jest.fn();
 const mockAlert = jest.fn();
 let mockCheckoutParam: string | undefined;
+let mockPlatform: 'ios' | 'web' = 'ios';
 
 jest.mock('react-native', () => {
   const ReactModule = require('react');
@@ -77,10 +78,15 @@ jest.mock('react-native', () => {
       canOpenURL: jest.fn(async () => true),
       openURL: jest.fn(async () => undefined),
     },
-    Platform: { OS: 'ios' },
+    Platform: {
+      get OS() {
+        return mockPlatform;
+      },
+    },
     Pressable: host('Pressable'),
     ScrollView: host('ScrollView'),
     StyleSheet: { create: (styles: unknown) => styles },
+    useWindowDimensions: () => ({ width: 412, height: 915, fontScale: 1 }),
     Text: host('Text'),
     View: host('View'),
   };
@@ -177,6 +183,7 @@ jest.mock('../api', () => ({
 const TestRenderer: any = require('react-test-renderer');
 const {
   initializeI18n,
+  changeLanguagePreference,
 }: typeof import('../i18n') = require('../i18n');
 const SubscriptionScreen: typeof import('../../app/subscription').default =
   require('../../app/subscription').default;
@@ -244,8 +251,10 @@ beforeAll(async () => {
   await initializeI18n();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  mockPlatform = 'ios';
+  await changeLanguagePreference('en');
   mockIsPremium = false;
   mockEntitlements = {
     subscriptionStatus: 'inactive',
@@ -284,6 +293,35 @@ test('iOS free user sees StoreKit-unavailable copy and never starts Stripe check
   expect(mockCancelPremiumSubscription).not.toHaveBeenCalled();
   expect(mockInitializeGooglePlayBilling).not.toHaveBeenCalled();
   expect(mockGetBillingPlans).not.toHaveBeenCalled();
+});
+
+test('web free user sees web-specific copy and no iOS billing claims', async () => {
+  mockPlatform = 'web';
+  await mount();
+
+  expect(visibleText()).toContain(
+    'Organizer Pro subscriptions are not available on the web.',
+  );
+  expect(visibleText()).toContain(
+    'Paid Organizer Pro billing is available only in the mobile app.',
+  );
+  expect(visibleText()).not.toContain(
+    'Organizer Pro subscriptions are not yet available on iPhone.',
+  );
+  expect(visibleText()).not.toContain('iPhone subscriptions');
+  expect(mockCreateBillingCheckout).not.toHaveBeenCalled();
+});
+
+test('fallback hero tagline follows the selected language', async () => {
+  await changeLanguagePreference('es');
+  await mount();
+
+  expect(visibleText()).toContain(
+    'Administra varios círculos con menos seguimiento',
+  );
+  expect(visibleText()).not.toContain(
+    'Run multiple circles with less chasing',
+  );
 });
 
 test('old Stripe success deep link grants nothing locally', async () => {

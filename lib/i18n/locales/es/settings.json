@@ -143,5 +143,11 @@
   "assistantResetPosition": "Restablecer la posición del asistente",
   "assistantResetSubtitle": "Devuelve el botón flotante a su lugar predeterminado.",
   "assistantResetHint": "Coloca de nuevo el botón flotante del asistente abajo a la derecha.",
-  "assistantResetDone": "El botón del asistente volvió a su lugar predeterminado."
+  "assistantResetDone": "El botón del asistente volvió a su lugar predeterminado.",
+  "assistantToggle": "SuSu AI",
+  "assistantToggleOn": "Activado. Se muestra el botón flotante del asistente.",
+  "assistantToggleOff": "Desactivado. SuSu AI y su botón están ocultos en este dispositivo.",
+  "assistantToggleHint": "Activa o desactiva el asistente en este dispositivo.",
+  "assistantToggleOnDone": "SuSu AI está activado.",
+  "assistantToggleOffDone": "SuSu AI está desactivado."
 }

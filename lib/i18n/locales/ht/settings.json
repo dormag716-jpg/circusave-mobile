@@ -143,5 +143,11 @@
   "assistantResetPosition": "Reyajiste pozisyon asistan an",
   "assistantResetSubtitle": "Retounen bouton k ap flote a kote li te ye pa default la.",
   "assistantResetHint": "Mete bouton asistan k ap flote a anba adwat ankò.",
-  "assistantResetDone": "Bouton asistan an retounen kote li te ye pa default la."
+  "assistantResetDone": "Bouton asistan an retounen kote li te ye pa default la.",
+  "assistantToggle": "SuSu AI",
+  "assistantToggleOn": "Limen. Bouton asistan k ap flote a ap parèt.",
+  "assistantToggleOff": "Etenn. SuSu AI ak bouton li a kache sou aparèy sa a.",
+  "assistantToggleHint": "Limen oswa etenn asistan an sou aparèy sa a.",
+  "assistantToggleOnDone": "SuSu AI limen.",
+  "assistantToggleOffDone": "SuSu AI etenn."
 }

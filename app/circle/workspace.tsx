@@ -125,6 +125,7 @@ import {
   type StartCircleConfirmations,
 } from '@/lib/circles/startCircleReadiness';
 import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 import ConversationChat from '@/components/ConversationChat';
 import { Avatar } from '@/components/Avatar';
 import { DecisionSheet } from '@/components/DecisionSheet';
@@ -208,6 +209,7 @@ const tabs: {
 ];
 
 export default function CircleWorkspaceScreen() {
+  const compactLayout = useLayoutMetrics().compact;
   const { t } = useTranslation('circleWorkspace');
   const { session, status } = useAuthSession();
   const params = useLocalSearchParams<{
@@ -390,11 +392,20 @@ export default function CircleWorkspaceScreen() {
         accessibilityRole="button"
         accessibilityLabel={t('accessibility.backToCircles')}
       >
-        <FontAwesome name="chevron-left" size={28} color={colors.textStrong} />
+        <FontAwesome
+          name="chevron-left"
+          size={compactLayout ? 22 : 28}
+          color={colors.textStrong}
+        />
       </Pressable>
 
       <View style={styles.headerCenter}>
-        <Text style={styles.title}>{circle?.name || t('fallbackName')}</Text>
+        <Text
+          style={[styles.title, compactLayout && styles.titleCompact]}
+          numberOfLines={2}
+        >
+          {circle?.name || t('fallbackName')}
+        </Text>
         <Text style={styles.subtitle}>
           {circle
             ? t('headerSummary', {
@@ -411,7 +422,11 @@ export default function CircleWorkspaceScreen() {
         accessibilityRole="button"
         accessibilityLabel={t('accessibility.dashboard')}
       >
-        <FontAwesome name="home" size={28} color={colors.textStrong} />
+        <FontAwesome
+          name="home"
+          size={compactLayout ? 22 : 28}
+          color={colors.textStrong}
+        />
       </Pressable>
     </View>
   );
@@ -539,6 +554,7 @@ function WorkspaceContent({
   onRefresh: () => void;
   keyboardVisible: boolean;
 }) {
+  const compactLayout = useLayoutMetrics().compact;
   const isOrganizer = circle.userRole === 'organizer';
   const { t, i18n: translation } = useTranslation([
     'circleWorkspace',
@@ -1515,7 +1531,7 @@ function WorkspaceContent({
 
   const chrome = (
     <>
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, compactLayout && styles.tabBarCompact]}>
         {visibleTabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
@@ -1540,7 +1556,12 @@ function WorkspaceContent({
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.tabText, selected && styles.activeTabText]}>
+              <Text
+                style={[styles.tabText, selected && styles.activeTabText]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 {t(`tabs.${tab.id}`)}
               </Text>
             </Pressable>
@@ -6263,7 +6284,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 4,
   },
-  headerCenter: { alignItems: 'center', flex: 1 },
+  headerCenter: { alignItems: 'center', flex: 1, paddingHorizontal: 8 },
+  titleCompact: { fontSize: 22, textAlign: 'center' },
+  tabBarCompact: { gap: 2, marginTop: 12, padding: 4 },
   title: {
     color: colors.textStrong,
     fontSize: 28,
@@ -6362,6 +6385,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     minHeight: 48,
+    paddingHorizontal: 2,
   },
   tabIcon: {
     position: 'relative',

@@ -28,6 +28,7 @@ import {
   workspaceChromeLayoutStyle,
 } from '@/lib/shared/workspaceKeyboardChrome';
 import { colors, radii } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 import { useConversations } from '@/lib/circles/useConversations';
 
 import { Avatar } from './Avatar';
@@ -65,6 +66,7 @@ export default function ConversationChat({
   focused = true,
   chromeCollapsed = false,
 }: ConversationChatProps) {
+  const compact = useLayoutMetrics().compact;
   const { t } = useTranslation('circleWorkspace');
   const rootRef = useRef<View>(null);
   /** Last keyboard metrics. Used to re-measure after chrome collapses. */
@@ -233,8 +235,10 @@ export default function ConversationChat({
         style={workspaceChromeLayoutStyle(chromeCollapsed)}
         collapsable={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>{t('chat.title')}</Text>
+        <View style={[styles.header, compact && styles.headerCompact]}>
+          <Text style={[styles.title, compact && styles.titleCompact]}>
+            {t('chat.title')}
+          </Text>
           <Pressable
             style={({ pressed }) => [
               styles.newChatButton,
@@ -276,11 +280,11 @@ export default function ConversationChat({
               >
                 <View style={styles.chipAvatar}>
                   {conversation.type === 'group' ? (
-                    <View style={styles.groupAvatar}>
-                      <FontAwesome name="users" size={15} color={colors.primary} />
+                    <View style={[styles.groupAvatar, compact && styles.groupAvatarCompact]}>
+                      <FontAwesome name="users" size={compact ? 13 : 15} color={colors.primary} />
                     </View>
                   ) : (
-                    <Avatar name={conversation.title} size={34} />
+                    <Avatar name={conversation.title} size={compact ? 28 : 34} />
                   )}
                   {conversation.unreadCount > 0 ? (
                     <View style={styles.unreadBadge}>
@@ -334,18 +338,18 @@ export default function ConversationChat({
             style={workspaceChromeLayoutStyle(chromeCollapsed)}
             collapsable={false}
           >
-            <View style={styles.threadHeader}>
+            <View style={[styles.threadHeader, compact && styles.threadHeaderCompact]}>
               <View style={styles.threadIdentity}>
                 {selectedConversation.type === 'group' ? (
-                  <View style={styles.groupAvatarLarge}>
+                  <View style={[styles.groupAvatarLarge, compact && styles.groupAvatarLargeCompact]}>
                     <FontAwesome
                       name="users"
-                      size={18}
+                      size={compact ? 15 : 18}
                       color={colors.primary}
                     />
                   </View>
                 ) : (
-                  <Avatar name={selectedConversation.title} size={42} />
+                  <Avatar name={selectedConversation.title} size={compact ? 32 : 42} />
                 )}
                 <View style={styles.threadHeaderCopy}>
                   <Text style={styles.threadTitle} numberOfLines={1}>
@@ -536,6 +540,11 @@ function displayMemberName(member: BackendCircleMember) {
 }
 
 const styles = StyleSheet.create({
+  headerCompact: { minHeight: 36 },
+  titleCompact: { fontSize: 18 },
+  groupAvatarCompact: { borderRadius: 14, height: 28, width: 28 },
+  groupAvatarLargeCompact: { borderRadius: 15, height: 30, width: 30 },
+  threadHeaderCompact: { paddingBottom: 6, paddingTop: 2 },
   container: {
     flex: 1,
     minHeight: 0,

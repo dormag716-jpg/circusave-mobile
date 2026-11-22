@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 
 import { AssistantSheet } from '@/components/AssistantSheet';
+import { useAssistantEnabled } from '@/components/useAssistantEnabled';
 import { useDeviceLock } from '@/components/DeviceLock';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { AssistantCirclePicker } from '@/components/AssistantCirclePicker';
@@ -30,13 +31,17 @@ export function AssistantSheetProvider({
 }) {
   const { status } = useAuthSession();
   const { isLocked } = useDeviceLock();
+  const { ready: assistantEnabled } = useAssistantEnabled();
   const [visible, setVisible] = useState(false);
   const [circleId, setCircleId] = useState<string | null>(null);
   // Bumped on lock or sign-out so the sheet and the chat inside it are unmounted
   // at once (no close animation), leaving no private messages in memory or in the
   // accessibility tree, and nothing mounted while navigation resets underneath.
   const [epoch, setEpoch] = useState(0);
-  const mustBeClosed = isLocked || status !== 'authenticated';
+  // Turning SuSu AI off closes the sheet and blocks every way of opening it
+  // (button, Settings, deep link), the same way a lock or sign-out does.
+  const mustBeClosed =
+    isLocked || status !== 'authenticated' || !assistantEnabled;
 
   useEffect(() => {
     if (!mustBeClosed) return;

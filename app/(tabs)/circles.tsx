@@ -37,6 +37,8 @@ import {
 import { formatCurrency } from '@/lib/i18n/formatters';
 import { buildOpenCircleCapacity } from '@/lib/circles/circleCapacity';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
+import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 import { formatHandsPeopleMetrics } from '@/lib/circles/circleLifecycleCopy';
 import {
   ASSISTANT_FAB_MARGIN,
@@ -66,6 +68,8 @@ type ListItem =
 
 export default function CirclesScreen() {
   const { t } = useTranslation('circles');
+  const layout = useLayoutMetrics();
+  const compact = layout.compact;
   const { session, status } = useAuthSession();
   const { planTier } = useEntitlements();
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
@@ -356,14 +360,21 @@ export default function CirclesScreen() {
       <FlatList
         data={listData}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingHorizontal: layout.gutter,
+            maxWidth: layout.wide ? CONTENT_MAX_WIDTH : undefined,
+          },
+          compact && styles.contentCompact,
+        ]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <View style={styles.header}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.title}>{t('myCircles')}</Text>
-                <Text style={styles.subtitle}>
+          <View style={[styles.header, compact && styles.headerCompact]}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 180 }}>
+                <Text style={[styles.title, compact && styles.titleCompact]}>{t('myCircles')}</Text>
+                <Text style={[styles.subtitle, compact && styles.subtitleCompact]}>
                   {t('subtitle')}
                 </Text>
                 {!openCap.unlimited ? (
@@ -507,7 +518,7 @@ export default function CirclesScreen() {
               <FontAwesome name="chevron-right" size={16} color={colors.muted} />
             </Pressable>
 
-            <View style={styles.howItWorksContainer}>
+            <View style={[styles.howItWorksContainer, compact && styles.howItWorksCompact]}>
               <Pressable
                 style={{
                   flexDirection: 'row',
@@ -586,7 +597,11 @@ export default function CirclesScreen() {
       />
 
       <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        style={({ pressed }) => [
+          styles.fab,
+          compact && styles.fabCompact,
+          pressed && styles.fabPressed,
+        ]}
         onPress={() => {
           if (openCap.atCapacity && openCap.primaryOpenCircleId) {
             router.push(circleWorkspaceHref(openCap.primaryOpenCircleId));
@@ -627,6 +642,7 @@ function CircleCard({
   onDeleteSetup?: () => void;
 }) {
   const { t, i18n } = useTranslation('circles');
+  const compact = useLayoutMetrics().compact;
   const userIsOrganizer = isOrganizer(circle.userRole);
   const isSetup = isSetupCircleStatus(circle.status);
   const lifecycle = getCircleListLifecycle(circle.status, circle.pot_status);
@@ -662,7 +678,11 @@ function CircleCard({
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.card,
+        compact && styles.cardCompact,
+        pressed && styles.cardPressed,
+      ]}
       onPress={() => router.push(circleWorkspaceHref(circle.id))}
       accessibilityRole="button"
       accessibilityLabel={
@@ -674,7 +694,9 @@ function CircleCard({
       <View style={styles.cardHeader}>
         <View style={styles.circleInfo}>
           <View style={styles.circleTitleRow}>
-            <Text style={styles.circleName}>{circle.name}</Text>
+            <Text style={[styles.circleName, compact && styles.circleNameCompact]}>
+              {circle.name}
+            </Text>
             {isSetup ? (
               <View style={styles.setupTag}>
                 <Text style={styles.setupTagText}>{t('setup')}</Text>
@@ -768,8 +790,10 @@ function CircleCard({
         </View>
         {!isSetup && isLiveActive ? (
           <View style={{ alignItems: 'center' }}>
-            <View style={styles.progressRing}>
-              <Text style={styles.progressText}>{progress}%</Text>
+            <View style={[styles.progressRing, compact && styles.progressRingCompact]}>
+              <Text style={[styles.progressText, compact && styles.progressTextCompact]}>
+                {progress}%
+              </Text>
             </View>
             <Text
               style={{
@@ -788,7 +812,7 @@ function CircleCard({
         ) : null}
       </View>
 
-      <View style={styles.detailsRow}>
+      <View style={[styles.detailsRow, compact && styles.detailsRowCompact]}>
         <View style={styles.detail}>
           <Text style={styles.detailLabel}>{t('contributionLabel')}</Text>
           <Text style={styles.detailValue}>
@@ -804,7 +828,7 @@ function CircleCard({
         </View>
       </View>
 
-      <View style={styles.openButton}>
+      <View style={[styles.openButton, compact && styles.openButtonCompact]}>
         <Text style={styles.openButtonText}>
           {isSetup ? t('continueSetup') : t('openCircleButton')}
         </Text>
@@ -816,11 +840,14 @@ function CircleCard({
 
 function EmptyState() {
   const { t } = useTranslation('circles');
+  const compact = useLayoutMetrics().compact;
   return (
-    <View style={styles.emptyState}>
-      <FontAwesome name="users" size={80} color={colors.muted} />
-      <Text style={styles.emptyTitle}>{t('emptyTitle')}</Text>
-      <Text style={styles.emptySubtitle}>
+    <View style={[styles.emptyState, compact && styles.emptyStateCompact]}>
+      <FontAwesome name="users" size={compact ? 44 : 80} color={colors.muted} />
+      <Text style={[styles.emptyTitle, compact && styles.emptyTitleCompact]}>
+        {t('emptyTitle')}
+      </Text>
+      <Text style={[styles.emptySubtitle, compact && styles.emptySubtitleCompact]}>
         {t('emptyDescription')}
       </Text>
     </View>
@@ -828,15 +855,33 @@ function EmptyState() {
 }
 
 const styles = StyleSheet.create({
+  // Compact (short or narrow) windows: smaller type, padding and gaps so cards
+  // stay readable without filling the screen.
+  contentCompact: { paddingTop: 12 },
+  headerCompact: { marginBottom: 16 },
+  titleCompact: { fontSize: 26 },
+  subtitleCompact: { fontSize: 14, lineHeight: 20 },
+  howItWorksCompact: { borderRadius: 20, marginTop: 16, padding: 16 },
+  fabCompact: { borderRadius: 28, height: 56, width: 56 },
+  cardCompact: { borderRadius: 22, padding: 16 },
+  circleNameCompact: { fontSize: 20 },
+  progressRingCompact: { borderRadius: 30, borderWidth: 5, height: 60, width: 60 },
+  progressTextCompact: { fontSize: 16 },
+  detailsRowCompact: { gap: 16, marginTop: 14 },
+  openButtonCompact: { marginTop: 14, minHeight: 48 },
+  emptyStateCompact: { paddingVertical: 28 },
+  emptyTitleCompact: { fontSize: 20, marginTop: 14 },
+  emptySubtitleCompact: { fontSize: 15, marginTop: 8 },
   screen: {
     flex: 1,
     backgroundColor: colors.background,
   },
   content: {
+    alignSelf: 'center',
     // Clears the create button, which sits above the assistant button.
     paddingBottom: 120 + ASSISTANT_FAB_SIZE + ASSISTANT_FAB_MARGIN,
-    paddingHorizontal: spacing.screenX,
     paddingTop: 20,
+    width: '100%',
   },
   header: {
     marginBottom: 32,

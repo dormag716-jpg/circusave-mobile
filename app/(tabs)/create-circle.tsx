@@ -20,7 +20,9 @@ import {
   createRequestGeneration,
   shouldReplaceFinancialStateOnError,
 } from '@/lib/shared/requestGeneration';
+import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
 import { colors, radii, spacing } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 
 type BenefitIcon = React.ComponentProps<typeof FontAwesome>['name'];
 
@@ -84,22 +86,34 @@ export default function CreateCircleGuideScreen() {
       String(existing.status || '').toLowerCase(),
     );
 
+  const layout = useLayoutMetrics();
+  const compact = layout.compact;
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingHorizontal: layout.gutter,
+            maxWidth: layout.wide ? CONTENT_MAX_WIDTH : undefined,
+          },
+          compact && styles.contentCompact,
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.hero}>
-          <Text style={styles.emoji}>👥</Text>
-          <Text style={styles.title}>{t('landing.title')}</Text>
-          <Text style={styles.subtitle}>
+        <View style={[styles.hero, compact && styles.heroCompact]}>
+          <Text style={[styles.emoji, compact && styles.emojiCompact]}>👥</Text>
+          <Text style={[styles.title, compact && styles.titleCompact]}>
+            {t('landing.title')}
+          </Text>
+          <Text style={[styles.subtitle, compact && styles.subtitleCompact]}>
             {t('landing.subtitle')}
           </Text>
         </View>
 
         {hasReachedLimit ? null : (
-          <View style={styles.planNote}>
+          <View style={[styles.planNote, compact && styles.planNoteCompact]}>
             <FontAwesome name="info-circle" size={16} color={colors.primary} />
             <Text style={styles.planNoteText}>
               {t('landing.planNote')}
@@ -107,14 +121,14 @@ export default function CreateCircleGuideScreen() {
           </View>
         )}
 
-        <View style={styles.benefits}>
+        <View style={[styles.benefits, compact && styles.benefitsCompact]}>
           <Benefit icon="lock" text={t('landing.ledger')} />
           <Benefit icon="users" text={t('landing.trusted')} />
           <Benefit icon="calendar" text={t('landing.reminders')} />
         </View>
 
         {hasReachedLimit ? (
-          <View style={styles.limitCard}>
+          <View style={[styles.limitCard, compact && styles.limitCardCompact]}>
             <View style={styles.limitIcon}>
               <FontAwesome name="lock" size={24} color={colors.warning} />
             </View>
@@ -157,6 +171,7 @@ export default function CreateCircleGuideScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.primaryButton,
+                compact && styles.primaryButtonCompact,
                 pressed && styles.pressed,
               ]}
               onPress={() => router.push('/create-circle/setup')}
@@ -177,25 +192,40 @@ export default function CreateCircleGuideScreen() {
 }
 
 function Benefit({ icon, text }: { icon: BenefitIcon; text: string }) {
+  const compact = useLayoutMetrics().compact;
   return (
-    <View style={styles.benefitRow}>
-      <View style={styles.benefitIcon}>
-        <FontAwesome name={icon} size={22} color={colors.primary} />
+    <View style={[styles.benefitRow, compact && styles.benefitRowCompact]}>
+      <View style={[styles.benefitIcon, compact && styles.benefitIconCompact]}>
+        <FontAwesome name={icon} size={compact ? 18 : 22} color={colors.primary} />
       </View>
-      <Text style={styles.benefitText}>{text}</Text>
+      <Text style={[styles.benefitText, compact && styles.benefitTextCompact]}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Compact (short or narrow) windows: trim the decorative hero and gaps.
+  contentCompact: { paddingBottom: 80, paddingTop: 12 },
+  heroCompact: { marginBottom: 12 },
+  emojiCompact: { fontSize: 40, marginBottom: 6 },
+  titleCompact: { fontSize: 26 },
+  subtitleCompact: { fontSize: 15, lineHeight: 22, marginTop: 6 },
+  planNoteCompact: { marginBottom: 14, padding: 12 },
+  benefitsCompact: { gap: 10, marginBottom: 14 },
+  benefitRowCompact: { gap: 12 },
+  benefitIconCompact: { borderRadius: 18, height: 40, width: 40 },
+  benefitTextCompact: { fontSize: 15 },
+  primaryButtonCompact: { minHeight: 52 },
+  limitCardCompact: { padding: 16 },
   screen: {
     flex: 1,
     backgroundColor: colors.background,
   },
   content: {
+    alignSelf: 'center',
     paddingBottom: 100,
-    paddingHorizontal: spacing.screenX,
     paddingTop: 24,
+    width: '100%',
   },
   hero: {
     alignItems: 'center',

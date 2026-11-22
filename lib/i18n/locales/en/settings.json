@@ -143,5 +143,11 @@
   "assistantResetPosition": "Reset assistant position",
   "assistantResetSubtitle": "Move the floating button back to its default place.",
   "assistantResetHint": "Puts the floating assistant button back at the bottom right.",
-  "assistantResetDone": "The assistant button is back in its default place."
+  "assistantResetDone": "The assistant button is back in its default place.",
+  "assistantToggle": "SuSu AI",
+  "assistantToggleOn": "On. The floating assistant button is shown.",
+  "assistantToggleOff": "Off. SuSu AI and its button are hidden on this device.",
+  "assistantToggleHint": "Turns the assistant on or off for this device.",
+  "assistantToggleOnDone": "SuSu AI is on.",
+  "assistantToggleOffDone": "SuSu AI is off."
 }

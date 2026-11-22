@@ -2,7 +2,6 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
-  Dimensions,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -41,7 +40,9 @@ import {
 } from '@/lib/platform/navigation';
 import { isOrganizer } from '@/lib/platform/permissions';
 import { isRoundPayoutLocked } from '@/lib/circles/roundPayoutLock';
-import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
+import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
+import { colors, radii, shadows } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 import type { BackendCircleSummary, DashboardSummary } from '@/lib/shared/types';
 import {
   isActiveCircleStatus,
@@ -70,6 +71,12 @@ const DETAIL_LIMIT = 5;
 export default function DashboardScreen() {
   const { session, status } = useAuthSession();
   const { t, i18n } = useTranslation('dashboard');
+  const layout = useLayoutMetrics();
+  const compact = layout.compact;
+  // Width of one hero card in the carousel: the content column minus gutters.
+  const heroCardWidth =
+    Math.min(layout.width, layout.wide ? CONTENT_MAX_WIDTH : layout.width) -
+    layout.gutter * 2;
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [circles, setCircles] = useState<BackendCircleSummary[]>([]);
   const [circleDetails, setCircleDetails] = useState<
@@ -286,10 +293,48 @@ export default function DashboardScreen() {
     }
   }, [loadDashboard]);
 
+  const actionsRow = (
+    <View style={[styles.actions, layout.stackRow && styles.actionsStacked]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => router.push(createCircleHref)}
+            accessibilityRole="button"
+            accessibilityLabel={t('createNewCircle')}
+          >
+            <FontAwesome name="plus" size={20} color={colors.onColor} />
+            <Text style={styles.actionText}>{t('newCircle')}</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.secondaryAction,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => router.push(joinCircleHref)}
+            accessibilityRole="button"
+            accessibilityLabel={t('joinWithCode')}
+          >
+            <FontAwesome name="key" size={18} color={colors.primary} />
+            <Text style={styles.secondaryActionText}>{t('joinByCode')}</Text>
+          </Pressable>
+        </View>
+  );
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingHorizontal: layout.gutter,
+            maxWidth: layout.wide ? CONTENT_MAX_WIDTH : undefined,
+          },
+          compact && styles.contentCompact,
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -300,9 +345,9 @@ export default function DashboardScreen() {
           />
         }
       >
-        <View style={styles.greeting}>
+        <View style={[styles.greeting, compact && styles.greetingCompact]}>
           <View style={styles.welcomeRow}>
-            <Text style={styles.welcome}>
+            <Text style={[styles.welcome, compact && styles.welcomeCompact]}>
               {getGreeting(t)}, {firstName} 👋
             </Text>
             {hasSnapshot ? (
@@ -340,9 +385,7 @@ export default function DashboardScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             pagingEnabled
-            snapToInterval={
-              Dimensions.get('window').width - spacing.screenX * 2 + 16
-            }
+            snapToInterval={heroCardWidth + 12}
             decelerationRate="fast"
             contentContainerStyle={styles.heroCarouselContainer}
           >
@@ -365,6 +408,8 @@ export default function DashboardScreen() {
                   key={circle.id}
                   style={({ pressed }) => [
                     styles.carouselHeroCard,
+                    compact && styles.heroCardCompact,
+                    { width: heroCardWidth },
                     pressed && styles.pressed,
                   ]}
                   onPress={() => router.push(circleWorkspaceHref(circle.id))}
@@ -378,7 +423,9 @@ export default function DashboardScreen() {
                 >
                   <Text style={styles.heroSub}>{circle.name}</Text>
                   <Text style={styles.heroLabel}>{t('expectedPot')}</Text>
-                  <Text style={styles.heroAmount}>{formatMoney(expectedPot)}</Text>
+                  <Text style={[styles.heroAmount, compact && styles.heroAmountCompact]}>
+                    {formatMoney(expectedPot)}
+                  </Text>
                   {confirmedAmount !== null ? (
                     <Text style={styles.heroSecondary}>
                       {t('confirmedOf', {
@@ -414,7 +461,7 @@ export default function DashboardScreen() {
             })}
           </ScrollView>
         ) : showEmptyCircles ? (
-          <View style={styles.heroCard}>
+          <View style={[styles.heroCard, compact && styles.heroCardCompact]}>
             <Text style={styles.heroLabel}>
               {t('noActiveCircles')}
             </Text>
@@ -516,7 +563,9 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
-        <View style={styles.statsRow}>
+        {compact ? actionsRow : null}
+
+        <View style={[styles.statsRow, compact && styles.statsRowCompact]}>
           {showSkeleton ? (
             <>
               <View style={styles.statSkeleton} />
@@ -525,6 +574,7 @@ export default function DashboardScreen() {
           ) : (
             <>
               <StatCard
+                compact={compact}
                 icon="clock-o"
                 value={clockPresentation.value}
                 label={clockPresentation.label}
@@ -540,6 +590,7 @@ export default function DashboardScreen() {
                 }
               />
               <StatCard
+                compact={compact}
                 icon="users"
                 value={String(summary?.activeCircles ?? activeCircles.length)}
                 label={t('activeCircles')}
@@ -694,34 +745,7 @@ export default function DashboardScreen() {
           ) : null}
         </View>
 
-        <View style={styles.actions}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionButton,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => router.push(createCircleHref)}
-            accessibilityRole="button"
-            accessibilityLabel={t('createNewCircle')}
-          >
-            <FontAwesome name="plus" size={20} color={colors.onColor} />
-            <Text style={styles.actionText}>{t('newCircle')}</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionButton,
-              styles.secondaryAction,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => router.push(joinCircleHref)}
-            accessibilityRole="button"
-            accessibilityLabel={t('joinWithCode')}
-          >
-            <FontAwesome name="key" size={18} color={colors.primary} />
-            <Text style={styles.secondaryActionText}>{t('joinByCode')}</Text>
-          </Pressable>
-        </View>
+        {compact ? null : actionsRow}
       </ScrollView>
     </SafeAreaView>
   );
@@ -806,6 +830,7 @@ function deriveContributionActions(
 }
 
 function StatCard({
+  compact,
   icon,
   value,
   label,
@@ -814,6 +839,7 @@ function StatCard({
   detailColor,
   valueColor,
 }: {
+  compact?: boolean;
   icon: IconName;
   value: string;
   label: string;
@@ -823,8 +849,8 @@ function StatCard({
   valueColor?: string;
 }) {
   return (
-    <View style={styles.statCard}>
-      <FontAwesome name={icon} size={28} color={color} />
+    <View style={[styles.statCard, compact && styles.statCardCompact]}>
+      <FontAwesome name={icon} size={compact ? 22 : 28} color={color} />
       <Text style={[styles.statValue, valueColor ? { color: valueColor } : null]}>
         {value}
       </Text>
@@ -905,13 +931,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
+    alignSelf: 'center',
     paddingBottom: ASSISTANT_FAB_TAB_CONTENT_PADDING,
-    paddingHorizontal: spacing.screenX,
     paddingTop: 12,
+    width: '100%',
   },
   greeting: {
     marginBottom: 16,
   },
+  greetingCompact: { marginBottom: 10 },
+  contentCompact: { paddingTop: 8 },
+  welcomeCompact: { fontSize: 22 },
+  heroCardCompact: { marginBottom: 10, minHeight: 0, padding: 14 },
+  heroAmountCompact: { fontSize: 32, marginVertical: 2 },
+  statsRowCompact: { gap: 10, marginBottom: 14 },
+  statCardCompact: { minHeight: 84, padding: 10 },
   welcomeRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -996,7 +1030,6 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     marginBottom: 4,
     padding: 20,
-    width: Dimensions.get('window').width - spacing.screenX * 2,
   },
   heroFooterRow: {
     borderTopColor: 'rgba(255,255,255,0.2)',
@@ -1295,7 +1328,9 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: 12,
+    marginBottom: 14,
   },
+  actionsStacked: { flexDirection: 'column' },
   actionButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -1305,9 +1340,12 @@ const styles = StyleSheet.create({
     gap: 10,
     justifyContent: 'center',
     minHeight: 50,
+    paddingVertical: 8,
     paddingHorizontal: 12,
   },
   actionText: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: colors.onColor,
     fontSize: 14,
     fontWeight: '900',
@@ -1318,8 +1356,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   secondaryActionText: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: colors.primary,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
   },
   pressed: {

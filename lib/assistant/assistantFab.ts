@@ -54,11 +54,14 @@ export type AssistantFabInput = {
   pathname: string | null | undefined;
   keyboardOpen: boolean;
   sheetOpen: boolean;
+  /** The user's SuSu AI switch, and it has been read from storage. */
+  assistantEnabled: boolean;
 };
 
 /** Whether the button may be drawn at all (before the fade-away timer is applied). */
 export function assistantFabAvailable(input: AssistantFabInput): boolean {
   return (
+    input.assistantEnabled &&
     input.authenticated &&
     input.lockReady &&
     !input.locked &&

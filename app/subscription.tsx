@@ -22,8 +22,14 @@ import {
   getAndroidApplicationPackage,
   openGooglePlaySubscriptionManagement,
 } from '@/lib/billing/googlePlaySubscriptionManagement';
+import {
+  FREE_MAX_PARTICIPATING_HANDS,
+  PREMIUM_MAX_PARTICIPATING_HANDS,
+} from '@/lib/billing/entitlements';
 import { logClientWarning } from '@/lib/platform/errorLogging';
-import { colors, radii, shadows, spacing } from '@/lib/shared/theme';
+import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
+import { colors, radii, shadows } from '@/lib/shared/theme';
+import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 
 const FALLBACK_FEATURE_KEYS = [
   'unlimitedCircles',
@@ -34,8 +40,7 @@ const FALLBACK_FEATURE_KEYS = [
 const fallbackPremium: BillingPlan = {
   id: 'premium',
   name: 'Organizer Pro',
-  tagline:
-    'Run multiple circles with less chasing, clearer records, and professional proof.',
+  tagline: '',
   monthlyPriceCents: 799,
   annualPriceCents: 5999,
   annualSavingsCents: 3589,
@@ -47,6 +52,8 @@ type BillingInterval = 'monthly' | 'annual';
 
 export default function SubscriptionScreen() {
   const { t } = useTranslation(['subscription', 'common']);
+  const layout = useLayoutMetrics();
+  const compact = layout.compact;
   const { session, status: authStatus } = useAuthSession();
   const {
     entitlements,
@@ -62,6 +69,7 @@ export default function SubscriptionScreen() {
   const token = session?.session.token;
   const isAndroid = Platform.OS === 'android';
   const isIos = Platform.OS === 'ios';
+  const isWeb = Platform.OS === 'web';
   const [premium] = useState<BillingPlan>(fallbackPremium);
   const [interval, setInterval] = useState<BillingInterval>('annual');
   const [action, setAction] = useState<'portal' | null>(null);
@@ -295,10 +303,17 @@ export default function SubscriptionScreen() {
       <View style={styles.glowBottom} />
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingHorizontal: layout.gutter,
+              maxWidth: layout.wide ? CONTENT_MAX_WIDTH : undefined,
+            },
+            compact && styles.contentCompact,
+          ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.topBar}>
+          <View style={[styles.topBar, compact && styles.topBarCompact]}>
             <Pressable
               onPress={() => router.back()}
               style={styles.iconButton}
@@ -316,13 +331,20 @@ export default function SubscriptionScreen() {
             <View style={styles.iconButtonPlaceholder} />
           </View>
 
-          <Animated.View entering={FadeInUp.springify()} style={styles.hero}>
-            <View style={styles.crown}>
+          <Animated.View
+            entering={FadeInUp.springify()}
+            style={[styles.hero, compact && styles.heroCompact]}
+          >
+            <View style={[styles.crown, compact && styles.crownCompact]}>
               <FontAwesome name="diamond" size={20} color={colors.premiumGold} />
             </View>
             <Text style={styles.eyebrow}>{t('eyebrow')}</Text>
-            <Text style={styles.heroTitle}>{t('heroTitle')}</Text>
-            <Text style={styles.heroCopy}>{premium.tagline}</Text>
+            <Text style={[styles.heroTitle, compact && styles.heroTitleCompact]}>
+              {t('heroTitle')}
+            </Text>
+            <Text style={[styles.heroCopy, compact && styles.heroCopyCompact]}>
+              {t('heroTagline')}
+            </Text>
 
             {isPremium ? (
               <View style={styles.activePill}>
@@ -360,6 +382,27 @@ export default function SubscriptionScreen() {
                 </Text>
                 <Text style={styles.checkoutStatusBody}>
                   {t('iosUnavailableBody')}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {isWeb && !isPremium ? (
+            <View
+              style={[styles.checkoutStatus, styles.checkoutStatusCanceled]}
+              accessibilityLiveRegion="polite"
+            >
+              <FontAwesome
+                name="info-circle"
+                size={17}
+                color={colors.primaryDark}
+              />
+              <View style={styles.checkoutStatusText}>
+                <Text style={styles.checkoutStatusTitle}>
+                  {t('webUnavailableTitle')}
+                </Text>
+                <Text style={styles.checkoutStatusBody}>
+                  {t('webUnavailableBody')}
                 </Text>
               </View>
             </View>
@@ -408,7 +451,7 @@ export default function SubscriptionScreen() {
           {!isPremium && isAndroid ? (
             <Animated.View
               entering={FadeInDown.delay(100).springify()}
-              style={styles.billingToggle}
+              style={[styles.billingToggle, compact && styles.billingToggleCompact]}
             >
               <IntervalButton
                 active={interval === 'monthly'}
@@ -427,10 +470,10 @@ export default function SubscriptionScreen() {
 
           <Animated.View
             entering={FadeInDown.delay(180).springify()}
-            style={styles.priceCard}
+            style={[styles.priceCard, compact && styles.priceCardCompact]}
           >
             <View style={styles.priceHeader}>
-              <View>
+              <View style={styles.planTitleBlock}>
                 <Text style={styles.planName}>
                   {isAndroid && selectedPlayPlan
                     ? selectedPlayPlan.title
@@ -442,19 +485,28 @@ export default function SubscriptionScreen() {
                     : t('audience')}
                 </Text>
               </View>
-              <View style={styles.recommendedBadge}>
-                <FontAwesome name="star" size={10} color={colors.primaryDark} />
-                <Text style={styles.recommendedText}>
-                  {isPremium ? t('yourPlan') : t('bestValue')}
-                </Text>
-              </View>
+              {isPremium ? (
+                <View style={styles.recommendedBadge}>
+                  <FontAwesome name="star" size={10} color={colors.primaryDark} />
+                  <Text style={styles.recommendedText}>{t('yourPlan')}</Text>
+                </View>
+              ) : isAndroid && interval === 'annual' ? (
+                <View style={styles.recommendedBadge}>
+                  <FontAwesome name="star" size={10} color={colors.primaryDark} />
+                  <Text style={styles.recommendedText}>{t('bestValue')}</Text>
+                </View>
+              ) : null}
             </View>
 
             {!isPremium ? (
               isAndroid ? (
                 selectedPlayPlan ? (
                   <View style={styles.priceRow}>
-                    <Text style={styles.playPrice}>
+                    <Text
+                      style={[styles.playPrice, compact && styles.playPriceCompact]}
+                      adjustsFontSizeToFit
+                      numberOfLines={1}
+                    >
                       {selectedPlayPlan.displayPrice}
                     </Text>
                     {selectedPlayPlan.billingPeriod ? (
@@ -484,7 +536,7 @@ export default function SubscriptionScreen() {
               ) : (
                 <View style={styles.playPricePlaceholder}>
                   <Text style={styles.playPricePlaceholderText}>
-                    {t('iosUnavailableBody')}
+                    {isIos ? t('iosUnavailableBody') : t('webUnavailableBody')}
                   </Text>
                 </View>
               )
@@ -501,9 +553,9 @@ export default function SubscriptionScreen() {
               </View>
             )}
 
-            <View style={styles.divider} />
+            <View style={[styles.divider, compact && styles.dividerCompact]} />
 
-            <View style={styles.features}>
+            <View style={[styles.features, compact && styles.featuresCompact]}>
               {premium.features.map((feature, index) => (
                 <View key={feature} style={styles.featureRow}>
                   <View
@@ -521,7 +573,11 @@ export default function SubscriptionScreen() {
                     />
                   </View>
                   <Text style={styles.featureText}>
-                    {t(`features.${feature}`, { defaultValue: feature })}
+                    {feature === 'hands'
+                      ? t('features.hands', {
+                          count: PREMIUM_MAX_PARTICIPATING_HANDS,
+                        })
+                      : t(`features.${feature}`, { defaultValue: feature })}
                   </Text>
                 </View>
               ))}
@@ -632,13 +688,23 @@ export default function SubscriptionScreen() {
               </View>
               <View style={styles.freeText}>
                 <Text style={styles.freeTitle}>{t('freeTitle')}</Text>
-                <Text style={styles.freeCopy}>{t('freeCopy')}</Text>
+                <Text style={styles.freeCopy}>
+                  {t('freeCopy', {
+                    count:
+                      entitlements.capabilities?.maxParticipatingHands ??
+                      FREE_MAX_PARTICIPATING_HANDS,
+                  })}
+                </Text>
               </View>
             </Animated.View>
           ) : null}
 
           <Text style={styles.footer}>
-            {isAndroid ? t('playFooter') : t('iosFooter')}
+            {isAndroid
+              ? t('playFooter')
+              : isIos
+                ? t('iosFooter')
+                : t('webFooter')}
           </Text>
         </ScrollView>
       </SafeAreaView>
@@ -673,6 +739,7 @@ function IntervalButton({
     >
       <Text
         style={[styles.intervalText, active && styles.intervalTextActive]}
+        numberOfLines={2}
       >
         {label}
       </Text>
@@ -701,9 +768,23 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.premiumCanvas },
   safeArea: { flex: 1 },
   content: {
-    paddingHorizontal: spacing.screenX,
+    alignSelf: 'center',
     paddingBottom: 56,
+    width: '100%',
   },
+  // Compact (short or narrow) windows: less decoration, tighter gaps. Text stays
+  // readable and buttons keep their 44 dp or taller tap targets.
+  contentCompact: { paddingBottom: 32 },
+  topBarCompact: { height: 44 },
+  heroCompact: { borderRadius: 24, marginTop: 4, paddingHorizontal: 18, paddingVertical: 18 },
+  crownCompact: { width: 34, height: 34, marginBottom: 10, borderRadius: 12 },
+  heroTitleCompact: { fontSize: 28, lineHeight: 32, letterSpacing: -0.8 },
+  heroCopyCompact: { fontSize: 14, lineHeight: 20, marginTop: 8 },
+  billingToggleCompact: { marginTop: 12 },
+  priceCardCompact: { borderRadius: 24, marginTop: 12, padding: 16 },
+  playPriceCompact: { fontSize: 34, lineHeight: 40 },
+  dividerCompact: { marginVertical: 14 },
+  featuresCompact: { gap: 10, marginBottom: 16 },
   glowTop: {
     position: 'absolute',
     width: 420,
@@ -760,7 +841,7 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: colors.premiumLavender,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.5,
     marginBottom: 10,
@@ -841,6 +922,8 @@ const styles = StyleSheet.create({
   intervalButton: {
     flex: 1,
     minHeight: 44,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderRadius: radii.pill,
     flexDirection: 'row',
     justifyContent: 'center',
@@ -851,7 +934,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     ...shadows.small,
   },
-  intervalText: { color: colors.muted, fontWeight: '800', fontSize: 13 },
+  intervalText: {
+    color: colors.muted,
+    flexShrink: 1,
+    fontWeight: '800',
+    fontSize: 14,
+    textAlign: 'center',
+  },
   intervalTextActive: { color: colors.primaryDark },
   savingsBadge: {
     backgroundColor: colors.successSoft,
@@ -859,7 +948,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: radii.pill,
   },
-  savingsText: { color: colors.successText, fontSize: 8, fontWeight: '900' },
+  savingsText: { color: colors.successText, fontSize: 10, fontWeight: '900' },
   priceCard: {
     backgroundColor: colors.card,
     borderRadius: 28,
@@ -875,9 +964,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  planTitleBlock: { flex: 1, minWidth: 0 },
   planName: { color: colors.textStrong, fontSize: 21, fontWeight: '900' },
   planAudience: { color: colors.muted, fontSize: 12, marginTop: 4 },
   recommendedBadge: {
+    flexShrink: 1,
+    maxWidth: '48%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -888,7 +980,8 @@ const styles = StyleSheet.create({
   },
   recommendedText: {
     color: colors.primaryDark,
-    fontSize: 8,
+    flexShrink: 1,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.6,
   },
@@ -1041,9 +1134,9 @@ const styles = StyleSheet.create({
   freeTitle: { color: colors.textStrong, fontWeight: '900', fontSize: 14 },
   freeCopy: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 4 },
   footer: {
-    color: colors.subtle,
+    color: colors.muted,
     textAlign: 'center',
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     marginTop: 24,
     paddingHorizontal: 20,

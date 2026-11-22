@@ -3,6 +3,7 @@
   "plans": "Planes",
   "eyebrow": "CircuSave Organizer Pro",
   "heroTitle": "Menos persecución.\nMás confianza.",
+  "heroTagline": "Administra varios círculos con menos seguimiento, registros más claros y comprobantes profesionales.",
   "trialActive": "Tu prueba gratis está activa",
   "active": "Organizer Pro está activo",
   "trialCopy": "Prueba todas las funciones gratis durante {{days}} días",
@@ -30,11 +31,14 @@
   "cancelRenewal": "Cancelar renovación",
   "startTrial": "Empezar mi prueba gratis de {{days}} días",
   "freeTitle": "El plan gratis sigue siendo útil",
-  "freeCopy": "Dirige un círculo completo con hasta 20 manos. Mejora solo cuando tu organización crezca.",
+  "freeCopy": "Dirige un círculo completo con hasta {{count}} manos. Mejora solo cuando tu organización crezca.",
   "footer": "Pago seguro con Stripe · Cancela cuando quieras · Los registros de tu círculo siguen siendo tuyos",
   "iosUnavailableTitle": "Las suscripciones de Organizer Pro aún no están disponibles en iPhone.",
   "iosUnavailableBody": "La facturación de Organizer Pro aún no se ofrece en iPhone. Tu acceso actual a CircuSave no cambia.",
   "iosFooter": "Los registros de tu círculo siguen siendo tuyos. Las suscripciones en iPhone usarán facturación de Apple cuando estén disponibles.",
+  "webUnavailableTitle": "Las suscripciones de Organizer Pro no están disponibles en la web.",
+  "webUnavailableBody": "La facturación pagada de Organizer Pro solo está disponible en la aplicación móvil. Tu acceso actual a CircuSave no cambia.",
+  "webFooter": "Los registros de tu círculo siguen siendo tuyos. Compra y administra Organizer Pro desde la aplicación móvil.",
   "checkoutUnavailable": "Pago no disponible",
   "billingUnavailable": "Facturación no disponible",
   "checkoutUrlMissing": "La URL de pago no estaba disponible.",
@@ -88,7 +92,7 @@
   "periodYears": "{{count}} años",
   "features": {
     "unlimitedCircles": "Círculos abiertos ilimitados",
-    "hands": "Hasta 50 manos por círculo",
+    "hands": "Hasta {{count}} manos por círculo",
     "history": "Historial de actividad completo"
   }
 }

@@ -699,6 +699,11 @@ export default function CircleSetupWizardScreen() {
                     placeholder={t('basics.namePlaceholder')}
                     placeholderTextColor={colors.subtle}
                     autoCapitalize="words"
+                    // Multiline so a long localized placeholder wraps instead of
+                    // being clipped; Done still submits.
+                    multiline
+                    submitBehavior="blurAndSubmit"
+                    textAlignVertical="center"
                     returnKeyType="done"
                   />
                 </>

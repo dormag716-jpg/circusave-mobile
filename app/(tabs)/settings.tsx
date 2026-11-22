@@ -1,11 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, type Href, useFocusEffect } from 'expo-router';
 import { useCallback, useState, useEffect } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/Avatar';
+import { useAssistantEnabled } from '@/components/useAssistantEnabled';
 import { useOpenAssistant } from '@/components/useOpenAssistant';
 import { ASSISTANT_FAB_TAB_CONTENT_PADDING } from '@/lib/assistant/assistantFab';
 import { resetAssistantFabPlacement } from '@/lib/assistant/assistantFabStore';
@@ -37,6 +38,8 @@ export default function SettingsScreen() {
   );
   const { market, setMarket } = useMarket();
   const { open: openAssistant } = useOpenAssistant();
+  const { enabled: assistantEnabled, loaded: assistantLoaded, setEnabled: setAssistantEnabled } =
+    useAssistantEnabled();
   const [assistantResetDone, setAssistantResetDone] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [accounts, setAccounts] = useState<BackendLinkedAccount[]>([]);
@@ -158,30 +161,55 @@ export default function SettingsScreen() {
         {/* Section: Assistant */}
         <Text style={styles.sectionTitle}>{t('settings:assistantSection')}</Text>
         <View style={styles.sectionContainer}>
-          <MenuItem
+          <SwitchItem
             icon="magic"
-            title={t('settings:assistantOpen')}
-            subtitle={t('settings:assistantOpenSubtitle')}
-            hint={t('settings:assistantOpenHint')}
-            onPress={() => void openAssistant()}
-            isFirst
-          />
-          <MenuItem
-            icon="undo"
-            title={t('settings:assistantResetPosition')}
+            title={t('settings:assistantToggle')}
             subtitle={
-              assistantResetDone
-                ? t('settings:assistantResetDone')
-                : t('settings:assistantResetSubtitle')
+              assistantEnabled
+                ? t('settings:assistantToggleOn')
+                : t('settings:assistantToggleOff')
             }
-            hint={t('settings:assistantResetHint')}
-            onPress={() => {
-              void resetAssistantFabPlacement();
-              setAssistantResetDone(true);
-              AccessibilityInfo.announceForAccessibility(t('settings:assistantResetDone'));
+            hint={t('settings:assistantToggleHint')}
+            value={assistantEnabled}
+            disabled={!assistantLoaded}
+            onValueChange={(next) => {
+              void setAssistantEnabled(next);
+              AccessibilityInfo.announceForAccessibility(
+                next
+                  ? t('settings:assistantToggleOnDone')
+                  : t('settings:assistantToggleOffDone'),
+              );
             }}
-            isLast
+            isFirst
+            isLast={!assistantEnabled}
           />
+          {assistantEnabled ? (
+            <>
+              <MenuItem
+                icon="comments-o"
+                title={t('settings:assistantOpen')}
+                subtitle={t('settings:assistantOpenSubtitle')}
+                hint={t('settings:assistantOpenHint')}
+                onPress={() => void openAssistant()}
+              />
+              <MenuItem
+                icon="undo"
+                title={t('settings:assistantResetPosition')}
+                subtitle={
+                  assistantResetDone
+                    ? t('settings:assistantResetDone')
+                    : t('settings:assistantResetSubtitle')
+                }
+                hint={t('settings:assistantResetHint')}
+                onPress={() => {
+                  void resetAssistantFabPlacement();
+                  setAssistantResetDone(true);
+                  AccessibilityInfo.announceForAccessibility(t('settings:assistantResetDone'));
+                }}
+                isLast
+              />
+            </>
+          ) : null}
         </View>
 
         {/* Section: Account & Security */}
@@ -363,6 +391,62 @@ function getLanguagePreferenceLabel(
   return (
     LANGUAGE_OPTIONS.find((option) => option.value === preference)?.label ??
     LANGUAGE_OPTIONS[1].label
+  );
+}
+
+/** A settings row with an on/off switch. The whole row toggles, not just the knob. */
+function SwitchItem({
+  icon,
+  title,
+  subtitle,
+  hint,
+  value,
+  disabled,
+  onValueChange,
+  isFirst,
+  isLast,
+}: {
+  icon: React.ComponentProps<typeof FontAwesome>['name'];
+  title: string;
+  subtitle: string;
+  hint?: string;
+  value: boolean;
+  disabled?: boolean;
+  onValueChange: (next: boolean) => void;
+  isFirst?: boolean;
+  isLast?: boolean;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.menuItem,
+        isFirst && styles.menuItemFirst,
+        isLast && styles.menuItemLast,
+        pressed && !disabled && styles.menuItemPressed,
+      ]}
+      onPress={() => onValueChange(!value)}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityLabel={`${title}. ${subtitle}`}
+      accessibilityHint={hint}
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+    >
+      <View style={styles.menuIconContainer}>
+        <FontAwesome name={icon} size={20} color={colors.primary} />
+      </View>
+      <View style={styles.menuText}>
+        <Text style={styles.menuTitle}>{title}</Text>
+        <Text style={styles.menuSubtitle}>{subtitle}</Text>
+      </View>
+      <View pointerEvents="none" importantForAccessibility="no-hide-descendants">
+        <Switch
+          value={value}
+          disabled={disabled}
+          trackColor={{ false: colors.cardBorder, true: colors.primary }}
+          thumbColor={colors.onColor}
+        />
+      </View>
+    </Pressable>
   );
 }
 

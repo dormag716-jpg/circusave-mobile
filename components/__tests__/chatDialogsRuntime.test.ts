@@ -36,6 +36,7 @@ jest.mock('react-native', () => {
     Pressable: host('Pressable'),
     ScrollView: host('ScrollView'),
     StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
+    useWindowDimensions: () => ({ width: 412, height: 915, fontScale: 1 }),
     Text: host('Text'),
     TextInput: host('TextInput'),
     View: host('View'),
