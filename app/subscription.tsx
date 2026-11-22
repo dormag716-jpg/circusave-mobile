@@ -15,7 +15,6 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-import { type BillingPlan } from '@/lib/api';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
@@ -31,22 +30,13 @@ import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
 import { colors, radii, shadows } from '@/lib/shared/theme';
 import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
 
-const FALLBACK_FEATURE_KEYS = [
+// What Organizer Pro includes. Prices and trial length come from Google Play,
+// never from this file.
+const PREMIUM_FEATURE_KEYS = [
   'unlimitedCircles',
   'hands',
   'history',
 ] as const;
-
-const fallbackPremium: BillingPlan = {
-  id: 'premium',
-  name: 'Organizer Pro',
-  tagline: '',
-  monthlyPriceCents: 799,
-  annualPriceCents: 5999,
-  annualSavingsCents: 3589,
-  trialDays: 7,
-  features: [...FALLBACK_FEATURE_KEYS],
-};
 
 type BillingInterval = 'monthly' | 'annual';
 
@@ -70,9 +60,8 @@ export default function SubscriptionScreen() {
   const isAndroid = Platform.OS === 'android';
   const isIos = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
-  const [premium] = useState<BillingPlan>(fallbackPremium);
   const [interval, setInterval] = useState<BillingInterval>('annual');
-  const [action, setAction] = useState<'portal' | null>(null);
+  const [action, setAction] = useState<'manage' | null>(null);
   const playOperationLocked = useRef(false);
 
   useFocusEffect(
@@ -187,7 +176,7 @@ export default function SubscriptionScreen() {
   }
 
   async function openGooglePlayManagement() {
-    setAction('portal');
+    setAction('manage');
     try {
       const packageName = getAndroidApplicationPackage();
       if (!packageName) {
@@ -368,7 +357,7 @@ export default function SubscriptionScreen() {
 
           {isIos && !isPremium ? (
             <View
-              style={[styles.checkoutStatus, styles.checkoutStatusCanceled]}
+              style={[styles.statusBanner, styles.statusBannerCanceled]}
               accessibilityLiveRegion="polite"
             >
               <FontAwesome
@@ -376,11 +365,11 @@ export default function SubscriptionScreen() {
                 size={17}
                 color={colors.primaryDark}
               />
-              <View style={styles.checkoutStatusText}>
-                <Text style={styles.checkoutStatusTitle}>
+              <View style={styles.statusBannerText}>
+                <Text style={styles.statusBannerTitle}>
                   {t('iosUnavailableTitle')}
                 </Text>
-                <Text style={styles.checkoutStatusBody}>
+                <Text style={styles.statusBannerBody}>
                   {t('iosUnavailableBody')}
                 </Text>
               </View>
@@ -389,7 +378,7 @@ export default function SubscriptionScreen() {
 
           {isWeb && !isPremium ? (
             <View
-              style={[styles.checkoutStatus, styles.checkoutStatusCanceled]}
+              style={[styles.statusBanner, styles.statusBannerCanceled]}
               accessibilityLiveRegion="polite"
             >
               <FontAwesome
@@ -397,11 +386,11 @@ export default function SubscriptionScreen() {
                 size={17}
                 color={colors.primaryDark}
               />
-              <View style={styles.checkoutStatusText}>
-                <Text style={styles.checkoutStatusTitle}>
+              <View style={styles.statusBannerText}>
+                <Text style={styles.statusBannerTitle}>
                   {t('webUnavailableTitle')}
                 </Text>
-                <Text style={styles.checkoutStatusBody}>
+                <Text style={styles.statusBannerBody}>
                   {t('webUnavailableBody')}
                 </Text>
               </View>
@@ -411,11 +400,11 @@ export default function SubscriptionScreen() {
           {playStatusMessage ? (
             <View
               style={[
-                styles.checkoutStatus,
+                styles.statusBanner,
                 playStatusMessage.tone === 'pending' &&
-                  styles.checkoutStatusPending,
+                  styles.statusBannerPending,
                 playStatusMessage.tone === 'neutral' &&
-                  styles.checkoutStatusCanceled,
+                  styles.statusBannerCanceled,
                 playStatusMessage.tone === 'error' && styles.playStatusError,
               ]}
               accessibilityLiveRegion="polite"
@@ -437,11 +426,11 @@ export default function SubscriptionScreen() {
                   }
                 />
               )}
-              <View style={styles.checkoutStatusText}>
-                <Text style={styles.checkoutStatusTitle}>
+              <View style={styles.statusBannerText}>
+                <Text style={styles.statusBannerTitle}>
                   {playStatusMessage.title}
                 </Text>
-                <Text style={styles.checkoutStatusBody}>
+                <Text style={styles.statusBannerBody}>
                   {playStatusMessage.body}
                 </Text>
               </View>
@@ -556,7 +545,7 @@ export default function SubscriptionScreen() {
             <View style={[styles.divider, compact && styles.dividerCompact]} />
 
             <View style={[styles.features, compact && styles.featuresCompact]}>
-              {premium.features.map((feature, index) => (
+              {PREMIUM_FEATURE_KEYS.map((feature, index) => (
                 <View key={feature} style={styles.featureRow}>
                   <View
                     style={[
@@ -596,7 +585,7 @@ export default function SubscriptionScreen() {
                   accessibilityLabel={t('playManageSubscription')}
                   accessibilityState={{ disabled: action !== null }}
                 >
-                  {action === 'portal' ? (
+                  {action === 'manage' ? (
                     <ActivityIndicator color={colors.onColor} />
                   ) : (
                     <>
@@ -877,7 +866,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(16,185,129,0.18)',
   },
   activePillText: { color: colors.successSoft, fontWeight: '800', fontSize: 12 },
-  checkoutStatus: {
+  statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -888,23 +877,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primaryBorder,
   },
-  checkoutStatusPending: {
+  statusBannerPending: {
     backgroundColor: colors.premiumLavenderBadge,
   },
-  checkoutStatusCanceled: {
+  statusBannerCanceled: {
     backgroundColor: colors.card,
   },
   playStatusError: {
     backgroundColor: colors.dangerSoft,
     borderColor: colors.dangerBorder,
   },
-  checkoutStatusText: { flex: 1 },
-  checkoutStatusTitle: {
+  statusBannerText: { flex: 1 },
+  statusBannerTitle: {
     color: colors.primaryDark,
     fontSize: 14,
     fontWeight: '900',
   },
-  checkoutStatusBody: {
+  statusBannerBody: {
     color: colors.text,
     fontSize: 12,
     lineHeight: 17,
@@ -990,12 +979,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginTop: 24,
   },
-  currency: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: colors.textStrong,
-    marginTop: 8,
-  },
   price: {
     fontSize: 54,
     lineHeight: 60,
@@ -1026,12 +1009,6 @@ const styles = StyleSheet.create({
   },
   priceMeta: { marginLeft: 7, marginTop: 16 },
   pricePeriod: { color: colors.muted, fontWeight: '700', fontSize: 12 },
-  equivalent: {
-    color: colors.successText,
-    fontWeight: '800',
-    fontSize: 11,
-    marginTop: 3,
-  },
   activeSummary: {
     backgroundColor: colors.successSoft,
     padding: 16,
@@ -1089,8 +1066,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
-  cancelButton: { alignItems: 'center', paddingVertical: 14 },
-  cancelButtonText: { color: colors.danger, fontWeight: '700', fontSize: 13 },
   restoreButton: {
     minHeight: 48,
     alignItems: 'center',
@@ -1104,13 +1079,6 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontSize: 13,
     fontWeight: '800',
-  },
-  managementUnavailable: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: 'center',
-    paddingVertical: 12,
   },
   freeCard: {
     flexDirection: 'row',
