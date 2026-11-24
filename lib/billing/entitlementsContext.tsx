@@ -27,8 +27,10 @@ import {
 import {
   createGooglePlayBillingMachine,
   type GooglePlayBillingState,
+  type GooglePlayAnyPlanKey,
   type GooglePlayPlan,
   type GooglePlayPlanKey,
+  type GooglePlayTierPlanKey,
 } from './googlePlayBillingMachine';
 
 type EntitlementsStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -44,8 +46,10 @@ type EntitlementsContextValue = {
   planTier: 'free' | 'premium';
   googlePlayBillingState: GooglePlayBillingState;
   googlePlayPlans: Record<GooglePlayPlanKey, GooglePlayPlan> | null;
+  /** Member Pro / Organizer Pro products from Google Play; null until the backend offers them. */
+  googlePlayTierPlans: Partial<Record<GooglePlayTierPlanKey, GooglePlayPlan>> | null;
   initializeGooglePlayBilling: () => Promise<void>;
-  purchaseGooglePlaySubscription: (plan: GooglePlayPlanKey) => Promise<void>;
+  purchaseGooglePlaySubscription: (plan: GooglePlayAnyPlanKey) => Promise<void>;
   restoreGooglePlayPurchases: () => Promise<void>;
   retryGooglePlayCompletion: () => Promise<void>;
 };
@@ -90,6 +94,9 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const [googlePlayPlans, setGooglePlayPlans] = useState<Record<
     GooglePlayPlanKey,
     GooglePlayPlan
+  > | null>(null);
+  const [googlePlayTierPlans, setGooglePlayTierPlans] = useState<Partial<
+    Record<GooglePlayTierPlanKey, GooglePlayPlan>
   > | null>(null);
   const appState = useRef(AppState.currentState);
   const sessionGeneration = useRef(0);
@@ -204,6 +211,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     billingUnsubscribe.current?.();
     billingUnsubscribe.current = null;
     setGooglePlayPlans(null);
+    setGooglePlayTierPlans(null);
     setGooglePlayBillingState({ status: 'idle' });
     if (machine) {
       await queueBillingLifecycle(() => machine.dispose());
@@ -269,6 +277,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
         setGooglePlayBillingState(next);
         if (next.status === 'ready') {
           setGooglePlayPlans(next.plans);
+          setGooglePlayTierPlans(next.tierPlans ?? null);
         }
         if (
           pendingForegroundReconciliation.current &&
@@ -304,7 +313,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
   }, [ensureGooglePlayBillingMachine]);
 
   const purchaseGooglePlaySubscription = useCallback(
-    async (plan: GooglePlayPlanKey) => {
+    async (plan: GooglePlayAnyPlanKey) => {
       const machine = await ensureGooglePlayBillingMachine();
       await machine.purchase(plan);
     },
@@ -592,6 +601,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
       planTier: planTierFromEntitlements(sessionEntitlements),
       googlePlayBillingState,
       googlePlayPlans,
+      googlePlayTierPlans,
       initializeGooglePlayBilling,
       purchaseGooglePlaySubscription,
       restoreGooglePlayPurchases,
@@ -600,6 +610,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     [
       googlePlayBillingState,
       googlePlayPlans,
+      googlePlayTierPlans,
       initializeGooglePlayBilling,
       purchaseGooglePlaySubscription,
       refreshContributionPaymentsCapability,

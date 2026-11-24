@@ -37,6 +37,19 @@ export type GooglePlayPurchaseError = {
   message: 'Google Play purchase failed.';
 };
 
+/** Changing from the plan the person has now (already paid through Google Play). */
+export type GooglePlaySubscriptionReplacement = {
+  oldProductId: string;
+  oldPurchaseToken: string;
+  replacementMode: 'charge-prorated-price' | 'deferred';
+};
+
+export type GooglePlayOneTimePurchaseResult =
+  | { kind: 'purchased'; purchaseToken: string; purchase: PurchaseAndroid }
+  | { kind: 'canceled' }
+  | { kind: 'pending' }
+  | { kind: 'failed' };
+
 export class GooglePlayPurchaseRequestError extends Error {
   readonly kind: GooglePlayPurchaseError['kind'];
 
@@ -271,6 +284,7 @@ export function createGooglePlayBillingGateway(
     productId: string,
     offerToken: string,
     obfuscatedAccountId: string,
+    replace?: GooglePlaySubscriptionReplacement,
   ): Promise<void> {
     if (!connected) {
       throw new GooglePlayBillingNotConnectedError();
@@ -283,6 +297,15 @@ export function createGooglePlayBillingGateway(
             skus: [productId],
             subscriptionOffers: [{ sku: productId, offerToken }],
             obfuscatedAccountId,
+            ...(replace
+              ? {
+                  purchaseToken: replace.oldPurchaseToken,
+                  subscriptionProductReplacementParams: {
+                    oldProductId: replace.oldProductId,
+                    replacementMode: replace.replacementMode,
+                  },
+                }
+              : {}),
           },
         },
         type: 'subs',
@@ -318,9 +341,123 @@ export function createGooglePlayBillingGateway(
     });
   }
 
+  /** Price text for a one-time product, exactly as Google Play shows it. */
+  async function queryOneTimeProductPrice(
+    productId: string,
+  ): Promise<string | null> {
+    if (!connected) {
+      throw new GooglePlayBillingNotConnectedError();
+    }
+    const module = await requireNativeModule();
+    const products = await module.fetchProducts({
+      skus: [productId],
+      type: 'in-app',
+    });
+    const match = (products ?? []).find((product) => product.id === productId);
+    const price = match?.displayPrice?.trim();
+    return price ? price : null;
+  }
+
+  /**
+   * Opens Google Play for one one-time product and waits for its answer.
+   * Only reports what Google Play said; the backend decides what it is worth.
+   */
+  async function purchaseOneTimeProduct(input: {
+    productId: string;
+    obfuscatedAccountId: string;
+    obfuscatedProfileId: string;
+  }): Promise<GooglePlayOneTimePurchaseResult> {
+    if (!connected) {
+      throw new GooglePlayBillingNotConnectedError();
+    }
+    const module = await requireNativeModule();
+    let settle: (result: GooglePlayOneTimePurchaseResult) => void = () => undefined;
+    const answer = new Promise<GooglePlayOneTimePurchaseResult>((resolve) => {
+      settle = resolve;
+    });
+    const subscriptions: ListenerSubscription[] = [
+      module.purchaseUpdatedListener((purchase: Purchase) => {
+        if (!isGooglePurchase(purchase) || purchase.productId !== input.productId) {
+          return;
+        }
+        if (purchase.purchaseState === 'pending') {
+          settle({ kind: 'pending' });
+        } else if (
+          purchase.purchaseState === 'purchased' &&
+          purchase.purchaseToken?.trim()
+        ) {
+          settle({
+            kind: 'purchased',
+            purchaseToken: purchase.purchaseToken,
+            purchase,
+          });
+        } else {
+          settle({ kind: 'failed' });
+        }
+      }),
+      module.purchaseErrorListener((error: ExpoPurchaseError) => {
+        const kind = classifyPurchaseError(error);
+        settle({ kind });
+      }),
+    ];
+    try {
+      try {
+        await module.requestPurchase({
+          request: {
+            google: {
+              skus: [input.productId],
+              obfuscatedAccountId: input.obfuscatedAccountId,
+              obfuscatedProfileId: input.obfuscatedProfileId,
+            },
+          },
+          type: 'in-app',
+        });
+      } catch (error) {
+        return { kind: classifyPurchaseError(error) };
+      }
+      return await answer;
+    } finally {
+      subscriptions.forEach((subscription) => subscription.remove());
+    }
+  }
+
+  /** Paid one-time purchases Google Play still lists as not consumed. */
+  async function getUnconsumedOneTimePurchases(
+    productId: string,
+  ): Promise<PurchaseAndroid[]> {
+    if (!connected) {
+      throw new GooglePlayBillingNotConnectedError();
+    }
+    const module = await requireNativeModule();
+    const purchases = await module.getAvailablePurchases({
+      includeSuspendedAndroid: false,
+    });
+    return purchases
+      .filter(isGooglePurchase)
+      .filter(
+        (purchase) =>
+          purchase.productId === productId &&
+          purchase.purchaseState === 'purchased' &&
+          Boolean(purchase.purchaseToken?.trim()),
+      );
+  }
+
+  /** Lets the person buy the same product again. Call only after the backend accepted it. */
+  async function consumeOneTimePurchase(purchase: PurchaseAndroid): Promise<void> {
+    if (!connected) {
+      throw new GooglePlayBillingNotConnectedError();
+    }
+    const module = await requireNativeModule();
+    await module.finishTransaction({ purchase, isConsumable: true });
+  }
+
   return {
     isAndroid,
     getAvailability,
+    queryOneTimeProductPrice,
+    purchaseOneTimeProduct,
+    getUnconsumedOneTimePurchases,
+    consumeOneTimePurchase,
     connect,
     disconnect,
     querySubscriptionProducts,

@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
+import { ExtraHandPurchaseCard } from '@/components/circle/ExtraHandPurchaseCard';
 import {
   getAdditionalHandPreview,
   requestAdditionalHand,
@@ -94,6 +95,19 @@ export default function AdditionalHandConsentScreen() {
           <Text style={styles.title}>{t('additionalTitle')}</Text>
           <View style={styles.spacer} />
         </View>
+
+        <ExtraHandPurchaseCard
+          token={token}
+          circleId={circleId}
+          onPurchased={() => {
+            if (circleId) {
+              router.replace({
+                pathname: '/circle/workspace',
+                params: { circleId, tab: 'people', extraHandPurchased: '1' },
+              });
+            }
+          }}
+        />
 
         {loading ? <ActivityIndicator size="large" color={colors.primary} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}

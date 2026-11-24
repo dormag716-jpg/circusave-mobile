@@ -103,5 +103,25 @@
     "PENDING_JOIN_REQUESTS": "Approve or decline all pending join requests.",
     "PENDING_ADDITIONAL_HAND_REQUESTS": "Approve or decline all pending additional-hand requests.",
     "PAYOUT_ORDER_INCOMPLETE": "Give every participating hand a payout position."
-  }
+  },
+  "extraHandTitle": "Buy an extra hand",
+  "extraHandHandOf": "Hand {{number}} of {{max}}",
+  "extraHandBody_one": "Your plan includes {{count}} hand per person. An extra hand costs {{price}}. It is added only after Google Play confirms your payment.",
+  "extraHandBody_other": "Your plan includes {{count}} hands per person. An extra hand costs {{price}}. It is added only after Google Play confirms your payment.",
+  "extraHandBuy": "Buy extra hand for {{price}}",
+  "extraHandPriceUnavailable": "We could not load the price from Google Play. Please try again later.",
+  "extraHandNotOnDevice": "Extra hands can be bought on Android for now.",
+  "extraHandLimit": "Your plan allows up to {{max}} hands per person in a circle.",
+  "extraHandLimitGeneric": "You have reached the most hands your plan allows in a circle.",
+  "extraHandNotOffered": "Extra hands are not available right now.",
+  "extraHandPaying": "Complete your purchase in the Google Play window.",
+  "extraHandVerifying": "Confirming your payment…",
+  "extraHandPending": "Google Play is still processing your payment. Your hand is added once it is confirmed.",
+  "extraHandDone": "Your extra hand was added.",
+  "extraHandCanceled": "Purchase canceled. You were not charged.",
+  "extraHandPaymentFailed": "Google Play could not complete the purchase. You were not charged.",
+  "extraHandVerifyFailed": "Your payment went through, but we could not add the hand yet. Try again. You will not be charged twice.",
+  "extraHandNeedsReview": "Your payment needs a quick review before the hand is added. Contact support if this stays the same.",
+  "extraHandQuoteFailed": "We could not check extra hands right now. Please try again.",
+  "extraHandRetry": "Try again"
 }

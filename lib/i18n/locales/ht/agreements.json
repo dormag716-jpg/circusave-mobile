@@ -103,5 +103,25 @@
     "PENDING_JOIN_REQUESTS": "Apwouve oswa refize tout demann pou antre ki an tan.",
     "PENDING_ADDITIONAL_HAND_REQUESTS": "Apwouve oswa refize tout demann pou men adisyonèl ki an tan.",
     "PAYOUT_ORDER_INCOMPLETE": "Bay chak men patisipan yon pozisyon peman."
-  }
+  },
+  "extraHandTitle": "Achte yon men siplemantè",
+  "extraHandHandOf": "Men {{number}} sou {{max}}",
+  "extraHandBody_one": "Plan ou an gen {{count}} men pa moun ladan l. Yon men siplemantè koute {{price}}. Yo ajoute l sèlman apre Google Play konfime peman ou.",
+  "extraHandBody_other": "Plan ou an gen {{count}} men pa moun ladan l. Yon men siplemantè koute {{price}}. Yo ajoute l sèlman apre Google Play konfime peman ou.",
+  "extraHandBuy": "Achte men siplemantè pou {{price}}",
+  "extraHandPriceUnavailable": "Nou pa t ka chaje pri a nan Google Play. Tanpri eseye ankò pita.",
+  "extraHandNotOnDevice": "Pou kounye a, ou ka achte men siplemantè sou Android sèlman.",
+  "extraHandLimit": "Plan ou an pèmèt jiska {{max}} men pa moun nan yon gwoup.",
+  "extraHandLimitGeneric": "Ou rive nan kantite men maksimòm plan ou an pèmèt nan yon gwoup.",
+  "extraHandNotOffered": "Men siplemantè pa disponib pou kounye a.",
+  "extraHandPaying": "Fini acha ou a nan fenèt Google Play la.",
+  "extraHandVerifying": "N ap konfime peman ou…",
+  "extraHandPending": "Google Play ap trete peman ou toujou. Yo ajoute men an lè yo konfime l.",
+  "extraHandDone": "Yo ajoute men siplemantè ou a.",
+  "extraHandCanceled": "Acha a anile. Yo pa t chaje ou.",
+  "extraHandPaymentFailed": "Google Play pa t ka fini acha a. Yo pa t chaje ou.",
+  "extraHandVerifyFailed": "Peman ou an pase, men nou poko ka ajoute men an. Eseye ankò. Yo p ap chaje ou de fwa.",
+  "extraHandNeedsReview": "Peman ou an bezwen yon ti revizyon rapid anvan yo ajoute men an. Kontakte sipò si sa pa chanje.",
+  "extraHandQuoteFailed": "Nou pa t ka tcheke men siplemantè yo kounye a. Tanpri eseye ankò.",
+  "extraHandRetry": "Eseye ankò"
 }

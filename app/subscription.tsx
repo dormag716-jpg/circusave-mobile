@@ -15,6 +15,7 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
+import { TierPlansSection } from '@/components/subscription/TierPlansSection';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
@@ -27,6 +28,10 @@ import {
 } from '@/lib/billing/entitlements';
 import { logClientWarning } from '@/lib/platform/errorLogging';
 import { playFailureCopy } from '@/lib/billing/googlePlayStatusCopy';
+import {
+  GooglePlayBillingOperationError,
+  type GooglePlayAnyPlanKey,
+} from '@/lib/billing/googlePlayBillingMachine';
 import { subscriptionDateLine } from '@/lib/billing/subscriptionDates';
 import { formatLongDate } from '@/lib/i18n/formatters';
 import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
@@ -54,6 +59,7 @@ export default function SubscriptionScreen() {
     refreshEntitlements,
     googlePlayBillingState: playState,
     googlePlayPlans: playPlans,
+    googlePlayTierPlans: tierPlans,
     initializeGooglePlayBilling,
     purchaseGooglePlaySubscription: runGooglePlayPurchase,
     restoreGooglePlayPurchases: runGooglePlayRestore,
@@ -69,12 +75,7 @@ export default function SubscriptionScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (
-        !isAndroid ||
-        isPremium ||
-        authStatus !== 'authenticated' ||
-        !token
-      ) {
+      if (!isAndroid || authStatus !== 'authenticated' || !token) {
         return undefined;
       }
       void initializeGooglePlayBilling().catch(() => {
@@ -88,7 +89,6 @@ export default function SubscriptionScreen() {
       authStatus,
       initializeGooglePlayBilling,
       isAndroid,
-      isPremium,
       token,
     ]),
   );
@@ -105,6 +105,11 @@ export default function SubscriptionScreen() {
     }
   }, [playState.status]);
 
+  // The three-plan view appears only when the backend has the plan tiers on and
+  // Google Play returned at least one of those products. Otherwise the original
+  // single-plan view stays exactly as it was.
+  const tierView =
+    isAndroid && tierPlans != null && Object.keys(tierPlans).length > 0;
   const selectedPlayPlan = playPlans?.[interval] ?? null;
   const playBusy = [
     'connecting',
@@ -149,6 +154,26 @@ export default function SubscriptionScreen() {
       await runGooglePlayPurchase(interval);
     } catch {
       playOperationLocked.current = false;
+      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
+    }
+  }
+
+  async function startTierPurchase(plan: GooglePlayAnyPlanKey) {
+    if (playState.status !== 'ready' || playOperationLocked.current) {
+      return;
+    }
+    playOperationLocked.current = true;
+    try {
+      await runGooglePlayPurchase(plan);
+    } catch (error) {
+      playOperationLocked.current = false;
+      if (
+        error instanceof GooglePlayBillingOperationError &&
+        error.code === 'google_play_plan_change_unavailable'
+      ) {
+        Alert.alert(t('tierPeriodChangeTitle'), t('tierPeriodChangeBody'));
+        return;
+      }
       Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
     }
   }
@@ -207,7 +232,7 @@ export default function SubscriptionScreen() {
   }
 
   const playStatusMessage = (() => {
-    if (!isAndroid || isPremium) return null;
+    if (!isAndroid || (isPremium && !tierView)) return null;
     if (playState.status === 'disabled') {
       return {
         title: t('playComingSoon'),
@@ -339,13 +364,13 @@ export default function SubscriptionScreen() {
             </View>
             <Text style={styles.eyebrow}>{t('eyebrow')}</Text>
             <Text style={[styles.heroTitle, compact && styles.heroTitleCompact]}>
-              {t('heroTitle')}
+              {tierView ? t('tierHeroTitle') : t('heroTitle')}
             </Text>
             <Text style={[styles.heroCopy, compact && styles.heroCopyCompact]}>
-              {t('heroTagline')}
+              {tierView ? t('tierHeroTagline') : t('heroTagline')}
             </Text>
 
-            {isPremium ? (
+            {tierView ? null : isPremium ? (
               <View style={styles.activePill}>
                 <FontAwesome name="check-circle" size={14} color={colors.successSoft} />
                 <Text style={styles.activePillText}>
@@ -447,7 +472,7 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          {!isPremium && isAndroid ? (
+          {!isPremium && isAndroid && !tierView ? (
             <Animated.View
               entering={FadeInDown.delay(100).springify()}
               style={[styles.billingToggle, compact && styles.billingToggleCompact]}
@@ -467,6 +492,69 @@ export default function SubscriptionScreen() {
             </Animated.View>
           ) : null}
 
+          {tierView && tierPlans ? (
+            <>
+              <TierPlansSection
+                tierPlans={tierPlans}
+                currentTier={entitlements.tier}
+                pendingTier={entitlements.pendingTier}
+                pendingDateLabel={
+                  entitlements.pendingTierStartsAt
+                    ? formatLongDate(
+                        entitlements.pendingTierStartsAt,
+                        i18n.resolvedLanguage || i18n.language,
+                      )
+                    : null
+                }
+                busy={playBusy}
+                canPurchase={playState.status === 'ready'}
+                periodLabel={formatPlayPeriod}
+                onPurchase={(key) => void startTierPurchase(key)}
+                onManage={() => void openGooglePlayManagement()}
+              />
+              {playPlans ? (
+                <Pressable
+                  style={[
+                    styles.restoreButton,
+                    !playCanRestore && styles.buttonDisabled,
+                  ]}
+                  onPress={() => void restoreGooglePlayPurchases()}
+                  disabled={!playCanRestore}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('playRestore')}
+                  accessibilityState={{ disabled: !playCanRestore }}
+                >
+                  <Text style={styles.restoreButtonText}>{t('playRestore')}</Text>
+                </Pressable>
+              ) : null}
+              {playState.status === 'failed' &&
+              playFailureCopy(playState).action === 'reload' ? (
+                <Pressable
+                  style={styles.restoreButton}
+                  onPress={() => void reloadGooglePlay()}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('playTryAgain')}
+                >
+                  <Text style={styles.restoreButtonText}>{t('playTryAgain')}</Text>
+                </Pressable>
+              ) : null}
+              {playState.status === 'failed' &&
+              playState.code === 'transaction_completion_failed' ? (
+                <Pressable
+                  style={styles.restoreButton}
+                  onPress={() => void retryGooglePlayCompletion()}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('playRetryCompletion')}
+                >
+                  <Text style={styles.restoreButtonText}>
+                    {t('playRetryCompletion')}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Text style={styles.footer}>{t('tierFooter')}</Text>
+            </>
+          ) : (
+          <>
           <Animated.View
             entering={FadeInDown.delay(180).springify()}
             style={[styles.priceCard, compact && styles.priceCardCompact]}
@@ -478,11 +566,11 @@ export default function SubscriptionScreen() {
                     ? selectedPlayPlan.title?.trim() || t('productName')
                     : t('productName')}
                 </Text>
-                <Text style={styles.planAudience}>
-                  {isAndroid && selectedPlayPlan
-                    ? selectedPlayPlan.description?.trim() || t('audience')
-                    : t('audience')}
-                </Text>
+                {isAndroid && selectedPlayPlan?.description?.trim() ? (
+                  <Text style={styles.planAudience}>
+                    {selectedPlayPlan.description.trim()}
+                  </Text>
+                ) : null}
               </View>
               {isPremium ? (
                 <View style={styles.recommendedBadge}>
@@ -728,6 +816,8 @@ export default function SubscriptionScreen() {
                 ? t('iosFooter')
                 : t('webFooter')}
           </Text>
+          </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
