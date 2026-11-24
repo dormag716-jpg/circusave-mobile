@@ -30,9 +30,10 @@ export default function AdditionalHandConsentScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'purchase' | 'request' | 'none'>('none');
 
   const loadPreview = useCallback(async () => {
-    if (!token || !circleId) {
+    if (!token || !circleId || mode !== 'request') {
       setLoading(false);
       return;
     }
@@ -50,7 +51,7 @@ export default function AdditionalHandConsentScreen() {
     } finally {
       setLoading(false);
     }
-  }, [circleId, t, token]);
+  }, [circleId, mode, t, token]);
 
   useEffect(() => {
     void loadPreview();
@@ -99,6 +100,7 @@ export default function AdditionalHandConsentScreen() {
         <ExtraHandPurchaseCard
           token={token}
           circleId={circleId}
+          onMode={setMode}
           onPurchased={() => {
             if (circleId) {
               router.replace({

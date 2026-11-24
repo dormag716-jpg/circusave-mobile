@@ -19,6 +19,12 @@ type Props = {
   circleId: string | undefined;
   /** Called once the backend has confirmed the hand, so the screen can reload. */
   onPurchased: () => void;
+  /**
+   * Which way to add this hand: 'purchase' (this card), 'request' (the
+   * request-and-approve flow, for hands the plan includes or when purchases are
+   * not offered) or 'none' (still loading, failed, or at the plan limit).
+   */
+  onMode?: (mode: 'purchase' | 'request' | 'none') => void;
 };
 
 type Offer =
@@ -33,7 +39,7 @@ type Offer =
  * the button exists only when it says yes. A hand is added only after the
  * backend confirms the payment with Google Play, never from this screen.
  */
-export function ExtraHandPurchaseCard({ token, circleId, onPurchased }: Props) {
+export function ExtraHandPurchaseCard({ token, circleId, onPurchased, onMode }: Props) {
   const { t } = useTranslation('agreements');
   const isAndroid = Platform.OS === 'android';
   const [offer, setOffer] = useState<Offer>({ kind: 'loading' });
@@ -125,6 +131,12 @@ export function ExtraHandPurchaseCard({ token, circleId, onPurchased }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    onMode?.(
+      offer.kind === 'ready' ? 'purchase' : offer.kind === 'hidden' ? 'request' : 'none',
+    );
+  }, [offer.kind, onMode]);
 
   async function buy(resume?: { quote: ExtraHandQuote; purchaseToken: string }) {
     if (!token || !circleId || running.current) return;
