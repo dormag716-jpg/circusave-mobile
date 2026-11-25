@@ -1,4 +1,5 @@
 import { normalizeEntitlements, type Entitlements } from '../billing/entitlements';
+import type { ExtraHandQuote, ExtraHandVerifyResult } from '../billing/extraHandPurchase';
 import { ApiError } from '../platform/networkErrors';
 import { isRecord, readString, requestJson } from './http';
 
@@ -38,7 +39,16 @@ export type GooglePlayBillingStatus =
       monthly: GooglePlayPlanConfig;
       annual: GooglePlayPlanConfig;
       trialEligible: boolean;
+      /** Per-plan products. Absent until the backend has the plan tiers set up. */
+      tiers?: GooglePlayTierPlans;
     };
+
+export type GooglePlayTierPlans = Partial<
+  Record<
+    'member_pro' | 'organizer_pro',
+    { monthly?: GooglePlayPlanConfig; annual?: GooglePlayPlanConfig }
+  >
+>;
 
 export type GooglePlayVerificationResponse = {
   provider: 'google_play';
@@ -80,6 +90,35 @@ function normalizeGooglePlayPlanConfig(
   };
 }
 
+/**
+ * Lenient on purpose: an old backend sends no `tiers`, and one broken entry
+ * must not take down the whole status (and with it the old monthly/annual plans).
+ */
+export function normalizeGooglePlayTierPlans(value: unknown): GooglePlayTierPlans {
+  const result: GooglePlayTierPlans = {};
+  if (!isRecord(value)) {
+    return result;
+  }
+  for (const tier of ['member_pro', 'organizer_pro'] as const) {
+    const entry = value[tier];
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const plans: { monthly?: GooglePlayPlanConfig; annual?: GooglePlayPlanConfig } = {};
+    for (const interval of ['monthly', 'annual'] as const) {
+      try {
+        plans[interval] = normalizeGooglePlayPlanConfig(entry[interval]);
+      } catch {
+        // skip an entry that is missing or malformed
+      }
+    }
+    if (plans.monthly || plans.annual) {
+      result[tier] = plans;
+    }
+  }
+  return result;
+}
+
 function normalizeGooglePlayBillingStatus(
   value: unknown,
 ): GooglePlayBillingStatus {
@@ -104,6 +143,7 @@ function normalizeGooglePlayBillingStatus(
       'Google Play billing status response was invalid.',
     );
   }
+  const tiers = normalizeGooglePlayTierPlans(value.tiers);
   return {
     provider: 'google_play',
     enabled: true,
@@ -112,6 +152,7 @@ function normalizeGooglePlayBillingStatus(
     monthly: normalizeGooglePlayPlanConfig(value.monthly),
     annual: normalizeGooglePlayPlanConfig(value.annual),
     trialEligible: value.trialEligible,
+    ...(Object.keys(tiers).length > 0 ? { tiers } : {}),
   };
 }
 
@@ -232,6 +273,87 @@ export async function restoreGooglePlayPurchase(
   } catch (error) {
     return sanitizeGooglePlayFailure(error);
   }
+}
+
+function normalizeExtraHandQuote(value: unknown): ExtraHandQuote {
+  if (
+    !isRecord(value) ||
+    !readString(value.reservationId) ||
+    !readString(value.circleId) ||
+    !readString(value.productId) ||
+    !readString(value.obfuscatedAccountId) ||
+    !readString(value.obfuscatedProfileId) ||
+    typeof value.handNumber !== 'number'
+  ) {
+    return invalidGooglePlayResponse('Extra hand quote response was invalid.');
+  }
+  return {
+    reservationId: readString(value.reservationId),
+    circleId: readString(value.circleId),
+    handNumber: value.handNumber,
+    productId: readString(value.productId),
+    packageName: readString(value.packageName),
+    obfuscatedAccountId: readString(value.obfuscatedAccountId),
+    obfuscatedProfileId: readString(value.obfuscatedProfileId),
+    expiresAt: typeof value.expiresAt === 'string' ? value.expiresAt : null,
+    handsIncluded: typeof value.handsIncluded === 'number' ? value.handsIncluded : 0,
+    maxHandsPerPerson:
+      typeof value.maxHandsPerPerson === 'number' ? value.maxHandsPerPerson : 0,
+  };
+}
+
+function normalizeExtraHandVerifyResult(value: unknown): ExtraHandVerifyResult {
+  if (
+    !isRecord(value) ||
+    !readString(value.reservationId) ||
+    !readString(value.status) ||
+    typeof value.handNumber !== 'number'
+  ) {
+    return invalidGooglePlayResponse('Extra hand verification response was invalid.');
+  }
+  return {
+    reservationId: readString(value.reservationId),
+    circleId: readString(value.circleId),
+    handNumber: value.handNumber,
+    status: readString(value.status),
+    membershipId: typeof value.membershipId === 'string' ? value.membershipId : null,
+    consumed: value.consumed === true,
+  };
+}
+
+/**
+ * Asks the backend whether one extra hand can be bought for this circle.
+ * Errors keep the backend's `code` in `payload` so the caller can tell
+ * "not offered" from "failed"; nothing is charged by this call.
+ */
+export async function requestExtraHandQuote(
+  token: string,
+  circleId: string,
+): Promise<ExtraHandQuote> {
+  const payload = await requestJson<unknown>(
+    `/groups/${encodeURIComponent(circleId)}/extra-hands/quote`,
+    { method: 'POST', token, body: JSON.stringify({}) },
+  );
+  return normalizeExtraHandQuote(payload);
+}
+
+/** Tells the backend about a Google Play payment. Only the backend adds the hand. */
+export async function verifyExtraHandPurchase(
+  token: string,
+  input: { purchaseToken: string; reservationId: string },
+): Promise<ExtraHandVerifyResult> {
+  const payload = await requestJson<unknown>(
+    '/billing/google-play/extra-hand/verify',
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({
+        purchaseToken: input.purchaseToken,
+        reservationId: input.reservationId,
+      }),
+    },
+  );
+  return normalizeExtraHandVerifyResult(payload);
 }
 
 export function getPremiumReminderSchedule(

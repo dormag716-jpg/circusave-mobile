@@ -27,6 +27,7 @@ const mockOpenBrowserAsync = jest.fn();
 const mockCreateBillingPortal = jest.fn();
 let mockPlayState: Record<string, unknown> = { status: 'disabled' };
 let mockPlayPlans: Record<string, unknown> | null = null;
+let mockTierPlans: Record<string, unknown> | null = null;
 let mockIsPremium = false;
 let mockEntitlements: Record<string, unknown> = {
   subscriptionStatus: 'inactive',
@@ -72,6 +73,39 @@ const readyState = {
   status: 'ready',
   plans: { monthly: monthlyPlan, annual: annualTrialPlan },
 };
+// The prices Google Play returned for the two paid plans. The screen shows these
+// and nothing else as a price.
+const tierPlansFixture = {
+  member_pro_monthly: {
+    ...monthlyPlan,
+    key: 'member_pro_monthly',
+    displayPrice: 'US$3.99',
+  },
+  member_pro_annual: {
+    ...annualTrialPlan,
+    key: 'member_pro_annual',
+    displayPrice: 'US$39.99',
+    trial: null,
+  },
+  organizer_pro_monthly: {
+    ...monthlyPlan,
+    key: 'organizer_pro_monthly',
+    displayPrice: 'US$7.99',
+  },
+  organizer_pro_annual: {
+    ...annualTrialPlan,
+    key: 'organizer_pro_annual',
+    displayPrice: 'US$79.99',
+    trial: null,
+  },
+};
+
+// Billing ready, both paid plans returned by Google Play, person on the free plan.
+function setReadyWithTierPlans(): void {
+  setInitialPlayState(readyState);
+  mockTierPlans = tierPlansFixture;
+  mockEntitlements = { ...mockEntitlements, tier: 'free' };
+}
 
 jest.mock('react-native', () => {
   const ReactModule = require('react');
@@ -184,6 +218,7 @@ jest.mock('../billing/entitlementsContext', () => ({
     refreshEntitlements: mockRefreshEntitlements,
     googlePlayBillingState: mockPlayState,
     googlePlayPlans: mockPlayPlans,
+    googlePlayTierPlans: mockTierPlans,
     initializeGooglePlayBilling: mockInitialize,
     purchaseGooglePlaySubscription: mockPurchase,
     restoreGooglePlayPurchases: mockRestore,
@@ -268,6 +303,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockPlayState = { status: 'disabled' };
   mockPlayPlans = null;
+  mockTierPlans = null;
   mockIsPremium = false;
   mockEntitlements = {
     subscriptionStatus: 'inactive',
@@ -308,16 +344,18 @@ describe('Android Google Play subscription UI', () => {
       'Google Play subscriptions are coming soon.',
     );
     expect(button('Subscribe with Google Play')).toBeUndefined();
+    // The three plans still show, and the banner already says why nothing can be bought.
+    expect(screenText()).toContain('Choose your plan');
+    expect(screenText()).not.toContain('We could not load a purchasable plan');
     expect(mockPurchase).not.toHaveBeenCalled();
   });
 
-  test('renders Play-localized products and never displays nominal prices', async () => {
-    setInitialPlayState(readyState);
+  test('renders Play-localized prices and never displays nominal prices', async () => {
+    setReadyWithTierPlans();
     await renderScreen();
 
-    expect(screenText()).toContain('Play Annual');
-    expect(screenText()).toContain('US$49.99');
-    expect(screenText()).toContain('Eligible offer: 1 week at no charge');
+    expect(screenText()).toContain('US$39.99');
+    expect(screenText()).toContain('US$79.99');
     expect(screenText()).not.toContain('$59.99');
 
     const monthly = renderer.root
@@ -325,30 +363,9 @@ describe('Android Google Play subscription UI', () => {
       .find((node: any) => textContent(node) === 'Monthly');
     await TestRenderer.act(async () => monthly.props.onPress());
 
-    expect(screenText()).toContain('Play Monthly');
+    expect(screenText()).toContain('US$3.99');
     expect(screenText()).toContain('US$7.99');
-    expect(screenText()).not.toContain('Eligible offer:');
-  });
-
-  test('best-value badge follows the selected billing interval', async () => {
-    setInitialPlayState(readyState);
-    await renderScreen();
-
-    expect(screenText()).toContain('BEST VALUE');
-
-    const monthly = renderer.root
-      .findAllByType('Pressable')
-      .find((node: any) => textContent(node) === 'Monthly');
-    await TestRenderer.act(async () => monthly.props.onPress());
-
-    expect(screenText()).not.toContain('BEST VALUE');
-
-    const annual = renderer.root
-      .findAllByType('Pressable')
-      .find((node: any) => textContent(node) === 'Annual');
-    await TestRenderer.act(async () => annual.props.onPress());
-
-    expect(screenText()).toContain('BEST VALUE');
+    expect(screenText()).not.toContain('US$79.99');
   });
 
   test('failed offer matching keeps purchase unavailable with sanitized copy', async () => {
@@ -367,16 +384,16 @@ describe('Android Google Play subscription UI', () => {
   });
 
   test('repeated purchase taps launch one state-machine purchase', async () => {
-    setInitialPlayState(readyState);
+    setReadyWithTierPlans();
     mockPurchase.mockReturnValue(new Promise(() => undefined));
     await renderScreen();
 
-    const purchase = button('Start trial with Google Play');
+    const purchase = button('Choose Organizer Pro');
     purchase.props.onPress();
     purchase.props.onPress();
 
     expect(mockPurchase).toHaveBeenCalledTimes(1);
-    expect(mockPurchase).toHaveBeenCalledWith('annual');
+    expect(mockPurchase).toHaveBeenCalledWith('organizer_pro_annual');
   });
 
   test.each([
@@ -426,7 +443,7 @@ describe('Android Google Play subscription UI', () => {
   });
 
   test('handles restore with no purchases and prevents concurrent actions', async () => {
-    setInitialPlayState(readyState);
+    setReadyWithTierPlans();
     await renderScreen();
 
     await TestRenderer.act(async () => {
@@ -436,7 +453,7 @@ describe('Android Google Play subscription UI', () => {
 
     await emit({ status: 'restoring' });
     expect(button('Restore purchases').props.disabled).toBe(true);
-    expect(button('Start trial with Google Play').props.disabled).toBe(true);
+    expect(button('Choose Organizer Pro').props.disabled).toBe(true);
 
     await emit({
       status: 'succeeded',
@@ -460,11 +477,12 @@ describe('Android Google Play subscription UI', () => {
       ...mockEntitlements,
       subscriptionStatus: 'active',
       source: 'google_play',
+      tier: 'organizer_pro',
     };
     await renderScreen();
 
     await TestRenderer.act(async () => {
-      await button('Manage Google Play subscription').props.onPress();
+      await button('Manage in Google Play').props.onPress();
     });
 
     expect(mockOpenManagement).toHaveBeenCalledWith(
@@ -480,12 +498,13 @@ describe('Android Google Play subscription UI', () => {
       ...mockEntitlements,
       subscriptionStatus: 'active',
       source: 'stripe',
+      tier: 'organizer_pro',
     };
     await renderScreen();
 
     expect(button('Manage billing')).toBeUndefined();
     expect(button('Cancel renewal')).toBeUndefined();
-    expect(button('Manage Google Play subscription')).toBeUndefined();
+    expect(button('Manage in Google Play')).toBeUndefined();
     expect(screenText()).not.toContain('Secure checkout by Stripe');
     expect(mockCreateBillingPortal).not.toHaveBeenCalled();
     expect(mockOpenBrowserAsync).not.toHaveBeenCalled();
@@ -497,13 +516,14 @@ describe('Android Google Play subscription UI', () => {
       ...mockEntitlements,
       subscriptionStatus: 'active',
       source: 'admin',
+      tier: 'organizer_pro',
     };
     await renderScreen();
 
     expect(screenText()).toContain('Organizer Pro is active');
     expect(button('Manage billing')).toBeUndefined();
     expect(button('Cancel renewal')).toBeUndefined();
-    expect(button('Manage Google Play subscription')).toBeUndefined();
+    expect(button('Manage in Google Play')).toBeUndefined();
     expect(mockCreateBillingPortal).not.toHaveBeenCalled();
     expect(mockOpenManagement).not.toHaveBeenCalled();
   });
@@ -544,6 +564,7 @@ describe('Android Google Play subscription UI', () => {
     mockEntitlements = {
       ...mockEntitlements,
       plan: 'premium',
+      tier: 'organizer_pro',
       subscriptionStatus: 'active',
       source: 'google_play',
       currentPeriodEnd: '2027-11-21T12:00:00Z',
@@ -553,17 +574,42 @@ describe('Android Google Play subscription UI', () => {
     expect(screenText()).toContain('Renews on November 21, 2027.');
   });
 
-  test('blank Play titles and descriptions fall back to app copy', async () => {
-    setInitialPlayState({
-      status: 'ready',
-      plans: {
-        monthly: { ...monthlyPlan, title: '', description: '' },
-        annual: { ...annualTrialPlan, title: '', description: '' },
-      },
-    });
+  test('always shows the three plans; without Play products the paid ones cannot be bought', async () => {
+    setInitialPlayState(readyState);
+    mockEntitlements = { ...mockEntitlements, tier: 'free' };
     await renderScreen();
 
-    expect(screenText()).toContain('Built for trusted organizers');
+    const text = screenText();
+    expect(text).toContain('Choose your plan');
+    expect(text).toContain('Free');
+    expect(text).toContain('Member Pro');
+    expect(text).toContain('Organizer Pro');
+    expect(text).toContain('We could not load a purchasable plan');
+    expect(text).not.toContain('Built for trusted organizers');
+    expect(button('Choose Member Pro')).toBeUndefined();
+    expect(button('Choose Organizer Pro')).toBeUndefined();
+    expect(mockPurchase).not.toHaveBeenCalled();
+  });
+
+  test('shows the three plans with the prices Google Play returned', async () => {
+    setInitialPlayState(readyState);
+    mockTierPlans = {
+      member_pro_annual: { ...annualTrialPlan, key: 'member_pro_annual', displayPrice: '$39.99', trial: null },
+      organizer_pro_annual: { ...annualTrialPlan, key: 'organizer_pro_annual', displayPrice: '$79.99', trial: null },
+    };
+    mockEntitlements = { ...mockEntitlements, tier: 'free' };
+    await renderScreen();
+
+    const text = screenText();
+    expect(text).toContain('Choose your plan');
+    expect(text).toContain('$39.99');
+    expect(text).toContain('$79.99');
+    expect(text).not.toContain('Built for trusted organizers');
+    expect(button('Choose Member Pro')).toBeDefined();
+    expect(button('Choose Organizer Pro')).toBeDefined();
+
+    button('Choose Organizer Pro').props.onPress();
+    expect(mockPurchase).toHaveBeenCalledWith('organizer_pro_annual');
   });
 
   test('requests initialization from the centralized owner on focus', async () => {

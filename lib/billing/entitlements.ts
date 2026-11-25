@@ -56,6 +56,13 @@ export type Entitlements = {
   trialEndsAt: string | null;
   source: EntitlementSource;
   capabilities: EntitlementCapabilities;
+  /**
+   * A plan switch the subscriber has scheduled for their next renewal. Access
+   * stays on `tier` until `pendingTierStartsAt`; the backend decides when it
+   * takes effect. Absent when nothing is scheduled.
+   */
+  pendingTier?: Exclude<PlanTier, 'free'>;
+  pendingTierStartsAt?: string | null;
 };
 
 export const FREE_MAX_PARTICIPATING_HANDS = 20;
@@ -230,9 +237,25 @@ export function normalizeEntitlements(raw: unknown): Entitlements {
         ? Number(maxOpenRaw)
         : null;
 
+  const pendingRaw = String(body.pendingTier || '').trim().toLowerCase();
+  const pendingTier =
+    (pendingRaw === 'member_pro' || pendingRaw === 'organizer_pro') &&
+    pendingRaw !== tier
+      ? pendingRaw
+      : null;
+
   return {
     plan: 'premium',
     tier,
+    ...(pendingTier
+      ? {
+          pendingTier,
+          pendingTierStartsAt:
+            body.pendingTierStartsAt == null
+              ? null
+              : String(body.pendingTierStartsAt),
+        }
+      : {}),
     subscriptionStatus: asStatus(body.subscriptionStatus),
     currentPeriodEnd:
       body.currentPeriodEnd == null ? null : String(body.currentPeriodEnd),

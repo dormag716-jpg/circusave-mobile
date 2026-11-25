@@ -103,5 +103,25 @@
     "PENDING_JOIN_REQUESTS": "Aprueba o rechaza todas las solicitudes de ingreso pendientes.",
     "PENDING_ADDITIONAL_HAND_REQUESTS": "Aprueba o rechaza todas las solicitudes de manos adicionales pendientes.",
     "PAYOUT_ORDER_INCOMPLETE": "Asigna una posición de pago a cada mano participante."
-  }
+  },
+  "extraHandTitle": "Comprar una mano adicional",
+  "extraHandHandOf": "Mano {{number}} de {{max}}",
+  "extraHandBody_one": "Tu plan incluye {{count}} mano por persona. Una mano adicional cuesta {{price}}. Se agrega solo después de que Google Play confirme tu pago.",
+  "extraHandBody_other": "Tu plan incluye {{count}} manos por persona. Una mano adicional cuesta {{price}}. Se agrega solo después de que Google Play confirme tu pago.",
+  "extraHandBuy": "Comprar mano adicional por {{price}}",
+  "extraHandPriceUnavailable": "No pudimos cargar el precio desde Google Play. Inténtalo de nuevo más tarde.",
+  "extraHandNotOnDevice": "Por ahora, las manos adicionales se compran en Android.",
+  "extraHandLimit": "Tu plan permite hasta {{max}} manos por persona en un círculo.",
+  "extraHandLimitGeneric": "Llegaste al máximo de manos que permite tu plan en un círculo.",
+  "extraHandNotOffered": "Las manos adicionales no están disponibles en este momento.",
+  "extraHandPaying": "Completa tu compra en la ventana de Google Play.",
+  "extraHandVerifying": "Confirmando tu pago…",
+  "extraHandPending": "Google Play todavía está procesando tu pago. Tu mano se agrega cuando se confirme.",
+  "extraHandDone": "Se agregó tu mano adicional.",
+  "extraHandCanceled": "Compra cancelada. No se te cobró.",
+  "extraHandPaymentFailed": "Google Play no pudo completar la compra. No se te cobró.",
+  "extraHandVerifyFailed": "Tu pago se realizó, pero todavía no pudimos agregar la mano. Inténtalo de nuevo. No se te cobrará dos veces.",
+  "extraHandNeedsReview": "Tu pago necesita una revisión rápida antes de agregar la mano. Contacta a soporte si esto no cambia.",
+  "extraHandQuoteFailed": "No pudimos revisar las manos adicionales ahora. Inténtalo de nuevo.",
+  "extraHandRetry": "Intentar de nuevo"
 }

@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
+import { ExtraHandPurchaseCard } from '@/components/circle/ExtraHandPurchaseCard';
 import {
   getAdditionalHandPreview,
   requestAdditionalHand,
@@ -29,9 +30,10 @@ export default function AdditionalHandConsentScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'purchase' | 'request' | 'none'>('none');
 
   const loadPreview = useCallback(async () => {
-    if (!token || !circleId) {
+    if (!token || !circleId || mode !== 'request') {
       setLoading(false);
       return;
     }
@@ -49,7 +51,7 @@ export default function AdditionalHandConsentScreen() {
     } finally {
       setLoading(false);
     }
-  }, [circleId, t, token]);
+  }, [circleId, mode, t, token]);
 
   useEffect(() => {
     void loadPreview();
@@ -94,6 +96,20 @@ export default function AdditionalHandConsentScreen() {
           <Text style={styles.title}>{t('additionalTitle')}</Text>
           <View style={styles.spacer} />
         </View>
+
+        <ExtraHandPurchaseCard
+          token={token}
+          circleId={circleId}
+          onMode={setMode}
+          onPurchased={() => {
+            if (circleId) {
+              router.replace({
+                pathname: '/circle/workspace',
+                params: { circleId, tab: 'people', extraHandPurchased: '1' },
+              });
+            }
+          }}
+        />
 
         {loading ? <ActivityIndicator size="large" color={colors.primary} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}

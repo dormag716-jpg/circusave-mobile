@@ -295,8 +295,7 @@ test('disabled contribution capability does not alter mounted Premium subscripti
   const text = visibleText(renderer);
 
   expect(text).toContain('active');
-  expect(text).toContain('productName');
-  expect(text).toContain('yourPlan');
+  expect(text).toContain('tierHeroTitle');
   expect(text).toContain('subscriptionReady');
   expect(text).toContain('iosFooter');
   expect(text).not.toContain('rails.contributionPaymentsDisabledBody');

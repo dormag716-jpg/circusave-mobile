@@ -15,6 +15,7 @@ import {
   type GooglePlayPlanConfig,
   type GooglePlayVerificationResponse,
 } from '../api';
+import { planChangeRequest, type BillingInterval, type PaidTier } from './planChange';
 import {
   googlePlayBilling,
   GooglePlayNativeBillingUnavailableError,
@@ -23,6 +24,36 @@ import {
 } from './googlePlayBilling';
 
 export type GooglePlayPlanKey = 'monthly' | 'annual';
+export type GooglePlayTierPlanKey =
+  | 'member_pro_monthly'
+  | 'member_pro_annual'
+  | 'organizer_pro_monthly'
+  | 'organizer_pro_annual';
+export type GooglePlayAnyPlanKey = GooglePlayPlanKey | GooglePlayTierPlanKey;
+
+const TIER_PLAN_KEYS: readonly GooglePlayTierPlanKey[] = [
+  'member_pro_monthly',
+  'member_pro_annual',
+  'organizer_pro_monthly',
+  'organizer_pro_annual',
+];
+
+function tierPlanKey(
+  tier: PaidTier,
+  interval: BillingInterval,
+): GooglePlayTierPlanKey {
+  return `${tier}_${interval}`;
+}
+
+function splitTierPlanKey(key: GooglePlayTierPlanKey): {
+  tier: PaidTier;
+  interval: BillingInterval;
+} {
+  return {
+    tier: key.startsWith('member_pro') ? 'member_pro' : 'organizer_pro',
+    interval: key.endsWith('annual') ? 'annual' : 'monthly',
+  };
+}
 
 export type GooglePlayPricingPhase = {
   billingCycleCount: number;
@@ -33,7 +64,7 @@ export type GooglePlayPricingPhase = {
 };
 
 export type GooglePlayPlan = {
-  key: GooglePlayPlanKey;
+  key: GooglePlayAnyPlanKey;
   productId: string;
   basePlanId: string;
   offerId: string | null;
@@ -80,16 +111,18 @@ export type GooglePlayBillingState =
   | {
       status: 'ready';
       plans: Record<GooglePlayPlanKey, GooglePlayPlan>;
+      /** Member Pro / Organizer Pro products found in Google Play. Absent when none. */
+      tierPlans?: Partial<Record<GooglePlayTierPlanKey, GooglePlayPlan>>;
       outcome?: 'canceled';
     }
-  | { status: 'purchasing'; plan: GooglePlayPlanKey }
-  | { status: 'pending'; plan: GooglePlayPlanKey }
-  | { status: 'verifying'; plan: GooglePlayPlanKey }
+  | { status: 'purchasing'; plan: GooglePlayAnyPlanKey }
+  | { status: 'pending'; plan: GooglePlayAnyPlanKey }
+  | { status: 'verifying'; plan: GooglePlayAnyPlanKey }
   | { status: 'restoring' }
   | {
       status: 'succeeded';
       operation: 'purchase' | 'restore' | 'completion';
-      plan?: GooglePlayPlanKey;
+      plan?: GooglePlayAnyPlanKey;
       restore?: GooglePlayRestoreSummary;
     }
   | {
@@ -107,7 +140,7 @@ type InternalPlan = {
 
 type PendingCompletion = {
   operation: 'purchase' | 'restore';
-  plan: GooglePlayPlanKey | null;
+  plan: GooglePlayAnyPlanKey | null;
   purchase: PurchaseAndroid;
 };
 
@@ -152,20 +185,24 @@ export class GooglePlayBillingOperationError extends Error {
   readonly code:
     | 'google_play_invalid_state'
     | 'google_play_operation_in_progress'
-    | 'google_play_disposed';
+    | 'google_play_disposed'
+    | 'google_play_plan_change_unavailable';
 
   constructor(
     code:
       | 'google_play_invalid_state'
       | 'google_play_operation_in_progress'
-      | 'google_play_disposed',
+      | 'google_play_disposed'
+      | 'google_play_plan_change_unavailable',
   ) {
     super(
       code === 'google_play_operation_in_progress'
         ? 'Another Google Play billing operation is already in progress.'
         : code === 'google_play_disposed'
           ? 'Google Play billing has been disposed.'
-          : 'Google Play billing is not ready.',
+          : code === 'google_play_plan_change_unavailable'
+            ? 'This plan change is not available in the app yet.'
+            : 'Google Play billing is not ready.',
     );
     this.name = 'GooglePlayBillingOperationError';
     this.code = code;
@@ -206,7 +243,7 @@ function copyPricingPhase(phase: PricingPhaseAndroid): GooglePlayPricingPhase {
 }
 
 function matchPlan(
-  key: GooglePlayPlanKey,
+  key: GooglePlayAnyPlanKey,
   config: GooglePlayPlanConfig,
   products: ProductSubscription[],
   trialEligible: boolean,
@@ -308,11 +345,12 @@ export function createGooglePlayBillingMachine(
   let state: GooglePlayBillingState = { status: 'idle' };
   let config: Extract<GooglePlayBillingStatus, { enabled: true }> | null = null;
   let plans: Record<GooglePlayPlanKey, InternalPlan> | null = null;
+  let tierPlans: Partial<Record<GooglePlayTierPlanKey, InternalPlan>> = {};
   let listenerCleanup: (() => void) | null = null;
   let initializationPromise: Promise<void> | null = null;
   let nativeConnected = false;
   let activeOperation: 'purchase' | 'restore' | 'completion' | null = null;
-  let activePlan: GooglePlayPlanKey | null = null;
+  let activePlan: GooglePlayAnyPlanKey | null = null;
   let disposed = false;
   const listeners = new Set<(state: GooglePlayBillingState) => void>();
   const queuedPurchaseEvents: PurchaseAndroid[] = [];
@@ -352,15 +390,52 @@ export function createGooglePlayBillingMachine(
     };
   }
 
+  function readyState(
+    outcome?: 'canceled',
+  ): Extract<GooglePlayBillingState, { status: 'ready' }> {
+    const tierPresentation: Partial<
+      Record<GooglePlayTierPlanKey, GooglePlayPlan>
+    > = {};
+    for (const key of TIER_PLAN_KEYS) {
+      const plan = tierPlans[key];
+      if (plan) {
+        tierPresentation[key] = plan.presentation;
+      }
+    }
+    return {
+      status: 'ready',
+      plans: publicPlans(),
+      ...(Object.keys(tierPresentation).length > 0
+        ? { tierPlans: tierPresentation }
+        : {}),
+      ...(outcome ? { outcome } : {}),
+    };
+  }
+
+  function internalPlan(key: GooglePlayAnyPlanKey): InternalPlan | null {
+    if (key === 'monthly' || key === 'annual') {
+      return plans?.[key] ?? null;
+    }
+    return tierPlans[key] ?? null;
+  }
+
+  function allPlanKeys(): GooglePlayAnyPlanKey[] {
+    return [
+      'monthly',
+      'annual',
+      ...TIER_PLAN_KEYS.filter((key) => tierPlans[key]),
+    ];
+  }
+
   function planForPurchase(
     purchase: PurchaseAndroid,
-    fallback: GooglePlayPlanKey | null = null,
-  ): GooglePlayPlanKey | null {
+    fallback: GooglePlayAnyPlanKey | null = null,
+  ): GooglePlayAnyPlanKey | null {
     if (!plans) {
       return null;
     }
-    const candidates = (['monthly', 'annual'] as const).filter((key) => {
-      const plan = plans?.[key].presentation;
+    const candidates = allPlanKeys().filter((key) => {
+      const plan = internalPlan(key)?.presentation;
       return (
         plan?.productId === purchase.productId &&
         (!purchase.currentPlanId || purchase.currentPlanId === plan.basePlanId)
@@ -371,7 +446,7 @@ export function createGooglePlayBillingMachine(
     }
     if (
       fallback &&
-      plans[fallback].presentation.productId === purchase.productId
+      internalPlan(fallback)?.presentation.productId === purchase.productId
     ) {
       return fallback;
     }
@@ -386,7 +461,7 @@ export function createGooglePlayBillingMachine(
     purchase: PurchaseAndroid,
     purchaseToken: string,
     operation: 'purchase' | 'restore',
-    plan: GooglePlayPlanKey | null,
+    plan: GooglePlayAnyPlanKey | null,
   ): Promise<'completed' | 'completion_pending' | 'refresh_failed'> {
     verifiedTokens.add(purchaseToken);
     pendingCompletions.set(purchaseToken, { operation, plan, purchase });
@@ -559,11 +634,7 @@ export function createGooglePlayBillingMachine(
     if (error.kind === 'canceled') {
       activeOperation = null;
       activePlan = null;
-      transition({
-        status: 'ready',
-        plans: publicPlans(),
-        outcome: 'canceled',
-      });
+      transition(readyState('canceled'));
       return;
     }
     activeOperation = null;
@@ -700,6 +771,41 @@ export function createGooglePlayBillingMachine(
 
       config = status;
       plans = { monthly, annual };
+      tierPlans = {};
+      const tierConfigs: Array<[GooglePlayTierPlanKey, GooglePlayPlanConfig]> =
+        [];
+      for (const tier of ['member_pro', 'organizer_pro'] as const) {
+        for (const interval of ['monthly', 'annual'] as const) {
+          const planConfig = status.tiers?.[tier]?.[interval];
+          if (planConfig) {
+            tierConfigs.push([tierPlanKey(tier, interval), planConfig]);
+          }
+        }
+      }
+      if (tierConfigs.length > 0) {
+        // A missing or draft tier product only hides that plan; it must never
+        // break the existing plans above.
+        try {
+          const tierProducts = await gateway.querySubscriptionProducts([
+            ...new Set(
+              tierConfigs.map(([, planConfig]) => planConfig.productId),
+            ),
+          ]);
+          for (const [key, planConfig] of tierConfigs) {
+            const matched = matchPlan(
+              key,
+              planConfig,
+              tierProducts,
+              status.trialEligible,
+            );
+            if (matched) {
+              tierPlans[key] = matched;
+            }
+          }
+        } catch {
+          tierPlans = {};
+        }
+      }
       try {
         await ensureListeners();
       } catch {
@@ -711,7 +817,7 @@ export function createGooglePlayBillingMachine(
         });
         return;
       }
-      transition({ status: 'ready', plans: publicPlans() });
+      transition(readyState());
       const queued = queuedPurchaseEvents.splice(0);
       queued.forEach((purchase) => {
         void handlePurchase(purchase);
@@ -725,22 +831,107 @@ export function createGooglePlayBillingMachine(
     }
   }
 
-  async function purchase(planKey: GooglePlayPlanKey): Promise<void> {
+  /**
+   * Finds the paid tier plan the person has now in Google Play, to decide how a
+   * change is requested. Returns null when there is none (a fresh purchase).
+   */
+  async function findCurrentTierPurchase(): Promise<{
+    purchase: PurchaseAndroid & { purchaseToken: string };
+    tier: PaidTier;
+    interval: BillingInterval;
+  } | null> {
+    const owned = await gateway.getAvailableSubscriptionPurchases();
+    for (const candidate of owned) {
+      if (
+        candidate.purchaseState !== 'purchased' ||
+        candidate.isSuspendedAndroid === true ||
+        !candidate.purchaseToken?.trim()
+      ) {
+        continue;
+      }
+      for (const key of TIER_PLAN_KEYS) {
+        const plan = tierPlans[key]?.presentation;
+        if (
+          plan &&
+          plan.productId === candidate.productId &&
+          (!candidate.currentPlanId ||
+            candidate.currentPlanId === plan.basePlanId)
+        ) {
+          return {
+            purchase: candidate as PurchaseAndroid & { purchaseToken: string },
+            ...splitTierPlanKey(key),
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  async function purchase(planKey: GooglePlayAnyPlanKey): Promise<void> {
     ensureUsable();
     ensureNoActiveOperation();
     if (state.status !== 'ready' || !plans || !config) {
       throw new GooglePlayBillingOperationError('google_play_invalid_state');
     }
-    const plan = plans[planKey];
+    const plan = internalPlan(planKey);
+    if (!plan) {
+      throw new GooglePlayBillingOperationError('google_play_invalid_state');
+    }
+
+    let replacement:
+      | {
+          oldProductId: string;
+          oldPurchaseToken: string;
+          replacementMode: 'charge-prorated-price' | 'deferred';
+        }
+      | undefined;
+    if (planKey !== 'monthly' && planKey !== 'annual') {
+      // Moving between paid plans follows our own rules (D7), not a guess.
+      activeOperation = 'purchase';
+      let current: Awaited<ReturnType<typeof findCurrentTierPurchase>>;
+      try {
+        current = await findCurrentTierPurchase();
+      } catch {
+        activeOperation = null;
+        throw new GooglePlayBillingOperationError('google_play_invalid_state');
+      }
+      activeOperation = null;
+      const request = planChangeRequest(
+        current ? { tier: current.tier, interval: current.interval } : null,
+        splitTierPlanKey(planKey),
+      );
+      if (request.kind === 'not_supported_yet') {
+        throw new GooglePlayBillingOperationError(
+          'google_play_plan_change_unavailable',
+        );
+      }
+      if (request.kind === 'replace' && current) {
+        replacement = {
+          oldProductId: current.purchase.productId,
+          oldPurchaseToken: current.purchase.purchaseToken,
+          replacementMode: request.replacementMode,
+        };
+      }
+    }
+
     activeOperation = 'purchase';
     activePlan = planKey;
     transition({ status: 'purchasing', plan: planKey });
     try {
-      await gateway.requestSubscription(
-        plan.presentation.productId,
-        plan.offerToken,
-        config.obfuscatedAccountId,
-      );
+      if (replacement) {
+        await gateway.requestSubscription(
+          plan.presentation.productId,
+          plan.offerToken,
+          config.obfuscatedAccountId,
+          replacement,
+        );
+      } else {
+        await gateway.requestSubscription(
+          plan.presentation.productId,
+          plan.offerToken,
+          config.obfuscatedAccountId,
+        );
+      }
     } catch (error) {
       const kind =
         error &&
@@ -760,10 +951,12 @@ export function createGooglePlayBillingMachine(
     purchase: PurchaseAndroid,
   ): purchase is PurchaseAndroid & { purchaseToken: string } {
     const configuredProductIds = plans
-      ? new Set([
-          plans.monthly.presentation.productId,
-          plans.annual.presentation.productId,
-        ])
+      ? new Set(
+          allPlanKeys().flatMap((key) => {
+            const plan = internalPlan(key);
+            return plan ? [plan.presentation.productId] : [];
+          }),
+        )
       : new Set<string>();
     return (
       purchase.purchaseState === 'purchased' &&
@@ -791,7 +984,7 @@ export function createGooglePlayBillingMachine(
     ) {
       return;
     }
-    transition({ status: 'ready', plans: publicPlans() });
+    transition(readyState());
   }
 
   async function restore(): Promise<void> {
