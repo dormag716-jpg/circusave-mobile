@@ -254,6 +254,11 @@ test('iOS free user sees StoreKit-unavailable copy and never starts Stripe check
   expect(visibleText()).toContain(
     'Organizer Pro subscriptions are not yet available on iPhone.',
   );
+  // The three plans are listed with their limits, but nothing can be bought.
+  expect(visibleText()).toContain('Choose your plan');
+  expect(visibleText()).toContain('Member Pro');
+  expect(visibleText()).toContain('Organizer Pro');
+  expect(visibleText()).not.toContain('We could not load a purchasable plan');
   expect(visibleText()).not.toContain('$59.99');
   expect(visibleText()).not.toContain('$7.99');
   expect(visibleText()).not.toContain('Start my 7-day free trial');
@@ -283,13 +288,15 @@ test('web free user sees web-specific copy and no iOS billing claims', async () 
   expect(mockCreateBillingCheckout).not.toHaveBeenCalled();
 });
 
-test('fallback hero tagline follows the selected language', async () => {
+test('hero title and tagline follow the selected language', async () => {
   await changeLanguagePreference('es');
   await mount();
 
+  expect(visibleText()).toContain('Elige tu plan');
   expect(visibleText()).toContain(
-    'Administra varios círculos con menos seguimiento',
+    'Empieza gratis. Sube de plan cuando tus círculos crezcan.',
   );
+  expect(visibleText()).not.toContain('Choose your plan');
   expect(visibleText()).not.toContain(
     'Run multiple circles with less chasing',
   );
@@ -322,7 +329,7 @@ test('iOS admin entitlement unlocks Premium without Stripe or Play management', 
   await mount();
 
   expect(visibleText()).toContain('Organizer Pro is active');
-  expect(visibleText()).toContain('All organizer tools unlocked');
+  expect(visibleText()).toContain('Your subscription is active and ready.');
   expect(visibleText()).not.toContain('Manage billing');
   expect(visibleText()).not.toContain('Cancel renewal');
   expect(visibleText()).not.toContain('Manage Google Play subscription');
@@ -341,7 +348,7 @@ test('expired entitlement stays free without Stripe trial or prices', async () =
 
   expect(visibleText()).not.toContain('Start my 7-day free trial');
   expect(visibleText()).not.toContain('Organizer Pro is active');
-  expect(visibleText()).not.toContain('All organizer tools unlocked');
+  expect(visibleText()).not.toContain('Your subscription is active and ready.');
   expect(visibleText()).toContain(
     'Organizer Pro subscriptions are not yet available on iPhone.',
   );

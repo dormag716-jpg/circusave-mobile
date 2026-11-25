@@ -24,7 +24,14 @@ export type TierPlansSectionProps = {
   canPurchase: boolean;
   periodLabel: (period: string | null) => string;
   onPurchase: (key: GooglePlayTierPlanKey) => void;
-  onManage: () => void;
+  /** Omit when the plan is not a Google Play subscription (nothing to manage there). */
+  onManage?: () => void;
+  /**
+   * Pass null to hide the "could not load a plan" note on a paid card, for when
+   * the screen already explains why nothing can be bought (iPhone, web, billing
+   * not switched on yet).
+   */
+  unavailableNote?: string | null;
 };
 
 const PAID_TIERS: PaidTier[] = ['member_pro', 'organizer_pro'];
@@ -51,6 +58,7 @@ export function TierPlansSection({
   periodLabel,
   onPurchase,
   onManage,
+  unavailableNote,
 }: TierPlansSectionProps) {
   const { t } = useTranslation('subscription');
   const [interval, setInterval] = useState<Interval>('annual');
@@ -166,7 +174,7 @@ export function TierPlansSection({
               </>
             ) : null}
 
-            {action === 'current_paid' ? (
+            {action === 'current_paid' && onManage ? (
               <Pressable
                 style={styles.linkButton}
                 onPress={onManage}
@@ -177,8 +185,13 @@ export function TierPlansSection({
               </Pressable>
             ) : null}
 
-            {tier !== 'free' && !plan && action !== 'current_paid' ? (
-              <Text style={styles.note}>{t('playUnavailableBody')}</Text>
+            {tier !== 'free' &&
+            !plan &&
+            action !== 'current_paid' &&
+            unavailableNote !== null ? (
+              <Text style={styles.note}>
+                {unavailableNote ?? t('playUnavailableBody')}
+              </Text>
             ) : null}
           </View>
         );

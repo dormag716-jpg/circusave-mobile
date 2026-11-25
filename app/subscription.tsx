@@ -11,7 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
@@ -22,10 +22,6 @@ import {
   getAndroidApplicationPackage,
   openGooglePlaySubscriptionManagement,
 } from '@/lib/billing/googlePlaySubscriptionManagement';
-import {
-  FREE_MAX_PARTICIPATING_HANDS,
-  PREMIUM_MAX_PARTICIPATING_HANDS,
-} from '@/lib/billing/entitlements';
 import { logClientWarning } from '@/lib/platform/errorLogging';
 import { playFailureCopy } from '@/lib/billing/googlePlayStatusCopy';
 import {
@@ -35,18 +31,8 @@ import {
 import { subscriptionDateLine } from '@/lib/billing/subscriptionDates';
 import { formatLongDate } from '@/lib/i18n/formatters';
 import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
-import { colors, radii, shadows } from '@/lib/shared/theme';
+import { colors, shadows } from '@/lib/shared/theme';
 import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
-
-// What Organizer Pro includes. Prices and trial length come from Google Play,
-// never from this file.
-const PREMIUM_FEATURE_KEYS = [
-  'unlimitedCircles',
-  'hands',
-  'history',
-] as const;
-
-type BillingInterval = 'monthly' | 'annual';
 
 export default function SubscriptionScreen() {
   const { t, i18n } = useTranslation(['subscription', 'common']);
@@ -69,7 +55,6 @@ export default function SubscriptionScreen() {
   const isAndroid = Platform.OS === 'android';
   const isIos = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
-  const [interval, setInterval] = useState<BillingInterval>('annual');
   const [action, setAction] = useState<'manage' | null>(null);
   const playOperationLocked = useRef(false);
 
@@ -105,12 +90,6 @@ export default function SubscriptionScreen() {
     }
   }, [playState.status]);
 
-  // The three-plan view appears only when the backend has the plan tiers on and
-  // Google Play returned at least one of those products. Otherwise the original
-  // single-plan view stays exactly as it was.
-  const tierView =
-    isAndroid && tierPlans != null && Object.keys(tierPlans).length > 0;
-  const selectedPlayPlan = playPlans?.[interval] ?? null;
   const playBusy = [
     'connecting',
     'loading_products',
@@ -119,8 +98,6 @@ export default function SubscriptionScreen() {
     'verifying',
     'restoring',
   ].includes(playState.status);
-  const playCanPurchase =
-    playState.status === 'ready' && selectedPlayPlan !== null && !isPremium;
   const playCanRestore =
     playPlans !== null &&
     !playBusy &&
@@ -128,6 +105,8 @@ export default function SubscriptionScreen() {
       playState.status === 'succeeded' ||
       playState.status === 'failed');
   const dateLine = isPremium ? subscriptionDateLine(entitlements) : null;
+  // Only a Google Play subscription can be managed in Google Play. Stripe and
+  // admin-granted access get no provider-management control.
   const isGooglePlayEntitlement =
     isAndroid && entitlements.source === 'google_play';
 
@@ -143,19 +122,6 @@ export default function SubscriptionScreen() {
       Y: count === 1 ? 'periodYear' : 'periodYears',
     } as const;
     return t(units[match[2] as keyof typeof units], { count });
-  }
-
-  async function startGooglePlayPurchase() {
-    if (!playCanPurchase || playOperationLocked.current) {
-      return;
-    }
-    playOperationLocked.current = true;
-    try {
-      await runGooglePlayPurchase(interval);
-    } catch {
-      playOperationLocked.current = false;
-      Alert.alert(t('billingUnavailable'), t('playUnavailableBody'));
-    }
   }
 
   async function startTierPurchase(plan: GooglePlayAnyPlanKey) {
@@ -232,7 +198,7 @@ export default function SubscriptionScreen() {
   }
 
   const playStatusMessage = (() => {
-    if (!isAndroid || (isPremium && !tierView)) return null;
+    if (!isAndroid) return null;
     if (playState.status === 'disabled') {
       return {
         title: t('playComingSoon'),
@@ -364,30 +330,11 @@ export default function SubscriptionScreen() {
             </View>
             <Text style={styles.eyebrow}>{t('eyebrow')}</Text>
             <Text style={[styles.heroTitle, compact && styles.heroTitleCompact]}>
-              {tierView ? t('tierHeroTitle') : t('heroTitle')}
+              {t('tierHeroTitle')}
             </Text>
             <Text style={[styles.heroCopy, compact && styles.heroCopyCompact]}>
-              {tierView ? t('tierHeroTagline') : t('heroTagline')}
+              {t('tierHeroTagline')}
             </Text>
-
-            {tierView ? null : isPremium ? (
-              <View style={styles.activePill}>
-                <FontAwesome name="check-circle" size={14} color={colors.successSoft} />
-                <Text style={styles.activePillText}>
-                  {entitlements.subscriptionStatus === 'trialing'
-                    ? t('trialActive')
-                    : t('active')}
-                </Text>
-              </View>
-            ) : selectedPlayPlan?.trial ? (
-              <Text style={styles.trialCopy}>
-                {t('playTrialCopy', {
-                  period: formatPlayPeriod(
-                    selectedPlayPlan.trial.billingPeriod,
-                  ),
-                })}
-              </Text>
-            ) : null}
           </Animated.View>
 
           {isIos && !isPremium ? (
@@ -472,173 +419,29 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          {!isPremium && isAndroid && !tierView ? (
-            <Animated.View
-              entering={FadeInDown.delay(100).springify()}
-              style={[styles.billingToggle, compact && styles.billingToggleCompact]}
+          {isPremium ? (
+            <View
+              style={styles.statusBanner}
+              accessibilityLiveRegion="polite"
             >
-              <IntervalButton
-                active={interval === 'monthly'}
-                label={t('monthly')}
-                disabled={!playPlans || playBusy}
-                onPress={() => setInterval('monthly')}
+              <FontAwesome
+                name="check-circle"
+                size={17}
+                color={colors.successText}
               />
-              <IntervalButton
-                active={interval === 'annual'}
-                label={t('annual')}
-                disabled={!playPlans || playBusy}
-                onPress={() => setInterval('annual')}
-              />
-            </Animated.View>
-          ) : null}
-
-          {tierView && tierPlans ? (
-            <>
-              <TierPlansSection
-                tierPlans={tierPlans}
-                currentTier={entitlements.tier}
-                pendingTier={entitlements.pendingTier}
-                pendingDateLabel={
-                  entitlements.pendingTierStartsAt
-                    ? formatLongDate(
-                        entitlements.pendingTierStartsAt,
-                        i18n.resolvedLanguage || i18n.language,
-                      )
-                    : null
-                }
-                busy={playBusy}
-                canPurchase={playState.status === 'ready'}
-                periodLabel={formatPlayPeriod}
-                onPurchase={(key) => void startTierPurchase(key)}
-                onManage={() => void openGooglePlayManagement()}
-              />
-              {playPlans ? (
-                <Pressable
-                  style={[
-                    styles.restoreButton,
-                    !playCanRestore && styles.buttonDisabled,
-                  ]}
-                  onPress={() => void restoreGooglePlayPurchases()}
-                  disabled={!playCanRestore}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('playRestore')}
-                  accessibilityState={{ disabled: !playCanRestore }}
-                >
-                  <Text style={styles.restoreButtonText}>{t('playRestore')}</Text>
-                </Pressable>
-              ) : null}
-              {playState.status === 'failed' &&
-              playFailureCopy(playState).action === 'reload' ? (
-                <Pressable
-                  style={styles.restoreButton}
-                  onPress={() => void reloadGooglePlay()}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('playTryAgain')}
-                >
-                  <Text style={styles.restoreButtonText}>{t('playTryAgain')}</Text>
-                </Pressable>
-              ) : null}
-              {playState.status === 'failed' &&
-              playState.code === 'transaction_completion_failed' ? (
-                <Pressable
-                  style={styles.restoreButton}
-                  onPress={() => void retryGooglePlayCompletion()}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('playRetryCompletion')}
-                >
-                  <Text style={styles.restoreButtonText}>
-                    {t('playRetryCompletion')}
-                  </Text>
-                </Pressable>
-              ) : null}
-              <Text style={styles.footer}>{t('tierFooter')}</Text>
-            </>
-          ) : (
-          <>
-          <Animated.View
-            entering={FadeInDown.delay(180).springify()}
-            style={[styles.priceCard, compact && styles.priceCardCompact]}
-          >
-            <View style={styles.priceHeader}>
-              <View style={styles.planTitleBlock}>
-                <Text style={styles.planName}>
-                  {isAndroid && selectedPlayPlan
-                    ? selectedPlayPlan.title?.trim() || t('productName')
-                    : t('productName')}
+              <View style={styles.statusBannerText}>
+                <Text style={styles.statusBannerTitle}>
+                  {entitlements.subscriptionStatus === 'trialing'
+                    ? t('trialActive')
+                    : t('active')}
                 </Text>
-                {isAndroid && selectedPlayPlan?.description?.trim() ? (
-                  <Text style={styles.planAudience}>
-                    {selectedPlayPlan.description.trim()}
-                  </Text>
-                ) : null}
-              </View>
-              {isPremium ? (
-                <View style={styles.recommendedBadge}>
-                  <FontAwesome name="star" size={10} color={colors.primaryDark} />
-                  <Text style={styles.recommendedText}>{t('yourPlan')}</Text>
-                </View>
-              ) : isAndroid && interval === 'annual' ? (
-                <View style={styles.recommendedBadge}>
-                  <FontAwesome name="star" size={10} color={colors.primaryDark} />
-                  <Text style={styles.recommendedText}>{t('bestValue')}</Text>
-                </View>
-              ) : null}
-            </View>
-
-            {!isPremium ? (
-              isAndroid ? (
-                selectedPlayPlan ? (
-                  <View style={styles.priceRow}>
-                    <Text
-                      style={[styles.playPrice, compact && styles.playPriceCompact]}
-                      adjustsFontSizeToFit
-                      numberOfLines={1}
-                    >
-                      {selectedPlayPlan.displayPrice}
-                    </Text>
-                    {selectedPlayPlan.billingPeriod ? (
-                      <View style={styles.priceMeta}>
-                        <Text style={styles.pricePeriod}>
-                          {t('playBillingPeriod', {
-                            period: formatPlayPeriod(
-                              selectedPlayPlan.billingPeriod,
-                            ),
-                          })}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : (
-                  <View style={styles.playPricePlaceholder}>
-                    {playBusy ? (
-                      <ActivityIndicator color={colors.primaryDark} />
-                    ) : null}
-                    <Text style={styles.playPricePlaceholderText}>
-                      {playState.status === 'disabled'
-                        ? t('playComingSoon')
-                        : t('playUnavailableBody')}
-                    </Text>
-                  </View>
-                )
-              ) : (
-                <View style={styles.playPricePlaceholder}>
-                  <Text style={styles.playPricePlaceholderText}>
-                    {isIos ? t('iosUnavailableBody') : t('webUnavailableBody')}
-                  </Text>
-                </View>
-              )
-            ) : (
-              <View style={styles.activeSummary}>
-                <Text style={styles.activeSummaryTitle}>
-                  {t('unlockedTitle')}
-                </Text>
-                <Text style={styles.activeSummaryText}>
+                <Text style={styles.statusBannerBody}>
                   {entitlements.cancelAtPeriodEnd
                     ? t('willNotRenew')
                     : t('subscriptionReady')}
                 </Text>
                 {dateLine ? (
-                  <Text style={styles.activeSummaryDate}>
+                  <Text style={styles.statusBannerBody}>
                     {t(dateLine.key, {
                       date: formatLongDate(
                         dateLine.date,
@@ -648,232 +451,84 @@ export default function SubscriptionScreen() {
                   </Text>
                 ) : null}
               </View>
-            )}
-
-            <View style={[styles.divider, compact && styles.dividerCompact]} />
-
-            <View style={[styles.features, compact && styles.featuresCompact]}>
-              {PREMIUM_FEATURE_KEYS.map((feature, index) => (
-                <View key={feature} style={styles.featureRow}>
-                  <View
-                    style={[
-                      styles.featureIcon,
-                      index < 2 && styles.featureIconFeatured,
-                    ]}
-                  >
-                    <FontAwesome
-                      name={featureIcon(feature)}
-                      size={13}
-                      color={
-                        index < 2 ? colors.onColor : colors.primaryDark
-                      }
-                    />
-                  </View>
-                  <Text style={styles.featureText}>
-                    {feature === 'hands'
-                      ? t('features.hands', {
-                          count: PREMIUM_MAX_PARTICIPATING_HANDS,
-                        })
-                      : t(`features.${feature}`, { defaultValue: feature })}
-                  </Text>
-                </View>
-              ))}
             </View>
-
-            {isPremium ? (
-              isGooglePlayEntitlement ? (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    pressed && styles.buttonPressed,
-                  ]}
-                  onPress={() => void openGooglePlayManagement()}
-                  disabled={action !== null}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('playManageSubscription')}
-                  accessibilityState={{ disabled: action !== null }}
-                >
-                  {action === 'manage' ? (
-                    <ActivityIndicator color={colors.onColor} />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryButtonText}>
-                        {t('playManageSubscription')}
-                      </Text>
-                      <FontAwesome
-                        name="external-link"
-                        size={14}
-                        color={colors.onColor}
-                      />
-                    </>
-                  )}
-                </Pressable>
-              ) : null
-            ) : isAndroid ? (
-              <>
-                {playPlans ? (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      (!playCanPurchase || playBusy) && styles.buttonDisabled,
-                      pressed && playCanPurchase && styles.buttonPressed,
-                    ]}
-                    onPress={() => void startGooglePlayPurchase()}
-                    disabled={!playCanPurchase || playBusy}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      selectedPlayPlan?.trial
-                        ? t('playPurchaseTrial')
-                        : t('playPurchase')
-                    }
-                    accessibilityState={{
-                      disabled: !playCanPurchase || playBusy,
-                    }}
-                  >
-                    {playBusy && playState.status !== 'pending' ? (
-                      <ActivityIndicator color={colors.onColor} />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>
-                        {selectedPlayPlan?.trial
-                          ? t('playPurchaseTrial')
-                          : t('playPurchase')}
-                      </Text>
-                    )}
-                  </Pressable>
-                ) : null}
-                {playPlans ? (
-                  <Pressable
-                    style={[
-                      styles.restoreButton,
-                      !playCanRestore && styles.buttonDisabled,
-                    ]}
-                    onPress={() => void restoreGooglePlayPurchases()}
-                    disabled={!playCanRestore}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('playRestore')}
-                    accessibilityState={{ disabled: !playCanRestore }}
-                  >
-                    <Text style={styles.restoreButtonText}>
-                      {t('playRestore')}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {playState.status === 'failed' &&
-                playFailureCopy(playState).action === 'reload' ? (
-                  <Pressable
-                    style={styles.restoreButton}
-                    onPress={() => void reloadGooglePlay()}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('playTryAgain')}
-                  >
-                    <Text style={styles.restoreButtonText}>
-                      {t('playTryAgain')}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {playState.status === 'failed' &&
-                playState.code === 'transaction_completion_failed' ? (
-                  <Pressable
-                    style={styles.restoreButton}
-                    onPress={() => void retryGooglePlayCompletion()}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('playRetryCompletion')}
-                  >
-                    <Text style={styles.restoreButtonText}>
-                      {t('playRetryCompletion')}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </>
-            ) : null}
-          </Animated.View>
-
-          {!isPremium ? (
-            <Animated.View
-              entering={FadeInDown.delay(260).springify()}
-              style={styles.freeCard}
-            >
-              <View style={styles.freeIcon}>
-                <FontAwesome name="heart-o" size={17} color={colors.success} />
-              </View>
-              <View style={styles.freeText}>
-                <Text style={styles.freeTitle}>{t('freeTitle')}</Text>
-                <Text style={styles.freeCopy}>
-                  {t('freeCopy', {
-                    count:
-                      entitlements.capabilities?.maxMembersPerCircle ??
-                      FREE_MAX_PARTICIPATING_HANDS,
-                  })}
-                </Text>
-              </View>
-            </Animated.View>
           ) : null}
 
+          <TierPlansSection
+            tierPlans={tierPlans ?? {}}
+            currentTier={entitlements.tier}
+            pendingTier={entitlements.pendingTier}
+            pendingDateLabel={
+              entitlements.pendingTierStartsAt
+                ? formatLongDate(
+                    entitlements.pendingTierStartsAt,
+                    i18n.resolvedLanguage || i18n.language,
+                  )
+                : null
+            }
+            busy={playBusy}
+            canPurchase={playState.status === 'ready'}
+            periodLabel={formatPlayPeriod}
+            onPurchase={(key) => void startTierPurchase(key)}
+            onManage={
+              isGooglePlayEntitlement
+                ? () => void openGooglePlayManagement()
+                : undefined
+            }
+            unavailableNote={
+              isAndroid && playState.status !== 'disabled' ? undefined : null
+            }
+          />
+          {playPlans ? (
+            <Pressable
+              style={[
+                styles.restoreButton,
+                !playCanRestore && styles.buttonDisabled,
+              ]}
+              onPress={() => void restoreGooglePlayPurchases()}
+              disabled={!playCanRestore}
+              accessibilityRole="button"
+              accessibilityLabel={t('playRestore')}
+              accessibilityState={{ disabled: !playCanRestore }}
+            >
+              <Text style={styles.restoreButtonText}>{t('playRestore')}</Text>
+            </Pressable>
+          ) : null}
+          {playState.status === 'failed' &&
+          playFailureCopy(playState).action === 'reload' ? (
+            <Pressable
+              style={styles.restoreButton}
+              onPress={() => void reloadGooglePlay()}
+              accessibilityRole="button"
+              accessibilityLabel={t('playTryAgain')}
+            >
+              <Text style={styles.restoreButtonText}>{t('playTryAgain')}</Text>
+            </Pressable>
+          ) : null}
+          {playState.status === 'failed' &&
+          playState.code === 'transaction_completion_failed' ? (
+            <Pressable
+              style={styles.restoreButton}
+              onPress={() => void retryGooglePlayCompletion()}
+              accessibilityRole="button"
+              accessibilityLabel={t('playRetryCompletion')}
+            >
+              <Text style={styles.restoreButtonText}>
+                {t('playRetryCompletion')}
+              </Text>
+            </Pressable>
+          ) : null}
           <Text style={styles.footer}>
             {isAndroid
-              ? t('playFooter')
+              ? t('tierFooter')
               : isIos
                 ? t('iosFooter')
                 : t('webFooter')}
           </Text>
-          </>
-          )}
         </ScrollView>
       </SafeAreaView>
     </View>
   );
-}
-
-function IntervalButton({
-  active,
-  label,
-  badge,
-  disabled = false,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  badge?: string;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active, disabled }}
-      style={[
-        styles.intervalButton,
-        active && styles.intervalButtonActive,
-        disabled && styles.buttonDisabled,
-      ]}
-    >
-      <Text
-        style={[styles.intervalText, active && styles.intervalTextActive]}
-        numberOfLines={2}
-      >
-        {label}
-      </Text>
-      {badge ? (
-        <View style={styles.savingsBadge}>
-          <Text style={styles.savingsText}>{badge}</Text>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
-
-function featureIcon(
-  feature: string,
-): React.ComponentProps<typeof FontAwesome>['name'] {
-  const value = feature.toLowerCase();
-  if (value.includes('circle')) return 'circle-o-notch';
-  if (value.includes('reminder')) return 'bell';
-  if (value.includes('report') || value.includes('history')) return 'line-chart';
-  if (value.includes('pdf') || value.includes('record')) return 'file-text';
-  if (value.includes('ai')) return 'magic';
-  return 'check';
 }
 
 const styles = StyleSheet.create({
@@ -892,11 +547,6 @@ const styles = StyleSheet.create({
   crownCompact: { width: 34, height: 34, marginBottom: 10, borderRadius: 12 },
   heroTitleCompact: { fontSize: 28, lineHeight: 32, letterSpacing: -0.8 },
   heroCopyCompact: { fontSize: 14, lineHeight: 20, marginTop: 8 },
-  billingToggleCompact: { marginTop: 12 },
-  priceCardCompact: { borderRadius: 24, marginTop: 12, padding: 16 },
-  playPriceCompact: { fontSize: 34, lineHeight: 40 },
-  dividerCompact: { marginVertical: 14 },
-  featuresCompact: { gap: 10, marginBottom: 16 },
   glowTop: {
     position: 'absolute',
     width: 420,
@@ -971,24 +621,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 14,
   },
-  trialCopy: {
-    color: colors.premiumGold,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 18,
-  },
-  activePill: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginTop: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(16,185,129,0.18)',
-  },
-  activePillText: { color: colors.successSoft, fontWeight: '800', fontSize: 12 },
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1022,179 +654,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 3,
   },
-  billingToggle: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    padding: 5,
-    borderRadius: radii.pill,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-  },
-  intervalButton: {
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 7,
-  },
-  intervalButtonActive: {
-    backgroundColor: colors.card,
-    ...shadows.small,
-  },
-  intervalText: {
-    color: colors.muted,
-    flexShrink: 1,
-    fontWeight: '800',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  intervalTextActive: { color: colors.primaryDark },
-  savingsBadge: {
-    backgroundColor: colors.successSoft,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: radii.pill,
-  },
-  savingsText: { color: colors.successText, fontSize: 10, fontWeight: '900' },
-  priceCard: {
-    backgroundColor: colors.card,
-    borderRadius: 28,
-    marginTop: 18,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    ...shadows.medium,
-  },
-  priceHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  planTitleBlock: { flex: 1, minWidth: 0 },
-  planName: { color: colors.textStrong, fontSize: 21, fontWeight: '900' },
-  planAudience: { color: colors.muted, fontSize: 12, marginTop: 4 },
-  recommendedBadge: {
-    flexShrink: 1,
-    maxWidth: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: colors.premiumLavenderBadge,
-    borderRadius: radii.pill,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  recommendedText: {
-    color: colors.primaryDark,
-    flexShrink: 1,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 24,
-  },
-  price: {
-    fontSize: 54,
-    lineHeight: 60,
-    fontWeight: '900',
-    letterSpacing: -2,
-    color: colors.textStrong,
-  },
-  playPrice: {
-    flexShrink: 1,
-    fontSize: 42,
-    lineHeight: 50,
-    fontWeight: '900',
-    letterSpacing: -1.5,
-    color: colors.textStrong,
-  },
-  playPricePlaceholder: {
-    minHeight: 72,
-    marginTop: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  playPricePlaceholderText: {
-    flex: 1,
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  priceMeta: { marginLeft: 7, marginTop: 16 },
-  pricePeriod: { color: colors.muted, fontWeight: '700', fontSize: 12 },
-  activeSummary: {
-    backgroundColor: colors.successSoft,
-    padding: 16,
-    borderRadius: 18,
-    marginTop: 22,
-  },
-  activeSummaryTitle: {
-    color: colors.successText,
-    fontWeight: '900',
-    fontSize: 15,
-  },
-  activeSummaryDate: {
-    color: colors.successText,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 6,
-  },
-  activeSummaryText: {
-    color: colors.successText,
-    opacity: 0.85,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.cardBorder,
-    marginVertical: 22,
-  },
-  features: { gap: 14, marginBottom: 24 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  featureIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureIconFeatured: { backgroundColor: colors.primary },
-  featureText: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '600',
-  },
-  primaryButton: {
-    minHeight: 54,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    ...shadows.small,
-  },
   buttonDisabled: { opacity: 0.5 },
-  buttonPressed: { opacity: 0.88, transform: [{ scale: 0.99 }] },
-  primaryButtonText: {
-    color: colors.onColor,
-    fontSize: 15,
-    fontWeight: '900',
-  },
   restoreButton: {
     minHeight: 48,
     alignItems: 'center',
@@ -1209,27 +669,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-  freeCard: {
-    flexDirection: 'row',
-    gap: 13,
-    backgroundColor: 'rgba(255,255,255,0.70)',
-    borderRadius: 20,
-    padding: 17,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  freeIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    backgroundColor: colors.successSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  freeText: { flex: 1 },
-  freeTitle: { color: colors.textStrong, fontWeight: '900', fontSize: 14 },
-  freeCopy: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 4 },
   footer: {
     color: colors.muted,
     textAlign: 'center',
