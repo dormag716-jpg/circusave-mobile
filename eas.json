@@ -21,6 +21,13 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "sandbox": {
+      "extends": "production",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://sandbox-api-production-11a2a18f.up.railway.app"
+      }
     }
   },
   "submit": {
@@ -28,6 +35,11 @@
       "android": {
         "track": "internal",
         "releaseStatus": "draft"
+      }
+    },
+    "sandbox": {
+      "ios": {
+        "ascAppId": "6839002635"
       }
     }
   }
