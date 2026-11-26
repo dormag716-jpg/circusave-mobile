@@ -26,6 +26,8 @@ export type TierPlansSectionProps = {
   onPurchase: (key: GooglePlayTierPlanKey) => void;
   /** Omit when the plan is not a Google Play subscription (nothing to manage there). */
   onManage?: () => void;
+  /** Link text for onManage. Defaults to the Google Play wording. */
+  manageLabel?: string;
   /**
    * Pass null to hide the "could not load a plan" note on a paid card, for when
    * the screen already explains why nothing can be bought (iPhone, web, billing
@@ -58,6 +60,7 @@ export function TierPlansSection({
   periodLabel,
   onPurchase,
   onManage,
+  manageLabel,
   unavailableNote,
 }: TierPlansSectionProps) {
   const { t } = useTranslation('subscription');
@@ -179,9 +182,9 @@ export function TierPlansSection({
                 style={styles.linkButton}
                 onPress={onManage}
                 accessibilityRole="button"
-                accessibilityLabel={t('tierManage')}
+                accessibilityLabel={manageLabel ?? t('tierManage')}
               >
-                <Text style={styles.linkText}>{t('tierManage')}</Text>
+                <Text style={styles.linkText}>{manageLabel ?? t('tierManage')}</Text>
               </Pressable>
             ) : null}
 

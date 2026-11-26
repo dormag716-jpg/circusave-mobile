@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 
 import { TierPlansSection } from '@/components/subscription/TierPlansSection';
 import { useAuthSession } from '@/lib/auth/authContext';
+import { useAppleBilling } from '@/lib/billing/useAppleBilling';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
 import {
   getAndroidApplicationPackage,
@@ -33,6 +35,8 @@ import { formatLongDate } from '@/lib/i18n/formatters';
 import { CONTENT_MAX_WIDTH } from '@/lib/shared/responsive';
 import { colors, shadows } from '@/lib/shared/theme';
 import { useLayoutMetrics } from '@/lib/shared/useLayoutMetrics';
+
+const APPLE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 
 export default function SubscriptionScreen() {
   const { t, i18n } = useTranslation(['subscription', 'common']);
@@ -55,6 +59,23 @@ export default function SubscriptionScreen() {
   const isAndroid = Platform.OS === 'android';
   const isIos = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
+  const apple = useAppleBilling({
+    enabled: isIos && authStatus === 'authenticated',
+    token,
+    refreshEntitlements,
+  });
+  const appleState = apple.state;
+  const appleBusy = [
+    'loading',
+    'purchasing',
+    'pending',
+    'verifying',
+    'restoring',
+  ].includes(appleState.status);
+  const appleReady =
+    appleState.status === 'ready' ||
+    appleState.status === 'succeeded' ||
+    (appleState.status === 'failed' && appleState.operation !== 'initialize');
   const [action, setAction] = useState<'manage' | null>(null);
   const playOperationLocked = useRef(false);
 
@@ -197,6 +218,57 @@ export default function SubscriptionScreen() {
     }
   }
 
+  const appleStatusMessage = (() => {
+    if (!isIos) return null;
+    switch (appleState.status) {
+      case 'idle':
+      case 'disabled':
+        return { title: t('iosUnavailableTitle'), body: t('iosUnavailableBody'), tone: 'neutral' as const };
+      case 'unsupported':
+        return { title: t('playUnavailableTitle'), body: t('iosUnsupportedBody'), tone: 'error' as const };
+      case 'loading':
+        return { title: t('iosLoadingTitle'), body: t('iosLoadingBody'), tone: 'pending' as const };
+      case 'purchasing':
+        return { title: t('iosPurchasingTitle'), body: t('iosPurchasingBody'), tone: 'pending' as const };
+      case 'pending':
+        return { title: t('iosPendingTitle'), body: t('iosPendingBody'), tone: 'pending' as const };
+      case 'verifying':
+        return { title: t('iosVerifyingTitle'), body: t('iosVerifyingBody'), tone: 'pending' as const };
+      case 'restoring':
+        return { title: t('iosRestoringTitle'), body: t('iosRestoringBody'), tone: 'pending' as const };
+      case 'succeeded': {
+        if (appleState.operation === 'restore') {
+          const none = (appleState.restored ?? 0) === 0;
+          return {
+            title: none ? t('iosRestoreNoneTitle') : t('iosRestoreSucceededTitle'),
+            body: none ? t('iosRestoreNoneBody') : t('iosRestoreSucceededBody'),
+            tone: 'success' as const,
+          };
+        }
+        return { title: t('iosSucceededTitle'), body: t('iosSucceededBody'), tone: 'success' as const };
+      }
+      case 'failed':
+        return {
+          title: t('iosFailedTitle'),
+          body:
+            appleState.code === 'product_configuration_unavailable' ||
+            appleState.code === 'status_failed'
+              ? t('iosProductsUnavailableBody')
+              : appleState.code === 'verification_failed' ||
+                  appleState.code === 'verification_not_entitled'
+                ? t('iosVerificationFailedBody')
+                : t('iosFailedBody'),
+          tone: 'error' as const,
+        };
+      case 'ready':
+        return appleState.outcome === 'canceled'
+          ? { title: t('iosCanceledTitle'), body: t('iosCanceledBody'), tone: 'neutral' as const }
+          : null;
+      default:
+        return null;
+    }
+  })();
+
   const playStatusMessage = (() => {
     if (!isAndroid) return null;
     if (playState.status === 'disabled') {
@@ -287,6 +359,8 @@ export default function SubscriptionScreen() {
     return null;
   })();
 
+  const statusMessage = isIos ? appleStatusMessage : playStatusMessage;
+
   return (
     <View style={styles.screen}>
       <View style={styles.glowTop} />
@@ -337,27 +411,6 @@ export default function SubscriptionScreen() {
             </Text>
           </Animated.View>
 
-          {isIos && !isPremium ? (
-            <View
-              style={[styles.statusBanner, styles.statusBannerCanceled]}
-              accessibilityLiveRegion="polite"
-            >
-              <FontAwesome
-                name="info-circle"
-                size={17}
-                color={colors.primaryDark}
-              />
-              <View style={styles.statusBannerText}>
-                <Text style={styles.statusBannerTitle}>
-                  {t('iosUnavailableTitle')}
-                </Text>
-                <Text style={styles.statusBannerBody}>
-                  {t('iosUnavailableBody')}
-                </Text>
-              </View>
-            </View>
-          ) : null}
-
           {isWeb && !isPremium ? (
             <View
               style={[styles.statusBanner, styles.statusBannerCanceled]}
@@ -379,30 +432,30 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          {playStatusMessage ? (
+          {statusMessage ? (
             <View
               style={[
                 styles.statusBanner,
-                playStatusMessage.tone === 'pending' &&
+                statusMessage.tone === 'pending' &&
                   styles.statusBannerPending,
-                playStatusMessage.tone === 'neutral' &&
+                statusMessage.tone === 'neutral' &&
                   styles.statusBannerCanceled,
-                playStatusMessage.tone === 'error' && styles.playStatusError,
+                statusMessage.tone === 'error' && styles.playStatusError,
               ]}
               accessibilityLiveRegion="polite"
             >
-              {playStatusMessage.tone === 'pending' ? (
+              {statusMessage.tone === 'pending' ? (
                 <ActivityIndicator color={colors.primaryDark} />
               ) : (
                 <FontAwesome
                   name={
-                    playStatusMessage.tone === 'success'
+                    statusMessage.tone === 'success'
                       ? 'check-circle'
                       : 'info-circle'
                   }
                   size={17}
                   color={
-                    playStatusMessage.tone === 'error'
+                    statusMessage.tone === 'error'
                       ? colors.dangerText
                       : colors.primaryDark
                   }
@@ -410,10 +463,10 @@ export default function SubscriptionScreen() {
               )}
               <View style={styles.statusBannerText}>
                 <Text style={styles.statusBannerTitle}>
-                  {playStatusMessage.title}
+                  {statusMessage.title}
                 </Text>
                 <Text style={styles.statusBannerBody}>
-                  {playStatusMessage.body}
+                  {statusMessage.body}
                 </Text>
               </View>
             </View>
@@ -455,7 +508,7 @@ export default function SubscriptionScreen() {
           ) : null}
 
           <TierPlansSection
-            tierPlans={tierPlans ?? {}}
+            tierPlans={(isIos ? apple.plans : tierPlans) ?? {}}
             currentTier={entitlements.tier}
             pendingTier={entitlements.pendingTier}
             pendingDateLabel={
@@ -466,19 +519,56 @@ export default function SubscriptionScreen() {
                   )
                 : null
             }
-            busy={playBusy}
-            canPurchase={playState.status === 'ready'}
+            busy={isIos ? appleBusy : playBusy}
+            canPurchase={isIos ? appleState.status === 'ready' : playState.status === 'ready'}
             periodLabel={formatPlayPeriod}
-            onPurchase={(key) => void startTierPurchase(key)}
+            onPurchase={(key) =>
+              isIos ? void apple.purchase(key) : void startTierPurchase(key)
+            }
             onManage={
               isGooglePlayEntitlement
                 ? () => void openGooglePlayManagement()
+                : isIos && entitlements.source === 'apple'
+                  ? () => void Linking.openURL(APPLE_SUBSCRIPTIONS_URL)
+                  : undefined
+            }
+            manageLabel={
+              isIos && entitlements.source === 'apple'
+                ? t('tierManageApple')
                 : undefined
             }
             unavailableNote={
-              isAndroid && playState.status !== 'disabled' ? undefined : null
+              (isAndroid && playState.status !== 'disabled') ||
+              (isIos && appleState.status !== 'disabled')
+                ? undefined
+                : null
             }
           />
+          {isIos && Object.keys(apple.plans).length > 0 ? (
+            <Pressable
+              style={[styles.restoreButton, !appleReady && styles.buttonDisabled]}
+              onPress={() => void apple.restore()}
+              disabled={!appleReady}
+              accessibilityRole="button"
+              accessibilityLabel={t('playRestore')}
+              accessibilityState={{ disabled: !appleReady }}
+            >
+              <Text style={styles.restoreButtonText}>{t('playRestore')}</Text>
+            </Pressable>
+          ) : null}
+          {isIos &&
+          appleState.status === 'failed' &&
+          appleState.operation === 'initialize' &&
+          appleState.retryable ? (
+            <Pressable
+              style={styles.restoreButton}
+              onPress={() => void apple.reload()}
+              accessibilityRole="button"
+              accessibilityLabel={t('playTryAgain')}
+            >
+              <Text style={styles.restoreButtonText}>{t('playTryAgain')}</Text>
+            </Pressable>
+          ) : null}
           {playPlans ? (
             <Pressable
               style={[

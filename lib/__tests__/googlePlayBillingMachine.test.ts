@@ -365,16 +365,12 @@ describe('Google Play billing state machine', () => {
         monthly: {
           productId: 'organizer-pro',
           basePlanId: 'monthly',
-          offerId: 'trial-monthly',
+          offerId: null,
           title: 'Organizer Pro',
           description: 'Premium circle organization',
           displayPrice: '$7.99',
           currency: 'USD',
           billingPeriod: 'P1M',
-          pricingPhases: [
-            { displayPrice: 'Free', billingPeriod: 'P1W' },
-            { displayPrice: '$7.99', billingPeriod: 'P1M' },
-          ],
         },
         annual: {
           productId: 'organizer-pro',
@@ -391,27 +387,31 @@ describe('Google Play billing state machine', () => {
     expect(gateway.gateway.registerPurchaseListeners).toHaveBeenCalledTimes(1);
   });
 
-  test('matches the exact product, base plan and configured offer', async () => {
+  test('matches the exact product and paid base plan, ignoring a stale trial offerId', async () => {
     const { machine, gateway } = await readyMachine();
 
     await machine.purchase('monthly');
 
     expect(gateway.gateway.requestSubscription).toHaveBeenCalledWith(
       'organizer-pro',
-      MONTHLY_TOKEN,
+      MONTHLY_BASE_TOKEN,
       'backend-obfuscated-account-id',
     );
   });
 
-  test('selects an exact free-trial offer only when trial eligible', async () => {
+  test('never selects the trial offer even when the backend still advertises it as eligible', async () => {
     const { machine, gateway } = await readyMachine();
 
+    expect(machine.getState()).toMatchObject({
+      status: 'ready',
+      plans: { monthly: { offerId: null, trial: null } },
+    });
     await machine.purchase('monthly');
 
-    expect(gateway.gateway.requestSubscription).toHaveBeenCalledWith(
-      'organizer-pro',
+    expect(gateway.gateway.requestSubscription).not.toHaveBeenCalledWith(
+      expect.anything(),
       MONTHLY_TOKEN,
-      expect.any(String),
+      expect.anything(),
     );
   });
 
@@ -549,7 +549,7 @@ describe('Google Play billing state machine', () => {
     });
   });
 
-  test('fails closed when the configured offer cannot be matched', async () => {
+  test('a missing advertised offer does not block the paid base plan', async () => {
     const gateway = createGatewayHarness();
     const api = createApiHarness(
       enabledStatus({
@@ -568,11 +568,7 @@ describe('Google Play billing state machine', () => {
 
     await machine.initialize();
 
-    expect(machine.getState()).toMatchObject({
-      status: 'failed',
-      code: 'product_configuration_unavailable',
-      retryable: false,
-    });
+    expect(machine.getState()).toMatchObject({ status: 'ready' });
   });
 
   test('rejects concurrent purchase and restore operations', async () => {

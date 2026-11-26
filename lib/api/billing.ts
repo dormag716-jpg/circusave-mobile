@@ -203,6 +203,170 @@ function sanitizeGooglePlayFailure(error: unknown): never {
   throw new ApiError('Google Play billing request failed.', 0);
 }
 
+export type AppleTierPlans = Partial<
+  Record<
+    'member_pro' | 'organizer_pro',
+    { monthly?: { productId: string }; annual?: { productId: string } }
+  >
+>;
+
+export type AppleBillingStatus =
+  | { provider: 'apple_app_store'; enabled: false }
+  | {
+      provider: 'apple_app_store';
+      enabled: true;
+      bundleId: string;
+      environment: 'sandbox' | 'production';
+      /** Sent with every purchase so the backend can tie it to this account. */
+      appAccountToken: string;
+      tiers: AppleTierPlans;
+    };
+
+export type AppleVerificationResponse = {
+  provider: 'apple_app_store';
+  restored: boolean;
+  status: string;
+  productId: string;
+  tier: 'member_pro' | 'organizer_pro' | null;
+  billingPeriod: 'monthly' | 'annual' | null;
+  currentPeriodEnd: string | null;
+  entitlements: Entitlements;
+};
+
+function invalidApple(): never {
+  throw new ApiError('Apple billing response was invalid.', 500);
+}
+
+export function normalizeAppleBillingStatus(value: unknown): AppleBillingStatus {
+  if (
+    !isRecord(value) ||
+    value.provider !== 'apple_app_store' ||
+    typeof value.enabled !== 'boolean'
+  ) {
+    return invalidApple();
+  }
+  if (!value.enabled) {
+    return { provider: 'apple_app_store', enabled: false };
+  }
+  if (
+    !readString(value.bundleId) ||
+    !readString(value.appAccountToken) ||
+    (value.environment !== 'sandbox' && value.environment !== 'production')
+  ) {
+    return invalidApple();
+  }
+  const tiers: AppleTierPlans = {};
+  if (isRecord(value.tiers)) {
+    for (const tier of ['member_pro', 'organizer_pro'] as const) {
+      const entry = value.tiers[tier];
+      if (!isRecord(entry)) continue;
+      const plans: { monthly?: { productId: string }; annual?: { productId: string } } = {};
+      for (const interval of ['monthly', 'annual'] as const) {
+        const plan = entry[interval];
+        if (isRecord(plan) && readString(plan.productId)) {
+          plans[interval] = { productId: readString(plan.productId) };
+        }
+      }
+      if (plans.monthly || plans.annual) tiers[tier] = plans;
+    }
+  }
+  return {
+    provider: 'apple_app_store',
+    enabled: true,
+    bundleId: readString(value.bundleId),
+    environment: value.environment,
+    appAccountToken: readString(value.appAccountToken),
+    tiers,
+  };
+}
+
+export function normalizeAppleVerificationResponse(
+  value: unknown,
+): AppleVerificationResponse {
+  if (
+    !isRecord(value) ||
+    value.provider !== 'apple_app_store' ||
+    typeof value.restored !== 'boolean' ||
+    !readString(value.status) ||
+    !readString(value.productId) ||
+    !isNullableString(value.currentPeriodEnd) ||
+    !isRecord(value.entitlements)
+  ) {
+    return invalidApple();
+  }
+  const tier =
+    value.tier === 'member_pro' || value.tier === 'organizer_pro' ? value.tier : null;
+  const billingPeriod =
+    value.billingPeriod === 'monthly' || value.billingPeriod === 'annual'
+      ? value.billingPeriod
+      : null;
+  return {
+    provider: 'apple_app_store',
+    restored: value.restored,
+    status: readString(value.status),
+    productId: readString(value.productId),
+    tier,
+    billingPeriod,
+    currentPeriodEnd: value.currentPeriodEnd,
+    entitlements: normalizeEntitlements(value.entitlements),
+  };
+}
+
+function sanitizeAppleFailure(error: unknown): never {
+  if (error instanceof ApiError) {
+    throw new ApiError('Apple billing request failed.', error.status, undefined, {
+      category: error.category,
+      retryAfterSeconds: error.retryAfterSeconds,
+    });
+  }
+  throw new ApiError('Apple billing request failed.', 0);
+}
+
+export async function getAppleBillingStatus(
+  token: string,
+): Promise<AppleBillingStatus> {
+  try {
+    const payload = await requestJson<unknown>('/billing/apple/status', {
+      token,
+      revalidate: true,
+    });
+    return normalizeAppleBillingStatus(payload);
+  } catch (error) {
+    return sanitizeAppleFailure(error);
+  }
+}
+
+async function postAppleTransaction(
+  path: '/billing/apple/verify' | '/billing/apple/restore',
+  token: string,
+  signedTransaction: string,
+): Promise<AppleVerificationResponse> {
+  try {
+    const payload = await requestJson<unknown>(path, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ signedTransaction }),
+    });
+    return normalizeAppleVerificationResponse(payload);
+  } catch (error) {
+    return sanitizeAppleFailure(error);
+  }
+}
+
+export function verifyApplePurchase(
+  token: string,
+  signedTransaction: string,
+): Promise<AppleVerificationResponse> {
+  return postAppleTransaction('/billing/apple/verify', token, signedTransaction);
+}
+
+export function restoreApplePurchase(
+  token: string,
+  signedTransaction: string,
+): Promise<AppleVerificationResponse> {
+  return postAppleTransaction('/billing/apple/restore', token, signedTransaction);
+}
+
 export type ReminderSchedule = {
   circleId: string;
   enabled: boolean;

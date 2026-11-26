@@ -173,6 +173,22 @@ jest.mock('../billing/entitlementsContext', () => ({
   }),
 }));
 
+const mockApplePurchase = jest.fn();
+const mockAppleRestore = jest.fn();
+let mockAppleBilling: any = {
+  state: { status: 'disabled' },
+  plans: {},
+};
+jest.mock('../billing/useAppleBilling', () => ({
+  useAppleBilling: () => ({
+    ...mockAppleBilling,
+    purchase: mockApplePurchase,
+    restore: mockAppleRestore,
+    reload: jest.fn(),
+    dismiss: jest.fn(),
+  }),
+}));
+
 jest.mock('../api', () => ({
   cancelPremiumSubscription: mockCancelPremiumSubscription,
   createBillingCheckout: mockCreateBillingCheckout,
@@ -225,6 +241,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   jest.clearAllMocks();
   mockPlatform = 'ios';
+  mockAppleBilling = { state: { status: 'disabled' }, plans: {} };
   await changeLanguagePreference('en');
   mockIsPremium = false;
   mockEntitlements = {
@@ -269,6 +286,51 @@ test('iOS free user sees StoreKit-unavailable copy and never starts Stripe check
   expect(mockCancelPremiumSubscription).not.toHaveBeenCalled();
   expect(mockInitializeGooglePlayBilling).not.toHaveBeenCalled();
   expect(mockGetBillingPlans).not.toHaveBeenCalled();
+});
+
+test('iOS shows Apple prices and enables purchase and restore once products are ready', async () => {
+  const plan = (key: string, productId: string, displayPrice: string, billingPeriod: string) => ({
+    key,
+    productId,
+    basePlanId: key,
+    offerId: null,
+    title: productId,
+    description: '',
+    displayPrice,
+    currency: 'USD',
+    billingPeriod,
+    trial: null,
+    pricingPhases: [],
+  });
+  mockAppleBilling = {
+    state: { status: 'ready', plans: {} },
+    plans: {
+      member_pro_annual: plan('member_pro_annual', 'cs.member.annual', '$24.99', 'P1Y'),
+      organizer_pro_annual: plan('organizer_pro_annual', 'cs.organizer.annual', '$49.99', 'P1Y'),
+    },
+  };
+  await mount();
+
+  expect(visibleText()).toContain('$49.99');
+  expect(visibleText()).toContain('$24.99');
+  expect(visibleText()).not.toContain('free trial');
+  expect(visibleText()).not.toContain('Organizer Pro subscriptions are not yet available on iPhone.');
+  expect(visibleText()).toContain('Restore purchases');
+
+  const buy = renderer.root
+    .findAll((node: any) => node.type === 'Pressable')
+    .find((node: any) => /Organizer Pro/.test(textContent(node)) && /Choose|Upgrade|Switch/.test(textContent(node)));
+  TestRenderer.act(() => buy.props.onPress());
+  expect(mockApplePurchase).toHaveBeenCalledWith('organizer_pro_annual');
+  expect(mockCreateBillingCheckout).not.toHaveBeenCalled();
+});
+
+test('iOS purchase buttons stay unavailable until products are ready', async () => {
+  mockAppleBilling = { state: { status: 'loading' }, plans: {} };
+  await mount();
+  expect(visibleText()).toContain('Loading App Store plans');
+  expect(visibleText()).not.toContain('Restore purchases');
+  expect(mockApplePurchase).not.toHaveBeenCalled();
 });
 
 test('web free user sees web-specific copy and no iOS billing claims', async () => {

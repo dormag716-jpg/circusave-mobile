@@ -246,7 +246,6 @@ function matchPlan(
   key: GooglePlayAnyPlanKey,
   config: GooglePlayPlanConfig,
   products: ProductSubscription[],
-  trialEligible: boolean,
 ): InternalPlan | null {
   const product = products.find(
     (candidate) => candidate.id === config.productId,
@@ -259,13 +258,8 @@ function matchPlan(
     if (offer.basePlanIdAndroid !== config.basePlanId) {
       return false;
     }
-    if (trialEligible) {
-      const expectedOfferId = config.offerId ?? config.basePlanId;
-      return (
-        offer.id === expectedOfferId &&
-        Boolean(offer.offerTokenAndroid?.trim())
-      );
-    }
+    // Paid plans have no free trial. Only the plain base-plan offer is ever
+    // chosen, whatever offerId or trialEligible the backend still sends.
     return (
       offer.id === config.basePlanId &&
       Boolean(offer.offerTokenAndroid?.trim()) &&
@@ -301,7 +295,7 @@ function matchPlan(
       key,
       productId: config.productId,
       basePlanId: config.basePlanId,
-      offerId: trialEligible ? config.offerId : null,
+      offerId: null,
       title: product.title,
       description: product.description,
       displayPrice: recurringPhase?.displayPrice ?? offer.displayPrice,
@@ -751,13 +745,11 @@ export function createGooglePlayBillingMachine(
         'monthly',
         status.monthly,
         products,
-        status.trialEligible,
       );
       const annual = matchPlan(
         'annual',
         status.annual,
         products,
-        status.trialEligible,
       );
       if (!monthly || !annual) {
         transition({
@@ -796,7 +788,6 @@ export function createGooglePlayBillingMachine(
               key,
               planConfig,
               tierProducts,
-              status.trialEligible,
             );
             if (matched) {
               tierPlans[key] = matched;
