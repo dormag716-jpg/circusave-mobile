@@ -542,6 +542,7 @@ export default function SubscriptionScreen() {
                 ? t('tierManageApple')
                 : undefined
             }
+            upgradeNote={isIos ? t('tierUpgradeNoteApple') : undefined}
             unavailableNote={
               (isAndroid && playState.status !== 'disabled') ||
               (isIos && appleState.status !== 'disabled')

@@ -87,6 +87,7 @@
   "tierPendingLine": "Ap chanje pou {{plan}} nan {{date}}.",
   "tierPendingLineNoDate": "Ap chanje pou {{plan}} nan pwochen renouvèlman ou.",
   "tierUpgradeNote": "Amelyorasyon yo kòmanse touswit. Google Play fè ou peye sèlman diferans lan pou tan ki rete a.",
+  "tierUpgradeNoteApple": "Amelyorasyon yo kòmanse touswit. App Store ajiste frè a selon tan ki rete sou plan ou genyen kounye a.",
   "tierDowngradeNote": "Yon plan pi piti kòmanse nan pwochen renouvèlman ou. Ou kenbe plan ou genyen kounye a jiska lè sa a.",
   "tierFooter": "Pri yo soti nan Google Play. Ou ka anile nenpòt ki lè nan Google Play. Dosye gwoup ou yo rete pou ou.",
   "iosLoadingTitle": "Y ap chaje plan App Store yo",

@@ -87,6 +87,7 @@
   "tierPendingLine": "Switching to {{plan}} on {{date}}.",
   "tierPendingLineNoDate": "Switching to {{plan}} at your next renewal.",
   "tierUpgradeNote": "Upgrades start right away. Google Play charges only the difference for the time left.",
+  "tierUpgradeNoteApple": "Upgrades start right away. The App Store adjusts the charge for the time left on your current plan.",
   "tierDowngradeNote": "A smaller plan starts at your next renewal. You keep your current plan until then.",
   "tierFooter": "Prices come from Google Play. You can cancel any time in Google Play. Your circle records remain yours.",
   "iosLoadingTitle": "Loading App Store plans",

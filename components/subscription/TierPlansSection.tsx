@@ -28,6 +28,8 @@ export type TierPlansSectionProps = {
   onManage?: () => void;
   /** Link text for onManage. Defaults to the Google Play wording. */
   manageLabel?: string;
+  /** Note under an upgrade button. Defaults to the Google Play wording. */
+  upgradeNote?: string;
   /**
    * Pass null to hide the "could not load a plan" note on a paid card, for when
    * the screen already explains why nothing can be bought (iPhone, web, billing
@@ -61,6 +63,7 @@ export function TierPlansSection({
   onPurchase,
   onManage,
   manageLabel,
+  upgradeNote,
   unavailableNote,
 }: TierPlansSectionProps) {
   const { t } = useTranslation('subscription');
@@ -169,7 +172,7 @@ export function TierPlansSection({
                   )}
                 </Pressable>
                 {action === 'upgrade' ? (
-                  <Text style={styles.note}>{t('tierUpgradeNote')}</Text>
+                  <Text style={styles.note}>{upgradeNote ?? t('tierUpgradeNote')}</Text>
                 ) : null}
                 {action === 'switch_at_renewal' ? (
                   <Text style={styles.note}>{t('tierDowngradeNote')}</Text>

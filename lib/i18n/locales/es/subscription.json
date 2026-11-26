@@ -87,6 +87,7 @@
   "tierPendingLine": "Cambiando a {{plan}} el {{date}}.",
   "tierPendingLineNoDate": "Cambiando a {{plan}} en tu próxima renovación.",
   "tierUpgradeNote": "Las mejoras empiezan de inmediato. Google Play cobra solo la diferencia por el tiempo restante.",
+  "tierUpgradeNoteApple": "Las mejoras empiezan de inmediato. La App Store ajusta el cobro según el tiempo restante de tu plan actual.",
   "tierDowngradeNote": "Un plan menor empieza en tu próxima renovación. Conservas tu plan actual hasta entonces.",
   "tierFooter": "Los precios vienen de Google Play. Puedes cancelar cuando quieras en Google Play. Los registros de tu círculo siguen siendo tuyos.",
   "iosLoadingTitle": "Cargando planes de la App Store",

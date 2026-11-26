@@ -231,3 +231,38 @@ The display bug above is fixed in the working tree. Not committed, not in Build 
 - `npx tsc --noEmit` is clean and `npm test -- --runInBand` passes (167 suites, 1517 tests).
 
 Still to do on a device: a Member Pro account should show "Member Pro is active" on Plans and in Settings. This needs the next iOS build.
+
+### Restore, renewal and cancellation (2026-11-26, about 10:28 to 10:35 AM CT, Build 6)
+
+Account: `sandbox.tester@example.com`, Member Pro Monthly bought at about 10:11 AM CT (16:11 UTC). Helper: Appium/WebDriverAgent over the restarted tunnel.
+
+**Restore: partial. The app answers, but its answer does not match the backend.**
+
+- With the account on Member Pro, I tapped Restore purchases on Plans. The app showed "Nothing to restore: No active CircuSave subscription was found on this Apple ID." The plan stayed Member Pro, and the backend stayed Member Pro (`source: apple`, `active`) before and after. So restore did not break anything and did not create a duplicate.
+- Likely reason: the iPhone has no Apple sandbox account signed in under Settings, Developer, Sandbox Apple Account (the row shows "Iniciar sesión", sign in). Without one, StoreKit has no sandbox subscription to restore. Not confirmed.
+- A real restore test (reinstall or sign out and in, then restore, with the sandbox account signed in) has not been run.
+
+**Renewal: not observed.**
+
+- At about 16:27, 16:32 and 16:34 UTC the backend still returned `currentPeriodEnd: 2026-11-27T16:11:14Z`, `active`. That is 16 to 23 minutes after the purchase. Sandbox monthly subscriptions normally renew every 5 minutes, so I expected the period to move.
+- The period end is about one day after the purchase, not 5 minutes or a month, which I do not understand. The app says "Renews on November 27, 2026."
+- I could not tell whether Apple sent renewal notifications to the sandbox. The Sandbox Server URL in App Store Connect is still unverified, the Railway logs show no request lines, and the sandbox database is only reachable from inside Railway. Not tested further.
+
+**Cancellation: not done.**
+
+- Cancelling a sandbox subscription needs the sandbox account to be signed in on the iPhone (Settings, Developer, Sandbox Apple Account, Manage). It is not signed in, and entering its credentials is yours to do, not mine.
+- "Manage in App Store" on the Member Pro card opens the phone's real Apple ID subscription list, not the sandbox one, so it cannot be used to cancel the test subscription. I closed it without recording anything from it.
+
+**New bug found: Google Play wording on iPhone.** On the Organizer Pro card of the iPhone Plans screen, the upgrade button reads "Upgrade to Organizer Pro" and the note under it says "Upgrades start right away. Google Play charges only the difference for the time left." That is Google Play copy shown to an Apple account. Not fixed.
+
+No code, build, commit or production change was made. I left the phone on CircuSave, locked.
+
+### Fix: Google Play wording on iPhone Plans (2026-11-26, Claude, not yet in a build)
+
+The upgrade note under the Organizer Pro card on iPhone said "Upgrades start right away. Google Play charges only the difference for the time left." Fixed in the working tree. Not committed, not in Build 6, not checked on a device.
+
+- `TierPlansSection` takes an optional `upgradeNote`. The iPhone Plans screen passes a new `tierUpgradeNoteApple` ("Upgrades start right away. The App Store adjusts the charge for the time left on your current plan."), in en, es and ht. Android still shows the Google Play note.
+- The other Google Play strings in the plan cards were already store-specific or only reachable on Android (the manage link and footer switch by platform, and the billing-period alert is part of the Android purchase flow). I did not change them.
+- New test `lib/billing/__tests__/tierUpgradeNoteStore.test.ts`. `npx tsc --noEmit` is clean and `npm test -- --runInBand` passes (168 suites, 1521 tests).
+
+The wording of the Apple note is my own and says the App Store "adjusts the charge". Please confirm it matches how Apple prorates upgrades in your subscription group before release.
