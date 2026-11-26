@@ -221,14 +221,16 @@ export default function SecurityScreen() {
       biometricUnlockEnabled: preferences.biometricUnlockEnabled && compatibleEnrolled,
       authenticate: () => authenticateForAppLockChange(t('confirmDisableTitle'), t('common:cancel')),
       promptPassword,
-      verifyPassword: (password) =>
-        verifyAccountPassword({
+      verifyPassword: async (password) =>
+        (await verifyAccountPassword({
           email: session?.user.email || '',
           password,
           expectedUserId: userId,
           login,
           revokeVerificationSession: (proofToken) => logout(proofToken),
-        }),
+        })) === 'success'
+          ? 'success'
+          : 'failed',
     });
     if (proof === 'failed' && mountedRef.current) {
       Alert.alert(t('confirmDisableTitle'), t('confirmDisableFailed'));

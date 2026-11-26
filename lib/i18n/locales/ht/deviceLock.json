@@ -17,5 +17,14 @@
   "unavailable": "Otantifikasyon aparèy la pa disponib",
   "failed": "Otantifikasyon an echwe",
   "setupTitle": "Blokaj aparèy",
-  "setupDescription": "Mande otantifikasyon aparèy ou lè CircuSave louvri."
+  "setupDescription": "Mande otantifikasyon aparèy ou lè CircuSave louvri.",
+  "forgotPassword": "Ou bliye modpas ou?",
+  "recoveryTitle": "Reyajiste modpas ou?",
+  "recoveryBody": "Nou pral voye yon kòd 6 chif sou {{email}}. Pou fini, CircuSave dekonekte ou epi ou chwazi yon nouvo modpas. Chwazi Anile pou rete sou ekran sa a.",
+  "recoveryContinue": "Voye kòd la",
+  "recoveryErrorTitle": "Nou pa t ka voye imèl la",
+  "recoveryNoEmailBody": "Kont sa a pa gen adrès imèl sou telefòn sa a. Dekonekte ou sou ekran koneksyon an epi itilize Ou bliye modpas ou? la.",
+  "recoveryRateLimitBody": "Twòp demann. Tanpri tann yon ti moman anvan ou eseye ankò.",
+  "recoveryNetworkBody": "Nou pa kapab voye imèl reyajisteman an. Verifye koneksyon ou epi eseye ankò.",
+  "recoveryErrorBody": "Yon bagay pa mache. Tanpri eseye ankò."
 }

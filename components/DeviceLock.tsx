@@ -13,6 +13,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Keyboard,
   KeyboardAvoidingView,
@@ -28,8 +29,10 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resetNavigationToLogin, shouldCoverSignedOutRoute } from '@/lib/auth/authBoundary';
-import { login, logout } from '@/lib/api';
+import { login, logout, requestPasswordReset } from '@/lib/api';
 import { useAuthSession } from '@/lib/auth/authContext';
+import { runLockScreenRecovery } from '@/lib/auth/lockScreenRecovery';
+import { stagePasswordResetCodeEntry } from '@/lib/auth/passwordResetEntry';
 import {
   isCompatibleStrongBiometric,
   loadAppLockPreferences,
@@ -41,6 +44,7 @@ import {
   INITIAL_DEVICE_LOCK,
   deviceLockCoversProtectedContent,
   reduceDeviceLock,
+  shouldOfferPasswordRecovery,
   shouldStartBiometricPrompt,
   supportsNativeBiometrics,
   type BiometricPromptResult,
@@ -88,11 +92,13 @@ function classifyBiometricResult(
 
 export function DeviceLockProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation('deviceLock');
-  const { session, status } = useAuthSession();
+  const { session, signOut, status } = useAuthSession();
   const pathname = usePathname();
   const [model, dispatch] = useReducer(reduceDeviceLock, INITIAL_DEVICE_LOCK);
   const [appState, setAppState] = useState(AppState.currentState);
   const [passwordDraft, setPasswordDraft] = useState('');
+  const [recovering, setRecovering] = useState(false);
+  const recoveryGate = useRef(false);
   const modelRef = useRef(model);
   const promptedGeneration = useRef(-1);
   const promptGenerationRef = useRef(model.promptGeneration);
@@ -340,7 +346,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
       sessionKey: attemptSessionKey,
     });
     setPasswordDraft('');
-    let outcome: 'success' | 'failed' = 'failed';
+    let outcome: 'success' | 'rejected' | 'failed' = 'failed';
     try {
       const result = await verifyAccountPassword({
         email: session?.user.email || '',
@@ -349,7 +355,7 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
         login,
         revokeVerificationSession: (token) => logout(token),
       });
-      outcome = result === 'success' ? 'success' : 'failed';
+      outcome = result;
     } catch {
       outcome = 'failed';
     } finally {
@@ -362,6 +368,63 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
         appState: AppState.currentState,
       });
     }
+  };
+
+  const startRecovery = () => {
+    if (recoveryGate.current || passwordGate.current || biometricGate.current) {
+      return;
+    }
+    const email = session?.user.email ?? '';
+    recoveryGate.current = true;
+    void (async () => {
+      let outcome: Awaited<ReturnType<typeof runLockScreenRecovery>> = 'failed';
+      try {
+        outcome = await runLockScreenRecovery({
+          email,
+          // Nothing is sent until the person confirms. Cancel, or dismissing the
+          // dialog, leaves the app locked.
+          confirm: () =>
+            new Promise<boolean>((resolve) => {
+              Alert.alert(
+                t('recoveryTitle'),
+                t('recoveryBody', { email }),
+                [
+                  { text: t('cancel'), style: 'cancel', onPress: () => resolve(false) },
+                  {
+                    text: t('recoveryContinue'),
+                    onPress: () => {
+                      setRecovering(true);
+                      resolve(true);
+                    },
+                  },
+                ],
+                { cancelable: true, onDismiss: () => resolve(false) },
+              );
+            }),
+          requestPasswordReset,
+          stagePasswordResetCodeEntry,
+          signOut,
+        });
+      } catch {
+        outcome = 'failed';
+      } finally {
+        recoveryGate.current = false;
+        setRecovering(false);
+      }
+      if (outcome === 'ready' || outcome === 'canceled') {
+        return;
+      }
+      Alert.alert(
+        t('recoveryErrorTitle'),
+        outcome === 'rate_limited'
+          ? t('recoveryRateLimitBody')
+          : outcome === 'network'
+            ? t('recoveryNetworkBody')
+            : outcome === 'no_email'
+              ? t('recoveryNoEmailBody')
+              : t('recoveryErrorBody'),
+      );
+    })();
   };
 
   const value = useMemo<DeviceLockContextType>(
@@ -470,6 +533,21 @@ export function DeviceLockProvider({ children }: { children: React.ReactNode }) 
                         <Text style={styles.unlockButtonText}>{t('verifyPassword')}</Text>
                       )}
                     </Pressable>
+                    {shouldOfferPasswordRecovery(model) ? (
+                    <Pressable
+                      style={styles.secondaryButton}
+                      onPress={startRecovery}
+                      disabled={model.passwordSubmitting || recovering}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('forgotPassword')}
+                    >
+                      {recovering ? (
+                        <ActivityIndicator color={colors.primary} />
+                      ) : (
+                        <Text style={styles.secondaryButtonText}>{t('forgotPassword')}</Text>
+                      )}
+                    </Pressable>
+                    ) : null}
                     {supportsNativeBiometrics(Platform.OS) ? (
                       <Pressable
                         style={styles.secondaryButton}

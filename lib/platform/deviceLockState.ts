@@ -52,6 +52,8 @@ export type DeviceLockModel = {
   biometricUnlockEnabled: boolean;
   preferencesReady: boolean;
   backgroundedAt: number | null;
+  /** Passwords the server confirmed as incorrect in this lock session. */
+  wrongPasswordAttempts: number;
 };
 
 export type DeviceLockEvent =
@@ -71,7 +73,7 @@ export type DeviceLockEvent =
   | { type: 'password_submitted'; attemptId: number; sessionKey: string }
   | {
       type: 'password_result';
-      result: 'success' | 'failed';
+      result: 'success' | 'rejected' | 'failed';
       attemptId: number;
       sessionKey: string;
       appState: string | null | undefined;
@@ -93,7 +95,22 @@ export const INITIAL_DEVICE_LOCK: DeviceLockModel = {
   biometricUnlockEnabled: false,
   preferencesReady: false,
   backgroundedAt: null,
+  wrongPasswordAttempts: 0,
 };
+
+/** Confirmed wrong passwords in one lock session before recovery is offered. */
+export const LOCK_RECOVERY_WRONG_PASSWORD_THRESHOLD = 3;
+
+/**
+ * Forgot password? shows on the lock screen only after the server confirmed
+ * three incorrect passwords in this lock session, and stays for the rest of it.
+ */
+export function shouldOfferPasswordRecovery(model: DeviceLockModel): boolean {
+  return (
+    model.phase === 'locked' &&
+    model.wrongPasswordAttempts >= LOCK_RECOVERY_WRONG_PASSWORD_THRESHOLD
+  );
+}
 
 /** Wall-clock absence required before an enabled App Lock covers the app. */
 export const APP_LOCK_GRACE_MS = 10_000;
@@ -190,6 +207,8 @@ function lockedModel(
     biometricUnlockEnabled: model.biometricUnlockEnabled,
     preferencesReady: model.preferencesReady,
     backgroundedAt: null,
+    // A new lock session starts counting from zero.
+    wrongPasswordAttempts: 0,
   };
 }
 
@@ -209,6 +228,7 @@ function unlockedModel(model: DeviceLockModel): DeviceLockModel {
     biometricUnlockEnabled: model.biometricUnlockEnabled,
     preferencesReady: model.preferencesReady,
     backgroundedAt: null,
+    wrongPasswordAttempts: 0,
   };
 }
 
@@ -228,6 +248,7 @@ function signedOutModel(model: DeviceLockModel): DeviceLockModel {
     biometricUnlockEnabled: false,
     preferencesReady: false,
     backgroundedAt: null,
+    wrongPasswordAttempts: 0,
   };
 }
 
@@ -532,6 +553,12 @@ export function reduceDeviceLock(
       attemptKind: null,
       passwordFallback: true,
       failure: 'password_failed',
+      // Only a confirmed wrong password counts. A network or server error does
+      // not add to it and does not reset it.
+      wrongPasswordAttempts:
+        event.result === 'rejected'
+          ? model.wrongPasswordAttempts + 1
+          : model.wrongPasswordAttempts,
     };
   }
 

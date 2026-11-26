@@ -17,5 +17,14 @@
   "unavailable": "La autenticación del dispositivo no está disponible",
   "failed": "La autenticación falló",
   "setupTitle": "Bloqueo del dispositivo",
-  "setupDescription": "Solicita la autenticación del dispositivo al abrir CircuSave."
+  "setupDescription": "Solicita la autenticación del dispositivo al abrir CircuSave.",
+  "forgotPassword": "¿Olvidaste tu contraseña?",
+  "recoveryTitle": "¿Restablecer tu contraseña?",
+  "recoveryBody": "Enviaremos un código de 6 dígitos a {{email}}. Para terminar, CircuSave cierra tu sesión y eliges una contraseña nueva. Elige Cancelar para quedarte en esta pantalla.",
+  "recoveryContinue": "Enviar código",
+  "recoveryErrorTitle": "No se pudo enviar el correo",
+  "recoveryNoEmailBody": "Esta cuenta no tiene un correo guardado en este teléfono. Cierra sesión desde la pantalla de inicio y usa allí «¿Olvidaste tu contraseña?».",
+  "recoveryRateLimitBody": "Demasiadas solicitudes. Espera un momento antes de intentarlo de nuevo.",
+  "recoveryNetworkBody": "No se pudo enviar el correo de restablecimiento. Revisa tu conexión e inténtalo de nuevo.",
+  "recoveryErrorBody": "Algo salió mal. Inténtalo de nuevo."
 }
