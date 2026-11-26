@@ -10,7 +10,7 @@
   "willNotRenew": "Your plan will not renew automatically.",
   "subscriptionReady": "Your subscription is active and ready.",
   "footer": "Secure checkout by Stripe · Cancel anytime · Your circle records remain yours",
-  "iosUnavailableTitle": "Organizer Pro subscriptions are not yet available on iPhone.",
+  "iosUnavailableTitle": "CircuSave plans are not yet available on iPhone.",
   "iosUnavailableBody": "iPhone subscriptions are not switched on yet. Your current CircuSave access is unchanged.",
   "iosFooter": "Subscriptions are billed to your Apple ID and renew automatically until you cancel in your App Store settings. Prices are shown by Apple.",
   "webUnavailableTitle": "Organizer Pro subscriptions are not available on the web.",

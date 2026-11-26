@@ -269,7 +269,7 @@ test('iOS free user sees StoreKit-unavailable copy and never starts Stripe check
   await mount();
 
   expect(visibleText()).toContain(
-    'Organizer Pro subscriptions are not yet available on iPhone.',
+    'CircuSave plans are not yet available on iPhone.',
   );
   // The three plans are listed with their limits, but nothing can be bought.
   expect(visibleText()).toContain('Choose your plan');
@@ -314,7 +314,7 @@ test('iOS shows Apple prices and enables purchase and restore once products are 
   expect(visibleText()).toContain('$49.99');
   expect(visibleText()).toContain('$24.99');
   expect(visibleText()).not.toContain('free trial');
-  expect(visibleText()).not.toContain('Organizer Pro subscriptions are not yet available on iPhone.');
+  expect(visibleText()).not.toContain('CircuSave plans are not yet available on iPhone.');
   expect(visibleText()).toContain('Restore purchases');
 
   const buy = renderer.root
@@ -344,7 +344,7 @@ test('web free user sees web-specific copy and no iOS billing claims', async () 
     'Paid Organizer Pro billing is available only in the mobile app.',
   );
   expect(visibleText()).not.toContain(
-    'Organizer Pro subscriptions are not yet available on iPhone.',
+    'CircuSave plans are not yet available on iPhone.',
   );
   expect(visibleText()).not.toContain('iPhone subscriptions');
   expect(mockCreateBillingCheckout).not.toHaveBeenCalled();
@@ -372,7 +372,7 @@ test('old Stripe success deep link grants nothing locally', async () => {
   expect(visibleText()).not.toContain('Organizer Pro is active');
   expect(visibleText()).not.toContain('Activating Organizer Pro');
   expect(visibleText()).toContain(
-    'Organizer Pro subscriptions are not yet available on iPhone.',
+    'CircuSave plans are not yet available on iPhone.',
   );
   expect(mockCreateBillingCheckout).not.toHaveBeenCalled();
 });
@@ -412,7 +412,7 @@ test('expired entitlement stays free without Stripe trial or prices', async () =
   expect(visibleText()).not.toContain('Organizer Pro is active');
   expect(visibleText()).not.toContain('Your subscription is active and ready.');
   expect(visibleText()).toContain(
-    'Organizer Pro subscriptions are not yet available on iPhone.',
+    'CircuSave plans are not yet available on iPhone.',
   );
   expect(mockEntitlements.capabilities.aiAssistant).toBe(false);
 });
