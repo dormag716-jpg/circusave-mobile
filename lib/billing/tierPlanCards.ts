@@ -36,6 +36,38 @@ export type TierCardAction =
   /** Free is not bought; a paid person ends the plan in Google Play. */
   | 'none';
 
+export type TierCardPeriodLine =
+  | 'billed_monthly'
+  | 'billed_annual'
+  | 'billed_monthly_other_tab'
+  | 'billed_annual_other_tab'
+  | 'billed_unknown';
+
+/**
+ * How the card for the plan the person is on treats the Monthly / Annual tab.
+ * The tab only chooses which prices to browse; it says nothing about how the
+ * person pays. So the plan they are on shows a price only when the verified
+ * billing period matches the tab, and always says which period they are billed.
+ * Without a verified period it shows no price at all. Other cards are unchanged.
+ */
+export function currentCardPeriodView(
+  action: TierCardAction,
+  verifiedPeriod: 'monthly' | 'annual' | null | undefined,
+  tab: 'monthly' | 'annual',
+): { showPrice: boolean; line: TierCardPeriodLine | null } {
+  if (action !== 'current_paid') {
+    return { showPrice: true, line: null };
+  }
+  if (!verifiedPeriod) {
+    return { showPrice: false, line: 'billed_unknown' };
+  }
+  const matches = verifiedPeriod === tab;
+  if (verifiedPeriod === 'monthly') {
+    return { showPrice: matches, line: matches ? 'billed_monthly' : 'billed_monthly_other_tab' };
+  }
+  return { showPrice: matches, line: matches ? 'billed_annual' : 'billed_annual_other_tab' };
+}
+
 export function tierCardAction(current: PlanTier, target: PlanTier): TierCardAction {
   if (current === target) {
     return target === 'free' ? 'current_free' : 'current_paid';

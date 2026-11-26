@@ -1,4 +1,5 @@
 {
+  "planActive": "{{plan}} está activo",
   "preferences": "Preferencias",
   "language": "Idioma",
   "languageSubtitle": "Elige el idioma de CircuSave",
@@ -42,9 +43,7 @@
   "securitySubtitle": "Contraseña, recuperación y dispositivos",
   "subscription": "Suscripción",
   "subscriptionSubtitle": "Organizer Pro llegará pronto",
-  "organizerProActive": "Organizer Pro está activo",
   "freePlanUpgrade": "Plan gratis",
-  "organizerProBadge": "Organizer Pro",
   "smartRemindersMemberSummary_zero": "{{count}} miembros · {{frequency}}",
   "smartRemindersMemberSummary_one": "{{count}} miembro · {{frequency}}",
   "smartRemindersMemberSummary_other": "{{count}} miembros · {{frequency}}",

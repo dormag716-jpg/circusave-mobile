@@ -2,12 +2,17 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import type { PlanTier } from '@/lib/billing/entitlements';
+import type { BillingPeriod, PlanTier } from '@/lib/billing/entitlements';
 import type {
   GooglePlayPlan,
   GooglePlayTierPlanKey,
 } from '@/lib/billing/googlePlayBillingMachine';
-import { tierCardAction, tierCardLimits } from '@/lib/billing/tierPlanCards';
+import {
+  currentCardPeriodView,
+  tierCardAction,
+  tierCardLimits,
+  type TierCardPeriodLine,
+} from '@/lib/billing/tierPlanCards';
 import { colors, radii } from '@/lib/shared/theme';
 
 type PaidTier = Exclude<PlanTier, 'free'>;
@@ -16,6 +21,8 @@ type Interval = 'monthly' | 'annual';
 export type TierPlansSectionProps = {
   tierPlans: Partial<Record<GooglePlayTierPlanKey, GooglePlayPlan>>;
   currentTier: PlanTier;
+  /** The verified billing period of the current subscription, when the backend gave one. */
+  currentPeriod?: BillingPeriod;
   /** Set only while a switch is scheduled (see Entitlements.pendingTier). */
   pendingTier?: PaidTier;
   /** Already formatted for the person, or null when Google gave no date. */
@@ -26,6 +33,10 @@ export type TierPlansSectionProps = {
   onPurchase: (key: GooglePlayTierPlanKey) => void;
   /** Omit when the plan is not a Google Play subscription (nothing to manage there). */
   onManage?: () => void;
+  /** Link text for onManage. Defaults to the Google Play wording. */
+  manageLabel?: string;
+  /** Note under an upgrade button. Defaults to the Google Play wording. */
+  upgradeNote?: string;
   /**
    * Pass null to hide the "could not load a plan" note on a paid card, for when
    * the screen already explains why nothing can be bought (iPhone, web, billing
@@ -35,6 +46,14 @@ export type TierPlansSectionProps = {
 };
 
 const PAID_TIERS: PaidTier[] = ['member_pro', 'organizer_pro'];
+
+const PERIOD_LINE_KEY: Record<TierCardPeriodLine, string> = {
+  billed_monthly: 'tierBilledMonthly',
+  billed_annual: 'tierBilledAnnual',
+  billed_monthly_other_tab: 'tierBilledMonthlyOtherTab',
+  billed_annual_other_tab: 'tierBilledAnnualOtherTab',
+  billed_unknown: 'tierBilledUnknown',
+};
 
 function tierName(t: (key: string) => string, tier: PlanTier): string {
   return tier === 'free'
@@ -51,6 +70,7 @@ function tierName(t: (key: string) => string, tier: PlanTier): string {
 export function TierPlansSection({
   tierPlans,
   currentTier,
+  currentPeriod,
   pendingTier,
   pendingDateLabel,
   busy,
@@ -58,6 +78,8 @@ export function TierPlansSection({
   periodLabel,
   onPurchase,
   onManage,
+  manageLabel,
+  upgradeNote,
   unavailableNote,
 }: TierPlansSectionProps) {
   const { t } = useTranslation('subscription');
@@ -112,6 +134,7 @@ export function TierPlansSection({
             : action === 'switch_at_renewal'
               ? t('tierSwitchAtRenewal', { plan: tierName(translate, tier) })
               : t('tierChoose', { plan: tierName(translate, tier) });
+        const periodView = currentCardPeriodView(action, currentPeriod, interval);
         const showBuy =
           plan !== null &&
           (action === 'choose' || action === 'upgrade' || action === 'switch_at_renewal');
@@ -125,7 +148,13 @@ export function TierPlansSection({
               ) : null}
             </View>
 
-            {plan ? (
+            {periodView.line ? (
+              <Text style={styles.periodLine} accessibilityRole="text">
+                {t(PERIOD_LINE_KEY[periodView.line])}
+              </Text>
+            ) : null}
+
+            {plan && periodView.showPrice ? (
               <View style={styles.priceRow}>
                 <Text style={styles.price}>{plan.displayPrice}</Text>
                 {plan.billingPeriod ? (
@@ -166,7 +195,7 @@ export function TierPlansSection({
                   )}
                 </Pressable>
                 {action === 'upgrade' ? (
-                  <Text style={styles.note}>{t('tierUpgradeNote')}</Text>
+                  <Text style={styles.note}>{upgradeNote ?? t('tierUpgradeNote')}</Text>
                 ) : null}
                 {action === 'switch_at_renewal' ? (
                   <Text style={styles.note}>{t('tierDowngradeNote')}</Text>
@@ -179,9 +208,9 @@ export function TierPlansSection({
                 style={styles.linkButton}
                 onPress={onManage}
                 accessibilityRole="button"
-                accessibilityLabel={t('tierManage')}
+                accessibilityLabel={manageLabel ?? t('tierManage')}
               >
-                <Text style={styles.linkText}>{t('tierManage')}</Text>
+                <Text style={styles.linkText}>{manageLabel ?? t('tierManage')}</Text>
               </Pressable>
             ) : null}
 
@@ -231,6 +260,7 @@ const styles = StyleSheet.create({
   price: { fontSize: 30, fontWeight: '800', color: colors.textStrong },
   period: { color: colors.textStrong, opacity: 0.7 },
   line: { color: colors.textStrong, fontSize: 14, lineHeight: 20 },
+  periodLine: { color: colors.textStrong, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   note: { color: colors.textStrong, opacity: 0.7, fontSize: 12, lineHeight: 17, marginTop: 4 },
   button: {
     minHeight: 48,

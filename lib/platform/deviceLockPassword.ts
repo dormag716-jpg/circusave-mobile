@@ -7,7 +7,15 @@
  * already saved for this app is left alone.
  */
 
-export type AccountPasswordProof = 'success' | 'failed';
+import { ApiError } from './networkErrors';
+
+/**
+ * success: the server accepted the password for this account.
+ * rejected: the server answered that the password is incorrect (HTTP 401).
+ * failed: anything else (offline, timeout, server error, wrong account), so the
+ *   app cannot say the password was wrong.
+ */
+export type AccountPasswordProof = 'success' | 'rejected' | 'failed';
 
 type PasswordProofSession = {
   user: { id: string };
@@ -31,8 +39,8 @@ export async function verifyAccountPassword(input: {
   let created: PasswordProofSession;
   try {
     created = await input.login({ email, password });
-  } catch {
-    return 'failed';
+  } catch (error) {
+    return error instanceof ApiError && error.status === 401 ? 'rejected' : 'failed';
   }
 
   const verificationToken = String(created.session?.token || '').trim();

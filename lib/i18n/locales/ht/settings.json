@@ -1,4 +1,5 @@
 {
+  "planActive": "{{plan}} aktif",
   "preferences": "Preferans",
   "language": "Lang",
   "languageSubtitle": "Chwazi lang CircuSave itilize",
@@ -42,9 +43,7 @@
   "securitySubtitle": "Modpas, rekiperasyon ak aparèy",
   "subscription": "Abònman",
   "subscriptionSubtitle": "Organizer Pro ap vini byento",
-  "organizerProActive": "Organizer Pro aktif",
   "freePlanUpgrade": "Plan gratis",
-  "organizerProBadge": "Organizer Pro",
   "smartRemindersMemberSummary_zero": "{{count}} manm · {{frequency}}",
   "smartRemindersMemberSummary_one": "{{count}} manm · {{frequency}}",
   "smartRemindersMemberSummary_other": "{{count}} manm · {{frequency}}",

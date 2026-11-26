@@ -464,7 +464,10 @@ describe('device lock state', () => {
     expect(source).not.toContain('@stripe/stripe-react-native');
     expect(source).not.toContain('setIsLocked(false)');
     expect(source).not.toContain('setAuthenticatedSession');
-    expect(source).not.toContain('signOut');
+    // The lock never signs out on its own. The one sign-out path is password
+    // recovery, which only runs after a reset code was emailed and staged.
+    expect(source).not.toMatch(/signOut\s*\(/);
+    expect(source).toContain('runLockScreenRecovery');
   });
 });
 

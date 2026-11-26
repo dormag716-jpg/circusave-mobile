@@ -17,5 +17,14 @@
   "unavailable": "Device authentication unavailable",
   "failed": "Authentication failed",
   "setupTitle": "Device lock",
-  "setupDescription": "Require your device authentication when CircuSave opens."
+  "setupDescription": "Require your device authentication when CircuSave opens.",
+  "forgotPassword": "Forgot password?",
+  "recoveryTitle": "Reset your password?",
+  "recoveryBody": "We will email a 6-digit code to {{email}}. To finish, CircuSave signs you out and you choose a new password. Choose Cancel to stay on this screen.",
+  "recoveryContinue": "Send code",
+  "recoveryErrorTitle": "Could not send email",
+  "recoveryNoEmailBody": "This account has no email address on this phone. Sign out from the login screen and use Forgot password there.",
+  "recoveryRateLimitBody": "Too many requests. Please wait a moment before trying again.",
+  "recoveryNetworkBody": "Unable to send the reset email. Check your connection and try again.",
+  "recoveryErrorBody": "Something went wrong. Please try again."
 }
