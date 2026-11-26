@@ -15,6 +15,7 @@ import {
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { paidPlanNameKey } from '@/lib/billing/planName';
 
 import { TierPlansSection } from '@/components/subscription/TierPlansSection';
 import { useAuthSession } from '@/lib/auth/authContext';
@@ -125,6 +126,7 @@ export default function SubscriptionScreen() {
     (playState.status === 'ready' ||
       playState.status === 'succeeded' ||
       playState.status === 'failed');
+  const activePlanName = t(paidPlanNameKey(entitlements.tier));
   const dateLine = isPremium ? subscriptionDateLine(entitlements) : null;
   // Only a Google Play subscription can be managed in Google Play. Stripe and
   // admin-granted access get no provider-management control.
@@ -335,7 +337,7 @@ export default function SubscriptionScreen() {
           ? t('playRestoreNoneTitle')
           : playState.operation === 'restore'
             ? t('playRestoreSucceededTitle')
-            : t('playSucceededTitle'),
+            : t('planActive', { plan: activePlanName }),
         body: noPurchases
           ? t('playRestoreNoneBody')
           : playState.operation === 'restore'
@@ -489,7 +491,7 @@ export default function SubscriptionScreen() {
                 <Text style={styles.statusBannerTitle}>
                   {entitlements.subscriptionStatus === 'trialing'
                     ? t('trialActive')
-                    : t('active')}
+                    : t('planActive', { plan: activePlanName })}
                 </Text>
                 <Text style={styles.statusBannerBody}>
                   {entitlements.cancelAtPeriodEnd

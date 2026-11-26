@@ -13,6 +13,7 @@ import { resetAssistantFabPlacement } from '@/lib/assistant/assistantFabStore';
 import { resetNavigationToLogin } from '@/lib/auth/authBoundary';
 import { useAuthSession } from '@/lib/auth/authContext';
 import { useEntitlements } from '@/lib/billing/entitlementsContext';
+import { paidPlanNameKey } from '@/lib/billing/planName';
 import { getCircles, getLinkedAccounts, type BackendLinkedAccount } from '@/lib/api';
 import { isOpenOrganizerCircle } from '@/lib/payments/organizerCircles';
 import { logClientError } from '@/lib/platform/errorLogging';
@@ -30,9 +31,9 @@ import {
 import { colors, radii } from '@/lib/shared/theme';
 
 export default function SettingsScreen() {
-  const { i18n, t } = useTranslation(['settings', 'navigation']);
+  const { i18n, t } = useTranslation(['settings', 'navigation', 'subscription']);
   const { session, signOut } = useAuthSession();
-  const { isPremium, hasCapability } = useEntitlements();
+  const { isPremium, hasCapability, entitlements } = useEntitlements();
   const contributionPaymentsEnabled = hasCapability(
     'contributionPaymentsEnabled',
   );
@@ -99,8 +100,9 @@ export default function SettingsScreen() {
   const displayName = session?.user.name ?? t('settings:title');
   const email = session?.user.email ?? t('settings:connectedSession');
   const reliabilityScore = session?.user.reliabilityScore;
+  const planName = t(`subscription:${paidPlanNameKey(entitlements.tier)}`);
   const subscriptionSubtitle = isPremium
-    ? t('settings:organizerProActive')
+    ? t('settings:planActive', { plan: planName })
     : t('settings:freePlanUpgrade');
 
   return (
@@ -123,7 +125,7 @@ export default function SettingsScreen() {
                 {isPremium ? (
                   <View style={styles.premiumBadge}>
                     <FontAwesome name="star" size={10} color={colors.onColor} style={{ marginRight: 4 }} />
-                    <Text style={styles.premiumBadgeText}>{t('settings:organizerProBadge')}</Text>
+                    <Text style={styles.premiumBadgeText}>{planName}</Text>
                   </View>
                 ) : null}
               </View>
@@ -253,7 +255,7 @@ export default function SettingsScreen() {
             icon="star"
             title={t('settings:subscription')}
             subtitle={subscriptionSubtitle}
-            badge={isPremium ? t('settings:organizerProBadge') : undefined}
+            badge={isPremium ? planName : undefined}
             onPress={() => router.push('/subscription')}
             isLast
           />

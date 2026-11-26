@@ -139,3 +139,95 @@ What it checks:
 - It does not drive real navigation timing. The Android run on 2026-11-26 is the only on-device evidence, and it could not capture the first frames of the sign-out.
 
 Not committed and no iOS build, as requested.
+
+### Member Pro Monthly sandbox purchase: Free -> Member Pro check (2026-11-26, about 10:00 AM, Build 6)
+
+**Status: not verified. The sandbox backend still shows Free.** You said you confirmed the purchase in Apple's sandbox sheet.
+
+**Sandbox backend (Railway, signed in as `sandbox.tester@example.com`): Free.**
+
+- `GET /api/auth/me/entitlements` returned `plan: free`, `tier: free`, `source: none`, `subscriptionStatus: inactive`, `currentPeriodEnd: null`, `cancelAtPeriodEnd: false`. Capabilities are the Free ones (1 open circle, no premium reminders, no multi-circle).
+- `GET /api/billing/apple/status` returned `enabled: true`, `environment: sandbox`, all four product IDs, and an `appAccountToken`. So Apple billing is on and reachable, and the account has no subscription recorded.
+
+**App (iPhone): not checked.** The Appium/WebDriverAgent helper could not start. The session request failed with "RemoteXPC is not available for this session". I asked for the Windows UAC prompt that restarts the elevated tunnel, and no tunnel process appeared afterwards, so the prompt was probably not accepted. I did not read the Plans screen, so I can't say what the app showed after the purchase.
+
+**What this does and does not show.**
+
+- It shows the backend had not recorded a Member Pro subscription for this account at about 10:00 AM.
+- It does not show why. I can't tell yet whether the purchase did not complete on the phone, the app did not send the Apple transaction to the backend, the backend rejected it, or the phone is signed in as a different account from `sandbox.tester@example.com`.
+- I could not see request logs: Railway's logs show only the gunicorn boot lines, and I did not query the sandbox database.
+
+**Next checks.**
+
+1. Read the Plans screen on the iPhone. This needs the UAC prompt accepted, or you can tell me what Plans and Settings show.
+2. If the app shows Free too, tap Restore purchases and see whether the backend changes.
+3. If it still shows Free, look at the sandbox database for Apple transactions and at the verify call's response. That is a one-off Railway command and needs your OK.
+
+No code, build, commit or production change was made.
+
+### Follow-up: app and backend after the Member Pro Monthly purchase (2026-11-26, about 10:08 AM, Build 6)
+
+**Result: failed to verify. Both the app and the sandbox backend still show Free.**
+
+The helper that reads the iPhone came back after two UAC prompts (a stale tunnel from an earlier session was holding its port, so I stopped it and restarted). I unlocked the app with the sandbox test user's account password after cancelling the Face ID sheet.
+
+**App (iPhone, Build 6):**
+
+- Signed in as Sandbox Tester, `sandbox.tester@example.com`.
+- Settings shows "Subscription. Free plan".
+- Plans shows the Free card marked "Your plan" and no change on Member Pro or Organizer Pro. The Annual toggle was selected, so Member Pro showed $24.99 and Organizer Pro $49.99. The dashboard still says "Free: 1 open circle at a time".
+- I tapped **Restore purchases**. The screen showed no message that I could read and the plan stayed Free. I waited about 15 seconds and read the screen again: still Free.
+
+**Sandbox backend (Railway):** `GET /api/auth/me/entitlements` returned `plan: free`, `tier: free`, `source: none`, `subscriptionStatus: inactive` at about 10:00 AM, again after the app check, and again after Restore.
+
+**Not known:**
+
+- Whether Apple actually completed the purchase. The sandbox sheet was not seen being confirmed, and I did not check Apple's side.
+- Whether the app sent the Apple transaction to the backend. The Railway logs show no request lines, and I did not query the sandbox database.
+- Whether Restore found a transaction to send. It changed nothing.
+- Any error the app may have shown while I was not looking.
+
+**Next checks:**
+
+1. Have you retry the Member Pro Monthly purchase while I watch the screen and read the app's result right after Subscribe.
+2. If it still stays Free, read the app's purchase result and the backend's response to the verify call (needs a one-off Railway command or request logging, with your OK).
+3. Check that the sandbox Apple account on the phone is the sandbox tester and that App Store Connect has the sandbox notification URL set.
+
+No code, build, commit or production change was made.
+
+### Follow-up: Member Pro Monthly activated (2026-11-26, about 10:15 AM CT, Build 6)
+
+Apple's checkout showed **US$2.99 per month** and explicitly said that confirming the test purchase would incur no charge. The gray placeholder was still visible in the sheet. Codex tapped **Suscribirse** once, and the user completed Apple authorization on the iPhone.
+
+**App result: Member Pro activated.** Plans displayed “Your plan is active” and “CircuSave confirmed your App Store subscription.” The **Member Pro** card was marked **Your plan** and offered **Manage in App Store**. The Free card was no longer marked current.
+
+**Separate display bug.** The Plans status banner and the Settings subscription row said “Organizer Pro is active.” The Build 6 code uses fixed Organizer Pro copy for paid accounts in those locations. The current-plan card uses `entitlements.tier` and correctly showed Member Pro.
+
+No separate Railway API or database check was run for this attempt. No app code, build, commit, or production change was made.
+
+### Railway sandbox backend check after the Member Pro purchase (2026-11-26, Claude)
+
+**Backend: Member Pro confirmed.** Signed in as `sandbox.tester@example.com`, `GET /api/auth/me/entitlements` on the Railway sandbox returned:
+
+- `plan: premium`, `tier: member_pro`, `source: apple`, `subscriptionStatus: active`
+- `currentPeriodEnd: 2026-11-27T16:11:14Z`, `cancelAtPeriodEnd: false`
+- Capabilities for Member Pro: 3 hands included, up to 6 hands per person, advanced reports, full activity history, premium reminders, draft and final payout PDFs, AI assistant, 20 members per circle, 1 open circle at a time.
+
+Earlier in the day the same account returned `free`, `source: none`, `inactive`. So the free-to-Member-Pro change is now seen in both the app (Codex's run) and the backend (this check).
+
+**Note on the period end.** It is about one day after the purchase, not one month. Apple's sandbox shortens subscription periods, so this is expected there. Renewal and cancellation still need to be tested.
+
+**Open:** the display bug above ("Organizer Pro is active" on the Plans banner and in Settings for a Member Pro account). The strings are `subscription.active` and `settings.organizerProActive` in all three locales. Not fixed yet.
+
+Production billing is off. No code, build, commit or production change was made in this check.
+
+### Fix: active-plan banner names the actual plan (2026-11-26, Claude, not yet in a build)
+
+The display bug above is fixed in the working tree. Not committed, not in Build 6, not checked on a device.
+
+- **Plans banner** ("… is active"), the **Google Play purchase success title**, the **Settings subscription row** and the **Settings Pro badge** now use the plan name for the account's tier (Member Pro or Organizer Pro) from `entitlements.tier`. A paid account with no readable tier is still treated as Organizer Pro, as `entitlements.ts` already does.
+- New copy key `planActive` ("{{plan}} is active") in `subscription` and `settings`, in en, es and ht. The old fixed-name keys (`subscription.active`, `subscription.playSucceededTitle`, `settings.organizerProActive`, `settings.organizerProBadge`) are removed.
+- New helper `lib/billing/planName.ts` with `lib/billing/__tests__/planName.test.ts`. Existing tests were updated: the Settings render test now uses a Member Pro account and expects the Member Pro name, and the localization readiness test checks both plan names through the new key.
+- `npx tsc --noEmit` is clean and `npm test -- --runInBand` passes (167 suites, 1517 tests).
+
+Still to do on a device: a Member Pro account should show "Member Pro is active" on Plans and in Settings. This needs the next iOS build.

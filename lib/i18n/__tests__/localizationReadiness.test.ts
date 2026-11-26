@@ -48,7 +48,10 @@ const REQUIRED_KEYS = [
   'common:closeDialog',
   'common:retry',
   'settings:smartRemindersMemberSummary',
-  'settings:organizerProActive',
+  'settings:planActive',
+  'subscription:planActive',
+  'subscription:tierMemberProName',
+  'subscription:tierOrganizerProName',
   'settings:freePlanUpgrade',
   'circles:frequency.weekly',
   'circles:frequency.biweekly',
@@ -69,7 +72,6 @@ const REQUIRED_KEYS = [
   'subscription:iosUnavailableBody',
   'subscription:iosFooter',
   'settings:externalPaymentDisclosure',
-  'settings:organizerProBadge',
   'security:title',
   'security:fingerprintEnabled',
   'security:faceIdEnabled',
@@ -237,10 +239,13 @@ describe('EN/ES/HT localization readiness', () => {
     for (const language of LANGUAGES) {
       await changeLanguagePreference(language);
       expect(i18n.t('subscription:productName')).toBe('Organizer Pro');
-      expect(i18n.t('settings:organizerProBadge')).toBe('Organizer Pro');
-      expect(i18n.t('settings:organizerProActive')).toContain('Organizer Pro');
-      expect(i18n.t('settings:organizerProBadge')).not.toBe('PRO');
-      expect(i18n.t('settings:organizerProBadge')).not.toBe('PREMIUM');
+      expect(i18n.t('subscription:tierOrganizerProName')).toBe('Organizer Pro');
+      expect(i18n.t('subscription:tierMemberProName')).toBe('Member Pro');
+      // The active banner names whichever plan the account is on.
+      for (const plan of ['Organizer Pro', 'Member Pro']) {
+        expect(i18n.t('settings:planActive', { plan })).toContain(plan);
+        expect(i18n.t('subscription:planActive', { plan })).toContain(plan);
+      }
     }
   });
 

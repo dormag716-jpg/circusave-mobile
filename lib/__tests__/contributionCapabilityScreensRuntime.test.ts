@@ -142,6 +142,7 @@ jest.mock('../billing/entitlementsContext', () => ({
     isPremium: mockIsPremium,
     entitlements: {
       subscriptionStatus: 'active',
+      tier: 'member_pro',
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
     },
@@ -250,7 +251,10 @@ test('settings hides contribution payment controls but keeps preferences and Pre
   expect(text).toContain('settings:assistantOpen');
   expect(text).toContain('settings:assistantResetPosition');
   expect(text).toContain('settings:subscription');
-  expect(text).toContain('settings:organizerProActive');
+  expect(text).toContain('settings:planActive');
+  // The row and badge name the plan the account is on, not a fixed Organizer Pro.
+  expect(text).toContain('subscription:tierMemberProName');
+  expect(text).not.toContain('subscription:tierOrganizerProName');
   expect(mockGetLinkedAccounts).not.toHaveBeenCalled();
 
   const subscription = renderer.root
@@ -294,7 +298,7 @@ test('disabled contribution capability does not alter mounted Premium subscripti
   const renderer = await render(React.createElement(SubscriptionScreen));
   const text = visibleText(renderer);
 
-  expect(text).toContain('active');
+  expect(text).toContain('planActive');
   expect(text).toContain('tierHeroTitle');
   expect(text).toContain('subscriptionReady');
   expect(text).toContain('iosFooter');
