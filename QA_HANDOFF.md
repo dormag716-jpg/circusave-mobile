@@ -266,3 +266,69 @@ The upgrade note under the Organizer Pro card on iPhone said "Upgrades start rig
 - New test `lib/billing/__tests__/tierUpgradeNoteStore.test.ts`. `npx tsc --noEmit` is clean and `npm test -- --runInBand` passes (168 suites, 1521 tests).
 
 The wording of the Apple note is my own and says the App Store "adjusts the charge". Please confirm it matches how Apple prorates upgrades in your subscription group before release.
+
+### Build 6 sandbox result: Member Pro Monthly (2026-11-26, Claude, from the user's iPhone screenshots and a Railway check)
+
+**Status**
+
+| Item | Result |
+| --- | --- |
+| Member Pro Monthly purchase (US$2.99, Apple sandbox) | **Passed** |
+| Member Pro activation (app and backend) | **Passed** |
+| Restore | Open |
+| Renewal | Open |
+| Cancellation | Open |
+| Apple downgrade, grace period, billing retry | Open (not implemented in the backend) |
+
+**Passed: purchase and activation.**
+
+- The iPhone Plans screen marks Member Pro with the **Your plan** badge.
+- Railway sandbox, checked again at about 20:02 UTC: `GET /api/auth/me/entitlements` for the test account returned `plan: premium`, `tier: member_pro`, `source: apple`, `subscriptionStatus: active`, `currentPeriodEnd: 2026-11-27T16:11:14Z`, `cancelAtPeriodEnd: false`. So Railway confirms an active Apple subscription. The values had not changed since the purchase.
+- `GET /api/billing/apple/status` on the sandbox is enabled, `environment: sandbox`, with the Member Pro and Organizer Pro Monthly and Annual product ids.
+
+**Annual tab (user's screenshot).** The Annual tab loaded Member Pro at **$24.99/year** and Organizer Pro at **$49.99/year**.
+
+**Restore: "Nothing to restore", access unchanged.** Restore showed "Nothing to restore" and left the existing access active (the backend stayed Member Pro before and after). Restore only asks StoreKit for active subscriptions on the phone's Apple ID and sends what it finds to the backend. It does not read the backend, so "Nothing to restore" and "Renews on November 27" can both be true.
+
+**Sandbox sign-in on the phone.** Settings, Developer, Sandbox Apple Account now shows an account signed in. Tapping Manage showed Apple's "Cannot Connect" page with a Retry link, so the sandbox subscription list was not seen. The account address is not recorded here. Whether this account is the one that made the purchase is not confirmed.
+
+**Still open and unexplained:** renewal not seen, Sandbox Server URL in App Store Connect unverified, and the one-day period. The backend copies Apple's `expiresDate` unchanged (`app/services/apple_app_store/verification.py`), so Apple's sandbox reported a one-day period. The sandbox tester's renewal rate in App Store Connect may explain it; not checked.
+
+Restore, renewal and cancellation stay open. Production billing is off.
+
+### Fix: the Annual tab no longer makes a monthly subscriber look annual (2026-11-26, Claude, not yet in a build)
+
+**Bug.** Switching the Plans screen to the Annual tab while on an active monthly Member Pro subscription still showed **Your plan** next to the annual price.
+
+**Cause.** The Monthly / Annual toggle only chooses which prices to browse, but the card for the plan the person is on showed the price for the selected tab. The app did not know the subscription's billing period, because `/api/auth/me/entitlements` does not send one (the backend stores the product id but does not expose the period).
+
+**Change.**
+
+- `lib/billing/entitlements.ts`: `Entitlements.billingPeriod?: 'monthly' | 'annual'`, read from a `billingPeriod` field when the backend sends one. It is never guessed from a renewal date or a price tab.
+- `lib/billing/tierPlanCards.ts`: `currentCardPeriodView` decides, for the plan the person is on, whether to show a price and which billing line to show. Other cards are unchanged.
+- `components/subscription/TierPlansSection.tsx` and `app/subscription.tsx`: the current plan card now shows a billing line, and shows a price only when the verified period matches the tab.
+- New strings in en, es and ht: `tierBilledMonthly`, `tierBilledAnnual`, `tierBilledMonthlyOtherTab`, `tierBilledAnnualOtherTab`, `tierBilledUnknown`.
+
+**What the person sees on the plan they are on**
+
+| Verified period | Tab | Price shown | Line |
+| --- | --- | --- | --- |
+| monthly | Monthly | yes | Billed monthly |
+| monthly | Annual | no | You're billed monthly. Viewing annual prices doesn't change your subscription. |
+| annual | Annual | yes | Billed annually |
+| annual | Monthly | no | You're billed annually. Viewing monthly prices doesn't change your subscription. |
+| not reported | either | no | Your billing period isn't shown here. Viewing a price tab doesn't change your subscription. |
+
+**Important limit: the backend does not send `billingPeriod` yet.** Until it does, a Member Pro or Organizer Pro account sees the last row: no price on the current plan card and the "isn't shown here" line, on both tabs. That fixes the misleading display but does not yet show the verified period. Showing "Billed monthly" needs a backend change (return `billingPeriod` from the subscription's verified product). That change has not been made, and no backend code was touched.
+
+**Tests.** New `lib/billing/__tests__/tierPeriodView.test.ts` covers every period and tab combination, that other cards are unchanged, that `billingPeriod` is read only when valid and never inferred, and that the section and screen use the rule. `npx tsc --noEmit` is clean and `npm test -- --runInBand` passes (169 suites, 1540 tests). It has not been checked on a device or in a build.
+
+### To verify in the next iOS build
+
+1. The Plans banner on a Member Pro account says **Member Pro is active**, not Organizer Pro.
+2. The Organizer Pro upgrade note says "The App Store adjusts the charge…", with no Google Play wording.
+3. Annual tab on an active monthly Member Pro subscription: the Member Pro card shows **Your plan** but no annual price, and a billing line (the "isn't shown here" line until the backend sends `billingPeriod`, then "You're billed monthly…").
+4. Monthly tab: the same card shows no price until the period is known, then the monthly price with "Billed monthly".
+5. Lock screen: Forgot password? appears after three wrong passwords and the recovery flow works.
+
+Production billing stays off. No build was started.

@@ -63,7 +63,20 @@ export type Entitlements = {
    */
   pendingTier?: Exclude<PlanTier, 'free'>;
   pendingTierStartsAt?: string | null;
+  /**
+   * The billing period of the verified subscription, when the backend reports
+   * it. Absent when the backend does not say; the app never guesses it from a
+   * price tab or a renewal date.
+   */
+  billingPeriod?: BillingPeriod;
 };
+
+export type BillingPeriod = 'monthly' | 'annual';
+
+function asBillingPeriod(value: unknown): BillingPeriod | null {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === 'monthly' || raw === 'annual' ? raw : null;
+}
 
 export const FREE_MAX_PARTICIPATING_HANDS = 20;
 export const PREMIUM_MAX_PARTICIPATING_HANDS = 50;
@@ -244,9 +257,12 @@ export function normalizeEntitlements(raw: unknown): Entitlements {
       ? pendingRaw
       : null;
 
+  const billingPeriod = asBillingPeriod(body.billingPeriod);
+
   return {
     plan: 'premium',
     tier,
+    ...(billingPeriod ? { billingPeriod } : {}),
     ...(pendingTier
       ? {
           pendingTier,

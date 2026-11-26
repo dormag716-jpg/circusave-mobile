@@ -515,6 +515,7 @@ export default function SubscriptionScreen() {
           <TierPlansSection
             tierPlans={(isIos ? apple.plans : tierPlans) ?? {}}
             currentTier={entitlements.tier}
+            currentPeriod={entitlements.billingPeriod}
             pendingTier={entitlements.pendingTier}
             pendingDateLabel={
               entitlements.pendingTierStartsAt
