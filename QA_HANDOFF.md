@@ -117,3 +117,25 @@ I ran this twice. After signing back in and locking the app again, the link was 
 **Cleanup.** Metro and the local backend are stopped. The emulator is still running with App Lock on for the test account.
 
 Nothing is committed and no iOS build was made.
+
+### Regression test: App Locked -> Send code -> sign-out -> Recover access (2026-11-26)
+
+New test file: `lib/__tests__/lockScreenRecoveryTransition.test.ts` (10 tests). It runs the real lock reducer, the signed-out route cover rule, the staged recovery step and `runLockScreenRecovery` in the order the app uses them. No device was used.
+
+**Result: pass.** `npx tsc --noEmit` is clean and `npm test -- --runInBand` passes (166 suites, 1511 tests).
+
+What it checks:
+
+- **Private screens stay covered through the transition.** The cover is on while locked, after the code is requested, after the recovery step is saved, and after sign-out while the private route is still mounted. It drops only once the router is on the login route (Recover access). Every private route (dashboard, circles, activity, settings, a circle, circle history, security) is covered while signed out; only login is open.
+- **Sign-out happens only after the recovery step is saved.** The call order is request, stage, signOut. The test also asserts the step is already saved at the moment sign-out starts, and that sign-out does not run if saving the step throws.
+- **Cancel leaves the app locked.** No request, no staged step, no sign-out. The lock stays up and covered.
+- **A failed send leaves the app locked.** Not accepted, server error, offline and rate limit each give no staged step and no sign-out, with the lock still covering.
+- **Recover access opens on the code step** for the same email, with no second email request.
+
+**Does it catch a regression?** I temporarily moved sign-out ahead of the request in `lib/auth/lockScreenRecovery.ts`. 7 of the 10 tests failed. I then restored the file with `git checkout`, and the full suite is green again.
+
+**Limits.**
+- The cover rule is copied into the test, because `DeviceLock.tsx` has no renderer in this test setup. A source check fails if `DeviceLock.tsx` stops using that same rule (`coverVisible = coverLocked || coverSignedOut`, and the signed-out check with `shouldCoverSignedOutRoute(pathname)`) or calls `signOut(` directly. A change to how the component renders the cover would not be caught.
+- It does not drive real navigation timing. The Android run on 2026-11-26 is the only on-device evidence, and it could not capture the first frames of the sign-out.
+
+Not committed and no iOS build, as requested.
