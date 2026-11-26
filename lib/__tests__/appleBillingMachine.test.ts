@@ -10,6 +10,7 @@ import {
   type AppleBillingApi,
 } from '../billing/appleBillingMachine';
 import { normalizeEntitlements } from '../billing/entitlements';
+import { ApiError } from '../platform/networkErrors';
 import {
   normalizeAppleBillingStatus,
   normalizeAppleVerificationResponse,
@@ -170,6 +171,23 @@ describe('Apple billing machine', () => {
     });
     await none.machine.purchase('organizer_pro_annual');
     expect(none.gateway.requestSubscription).not.toHaveBeenCalled();
+  });
+
+  test('a backend without the Apple endpoints counts as billing off, other errors can retry', async () => {
+    const missing = harness();
+    (missing.api.getStatus as jest.Mock).mockRejectedValueOnce(new ApiError('nope', 404));
+    await missing.machine.initialize();
+    expect(missing.machine.getState().status).toBe('disabled');
+
+    const broken = harness();
+    (broken.api.getStatus as jest.Mock).mockRejectedValueOnce(new ApiError('boom', 500));
+    await broken.machine.initialize();
+    expect(broken.machine.getState()).toMatchObject({
+      status: 'failed',
+      operation: 'initialize',
+      code: 'status_failed',
+      retryable: true,
+    });
   });
 
   test('never offers a product that carries an introductory or trial offer', async () => {

@@ -125,5 +125,6 @@
   "iosVerificationFailedBody": "CircuSave could not confirm the purchase yet. If you were charged, tap Restore purchases.",
   "iosUnsupportedBody": "The App Store is not available in this build of the app.",
   "iosProductsUnavailableBody": "The plans could not be loaded from the App Store right now.",
-  "tierManageApple": "Manage in App Store"
+  "tierManageApple": "Manage in App Store",
+  "iosLoadFailedTitle": "App Store plans could not be loaded"
 }

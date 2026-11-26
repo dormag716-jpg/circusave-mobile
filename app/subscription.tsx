@@ -249,7 +249,10 @@ export default function SubscriptionScreen() {
       }
       case 'failed':
         return {
-          title: t('iosFailedTitle'),
+          title:
+            appleState.operation === 'initialize'
+              ? t('iosLoadFailedTitle')
+              : t('iosFailedTitle'),
           body:
             appleState.code === 'product_configuration_unavailable' ||
             appleState.code === 'status_failed'

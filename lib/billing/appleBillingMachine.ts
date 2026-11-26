@@ -7,6 +7,7 @@ import {
   type AppleBillingStatus,
   type AppleVerificationResponse,
 } from '../api/billing';
+import { ApiError } from '../platform/networkErrors';
 import {
   ApplePurchaseRequestError,
   type AppleBillingGateway,
@@ -208,7 +209,13 @@ export function createAppleBillingMachine(options: {
     let loaded: AppleBillingStatus;
     try {
       loaded = await api.getStatus(authToken);
-    } catch {
+    } catch (error) {
+      // A backend without the Apple endpoints yet answers 404/501: that means
+      // Apple billing is not switched on, not that something broke.
+      if (error instanceof ApiError && (error.status === 404 || error.status === 501)) {
+        transition({ status: 'disabled' });
+        return;
+      }
       transition({ status: 'failed', operation: 'initialize', code: 'status_failed', retryable: true });
       return;
     }

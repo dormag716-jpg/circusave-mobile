@@ -125,5 +125,6 @@
   "iosVerificationFailedBody": "CircuSave poko ka konfime acha a. Si yo pran lajan ou, peze Restore acha yo.",
   "iosUnsupportedBody": "App Store pa disponib nan vèsyon aplikasyon sa a.",
   "iosProductsUnavailableBody": "Pa gen mwayen pou chaje plan yo nan App Store kounye a.",
-  "tierManageApple": "Jere nan App Store"
+  "tierManageApple": "Jere nan App Store",
+  "iosLoadFailedTitle": "Pa gen mwayen pou chaje plan App Store yo"
 }
